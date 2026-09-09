@@ -227,6 +227,12 @@
   background: color-mix(in srgb, var(--color-biff) 78%, transparent);
 }
 
+/* C1:行程行「时段命中」(网格整点筛选联动):淡红整行底,标出与所选时段重叠的已选场次;
+   仅改底色、不动描边 —— 与 hover 双向联动(hl-*)及冲突行态并存不打架 */
+@utility slot-hit {
+  background: color-mix(in srgb, var(--color-biff) 8%, var(--color-card)) !important;
+}
+
 /* ---- 缩写说明 tooltip(tip.ts 运行时单例,data-tip 触发) ---- */
 .tip {
   position: fixed;

@@ -7,13 +7,13 @@ import { screeningsByVenue } from "./data";
 import { codeTip, screeningBadgeKeys } from "./badges";
 import { appendMetaRow, durChip, venueTip } from "./legend";
 
-export const AXIS_START = 9 * 60; // 09:00
-export const AXIS_END = 23 * 60; // 23:00
 export const ROW_H = 92;
 const LABEL_W = 148; // 粘性影厅列宽(沿用旧值,不动)
-const LAST_TICK_BUMP = 14; // 给最末 tick 的 label 半宽留位,避免右缘切掉
+const TRAIL_PAD = 60; // A3:末 tick 右侧 +60px 安全边距(标签半宽 + 呼吸),两端标签永不悬出/被裁
 const DEFAULT_PX_PER_MIN = 1.5; // 装得下默认走这个(每小时 90px)
 const MIN_PX_PER_MIN = 0.7; // 压缩下限:低于此卡片过密,改回默认 + 横向滚动
+const AXIS_FALLBACK = { start: 9 * 60, end: 23 * 60 }; // A1:当日无排片时的时间轴兜底窗口
+const AXIS_LEAD_MIN = 30; // A1:首场开映前保留的呼吸时间(轴起点对齐到整点)
 
 /** 优先级 → --pc 变量类(@utility p-must/maybe/wild 定义于 style.css;须完整字面量,勿动态拼接) */
 const PRI_PC: Record<Priority, string> = { must: "p-must", maybe: "p-maybe", wild: "p-wild" };
@@ -30,13 +30,37 @@ export interface GridCtx {
 }
 
 /** 视口足够宽 → 装得下默认 1.5;否则压缩 px/min 直到装下;压缩仍过密 → 退回默认 + 横向滚动 */
-function computePxPerMin(avail: number): number {
-  const axisMin = AXIS_END - AXIS_START;
-  const defaultW = LABEL_W + axisMin * DEFAULT_PX_PER_MIN + LAST_TICK_BUMP;
+function computePxPerMin(avail: number, axisMin: number): number {
+  const defaultW = LABEL_W + axisMin * DEFAULT_PX_PER_MIN + TRAIL_PAD;
   if (avail >= defaultW) return DEFAULT_PX_PER_MIN;
-  const fitPx = (avail - LABEL_W - LAST_TICK_BUMP) / axisMin;
+  const fitPx = (avail - LABEL_W - TRAIL_PAD) / axisMin;
   if (fitPx >= MIN_PX_PER_MIN) return fitPx;
   return DEFAULT_PX_PER_MIN;
+}
+
+/** A1 动态时间轴:轴界由「当日最早开映 − 呼吸时间」与「最晚散场」对齐整点推导,不再写死 09:00–23:00 ——
+ *  早场 / 午夜场(00:xx 收场)自动外扩;整点标签取模 24 显示(24:00 → "00:00"),配合 TRAIL_PAD 不被右缘裁成 "00"。 */
+function axisRangeFor(cat: Catalog, date: string): { start: number; end: number } {
+  let first = Infinity;
+  let last = -Infinity;
+  for (const s of cat.schedule.screenings) {
+    if (s.date !== date) continue;
+    const st = hmsToMin(s.start_time);
+    const en = hmsToMin(s.end_time);
+    if (st < first) first = st;
+    if (en > last) last = en;
+  }
+  if (!Number.isFinite(first)) return { ...AXIS_FALLBACK };
+  const start = Math.max(0, Math.floor((first - AXIS_LEAD_MIN) / 60) * 60);
+  const end = Math.max(Math.ceil(last / 60) * 60, start + 2 * 60);
+  return { start, end };
+}
+
+/** A5「现在」时刻在该日时间轴内的像素位;不在轴内(或非当天)返回 null(角标/红线随每次渲染取当前时间) */
+function nowPxFor(axis: { start: number; end: number }, pxPerMin: number): number | null {
+  const d = new Date();
+  const m = d.getHours() * 60 + d.getMinutes();
+  return m >= axis.start && m <= axis.end ? (m - axis.start) * pxPerMin : null;
 }
 
 function titleFor(s: Screening, map: Mapping | undefined): string {
@@ -50,73 +74,23 @@ const ROW_BASE_CLS = "grid grid-cols-[148px_1fr]";
 
 export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
   const rows = screeningsByVenue(ctx.cat, date);
-  const pxPerMin = computePxPerMin(ctx.avail);
-  const axisMin = AXIS_END - AXIS_START;
+  const axis = axisRangeFor(ctx.cat, date); // A1:当日动态轴(最早开映→最晚散场,整点对齐)
+  const axisMin = axis.end - axis.start;
+  const pxPerMin = computePxPerMin(ctx.avail, axisMin);
   const trackW = axisMin * pxPerMin;
-  const totalW = LABEL_W + trackW + LAST_TICK_BUMP;
+  const totalW = LABEL_W + trackW + TRAIL_PAD;
   const overflows = totalW > ctx.avail + 1;
+  const nowPx = todayIsoLocal() === date ? nowPxFor(axis, pxPerMin) : null;
 
   // 装得下 → 不加 cursor-grab、不接 attachPan(横向拖动无意义);装不下 → 保留
   const scroll = el("div", overflows ? "overflow-x-auto pb-[6px] cursor-grab" : "overflow-x-auto pb-[6px]");
   const min = el("div", "w-max min-w-full");
   min.style.width = `${totalW}px`;
 
-  // 时间标尺(ruler):底部强描边与场馆行分隔
+  // 时间标尺(ruler):底部强描边与场馆行分隔。粘性列空占位(动态轴首根整点标签左锚定画在轨道内,
+  // 替代旧「9:00 放粘性列」的写法 —— 轴界不再固定 9 点,只有当日首场那一格需要贴左)。
   const ruler = el("div", `${ROW_BASE_CLS} border-b border-line`);
-  // 粘性影厅列内右对齐放 AXIS_START 标签(原 h=9 tick 会落在 x=0 被粘性列遮住,只露出 ":00" → 看上去像 "00");
-  // 把首根小时标签放进粘性列内,标尺里从 h=10 起画,左缘截断问题消除。
-  // 该标签同样可点(时间筛选:只看 09 点段)。
-  const rulerLabel = el("div", LABEL_BOX_CLS);
-  rulerLabel.innerHTML = `<span class="self-end text-[10.5px] text-muted tabular-nums pr-[6px]">9:00</span>`;
-  const labelTick = rulerLabel.querySelector("span")!;
-  labelTick.classList.add(
-    "cursor-pointer",
-    "rounded-[4px]",
-    "transition-colors"
-  );
-  if (ctx.hourFilter === 9) labelTick.classList.add("bg-biff-soft", "text-biff", "font-bold");
-  else labelTick.classList.add("hover:bg-hover", "hover:text-biff");
-  labelTick.dataset.hour = "9";
-  labelTick.title = "只看 09:00–09:59 段场次;再点取消";
-  const rulerTicks = el("div", "relative");
-  rulerTicks.style.width = `${trackW + LAST_TICK_BUMP}px`;
-  // 整点小时 tick = 时间选择热区(绝对定位,内对称 padding 不改变中心对准整点刻度线)
-  for (let h = AXIS_START / 60 + 1; h <= AXIS_END / 60; h++) {
-    const on = ctx.hourFilter === h;
-    const t = el(
-      "button",
-      "absolute top-[1px] border-0 bg-transparent px-[6px] py-[1px] -translate-x-1/2 tabular-nums cursor-pointer rounded-[4px] transition-colors text-[10.5px] " +
-        (on ? "text-biff bg-biff-soft font-bold" : "text-muted hover:bg-hover hover:text-biff"),
-      `${h}:00`
-    );
-    t.style.left = `${(h * 60 - AXIS_START) * pxPerMin}px`;
-    t.dataset.hour = String(h);
-    t.title = `只看 ${h}:00–${h + 1}:00 段场次;再点取消`;
-    rulerTicks.appendChild(t);
-  }
-  // 「现在」时刻竖线 + 标签:仅当天且当前时刻落在轴内时画(渲染即取当前时间,点选/重建自然刷新)
-  const nowPx =
-    todayIsoLocal() === date
-      ? (() => {
-          const d = new Date();
-          const m = d.getHours() * 60 + d.getMinutes();
-          return m >= AXIS_START && m <= AXIS_END ? (m - AXIS_START) * pxPerMin : null;
-        })()
-      : null;
-  if (nowPx !== null) {
-    const nowMark = el("span", "absolute top-0 bottom-0 w-[1.5px] now-line pointer-events-none z-[5]");
-    nowMark.style.left = `${nowPx - 0.75}px`;
-    rulerTicks.appendChild(nowMark);
-    const d = new Date();
-    const nowTag = el(
-      "span",
-      "absolute top-[1px] -translate-x-1/2 z-[6] pointer-events-none text-[9px] font-extrabold text-on-brand bg-biff leading-[1.3] px-[4px] py-px rounded-[3px] whitespace-nowrap shadow-[0_0_0_1px_var(--color-card)]",
-      `现在 ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
-    );
-    nowTag.style.left = `${nowPx}px`;
-    rulerTicks.appendChild(nowTag);
-  }
-  ruler.append(rulerLabel, rulerTicks);
+  ruler.append(el("div", LABEL_BOX_CLS), buildRulerTicks(ctx, axis, pxPerMin, trackW, nowPx));
   min.appendChild(ruler);
 
   const cardEls = new Map<string, HTMLElement>();
@@ -145,14 +119,17 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
     row.appendChild(label);
 
     const tracks = el("div", "relative");
-    tracks.style.width = `${trackW + LAST_TICK_BUMP}px`;
+    tracks.style.width = `${trackW + TRAIL_PAD}px`;
     tracks.style.height = `${ROW_H}px`;
     const hourPx = 60 * pxPerMin;
     const halfPx = 30 * pxPerMin;
-    tracks.style.backgroundImage = `repeating-linear-gradient(90deg, transparent 0 ${hourPx - 1}px, var(--line-soft) ${hourPx - 1}px ${hourPx}px), repeating-linear-gradient(90deg, transparent 0 ${halfPx - 1}px, var(--line-faint) ${halfPx - 1}px ${halfPx}px)`;
+    // A2 甘特列感:整点竖线 ink 10%、半点竖线 ink 4%,贯穿整行(卡片浮于线上);与标尺整点刻度同 x 对齐
+    const hourLine = "color-mix(in srgb, var(--color-ink) 10%, transparent)";
+    const halfLine = "color-mix(in srgb, var(--color-ink) 4%, transparent)";
+    tracks.style.backgroundImage = `repeating-linear-gradient(90deg, transparent 0 ${hourPx - 1}px, ${hourLine} ${hourPx - 1}px ${hourPx}px), repeating-linear-gradient(90deg, transparent 0 ${halfPx - 1}px, ${halfLine} ${halfPx - 1}px ${halfPx}px)`;
 
     for (const s of list) {
-      const card = appendCard(tracks, s, ctx, pxPerMin);
+      const card = appendCard(tracks, s, ctx, pxPerMin, axis.start);
       cardEls.set(s.code, card);
     }
     // 「现在」时刻竖线贯穿各行(标尺已画带标签的一段,行内补全高)
@@ -175,6 +152,57 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
   scroll.appendChild(min);
   if (overflows) attachPan(scroll); // 鼠标按住左右拖 = 平移时间轴;装得下时无意义,不挂
   return scroll;
+}
+
+/** 标尺刻度区:整点标签(A1 加粗表格数字、可点=时间筛选)+ 整点 +6px 短刻度线 + 「现在」线/角标。
+ *  A3:首根整点标签左锚定(不居中,左半永不越界);末 tick 之后容器留有 TRAIL_PAD 右侧安全边距。 */
+function buildRulerTicks(
+  ctx: GridCtx,
+  axis: { start: number; end: number },
+  pxPerMin: number,
+  trackW: number,
+  nowPx: number | null
+): HTMLElement {
+  const ticks = el("div", "relative");
+  ticks.style.width = `${trackW + TRAIL_PAD}px`;
+  const h0 = axis.start / 60;
+  const h1 = axis.end / 60;
+  for (let h = h0; h <= h1; h++) {
+    const x = (h * 60 - axis.start) * pxPerMin;
+    const isFirst = h === h0; // A3:首根左锚定,不 -translate-x-1/2
+    const on = ctx.hourFilter === h;
+    const label = `${String(h % 24).padStart(2, "0")}:00`; // A1:跨午夜整点按 24h 取模(24:00 → "00:00",不截断)
+    const b = el(
+      "button",
+      "absolute top-[1px] border-0 bg-transparent px-[5px] py-[1px] tabular-nums text-[10.5px] font-bold rounded-[4px] transition-colors cursor-pointer " +
+        (isFirst ? "left-0 text-left" : "-translate-x-1/2 ") +
+        (on ? "bg-biff text-on-brand" : "text-ink-2 hover:bg-hover hover:text-biff"),
+      label
+    );
+    b.style.left = `${x}px`;
+    b.dataset.hour = String(h);
+    b.title = `只看 ${label}–${String((h + 1) % 24).padStart(2, "0")}:00 段场次;再点取消`;
+    ticks.appendChild(b);
+    // A1:整点刻度 +6px 短线(与场馆行内整点竖线同 x,视觉上标尺与行内刻度相连)
+    const tickLine = el("span", "absolute bottom-0 w-px h-[6px] bg-ink/25 pointer-events-none");
+    tickLine.style.left = `${x - 0.5}px`;
+    ticks.appendChild(tickLine);
+  }
+  // A5「现在」时刻竖线 + 角标:仅当天且当前时刻落在当日轴内时画(主线程跨分钟定时器触发重画推进)
+  if (nowPx !== null) {
+    const nowMark = el("span", "absolute top-0 bottom-0 w-[1.5px] now-line pointer-events-none z-[5]");
+    nowMark.style.left = `${nowPx - 0.75}px`;
+    ticks.appendChild(nowMark);
+    const d = new Date();
+    const nowTag = el(
+      "span",
+      "absolute top-[1px] -translate-x-1/2 z-[6] pointer-events-none text-[9px] font-extrabold text-on-brand bg-biff leading-[1.3] px-[4px] py-px rounded-[3px] whitespace-nowrap shadow-[0_0_0_1px_var(--color-card)]",
+      `现在 ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+    );
+    nowTag.style.left = `${nowPx}px`;
+    ticks.appendChild(nowTag);
+  }
+  return ticks;
 }
 
 /* ---------------- 时间轴鼠标拖动平移 ---------------- */
@@ -307,7 +335,7 @@ function markTightPairs(ctx: GridCtx, date: string, cardEls: Map<string, HTMLEle
   }
 }
 
-function appendCard(tracks: HTMLElement, s: Screening, ctx: GridCtx, pxPerMin: number): HTMLElement {
+function appendCard(tracks: HTMLElement, s: Screening, ctx: GridCtx, pxPerMin: number, axisStart: number): HTMLElement {
   const start = hmsToMin(s.start_time);
   const end = hmsToMin(s.end_time);
   const entry = ctx.plan.get(s.code);
@@ -335,7 +363,7 @@ function appendCard(tracks: HTMLElement, s: Screening, ctx: GridCtx, pxPerMin: n
 
   const card = el("div", parts.join(" "));
   card.dataset.code = s.code;
-  card.style.left = `${(start - AXIS_START) * pxPerMin + 2}px`;
+  card.style.left = `${(start - axisStart) * pxPerMin + 2}px`;
   card.style.top = "6px";
   card.style.width = `${(end - start) * pxPerMin - 4}px`;
   card.style.height = `${ROW_H - 12}px`;

@@ -14,6 +14,9 @@ export interface AgendaCtx {
   mappings: Map<string, Mapping>;
   transitMin: number;
   conflicts: Map<string, ConflictResult>; // 当前方案全日期冲突
+  /** C1:网格时间筛选(整点时段)联动 —— 当日同段行 slot-hit 高亮,当日不同段行 hour-dim 淡化 */
+  slotDate?: string;
+  slotHour?: number | null;
 }
 
 /** 优先级三段顺序(§14 2c,替代循环 chip) */
@@ -104,6 +107,16 @@ function buildRow(
     : "grid grid-cols-[110px_minmax(0,1fr)_auto] gap-[10px] items-center border border-line rounded-[8px] px-[10px] py-2 bg-card shadow-[var(--shadow-card)] transition-[border-color,box-shadow] duration-[120ms] ease-in-out hover:border-line-strong hover:shadow-[var(--shadow-hover)] max-[720px]:grid-cols-[96px_minmax(0,1fr)]";
   const row = el("div", rowCls);
   row.dataset.code = s.code;
+
+  // C1:网格「整点时段」筛选同步 —— 当日该时段内的已选行 slot-hit 高亮、时段外行 hour-dim 淡化
+  // (时段命中判断与网格 hour-dim 同口径:区间重叠即命中;仅作用于筛选所在日期,其它日期不受影响)
+  if (ctx.slotDate === s.date && ctx.slotHour != null) {
+    const st = hmsToMin(s.start_time);
+    const en = hmsToMin(s.end_time);
+    const inSlot = st < (ctx.slotHour + 1) * 60 && en > ctx.slotHour * 60;
+    row.classList.add(inSlot ? "slot-hit" : "hour-dim");
+    if (inSlot) row.title = `位于所选 ${String(ctx.slotHour).padStart(2, "0")}:00–${String(ctx.slotHour + 1).padStart(2, "0")}:00 时段(时间筛选联动)`;
+  }
 
   const mapped = ctx.mappings.get(s.code);
   const zh = s.title_zh || mapped?.title_cn || s.title_en;

@@ -2,7 +2,7 @@
 // 全量化:仅维护基础骨架(顶栏/面板/弹层根/Toast/底部),所有内部样式由 markup 端 Tailwind utility 表达。
 
 import type { Catalog, Group, PlanEntry, Priority, Screening } from "./types";
-import { dateInfo, el, hmsToMin } from "./util";
+import { dateInfo, el, hmsToMin, todayIsoLocal } from "./util";
 import { loadCatalog } from "./data";
 import { computeConflicts, conflictGroupFor, type ConflictResult, type Slot } from "./conflict";
 import { buildIcs, downloadIcs, pickEntries } from "./ics";
@@ -158,6 +158,8 @@ function renderAgenda(): void {
     mappings: store.mappings,
     transitMin: store.settings.transitMin,
     conflicts,
+    slotDate: currentDate, // C1:行程行同步网格整点筛选(命中高亮 / 未命中淡化)
+    slotHour: hourFilter,
   });
   host.replaceWith(agenda);
   agenda.id = "agenda";
@@ -212,15 +214,17 @@ function bindEvents(): void {
       hourFilter = null;
       renderChips();
       renderGrid();
+      renderAgenda();
       return;
     }
 
-    // 甘特时间筛选:点击时间轴整点 → 只看该小时段;再点同一小时取消
+    // 甘特时间筛选:点击时间轴整点 → 只看该小时段;再点同一小时取消(行程侧同步高亮/淡化)
     const hourHit = t.closest<HTMLElement>("#grid-scroll [data-hour]");
     if (hourHit) {
       const h = Number(hourHit.dataset.hour);
       hourFilter = hourFilter === h ? null : h;
       renderGrid();
+      renderAgenda();
       return;
     }
     // 标题旁「只看 X 段 · 取消」pill
@@ -228,6 +232,7 @@ function bindEvents(): void {
     if (clearHour) {
       hourFilter = null;
       renderGrid();
+      renderAgenda();
       return;
     }
 
@@ -286,6 +291,7 @@ function bindEvents(): void {
       hourFilter = null;
       renderChips();
       renderGrid();
+      renderAgenda();
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
@@ -344,6 +350,7 @@ function jumpToScreening(code: string): void {
     hourFilter = null;
     renderChips();
     renderGrid();
+    renderAgenda();
   }
   // 页面滚到排片面板(顶部被吸顶栏盖住的部分留出)
   const wrap = document.getElementById("grid-wrap");
@@ -590,6 +597,16 @@ async function boot(): Promise<void> {
   renderAll();
   void syncFromCloud();
   toast(currentDate ? "排片为 MOCK 数据 — 官方 Catalogue 发布后一键替换" : "schedule.json 为空");
+
+  // A5:跨分钟/跨天自动推进「现在」线 —— 仅在时间键变化且仍在看当天时重画网格(角标补零、进出轴窗口随渲染取当前时间)
+  let lastNowKey = "";
+  window.setInterval(() => {
+    const d = new Date();
+    const key = `${todayIsoLocal()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    if (key === lastNowKey) return;
+    lastNowKey = key;
+    if (todayIsoLocal() === currentDate) renderGrid();
+  }, 20_000);
 }
 
 boot();
