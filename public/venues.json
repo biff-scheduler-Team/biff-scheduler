@@ -1,10 +1,10 @@
 {
-  "note": "MOCK 场馆 — 依据 2026 官方口径:常规放映 + Community BIFF 共 8 剧场 31 屏,分三区:CENTUM 主场区(Busan Cinema Center / CGV Centum City / LOTTE CINEMA Centum City / KOFIC Theater / Sohyang Theatre / Busan Community Media Center)、南浦洞(BIFF Square / MEGABOX Busan Theater / Catholic Center Space 101.1,Community BIFF 10/8-11)、分散(BIFF Everywhere 10/3-15 共 17 处含机场/首尔);Centum↔南浦跨区连场至少预留约 60min 门到门,同区连场也需散场/找厅/验票缓冲。mega-haeundae 为真实影院但不在本届官方 8 馆名单(保留仅供 mock 跨馆演示,真数据接入时随官方场馆表替换);M3 转场计算时补 lat/lng 与 pair 经验值",
+  "note": "MOCK 场馆 — 依据 2026 官方口径:常规放映 + Community BIFF 共 8 剧场 31 屏,分三区:CENTUM 主场区(Busan Cinema Center / CGV Centum City / LOTTE CINEMA Centum City / KOFIC Theater / Sohyang Theatre / Busan Community Media Center)、南浦洞(BIFF Square / MEGABOX Busan Theater / Catholic Center Space 101.1,Community BIFF 10/8-11)、分散(BIFF Everywhere 10/3-15 共 17 处含机场/首尔);Centum↔南浦跨区连场至少预留约 60min 门到门,同区连场也需散场/找厅/验票缓冲。mega-haeundae 为真实影院但不在本届官方 8 馆名单(保留仅供 mock 跨馆演示,真数据接入时随官方场馆表替换);venue.code 为「官方日程表影院代码」演示字段(2025 届同馆口径,如 bcc-1→B1;2026 以 9/11 官网代码为准,导入管线覆盖);M3 转场计算时补 lat/lng 与 pair 经验值",
   "venues": [
-    { "id": "bcc-1", "name": "Busan Cinema Center Cinema 1", "name_kr": "영화의전당 1관", "group": "bcc", "lat": 35.1689, "lng": 129.1296 },
-    { "id": "bcc-2", "name": "Busan Cinema Center Cinema 2", "name_kr": "영화의전당 2관", "group": "bcc", "lat": 35.1689, "lng": 129.1296 },
-    { "id": "cgv-centum", "name": "CGV Centum City", "name_kr": "CGV 센텀시티", "group": "centum", "lat": 35.1683, "lng": 129.1321 },
-    { "id": "lotte-centum", "name": "Lotte Cinema Centum City", "name_kr": "롯데시네마 센텀시티", "group": "centum", "lat": 35.1701, "lng": 129.1309 },
-    { "id": "mega-haeundae", "name": "Megabox Haeundae", "name_kr": "메가박스 해운대", "group": "haeundae", "lat": 35.1591, "lng": 129.1637 }
+    { "id": "bcc-1", "name": "Busan Cinema Center Cinema 1", "name_kr": "영화의전당 1관", "group": "bcc", "code": "B1", "lat": 35.1689, "lng": 129.1296 },
+    { "id": "bcc-2", "name": "Busan Cinema Center Cinema 2", "name_kr": "영화의전당 2관", "group": "bcc", "code": "B2", "lat": 35.1689, "lng": 129.1296 },
+    { "id": "cgv-centum", "name": "CGV Centum City", "name_kr": "CGV 센텀시티", "group": "centum", "code": "C1", "lat": 35.1683, "lng": 129.1321 },
+    { "id": "lotte-centum", "name": "Lotte Cinema Centum City", "name_kr": "롯데시네마 센텀시티", "group": "centum", "code": "L2", "lat": 35.1701, "lng": 129.1309 },
+    { "id": "mega-haeundae", "name": "Megabox Haeundae", "name_kr": "메가박스 해운대", "group": "haeundae", "code": "M1", "lat": 35.1591, "lng": 129.1637 }
   ]
 }

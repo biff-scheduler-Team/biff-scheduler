@@ -24,8 +24,9 @@ import { buildGrid } from "./grid";
 import { buildAgenda } from "./agenda";
 import { abbrTooltip } from "./badges";
 import { attachTip } from "./tip";
+import { buildGuideBody } from "./legend";
 import { scorePlanRows, type ScoredRow } from "./engine";
-import { closeModal, openModal, showFilmModal } from "./modal";
+import { closeModal, openModal, showCatalogFilmModal, showFilmModal } from "./modal";
 import { openLibrary } from "./library";
 
 let cat: Catalog;
@@ -210,7 +211,9 @@ function bindEvents(): void {
         onLocate: jumpToScreening,
         onFilm: (code) => {
           closeModal();
-          showFilmModal(code, filmModalCtx());
+          // f### = 目录片 id(暂无排期):走目录片弹层,可先关联豆瓣
+          if (/^f\d{3}$/.test(code)) showCatalogFilmModal(code, filmModalCtx());
+          else showFilmModal(code, filmModalCtx());
         },
       });
       return;
@@ -528,9 +531,12 @@ async function boot(): Promise<void> {
   subscribe(renderAll);
   bindEvents();
   attachTip(); // 缩写说明悬停 tooltip(data-tip 文档级委托,渲染重建无需重绑)
-  // 图例「ⓘ 缩写说明」多行 tooltip(单源自 badges.ts abbrTooltip)
+  // 图例「ⓘ 日程表说明」:hover 快速多行提示(单源自 badges.ts abbrTooltip);点击打开总览弹层
   const abbrHelp = document.getElementById("abbr-help");
-  if (abbrHelp) abbrHelp.dataset.tip = abbrTooltip();
+  if (abbrHelp) {
+    abbrHelp.dataset.tip = abbrTooltip();
+    abbrHelp.addEventListener("click", () => openModal("排片表说明 · 图例总览", buildGuideBody(cat), true));
+  }
   renderAll();
   void syncFromCloud();
   toast(currentDate ? "排片为 MOCK 数据 — 官方 Catalogue 发布后一键替换" : "schedule.json 为空");

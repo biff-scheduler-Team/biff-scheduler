@@ -4,7 +4,8 @@
 
 import type { Catalog, FilmItem, Group, Mapping, PlanEntry, Priority, Screening } from "./types";
 import { dateInfo, el } from "./util";
-import { appendBadges, codeTip } from "./badges";
+import { codeTip } from "./badges";
+import { appendMetaRow } from "./legend";
 import { filmKey, openModal } from "./modal";
 import { replaceGroup, setCurrentGroup, setWish, store, wish } from "./state";
 import { suggestPlans, type EnginePick, type EnginePlan } from "./engine";
@@ -347,6 +348,28 @@ export function openLibrary(ctx: LibraryCtx): void {
         ops.appendChild(detail);
       } else {
         ops.appendChild(el("span", "text-[11px] font-bold text-muted font-semibold border border-line bg-card rounded-full px-2 py-px whitespace-nowrap", "暂无排期"));
+        // 目录片无排期也可先关联豆瓣(详情 ⓘ → 目录片弹层,code=f###)
+        const cat0 = n.cats[0];
+        const cmap = cat0 ? ctx.mappings.get(cat0.id) : undefined;
+        if (cmap?.douban_url) {
+          const a = document.createElement("a");
+          a.href = cmap.douban_url;
+          a.target = "_blank";
+          a.rel = "noreferrer";
+          a.className = "text-[11px] font-bold text-biff border border-line bg-card rounded-full px-2 py-px whitespace-nowrap hover:underline";
+          a.textContent = "豆瓣 ↗";
+          ops.appendChild(a);
+        }
+        if (cat0) {
+          const detail = el(
+            "button",
+            "border rounded-[6px] px-[10px] py-1 text-[12px] font-bold bg-card text-ink border-line hover:opacity-90",
+            "详情 ⓘ"
+          );
+          detail.dataset.libDetail = cat0.id;
+          detail.title = "暂无排期 — 可先关联豆瓣(点开查条目/粘贴链接回填)";
+          ops.appendChild(detail);
+        }
       }
       head.appendChild(ops);
       item.appendChild(head);
@@ -377,7 +400,7 @@ export function openLibrary(ctx: LibraryCtx): void {
               "text-[12px] text-muted min-w-0 flex gap-[6px] items-center truncate max-[720px]:col-span-full max-[720px]:row-start-2",
               `${s.venue_display} · ${s.duration_min}min`
             );
-            appendBadges(where, s); // 16-F:GV + 特性徽章
+            appendMetaRow(where, s); // 16-F:GV + 特性 + 等级/字幕/页码 徽章(hover 即示义)
             const go = el(
               "button",
               "border-0 rounded-[6px] px-[10px] py-1 text-[12px] font-bold text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05] max-[720px]:col-start-2 max-[720px]:row-start-1",
@@ -392,7 +415,7 @@ export function openLibrary(ctx: LibraryCtx): void {
             el(
               "div",
               "px-[14px] py-[10px] text-[12px] text-muted border-t border-dashed border-line",
-              "官方排期未发布 — Catalogue 公布并并引入后,这里会自动出现可定位的场次"
+              "官方排期未发布 — 可先用行右侧「详情 ⓘ」关联豆瓣条目;Catalogue 排期公布并引入后,这里会自动出现可定位的场次"
             )
           );
         }

@@ -3,7 +3,8 @@
 
 import type { Catalog, Mapping, PlanEntry, Screening } from "./types";
 import { dateInfo, el, fmtMinRange } from "./util";
-import { appendBadges, DOUBAN_CHIP_TITLE } from "./badges";
+import { DOUBAN_CHIP_TITLE } from "./badges";
+import { appendMetaRow } from "./legend";
 import { api } from "./api";
 import { store } from "./state";
 
@@ -129,7 +130,7 @@ export function showFilmModal(code: string, ctx: FilmModalCtx): void {
       "text-muted text-[12px] inline-flex items-center gap-[5px] min-w-0",
       `${s.venue_display} · ${s.duration_min}min`
     );
-    appendBadges(where, s); // 16-F:GV(GV hover 说明含 +25min)等特性徽章
+    appendMetaRow(where, s); // 16-F:GV + 特性 + 等级/字幕/页码 徽章(hover 即示义)
     const info = el("div", "flex gap-2 items-baseline flex-wrap text-[12.5px]");
     info.append(when, time, where);
 
@@ -155,11 +156,7 @@ export function showFilmModal(code: string, ctx: FilmModalCtx): void {
   body.appendChild(list);
 
   // ---- 豆瓣区 ----
-  body.appendChild(
-    buildDoubanBlock(code, ctx, () => {
-      // 保存后刷新豆瓣区 + 全局状态已由 store 通知
-    })
-  );
+  body.appendChild(buildDoubanBlock(code, anchor.title_zh || "", anchor.title_en));
 
   openModal(`详情 · ${zh}`, body, true);
 
@@ -171,17 +168,63 @@ export function showFilmModal(code: string, ctx: FilmModalCtx): void {
   });
 }
 
-function buildDoubanBlock(
-  code: string,
-  ctx: FilmModalCtx,
-  onSaved: () => void
-): HTMLElement {
-  const s = ctx.cat.byCode.get(code)!;
+/** 目录片详情(暂无排期):元信息 + 评分 + 豆瓣区(先关联,Catalogue 排期接入后同片自动带出) */
+export function showCatalogFilmModal(
+  filmId: string,
+  ctx: Pick<FilmModalCtx, "cat" | "mappings">
+): void {
+  const film = ctx.cat.films.find((f) => f.id === filmId);
+  if (!film) return;
+  const body = el("div", "film-modal");
+  const zh = film.title_zh || film.title_orig || film.id;
+
+  // ---- 片名 / 元信息区 ----
+  const meta = el("div", "mb-3");
+  meta.appendChild(el("div", "text-[18px] font-bold", zh));
+  if (film.title_orig && film.title_orig !== zh) {
+    meta.appendChild(el("div", "text-muted text-[13px]", film.title_orig));
+  }
+  const infoBits = [
+    film.unit,
+    film.country,
+    film.year ? String(film.year) : "",
+    film.director,
+    film.remark ? `备注 · ${film.remark}` : "",
+  ].filter(Boolean);
+  if (infoBits.length) {
+    meta.appendChild(el("div", "text-muted text-[12.5px]", infoBits.join(" · ")));
+  }
+  if (film.rating != null) {
+    const rc = el(
+      "span",
+      "inline-block text-[11px] font-bold text-muted border border-line bg-card rounded px-[6px] leading-[1.7] select-none whitespace-nowrap mt-2",
+      `豆 ${film.rating}`
+    );
+    rc.dataset.tip = DOUBAN_CHIP_TITLE; // 缩写说明:豆 = 豆瓣评分
+    meta.appendChild(rc);
+  }
+  body.appendChild(meta);
+
+  body.appendChild(
+    el(
+      "div",
+      "text-[12px] text-muted leading-[1.6] mb-[10px]",
+      "该片暂无已发布排期 — 可先关联豆瓣条目,Catalogue 排期(预计 9/11)公布接入后,同片会自动带出该关联。"
+    )
+  );
+
+  // ---- 豆瓣区(code = 目录片 id,如 f001)----
+  body.appendChild(buildDoubanBlock(film.id, film.title_zh || "", film.title_orig || ""));
+  openModal(`详情 · ${zh}`, body, true);
+}
+
+/** 豆瓣区:已关联→直链;未关联→搜索链接 + 粘贴回填。code 可为排期 code(3 位)或目录片 id(f###) */
+function buildDoubanBlock(code: string, qZh: string, qEn: string): HTMLElement {
   const block = el("div", "border-t border-line pt-3");
   const title = el("div", "text-[13px] font-bold mb-2", "豆瓣");
   block.appendChild(title);
 
-  const map = ctx.mappings.get(code);
+  const map = store.mappings.get(code);
   const content = el("div", "grid gap-2");
   content.dataset.dbArea = "";
 
@@ -198,15 +241,15 @@ function buildDoubanBlock(
   } else {
     const search = el("div", "flex gap-3 items-center flex-wrap text-[13px]");
     search.appendChild(el("span", "text-muted text-[12.5px]", "未关联 — 点这里查豆瓣:"));
-    const q = encodeURIComponent(`${s.title_zh || ""} ${s.title_en}`.trim());
-    const qEn = encodeURIComponent(s.title_en);
+    const q = encodeURIComponent(`${qZh} ${qEn}`.trim());
+    const qEn2 = encodeURIComponent(qEn);
     const a1 = document.createElement("a");
     a1.href = `https://www.douban.com/search?q=${q}`;
     a1.target = "_blank";
     a1.rel = "noreferrer";
     a1.textContent = "中文搜索";
     const a2 = document.createElement("a");
-    a2.href = `https://www.douban.com/search?q=${qEn}`;
+    a2.href = `https://www.douban.com/search?q=${qEn2}`;
     a2.target = "_blank";
     a2.rel = "noreferrer";
     a2.textContent = "英文搜索";
@@ -247,9 +290,8 @@ function buildDoubanBlock(
       return;
     }
     store.mappings.set(code, { code, subject_id: data.subject_id, title_cn: data.title_cn, douban_url: data.douban_url });
-    onSaved();
     const old = block.querySelector("[data-db-area]");
-    const fresh = buildDoubanBlock(code, ctx, onSaved).querySelector("[data-db-area]")!;
+    const fresh = buildDoubanBlock(code, qZh, qEn).querySelector("[data-db-area]")!;
     if (old) old.replaceWith(fresh);
   });
   form.append(urlInput, cnInput, save);

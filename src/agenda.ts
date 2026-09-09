@@ -3,7 +3,8 @@
 
 import type { Catalog, Group, Mapping, PlanEntry, Priority, Screening } from "./types";
 import { OK_SLACK, dateInfo, el, escapeHtml, hmsToMin } from "./util";
-import { appendBadges, codeTip } from "./badges";
+import { codeTip } from "./badges";
+import { appendMetaRow } from "./legend";
 import type { ConflictResult } from "./conflict";
 
 export interface AgendaCtx {
@@ -120,7 +121,7 @@ function buildRow(
   const ttlLine = el("div", "flex items-center gap-[6px] flex-wrap");
   ttlLine.innerHTML = `<b class="text-biff text-[12.5px]">${escapeHtml(s.code)}</b> <span class="font-semibold">${escapeHtml(zh)}</span>`;
   ttlLine.querySelector("b")!.dataset.tip = codeTip(s.code); // 缩写说明:CODE 数字 hover 提示
-  appendBadges(ttlLine, s); // 16-F:GV + 特性徽章
+  appendMetaRow(ttlLine, s); // 16-F:GV + 特性 + 等级/字幕/页码 徽章(hover 即示义)
   if (entryConf) {
     const others = conf!.pairs
       .filter(([a, b]) => a === s.code || b === s.code)

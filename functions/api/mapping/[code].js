@@ -20,8 +20,9 @@ export async function onRequestGet({ env, params }) {
 
 export async function onRequestPut({ env, params, request }) {
   const code = String(params.code || "");
-  if (!/^\d{3}$/.test(code)) {
-    return Response.json({ ok: false, error: "code 需为 3 位数字" }, { status: 400 });
+  // 排期 code(3 位数字)或目录片 id(f###,暂无排期影片先关联豆瓣用)
+  if (!/^(?:\d{3}|f\d{3})$/.test(code)) {
+    return Response.json({ ok: false, error: "code 需为 3 位排期 code 或 f### 目录片 id" }, { status: 400 });
   }
   let body;
   try {

@@ -5,7 +5,7 @@
 @import "tailwindcss/utilities";
 @source "../index.html";
 @source "./";
-@source not "../plans";
+@source not "../docs";
 @source not "../dist";
 @source not "../*.md";
 @source not "../.workbuddy";
@@ -29,6 +29,14 @@
   --status-ok: #2f9e44;
   --status-wild: #8a8f98;
   --amber-soft: #f5c16a;
+
+  /* 观影等级(2025 Schedule Guide 图例色系:ALL 绿 / 12 橙 / 15 红 / 19 深红) */
+  --rate-all: #1e7b34;
+  --rate-all-soft: #e8f4ec;
+  --rate-12: #c2560a;
+  --rate-12-soft: #fdf1e4;
+  --rate-19: #6e1522;
+  --rate-19-soft: #f7eaec;
 
   /* 中性面 */
   --bg-page: #f4f4f5;
@@ -124,6 +132,12 @@
   --color-ok: var(--status-ok);
   --color-conf: var(--biff-red);
   --color-amber-soft: var(--amber-soft);
+  --color-rate-all: var(--rate-all);
+  --color-rate-all-soft: var(--rate-all-soft);
+  --color-rate-12: var(--rate-12);
+  --color-rate-12-soft: var(--rate-12-soft);
+  --color-rate-19: var(--rate-19);
+  --color-rate-19-soft: var(--rate-19-soft);
 }
 
 /* ---- base reset & element defaults ---- */
