@@ -34,6 +34,10 @@ let currentDate = "";
 let conflicts = new Map<string, ConflictResult>();
 /** 甘特时间筛选:点击时间轴整点置为对应小时;null = 不过滤(切日期/再点/重置均清除) */
 let hourFilter: number | null = null;
+/** 甘特横向平移记忆:网格每次重建都换新滚动容器(scrollLeft 会归零)——
+ *  同一日期内的重建(选片/优先级/分钟推进…)恢复上次平移位置;换日期/首渲不恢复(回最左)。 */
+let lastGridDate = "";
+let lastGridLeft = 0;
 
 /** 影片详情弹层的公共上下文(网格 ⓘ 与影片库共用) */
 function filmModalCtx() {
@@ -107,6 +111,8 @@ function renderGroupSeg(): void {
 
 function renderGrid(): void {
   const host = document.getElementById("grid-scroll")!;
+  // 换节点前先记平移位置:同日期重建(选片/优先级/分钟推进)才恢复;切日期/首渲归 0 回最左
+  lastGridLeft = currentDate === lastGridDate ? host.scrollLeft : 0;
   const conf = conflicts.get(currentDate);
   // D1:时间刻度固定(PX_PER_MIN),网格总宽与视口无关 → 不再每次测 avail
   const grid = buildGrid(
@@ -123,6 +129,11 @@ function renderGrid(): void {
   );
   host.replaceWith(grid);
   grid.id = "grid-scroll";
+  // 同日期内容总宽一致(轴界只依赖静态 schedule)→ 立即回写精确恢复,不闪最左;钳制防御越界
+  if (lastGridLeft > 0) {
+    grid.scrollLeft = Math.min(lastGridLeft, grid.scrollWidth - grid.clientWidth);
+  }
+  lastGridDate = currentDate;
   fitTimeTexts(grid); // 挂载后量测:窄卡时间文本降级,绝不截断
 
   const { label, weekday } = dateInfo(currentDate);
