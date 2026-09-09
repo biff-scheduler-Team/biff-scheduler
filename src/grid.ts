@@ -366,7 +366,8 @@ function appendCard(tracks: HTMLElement, s: Screening, ctx: GridCtx, pxPerMin: n
 
   // 身份行:CODE + 起止时间(排片核心信息,时间升格加墨;时间 span 独立便于 fitTimeTexts 量测降级,
   // 窄卡放不下完整 "09:00–10:40" 时由挂载后实测降级为只显开始时间,完整时间移入 hover —— 绝不硬裁)。
-  const t1 = el("span", "flex items-center gap-[3px] text-[12px] text-muted whitespace-nowrap overflow-hidden");
+  // E1:pr-[20px] 把行尾让给右上角标(ⓘ 右 3~18px / ⚠ 右 22px+),角标悬浮于预留空白,不遮挡时间文本。
+  const t1 = el("span", "flex items-center gap-[3px] text-[12px] text-muted whitespace-nowrap overflow-hidden pr-[20px]");
   const codeB = el("b", "shrink-0 text-ink text-[12px]", s.code);
   codeB.dataset.tip = codeTip(s.code);
   const timeSpan = el(
