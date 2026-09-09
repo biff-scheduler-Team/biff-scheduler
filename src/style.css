@@ -1,0 +1,224 @@
+/* P1-4 Tailwind v4 全量化:仅保留 token / theme / base / @utility 动态状态 / 关键帧。
+   标记 / 徽章 / 卡片等组件样式不再出现在 CSS 里 —— 全部由 markup 端的 Tailwind utility class 表达。
+   token 唯一色源 = :root;@theme 与 :root 同值 → utility 与组件同源。 */
+@import "tailwindcss/theme";
+@import "tailwindcss/utilities";
+@source "../index.html";
+@source "./";
+@source not "../plans";
+@source not "../dist";
+@source not "../*.md";
+@source not "../.workbuddy";
+
+/* P0-1 Design Token:颜色 / 圆角 / 阴影 / 字体 唯一来源 = :root。 */
+:root {
+  /* 品牌 · BIFF 红(基准 #ce1e36) */
+  --biff-red: #ce1e36;
+  --biff-red-2: #e32e2f;
+  --biff-red-hover: #b9151b;
+  --biff-red-soft: #fdecec;
+  --biff-red-line: #f3c3c7;
+  --biff-red-tint: #fdf0f1;
+  --biff-red-tint-2: #fef3f4;
+  --biff-red-tint-3: #fbecec;
+  --biff-selection: #ffe1e3;
+
+  /* 状态与优先级 */
+  --status-danger: var(--biff-red);
+  --status-warning: #d97706;
+  --status-ok: #2f9e44;
+  --status-wild: #8a8f98;
+  --amber-soft: #f5c16a;
+
+  /* 中性面 */
+  --bg-page: #f4f4f5;
+  --bg-card: #ffffff;
+  --bg-hover: #fafafa;
+  --bg-hover-soft: #f0f2f5;
+  --bg-raised: #f0f0f0;
+  --bg-raised-hover: #e2e2e2;
+  --bg-in-other: #fafbfc;
+  --topbar-bg: rgb(255 255 255 / 92%);
+  --overlay-bg: rgb(15 23 42 / 45%);
+  --toast-bg: rgb(17 17 17 / 94%);
+
+  /* 描边(强 → 极细) */
+  --border-strong: #c9c9c9;
+  --border-default: #e0e0e0;
+  --border-soft: #eaeaea;
+  --border-faint: #f4f4f4;
+
+  /* 文本(主 → 最弱) */
+  --text-primary: #111111;
+  --text-secondary: #525252;
+  --text-muted: #737373;
+  --text-meta: #9a9a9a;
+  --text-faint: #a3a3a3;
+  --text-disabled: #adb5bd;
+  --text-on-brand: #ffffff;
+
+  /* 旧名别名(供旧 var() 引用零改动) */
+  --bg: var(--bg-page);
+  --panel: var(--bg-card);
+  --ink: var(--text-primary);
+  --muted: var(--text-muted);
+  --line: var(--border-default);
+  --line-soft: var(--border-soft);
+  --line-faint: var(--border-faint);
+  --brand: var(--biff-red);
+  --brand-2: var(--biff-red-2);
+  --brand-ink: var(--text-on-brand);
+  --must: var(--status-danger);
+  --maybe: var(--status-warning);
+  --wild: var(--status-wild);
+  --gv: var(--text-primary);
+  --conf: var(--status-danger);
+
+  /* 圆角 / 阴影 / 字阶 / 字体 */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius: var(--radius-md);
+  --shadow-card: 0 1px 2px rgb(17 17 17 / 5%), 0 1px 4px rgb(17 17 17 / 7%);
+  --shadow-hover: 0 2px 8px rgb(17 17 17 / 13%);
+  --shadow-modal: 0 20px 50px rgb(0 0 0 / 22%);
+  --shadow: var(--shadow-card);
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+/* P0-1 @theme 映射:全部 --color-* 由 token 驱动 → 所有 utility bg-/text-/border-/ring-/shadow- 同源。
+   圆角 / 阴影 不映射 → 用任意值或 var() 引用。 */
+@theme {
+  --color-biff: var(--biff-red);
+  --color-biff-2: var(--biff-red-2);
+  --color-biff-hover: var(--biff-red-hover);
+  --color-biff-soft: var(--biff-red-soft);
+  --color-biff-line: var(--biff-red-line);
+  --color-biff-tint: var(--biff-red-tint);
+  --color-biff-tint-2: var(--biff-red-tint-2);
+  --color-biff-tint-3: var(--biff-red-tint-3);
+  --color-ink: var(--text-primary);
+  --color-ink-2: var(--text-secondary);
+  --color-muted: var(--text-muted);
+  --color-meta: var(--text-meta);
+  --color-faint: var(--text-faint);
+  --color-disabled: var(--text-disabled);
+  --color-on-brand: var(--text-on-brand);
+  --color-page: var(--bg-page);
+  --color-card: var(--bg-card);
+  --color-hover: var(--bg-hover);
+  --color-raised: var(--bg-raised);
+  --color-raised-hover: var(--bg-raised-hover);
+  --color-in-other: var(--bg-in-other);
+  --color-line: var(--border-default);
+  --color-line-soft: var(--border-soft);
+  --color-line-strong: var(--border-strong);
+  --color-line-faint: var(--border-faint);
+  --color-must: var(--status-danger);
+  --color-maybe: var(--status-warning);
+  --color-wild: var(--status-wild);
+  --color-ok: var(--status-ok);
+  --color-conf: var(--biff-red);
+  --color-amber-soft: var(--amber-soft);
+}
+
+/* ---- base reset & element defaults ---- */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--font);
+    background: var(--bg-page);
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  button { font-family: inherit; cursor: pointer; }
+  a { color: var(--brand); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ::selection { background: var(--biff-selection); }
+  input, textarea, select { font-family: inherit; }
+  /* 底部 footer 链接:默认灰、hover 红 */
+  #page-foot a { color: var(--muted); }
+  #page-foot a:hover { color: var(--brand); text-decoration: none; }
+}
+
+/* ---- 关键帧(给动态状态类用) ---- */
+@keyframes biff-flash {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  30%, 70% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--biff-red) 70%, transparent); }
+}
+
+/* ---- 动态状态类(JS 运行时切换,无法用静态 utility 表达) ---- */
+@utility is-hidden { display: none !important; }
+
+@utility panning {
+  cursor: grabbing;
+  user-select: none;
+  & * { pointer-events: none; }
+}
+
+/* 网格 ↔ 行程 双向 hover 联动:高亮优先级左色条 + 红圈外晕 */
+@utility hl-card {
+  border-color: var(--color-biff) !important;
+  box-shadow: inset 3px 0 0 var(--pc, transparent), 0 0 0 3px color-mix(in srgb, var(--color-biff) 38%, transparent);
+  z-index: 6;
+}
+@utility hl-row {
+  border-color: var(--color-biff) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-biff) 35%, transparent);
+}
+
+/* 优先级变量(网格卡 / 行程 / 引擎共用) */
+@utility p-must  { --pc: var(--color-must); }
+@utility p-maybe { --pc: var(--color-maybe); }
+@utility p-wild  { --pc: var(--color-wild); }
+
+/* 选中态:优先级左色条 + 柔和外层光晕(读取 --pc) */
+@utility in-plan {
+  background: var(--color-card);
+  border-color: color-mix(in srgb, var(--pc, var(--color-line)) 50%, var(--color-card));
+  box-shadow: inset 3px 0 0 var(--pc, transparent), 0 0 0 3px color-mix(in srgb, var(--pc, transparent) 14%, transparent);
+}
+
+/* 另一方案的选中(虚线 / 灰) */
+@utility in-other {
+  border-style: dashed;
+  border-color: var(--color-line);
+  opacity: 0.9;
+  background: var(--color-in-other);
+}
+
+/* 反向定位:卡片闪烁高亮 */
+@utility flash {
+  border-color: var(--color-biff);
+  z-index: 6;
+  animation: biff-flash 1.1s ease 2;
+}
+
+/* ---- 缩写说明 tooltip(tip.ts 运行时单例,data-tip 触发) ---- */
+.tip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 300; /* 高于 modal(z-100)与 toast(z-200) */
+  max-width: min(360px, calc(100vw - 20px));
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--toast-bg);
+  color: var(--text-on-brand);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-line; /* 多行缩写总览(\n 换行) */
+  pointer-events: none; /* 不拦截 hover/点击 */
+  box-shadow: var(--shadow-modal);
+  opacity: 0;
+  transition: opacity 90ms ease;
+}
+.tip.show {
+  opacity: 1;
+}

@@ -1,0 +1,35 @@
+{
+  "festival": {
+    "name": "31st Busan International Film Festival",
+    "year": 2026,
+    "dates": ["2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-10", "2026-10-11", "2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15"],
+    "note": "MOCK 数据 — 电影节真实窗口 2026-10-06(二)~10-15(四),官方入选 246 部/59 国 + Community BIFF = 315 部,常规放映 + Community 共 8 剧场 31 屏;正式排片 2026-09-11 17:00 KST(京 16:00) 发布后由 tools/extract_schedule.py 替换;两轮售票 9/17 14:00(开闭幕 30k / Midnight Passion 20k / Actors' House 15k / Open Cinema·Community 10k)与 9/21 14:00(一般放映 / Master Class / Cine Class),每放映代码限 2 张;场次 tags 为演示 16-F 徽章所用(真实数据由官方场次特性生成);dates 数组为未来日期条骨架(UI 当前日期条由场次日期派生,见 PLAN §18)",
+    "generated_at": "2026-09-09T00:00:00+09:00"
+  },
+  "screenings": [
+    { "code": "001", "title_en": "Crazy Old Man's Diary", "title_kr": "광기 어린 노인의 일기", "title_zh": "疯癫老人日记", "date": "2026-10-08", "start_time": "11:00", "end_time": "13:05", "duration_min": 100, "venue_id": "bcc-1", "venue_display": "Busan Cinema Center Cinema 1", "is_gv": true, "tags": ["premiere"] },
+    { "code": "002", "title_en": "The Life of Lies", "title_kr": "거짓말 같은 인생", "title_zh": "谎言生活", "date": "2026-10-08", "start_time": "13:30", "end_time": "15:25", "duration_min": 115, "venue_id": "bcc-2", "venue_display": "Busan Cinema Center Cinema 2", "is_gv": false },
+    { "code": "003", "title_en": "Like a Star to You", "title_kr": "너와 별처럼", "title_zh": "宛如星辰的你", "date": "2026-10-08", "start_time": "14:10", "end_time": "16:10", "duration_min": 95, "venue_id": "cgv-centum", "venue_display": "CGV Centum City", "is_gv": true, "tags": ["open_talk"] },
+    { "code": "004", "title_en": "The Great Nobody", "title_kr": "위대한 무명씨", "title_zh": "杰出的无名氏", "date": "2026-10-08", "start_time": "16:20", "end_time": "18:10", "duration_min": 110, "venue_id": "lotte-centum", "venue_display": "Lotte Cinema Centum City", "is_gv": false },
+    { "code": "005", "title_en": "The Uninvited Mother", "title_kr": "불청객 엄마", "title_zh": "不速之母", "date": "2026-10-08", "start_time": "16:30", "end_time": "18:10", "duration_min": 100, "venue_id": "bcc-1", "venue_display": "Busan Cinema Center Cinema 1", "is_gv": false },
+    { "code": "006", "title_en": "Look Back", "title_kr": "루크 백", "title_zh": "蓦然回首", "date": "2026-10-08", "start_time": "18:40", "end_time": "20:20", "duration_min": 75, "venue_id": "mega-haeundae", "venue_display": "Megabox Haeundae", "is_gv": true, "tags": ["masterclass"] },
+    { "code": "007", "title_en": "Angel's Egg", "title_kr": "천사의 알", "title_zh": "天使之卵", "date": "2026-10-08", "start_time": "20:40", "end_time": "21:51", "duration_min": 71, "venue_id": "mega-haeundae", "venue_display": "Megabox Haeundae", "is_gv": false },
+    { "code": "008", "title_en": "Crazy Old Man's Diary", "title_kr": "광기 어린 노인의 일기", "title_zh": "疯癫老人日记", "date": "2026-10-08", "start_time": "20:30", "end_time": "22:10", "duration_min": 100, "venue_id": "bcc-1", "venue_display": "Busan Cinema Center Cinema 1", "is_gv": false },
+
+    { "code": "010", "title_en": "The Life of Lies", "title_kr": "거짓말 같은 인생", "title_zh": "谎言生活", "date": "2026-10-09", "start_time": "10:30", "end_time": "12:50", "duration_min": 115, "venue_id": "bcc-1", "venue_display": "Busan Cinema Center Cinema 1", "is_gv": true, "tags": ["premiere"] },
+    { "code": "011", "title_en": "The Great Nobody", "title_kr": "위대한 무명씨", "title_zh": "杰出的无名氏", "date": "2026-10-09", "start_time": "13:00", "end_time": "14:50", "duration_min": 110, "venue_id": "bcc-2", "venue_display": "Busan Cinema Center Cinema 2", "is_gv": false },
+    { "code": "012", "title_en": "Like a Star to You", "title_kr": "너와 별처럼", "title_zh": "宛如星辰的你", "date": "2026-10-09", "start_time": "15:10", "end_time": "16:45", "duration_min": 95, "venue_id": "cgv-centum", "venue_display": "CGV Centum City", "is_gv": false },
+    { "code": "013", "title_en": "Sunlight", "title_kr": "햇살", "title_zh": "日光", "date": "2026-10-09", "start_time": "17:00", "end_time": "19:10", "duration_min": 105, "venue_id": "lotte-centum", "venue_display": "Lotte Cinema Centum City", "is_gv": true, "tags": ["open_talk"] },
+    { "code": "014", "title_en": "The Uninvited Mother", "title_kr": "불청객 엄마", "title_zh": "不速之母", "date": "2026-10-09", "start_time": "16:40", "end_time": "18:45", "duration_min": 100, "venue_id": "bcc-1", "venue_display": "Busan Cinema Center Cinema 1", "is_gv": true },
+    { "code": "015", "title_en": "Crazy Old Man's Diary", "title_kr": "광기 어린 노인의 일기", "title_zh": "疯癫老人日记", "date": "2026-10-09", "start_time": "19:00", "end_time": "20:40", "duration_min": 100, "venue_id": "bcc-2", "venue_display": "Busan Cinema Center Cinema 2", "is_gv": false },
+    { "code": "016", "title_en": "Angel's Egg", "title_kr": "천사의 알", "title_zh": "天使之卵", "date": "2026-10-09", "start_time": "20:00", "end_time": "21:11", "duration_min": 71, "venue_id": "mega-haeundae", "venue_display": "Megabox Haeundae", "is_gv": false },
+
+    { "code": "020", "title_en": "Sunlight", "title_kr": "햇살", "title_zh": "日光", "date": "2026-10-10", "start_time": "10:00", "end_time": "12:10", "duration_min": 105, "venue_id": "bcc-1", "venue_display": "Busan Cinema Center Cinema 1", "is_gv": true, "tags": ["masterclass"] },
+    { "code": "021", "title_en": "Like a Star to You", "title_kr": "너와 별처럼", "title_zh": "宛如星辰的你", "date": "2026-10-10", "start_time": "11:30", "end_time": "13:05", "duration_min": 95, "venue_id": "bcc-2", "venue_display": "Busan Cinema Center Cinema 2", "is_gv": false },
+    { "code": "022", "title_en": "The Great Nobody", "title_kr": "위대한 무명씨", "title_zh": "杰出的无名氏", "date": "2026-10-10", "start_time": "13:30", "end_time": "15:20", "duration_min": 110, "venue_id": "cgv-centum", "venue_display": "CGV Centum City", "is_gv": false },
+    { "code": "023", "title_en": "The Life of Lies", "title_kr": "거짓말 같은 인생", "title_zh": "谎言生活", "date": "2026-10-10", "start_time": "15:40", "end_time": "18:00", "duration_min": 115, "venue_id": "lotte-centum", "venue_display": "Lotte Cinema Centum City", "is_gv": true, "tags": ["open_talk"] },
+    { "code": "024", "title_en": "The Uninvited Mother", "title_kr": "불청객 엄마", "title_zh": "不速之母", "date": "2026-10-10", "start_time": "16:00", "end_time": "17:40", "duration_min": 100, "venue_id": "bcc-1", "venue_display": "Busan Cinema Center Cinema 1", "is_gv": false },
+    { "code": "025", "title_en": "Look Back", "title_kr": "루크 백", "title_zh": "蓦然回首", "date": "2026-10-10", "start_time": "18:30", "end_time": "19:45", "duration_min": 75, "venue_id": "bcc-2", "venue_display": "Busan Cinema Center Cinema 2", "is_gv": false },
+    { "code": "026", "title_en": "Crazy Old Man's Diary", "title_kr": "광기 어린 노인의 일기", "title_zh": "疯癫老人日记", "date": "2026-10-10", "start_time": "19:30", "end_time": "21:35", "duration_min": 100, "venue_id": "cgv-centum", "venue_display": "CGV Centum City", "is_gv": true }
+  ]
+}

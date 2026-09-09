@@ -1,0 +1,10 @@
+name = "biff-scheduler"
+compatibility_date = "2026-09-09"
+pages_build_output_dir = "./dist"
+
+# D1 数据库绑定(biff-scheduler-db, 2026-09-09 创建)
+[[d1_databases]]
+binding = "DB"
+database_name = "biff-scheduler-db"
+database_id = "63216f6a-9375-4283-8e4c-37b91e1a4e33"
+migrations_dir = "./migrations"

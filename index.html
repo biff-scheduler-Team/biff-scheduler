@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN" data-page-node-id="Ue17M7fBdBTM8FtfqPSuiX">
+<head data-page-node-id="EcqhfeZPQ8zVrkGa5gXdts">
+  <meta charset="UTF-8" data-page-node-id="JpxwPFEIUYWrn8dNlDd9lh" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" data-page-node-id="Bd2MqAM8D8TwpV9lS40KYF" />
+  <meta name="robots" content="noindex,nofollow" data-page-node-id="a0I6eVzkLW5vcWtsNxEbNU" />
+  <title>BIFF 2026 排片工具</title>
+  <link rel="icon" type="image/x-icon" href="/brand/favicon.ico" data-page-node-id="TKC7KA8oo7wNPnp7rDIyn1" />
+  <link rel="stylesheet" href="/src/style.css" data-page-node-id="bGRIHrBO2GD2QacEsMWZTn" />
+</head>
+<body data-page-node-id="q1mLQ1E5Hb0QRtDUyhpf04">
+  <header id="topbar" class="sticky top-0 z-50 flex items-center gap-[14px] flex-wrap px-4 py-[10px] bg-[var(--topbar-bg)] backdrop-blur-[8px] border-b border-line max-[720px]:gap-2 max-[720px]:py-2 max-[720px]:px-2.5" data-page-node-id="rTAAyBp5rs2ENqpRBwhLF4">
+    <div class="flex items-center gap-2 whitespace-nowrap" data-page-node-id="o1RNdQ7ehctrQ21UbGck4A">
+      <img class="block h-[38px] w-auto select-none max-[720px]:h-[26px] [-webkit-user-drag:none]" src="/brand/biff-2026-wordmark.png" alt="BIFF 2026 · 31st Busan International Film Festival · 6–15 October 2026" data-page-node-id="v5WA0jx2luJ4h5ewMD0kKa" />
+      <span id="sync-dot" class="w-2 h-2 rounded-full self-center bg-ok" title="云端同步" data-page-node-id="lWrF8AQzwJQgyohAi5Lk1Y"></span>
+    </div>
+    <nav id="date-chips" class="flex gap-[6px] overflow-x-auto flex-1 min-w-[200px] py-[2px]" data-page-node-id="laZc2XY6YE1UCNZfyxjzDd"></nav>
+    <div class="flex items-center gap-2" data-page-node-id="A7ouxSIG2ogqHcbwhgFPHF">
+      <div id="group-switch" class="inline-flex border border-line rounded-[7px] overflow-hidden" data-page-node-id="hSY8AUi9EKfPx5l9eQlciM">
+        <button data-g="A" class="border-0 px-3 py-[5px] text-[13px] bg-biff text-on-brand font-bold transition-colors" data-page-node-id="igz8hMRqGPgZBQAoypOgE5">A 方案</button>
+        <button data-g="B" class="border-0 px-3 py-[5px] text-[13px] bg-card text-ink transition-colors" data-page-node-id="9NGCcOMtLYjVa069U4AMOI">B 方案</button>
+      </div>
+      <button id="conflict-badge" class="inline-flex items-center gap-1 bg-biff-soft text-conf border border-biff-line rounded-full px-[10px] py-1 font-bold text-[13px] is-hidden" title="查看冲突" data-page-node-id="RJefHA9WlqGw0kZVvRysCv">⚠ <span id="conflict-count" data-page-node-id="IGFxWEo1sH0PHuxOOfOuDL">0</span></button>
+      <button id="library-btn" class="border rounded-[6px] px-[14px] py-[6px] text-[13px] font-bold bg-card text-ink border-line hover:opacity-90" title="浏览全部影片,按中文名/英文名/code 搜索" data-page-node-id="1ONdB6TvcdouJmTHgyyGFI">影片库</button>
+      <div class="relative" data-export-wrap data-page-node-id="YGSIVmyFXJStGVbISCHllt">
+        <button id="export-btn" class="border-0 rounded-[6px] px-[14px] py-[6px] text-[13px] font-bold text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05]" data-page-node-id="oHHWF16AQsUPtLManq0BXV">导出 .ics</button>
+        <div id="export-menu" class="absolute right-0 top-[calc(100%+6px)] bg-card border border-line rounded-[10px] shadow-[var(--shadow)] p-[6px] min-w-[150px] z-[60] is-hidden" data-page-node-id="610rEVYENiLYRHZZtixo5u">
+          <button data-which="A" class="block w-full text-left border-0 bg-transparent px-[10px] py-[7px] rounded-[7px] text-[13px] hover:bg-[var(--bg-hover-soft)]" data-page-node-id="ybDOMothciZYSAczHnvKhf">导出 A 方案</button>
+          <button data-which="B" class="block w-full text-left border-0 bg-transparent px-[10px] py-[7px] rounded-[7px] text-[13px] hover:bg-[var(--bg-hover-soft)]" data-page-node-id="hjKB4lC58JGqJa1Kch2gkL">导出 B 方案</button>
+          <button data-which="ALL" class="block w-full text-left border-0 bg-transparent px-[10px] py-[7px] rounded-[7px] text-[13px] hover:bg-[var(--bg-hover-soft)]" data-page-node-id="u6lt96CNfmA1xeMoWuOJjt">导出 A+B 全部</button>
+          <button data-which="PICK" class="block w-full text-left border-0 bg-transparent px-[10px] py-[7px] rounded-[7px] text-[13px] hover:bg-[var(--bg-hover-soft)]" data-page-node-id="ZM7tej9PomkS3ePTrHIthJ">抢票顺位清单(复制)</button>
+        </div>
+      </div>
+      <button id="settings-btn" class="border rounded-[6px] px-[14px] py-[6px] text-[13px] font-bold bg-card text-ink border-line hover:opacity-90" title="设置" data-page-node-id="npgS1fAjwczprzv5iPoZCC">设置</button>
+    </div>
+  </header>
+
+  <main class="max-w-[1280px] mx-auto px-4 py-4 grid gap-4 max-[720px]:px-2.5 max-[720px]:py-2.5" data-page-node-id="Azu1iXrZ77JCXHU9nTLfUn">
+    <section id="grid-wrap" class="bg-card border border-line rounded-[8px] p-[14px] min-w-0" data-page-node-id="UDVmNHtxaQ8LBW4RMKAvxQ">
+      <div class="flex items-baseline justify-between mb-[10px] gap-2 flex-wrap" data-page-node-id="PqNAkzpjzbBJlBwKEjdAsA">
+        <h2 id="grid-date-title" class="m-0 text-[15px] inline-flex items-center gap-2 tracking-[0.01em] before:content-[''] before:w-[9px] before:h-[9px] before:border-[2.5px] before:border-biff before:rounded-[2px] before:box-border" data-page-node-id="kVKn3UBCFUzWJU8RoDz9sY"></h2>
+        <span id="grid-count" class="text-muted text-[13px] font-normal" data-page-node-id="0uH3GMPDbJxAhH6NhgVuDc"></span>
+      </div>
+      <div id="grid-scroll" data-page-node-id="5FkgLrGnq0fDbM1jPTN9XE"></div>
+      <div class="flex flex-wrap gap-[14px] mt-[10px] text-[12px] text-muted items-center" data-page-node-id="eoDeBqVCujSXPrOYWZ8vQn">
+        <span data-tip="最高优先级 — 冲突时优先保留、抢票顺位最前" data-page-node-id="Xm5InynhwjyBrBkKYiCkuO"><i class="inline-block w-[10px] h-[10px] rounded-[3px] mr-1 bg-must" data-page-node-id="ykKCD0thlRRaykN0uR3yxf"></i>必看</span>
+        <span data-tip="第二优先级 — 冲突时让位于必看" data-page-node-id="5BaBDDZODiltGha8dyp4E6"><i class="inline-block w-[10px] h-[10px] rounded-[3px] mr-1 bg-maybe" data-page-node-id="lRNG1fiGHBVEUAKq5avoAK"></i>备选</span>
+        <span data-tip="低优先级 — 可看可不看" data-page-node-id="FS2hn07qM8oqixWwWDbI7n"><i class="inline-block w-[10px] h-[10px] rounded-[3px] mr-1 bg-wild" data-page-node-id="jQFAn4TjAbWfOzX0sJX72I"></i>随缘</span>
+        <span data-tip="GV = Guest Visit 嘉宾到场映后对谈(官方提示:可能临时变动)" data-page-node-id="rOVjfojokIFlB2AnUJFggv"><i class="inline-block w-[10px] h-[10px] rounded-[3px] mr-1 bg-ink" data-page-node-id="Has6oWV2yWHwhpaIFNUHE0"></i>GV 映后</span>
+        <span class="text-conf font-semibold" data-tip="同方案内两场时间重叠" data-page-node-id="aPEXV90DYlDTz8j7qTJKrQ">⚠ 同方案冲突</span>
+        <span id="abbr-help" class="cursor-help border-b border-dotted border-muted hover:text-ink" data-page-node-id="nBEQw7gksoBHrfbdbZWP6I">ⓘ 缩写说明</span>
+      </div>
+    </section>
+
+    <section id="agenda-wrap" class="bg-card border border-line rounded-[8px] p-[14px]" data-page-node-id="xPzIySfiYvbmtMuAwc7vHs">
+      <div class="flex items-baseline justify-between mb-[10px] gap-2 flex-wrap" data-page-node-id="RBLLk82gkLtoBOB2cm8vt2">
+        <h2 class="m-0 text-[15px] inline-flex items-center gap-2 tracking-[0.01em] before:content-[''] before:w-[9px] before:h-[9px] before:border-[2.5px] before:border-biff before:rounded-[2px] before:box-border" data-page-node-id="YAQlzd6yG51dDyWsCPpSCD">我的行程</h2>
+        <span id="agenda-summary" class="text-muted text-[13px] font-normal" data-page-node-id="Nz7fNgWnb8ybe4N6IqJ1Lj"></span>
+      </div>
+      <div id="agenda" data-page-node-id="O3KQWJA8BiwsCjekX4INyX"></div>
+    </section>
+  </main>
+
+  <div id="modal-root" data-page-node-id="yEni6ye0OTJ1Ugo6gEom7A"></div>
+  <div id="toast" class="fixed left-1/2 bottom-[34px] -translate-x-1/2 bg-[var(--toast-bg)] text-on-brand px-4 py-[9px] rounded-full text-[13px] z-[200] max-w-[90vw] shadow-[var(--shadow)] is-hidden" data-page-node-id="gMYtNE5M1MiMRjwOvLKdqj"></div>
+
+  <footer id="page-foot" class="flex items-center justify-center gap-[14px] flex-wrap px-4 pt-6 pb-7 mt-8 text-muted text-[12px] border-t border-line-soft text-center" data-page-node-id="zf5rhWFZmKtujZdvKz1POr">
+    <img class="block h-[22px] w-auto opacity-70 select-none [-webkit-user-drag:none]" src="/brand/ft_logo.png" alt="BIFF" data-page-node-id="iOTquGOR147UJCvoFRFFlM" />
+    <span data-page-node-id="LYHgogW6EnLRpzVwNGry0b">排片数据与场次信息来源于 <a href="https://www.biff.kr" target="_blank" rel="noopener noreferrer" data-page-node-id="DiRBFPBXaCGS4WbSaI0fqv">biff.kr</a> 公开页面 · 仅作个人非商用排片参考 · 影片版权归原版权方所有</span>
+  </footer>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

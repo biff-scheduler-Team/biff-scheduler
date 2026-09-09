@@ -1,0 +1,104 @@
+// .ics 导出 — 一律 UTC(Z) 绝对时间 + 相对提醒;UID=code@biff-2026。
+
+import type { Catalog, Group, Mapping, PlanEntry, Screening } from "./types";
+import { esc } from "./util";
+
+const KST_OFFSET_MS = 9 * 3600 * 1000; // KST = UTC+9
+
+function toUtcStamp(dateIso: string, hhmm: string): string {
+  const [y, m, d] = dateIso.split("-").map(Number);
+  const [h, min] = hhmm.split(":").map(Number);
+  const utc = new Date(Date.UTC(y, m - 1, d, h, min) - KST_OFFSET_MS);
+  return utc.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, ""); // 20261008T020000Z
+}
+
+function fold(line: string): string {
+  // iCal 行限 75 octets,超长用 CRLF+空格折叠
+  if (line.length <= 75) return line;
+  const parts: string[] = [];
+  let cur = line;
+  while (cur.length > 0) {
+    parts.push(cur.slice(0, 75));
+    cur = cur.slice(75);
+  }
+  return parts.join("\r\n ");
+}
+
+export const PRIORITY_TAG: Record<string, string> = { must: "必看", maybe: "备选", wild: "随缘" };
+
+export function buildIcs(
+  cat: Catalog,
+  entries: PlanEntry[],
+  mappings: Map<string, Mapping>,
+  alarmMin: number
+): string {
+  const lines: string[] = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//biff-scheduler//BIFF 2026//CN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "X-WR-CALNAME:BIFF 2026 看片计划",
+  ];
+
+  for (const e of entries) {
+    const s = cat.byCode.get(e.code);
+    if (!s) continue;
+    const map = mappings.get(e.code);
+    const title = s.title_zh || map?.title_cn || s.title_en;
+    const gv = s.is_gv ? " (GV)" : "";
+    const summary = `[${e.code}] ${title}${gv}`;
+
+    const desc: string[] = [];
+    desc.push(`${s.title_en}${s.title_kr ? " / " + s.title_kr : ""}`);
+    desc.push(`时间(KST):${s.start_time}–${s.end_time} · ${s.duration_min}min${s.is_gv ? " · 含GV+25min" : ""}`);
+    desc.push(`场馆:${s.venue_display}`);
+    desc.push(`方案:${e.group} · ${PRIORITY_TAG[e.priority]}`);
+    if (map?.douban_url) desc.push(`豆瓣:${map.douban_url}`);
+    if (e.note) desc.push(`备注:${e.note}`);
+
+    lines.push("BEGIN:VEVENT");
+    lines.push(`UID:${e.code}@biff-2026`);
+    lines.push(`DTSTAMP:${toUtcStamp(s.date, "00:00")}`);
+    lines.push(`DTSTART:${toUtcStamp(s.date, s.start_time)}`);
+    lines.push(`DTEND:${toUtcStamp(s.date, s.end_time)}`);
+    lines.push(fold(`SUMMARY:${esc(summary)}`));
+    lines.push(fold(`LOCATION:${esc(s.venue_display)}`));
+    lines.push(fold(`DESCRIPTION:${esc(desc.join("\\n"))}`));
+    lines.push("BEGIN:VALARM");
+    lines.push("ACTION:DISPLAY");
+    lines.push(`TRIGGER:-PT${alarmMin}M`);
+    lines.push(`DESCRIPTION:${esc(title)} 即将开始`);
+    lines.push("END:VALARM");
+    lines.push("END:VEVENT");
+  }
+
+  lines.push("END:VCALENDAR");
+  return lines.join("\r\n") + "\r\n";
+}
+
+export function downloadIcs(content: string, filename: string): void {
+  const blob = new Blob([content], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** 按方案过滤 + 按日期/开始时间排序 */
+export function pickEntries(
+  entries: PlanEntry[],
+  cat: Catalog,
+  which: Group | "ALL"
+): PlanEntry[] {
+  const withTime = entries
+    .filter((e) => (which === "ALL" ? true : e.group === which))
+    .map((e) => ({ e, s: cat.byCode.get(e.code) }))
+    .filter((x): x is { e: PlanEntry; s: Screening } => Boolean(x.s));
+  withTime.sort((a, b) => a.s.date.localeCompare(b.s.date) || a.s.start_time.localeCompare(b.s.start_time));
+  return withTime.map((x) => x.e);
+}
