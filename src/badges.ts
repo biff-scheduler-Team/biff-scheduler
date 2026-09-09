@@ -58,13 +58,14 @@ export const BADGE_DEFS: BadgeDef[] = [
     key: "premiere",
     label: "首映",
     title: "Premiere · 首映场",
-    cls: "px-0 text-biff bg-card border border-biff",
+    // 描边 chip 与等级/字幕(KE)同 padding 口径(px-[3px] py-px),文字不压边框
+    cls: "px-[3px] py-px text-biff bg-card border border-biff",
   },
   {
     key: "open_talk",
     label: "Open Talk",
     title: "Open Talk · 映后公开对谈",
-    cls: "px-0 text-ink bg-card border border-ink",
+    cls: "px-[3px] py-px text-ink bg-card border border-ink",
   },
 ];
 
