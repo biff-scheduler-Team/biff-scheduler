@@ -10,8 +10,8 @@ import { appendMetaRow, durChip, venueTip } from "./legend";
 export const ROW_H = 92;
 const LABEL_W = 148; // 粘性影厅列宽(沿用旧值,不动)
 const TRAIL_PAD = 60; // A3:末 tick 右侧 +60px 安全边距(标签半宽 + 呼吸),两端标签永不悬出/被裁
-const DEFAULT_PX_PER_MIN = 1.5; // 装得下默认走这个(每小时 90px)
-const MIN_PX_PER_MIN = 0.7; // 压缩下限:低于此卡片过密,改回默认 + 横向滚动
+const PX_PER_MIN = 2.2; // D1:时间刻度固定(每小时 132px)。卡片横向舒展(1h≈132px/1.5h≈198px/2h≈264px),
+// 且各日期比例一致 → 常规视口必然横向溢出 → 滚动条 + 拖拽平移常态化浏览(不再按视口压缩刻度)
 const AXIS_FALLBACK = { start: 9 * 60, end: 23 * 60 }; // A1:当日无排片时的时间轴兜底窗口
 const AXIS_LEAD_MIN = 30; // A1:首场开映前保留的呼吸时间(轴起点对齐到整点)
 
@@ -25,17 +25,7 @@ export interface GridCtx {
   mappingOf: (code: string) => Mapping | undefined; // 豆瓣映射(回填中文名)
   conflictCodes: Set<string> | undefined; // 当日、当前方案冲突 code
   transitMin: number; // 跨馆转场缓冲(1a 余量判定)
-  avail: number; // grid-scroll 可用宽度(px)——渲染前由 caller 测好
   hourFilter?: number | null; // 点击时间轴整点 → 只看该小时段场次(其余 hour-dim);null = 不过滤
-}
-
-/** 视口足够宽 → 装得下默认 1.5;否则压缩 px/min 直到装下;压缩仍过密 → 退回默认 + 横向滚动 */
-function computePxPerMin(avail: number, axisMin: number): number {
-  const defaultW = LABEL_W + axisMin * DEFAULT_PX_PER_MIN + TRAIL_PAD;
-  if (avail >= defaultW) return DEFAULT_PX_PER_MIN;
-  const fitPx = (avail - LABEL_W - TRAIL_PAD) / axisMin;
-  if (fitPx >= MIN_PX_PER_MIN) return fitPx;
-  return DEFAULT_PX_PER_MIN;
 }
 
 /** A1 动态时间轴:轴界由「当日最早开映 − 呼吸时间」与「最晚散场」对齐整点推导,不再写死 09:00–23:00 ——
@@ -76,14 +66,13 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
   const rows = screeningsByVenue(ctx.cat, date);
   const axis = axisRangeFor(ctx.cat, date); // A1:当日动态轴(最早开映→最晚散场,整点对齐)
   const axisMin = axis.end - axis.start;
-  const pxPerMin = computePxPerMin(ctx.avail, axisMin);
+  const pxPerMin = PX_PER_MIN; // D1:固定刻度,不再按视口压缩(各日期比例一致)
   const trackW = axisMin * pxPerMin;
   const totalW = LABEL_W + trackW + TRAIL_PAD;
-  const overflows = totalW > ctx.avail + 1;
   const nowPx = todayIsoLocal() === date ? nowPxFor(axis, pxPerMin) : null;
 
-  // 装得下 → 不加 cursor-grab、不接 attachPan(横向拖动无意义);装不下 → 保留
-  const scroll = el("div", overflows ? "overflow-x-auto pb-[6px] cursor-grab" : "overflow-x-auto pb-[6px]");
+  // D3:横向溢出常态化 → 原生滚动条始终可用 + cursor-grab 拖拽平移恒挂(attachPan 内部对装得下的容器自行守卫)
+  const scroll = el("div", "overflow-x-auto pb-[6px] cursor-grab");
   const min = el("div", "w-max min-w-full");
   min.style.width = `${totalW}px`;
 
@@ -150,7 +139,7 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
   }
 
   scroll.appendChild(min);
-  if (overflows) attachPan(scroll); // 鼠标按住左右拖 = 平移时间轴;装得下时无意义,不挂
+  attachPan(scroll); // D3:按住鼠标左右拖 = 平移时间轴(滚动条同时可用;容器无横向溢出时守卫自动跳过)
   return scroll;
 }
 
@@ -236,6 +225,7 @@ function attachPan(scroll: HTMLElement): void {
 
   const down = (e: PointerEvent) => {
     if (e.pointerType !== "mouse" || e.button !== 0) return;
+    if (scroll.scrollWidth <= scroll.clientWidth + 1) return; // D1:超宽屏装得下 → 无需平移,不接管(避免拖动吞点击)
     pid = e.pointerId;
     startX = e.clientX;
     startLeft = scroll.scrollLeft;
@@ -374,14 +364,14 @@ function appendCard(tracks: HTMLElement, s: Screening, ctx: GridCtx, pxPerMin: n
     if (!inHour) card.classList.add("hour-dim");
   }
 
-  // 第一行:CODE + 起止时间。时间文本独立 span:
-  // 窄卡放不下完整 "09:00–10:40" 时,由 fitTimeTexts(挂载后实测)降级为只显开始时间,完整时间移入 hover。
+  // 身份行:CODE + 起止时间(排片核心信息,时间升格加墨;时间 span 独立便于 fitTimeTexts 量测降级,
+  // 窄卡放不下完整 "09:00–10:40" 时由挂载后实测降级为只显开始时间,完整时间移入 hover —— 绝不硬裁)。
   const t1 = el("span", "flex items-center gap-[3px] text-[12px] text-muted whitespace-nowrap overflow-hidden");
   const codeB = el("b", "shrink-0 text-ink text-[12px]", s.code);
   codeB.dataset.tip = codeTip(s.code);
   const timeSpan = el(
     "span",
-    "card-time shrink-0 text-[11.5px] font-semibold text-ink-2 tabular-nums",
+    "card-time shrink-0 text-[12px] font-semibold text-ink tabular-nums",
     fmtMinRange(s.start_time, s.end_time)
   );
   timeSpan.dataset.full = fmtMinRange(s.start_time, s.end_time);
@@ -389,20 +379,22 @@ function appendCard(tracks: HTMLElement, s: Screening, ctx: GridCtx, pxPerMin: n
   t1.append(codeB, timeSpan);
   card.appendChild(t1);
 
-  // 字段徽章行:等级 → 字幕 → 特性(GV/首映…) → 页码 → 片长;各徽章 data-tip 悬停即示义。
-  // 无任何徽章(理论仅 mock 缺字段)时不创建,避免空行撑高卡片。
+  // D2 重排:顺序 = 身份行(CODE+时间)→ 中文片名 → 英文名 → 徽章流沉底。
+  // 徽章流不再横插在时间与片名之间 —— 宽卡下单行放下,不再 wrap 挤压标题区;
+  // mt-auto 把徽章贴到卡底,与标题区形成天然分组。信息零删除,各徽章 data-tip 悬停即示义。
+  const zh = titleFor(s, ctx.mappingOf(s.code));
+  const ttlCls = `text-[13px] font-bold truncate${isConflict ? " text-conf" : ""}`;
+  const ttl = el("span", ttlCls, zh);
+  const sub = el("span", "text-[11px] text-muted truncate", s.title_en !== zh ? s.title_en : `${s.duration_min}min`);
+  card.append(ttl, sub);
+
+  // 徽章行:等级 → 字幕 → 特性(GV/首映…) → 页码 → 片长。无任何徽章(理论仅 mock 缺字段)时不创建,避免空行。
   if (s.rating || s.subs || typeof s.page === "number" || screeningBadgeKeys(s).length) {
-    const bdgRow = el("span", "flex gap-[3px] flex-wrap items-center leading-none");
+    const bdgRow = el("span", "mt-auto flex gap-[3px] flex-wrap items-center leading-none");
     appendMetaRow(bdgRow, s);
     bdgRow.appendChild(durChip(s.duration_min));
     card.appendChild(bdgRow);
   }
-
-  const zh = titleFor(s, ctx.mappingOf(s.code));
-  const ttlCls = `text-[13px] font-semibold truncate${isConflict ? " text-conf" : ""}`;
-  const ttl = el("span", ttlCls, zh);
-  const sub = el("span", "text-[11px] text-muted truncate", s.title_en !== zh ? s.title_en : `${s.duration_min}min`);
-  card.append(ttl, sub);
 
   // ⓘ 详情钮:in-other 卡片不随 hover 出现 → opacity-40 始终;其它 opacity-0 + group-hover/group-focus-within 触发
   const infoCls = inOther

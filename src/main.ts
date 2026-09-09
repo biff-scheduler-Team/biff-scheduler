@@ -108,9 +108,7 @@ function renderGroupSeg(): void {
 function renderGrid(): void {
   const host = document.getElementById("grid-scroll")!;
   const conf = conflicts.get(currentDate);
-  // 测一次 grid-scroll 可用宽度 → grid-wrap 的 inner(去掉 p-[14px] padding)
-  const wrap = host.parentElement!;
-  const avail = wrap.clientWidth - 28; // 14px padding × 2
+  // D1:时间刻度固定(PX_PER_MIN),网格总宽与视口无关 → 不再每次测 avail
   const grid = buildGrid(
     {
       cat,
@@ -119,7 +117,6 @@ function renderGrid(): void {
       mappingOf: (c) => store.mappings.get(c),
       conflictCodes: conf?.codeSet,
       transitMin: store.settings.transitMin,
-      avail,
       hourFilter,
     },
     currentDate
@@ -577,17 +574,8 @@ async function boot(): Promise<void> {
   subscribe(renderAll);
   bindEvents();
   attachTip(); // 缩写说明悬停 tooltip(data-tip 文档级委托,渲染重建无需重绑)
-  // §14 5 / 自适应:监听 grid-wrap 宽度变化 → 重新测 avail 重渲网格(避免缩窗后 px/min 失配)
-  const wrap = document.getElementById("grid-wrap")!;
-  let gridResizeRaf = 0;
-  const ro = new ResizeObserver(() => {
-    if (gridResizeRaf) return;
-    gridResizeRaf = requestAnimationFrame(() => {
-      gridResizeRaf = 0;
-      if (currentDate) renderGrid();
-    });
-  });
-  ro.observe(wrap);
+  // D1:刻度固定后网格总宽与视口无关 —— 移除旧 ResizeObserver 重渲(缩窗不再需改 px/min;
+  // 且重渲 replaceWith 会丢失用户横向平移位置,保留反而是回归)
   // 图例「ⓘ 日程表说明」:hover 快速多行提示(单源自 badges.ts abbrTooltip);点击打开总览弹层
   const abbrHelp = document.getElementById("abbr-help");
   if (abbrHelp) {
