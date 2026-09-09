@@ -20,6 +20,8 @@
 - 方案评分器 `planScore()`(engine.ts,0-100,A/B 卡展示)
 - 视觉:BIFF 黑白红风对齐(官方抓取 #ce1e36)+ Design Token 化(:root 分层 token)+ Tailwind v4 增量接入
 - 品牌素材接入(brand/):wordmark/favicon/footer,含许可约束(见 §8)
+- 排片表字段徽章 + 图例总览:`legend.ts` 单源 — 等级(ALL/12/15/19)、字幕/对白标识(KE/KN/KK/NO/未标注)、节目册页码、片长 全部以小徽章流渲染(网格卡 / 行程 / 影片库 / 详情),每枚 data-tip 即时说明;场馆行显示官方代码 chip + 整行 hover 全名/韩名/分区/代码 说明;顶部「ⓘ 日程表说明」点击打开总览弹层(字段速读示例 / 等级 / 字幕 / 徽章 / 影院代码本工具行 + 2025 官方代码总表 references / 网格图例 / P&I·开闭幕·GV·节目册 特别提示)
+- 网格卡选中态改"底色交互":`in-plan` / `hl-card` 移除左侧 3px 优先级竖条 + 优先级色外晕,改用整卡 `color-mix(--pc 14%, card)` 淡底色染色(must/maybe/wild → 红/琥珀/灰);与紧转场整卡底色同一交互语言
 
 **⏳ 待办(按序,详见 §7)**
 1. 9/11 官方排期发布后 M1:真数据管线 + venue 名单核对(删 mock 的 mega-haeundae,补南浦)

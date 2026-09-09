@@ -20,7 +20,7 @@ import {
   syncFromCloud,
   toggleCode,
 } from "./state";
-import { buildGrid } from "./grid";
+import { buildGrid, fitTimeTexts } from "./grid";
 import { buildAgenda } from "./agenda";
 import { abbrTooltip } from "./badges";
 import { attachTip } from "./tip";
@@ -32,6 +32,8 @@ import { openLibrary } from "./library";
 let cat: Catalog;
 let currentDate = "";
 let conflicts = new Map<string, ConflictResult>();
+/** 甘特时间筛选:点击时间轴整点置为对应小时;null = 不过滤(切日期/再点/重置均清除) */
+let hourFilter: number | null = null;
 
 /** 影片详情弹层的公共上下文(网格 ⓘ 与影片库共用) */
 function filmModalCtx() {
@@ -106,6 +108,9 @@ function renderGroupSeg(): void {
 function renderGrid(): void {
   const host = document.getElementById("grid-scroll")!;
   const conf = conflicts.get(currentDate);
+  // 测一次 grid-scroll 可用宽度 → grid-wrap 的 inner(去掉 p-[14px] padding)
+  const wrap = host.parentElement!;
+  const avail = wrap.clientWidth - 28; // 14px padding × 2
   const grid = buildGrid(
     {
       cat,
@@ -114,11 +119,14 @@ function renderGrid(): void {
       mappingOf: (c) => store.mappings.get(c),
       conflictCodes: conf?.codeSet,
       transitMin: store.settings.transitMin,
+      avail,
+      hourFilter,
     },
     currentDate
   );
   host.replaceWith(grid);
   grid.id = "grid-scroll";
+  fitTimeTexts(grid); // 挂载后量测:窄卡时间文本降级,绝不截断
 
   const { label, weekday } = dateInfo(currentDate);
   const dayShows = cat.schedule.screenings.filter((s) => s.date === currentDate).length;
@@ -126,7 +134,19 @@ function renderGrid(): void {
     (e) => e.group === store.group && cat.byCode.get(e.code)?.date === currentDate
   ).length;
   document.getElementById("grid-date-title")!.textContent = `${label} ${weekday} · 排片总览`;
-  document.getElementById("grid-count")!.textContent = `${dayShows} 场 · 本组已选 ${pickedOnDay} 场`;
+  const countEl = document.getElementById("grid-count")!;
+  countEl.textContent = `${dayShows} 场 · 本组已选 ${pickedOnDay} 场`;
+  if (hourFilter != null) {
+    const hh = String(hourFilter).padStart(2, "0");
+    const pill = el(
+      "button",
+      "ml-[8px] border border-biff bg-biff-soft text-biff rounded-full px-[8px] py-px text-[12px] font-bold align-middle cursor-pointer hover:bg-biff-line whitespace-nowrap",
+      `只看 ${hh}:00 段 · 取消`
+    );
+    pill.dataset.clearHour = "1";
+    pill.title = "点击取消时间筛选";
+    countEl.appendChild(pill);
+  }
 }
 
 function renderAgenda(): void {
@@ -185,11 +205,28 @@ function bindEvents(): void {
   document.addEventListener("click", (ev) => {
     const t = ev.target as HTMLElement;
 
-    // 日期条
+    // 日期条(切日期同时清除时间筛选)
     const chip = t.closest<HTMLElement>("[data-date]");
     if (chip) {
       currentDate = chip.dataset.date!;
+      hourFilter = null;
       renderChips();
+      renderGrid();
+      return;
+    }
+
+    // 甘特时间筛选:点击时间轴整点 → 只看该小时段;再点同一小时取消
+    const hourHit = t.closest<HTMLElement>("#grid-scroll [data-hour]");
+    if (hourHit) {
+      const h = Number(hourHit.dataset.hour);
+      hourFilter = hourFilter === h ? null : h;
+      renderGrid();
+      return;
+    }
+    // 标题旁「只看 X 段 · 取消」pill
+    const clearHour = t.closest<HTMLElement>("[data-clear-hour]");
+    if (clearHour) {
+      hourFilter = null;
       renderGrid();
       return;
     }
@@ -246,6 +283,7 @@ function bindEvents(): void {
     const jump = t.closest<HTMLElement>("[data-jump]");
     if (jump) {
       currentDate = jump.dataset.jump!;
+      hourFilter = null;
       renderChips();
       renderGrid();
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -303,6 +341,7 @@ function jumpToScreening(code: string): void {
   closeModal();
   if (currentDate !== s.date) {
     currentDate = s.date;
+    hourFilter = null;
     renderChips();
     renderGrid();
   }
@@ -531,6 +570,17 @@ async function boot(): Promise<void> {
   subscribe(renderAll);
   bindEvents();
   attachTip(); // 缩写说明悬停 tooltip(data-tip 文档级委托,渲染重建无需重绑)
+  // §14 5 / 自适应:监听 grid-wrap 宽度变化 → 重新测 avail 重渲网格(避免缩窗后 px/min 失配)
+  const wrap = document.getElementById("grid-wrap")!;
+  let gridResizeRaf = 0;
+  const ro = new ResizeObserver(() => {
+    if (gridResizeRaf) return;
+    gridResizeRaf = requestAnimationFrame(() => {
+      gridResizeRaf = 0;
+      if (currentDate) renderGrid();
+    });
+  });
+  ro.observe(wrap);
   // 图例「ⓘ 日程表说明」:hover 快速多行提示(单源自 badges.ts abbrTooltip);点击打开总览弹层
   const abbrHelp = document.getElementById("abbr-help");
   if (abbrHelp) {

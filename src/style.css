@@ -176,10 +176,10 @@
   & * { pointer-events: none; }
 }
 
-/* 网格 ↔ 行程 双向 hover 联动:高亮优先级左色条 + 红圈外晕 */
+/* 网格 ↔ 行程 双向 hover 联动:网格卡 → 红圈外晕,行程行 → 红圈外晕(无内嵌竖条,与 in-plan 底色化语言一致) */
 @utility hl-card {
   border-color: var(--color-biff) !important;
-  box-shadow: inset 3px 0 0 var(--pc, transparent), 0 0 0 3px color-mix(in srgb, var(--color-biff) 38%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-biff) 38%, transparent);
   z-index: 6;
 }
 @utility hl-row {
@@ -192,11 +192,12 @@
 @utility p-maybe { --pc: var(--color-maybe); }
 @utility p-wild  { --pc: var(--color-wild); }
 
-/* 选中态:优先级左色条 + 柔和外层光晕(读取 --pc) */
+/* 选中态:整卡淡底色染优先级色(must/maybe/wild → 红/琥珀/灰),描边轻染同色;
+   与紧转场(bad/tight)整卡底色同一种交互语言,不再用左侧竖条或外晕标记。
+   !important 覆盖 Tailwind 在 .in-plan 之后生成的 .bg-card(同为类选择器、源序靠后)避免基础白底吃掉底色。 */
 @utility in-plan {
-  background: var(--color-card);
-  border-color: color-mix(in srgb, var(--pc, var(--color-line)) 50%, var(--color-card));
-  box-shadow: inset 3px 0 0 var(--pc, transparent), 0 0 0 3px color-mix(in srgb, var(--pc, transparent) 14%, transparent);
+  background: color-mix(in srgb, var(--pc, var(--color-card)) 14%, var(--color-card)) !important;
+  border-color: color-mix(in srgb, var(--pc, var(--color-line)) 55%, var(--color-card));
 }
 
 /* 另一方案的选中(虚线 / 灰) */
@@ -212,6 +213,18 @@
   border-color: var(--color-biff);
   z-index: 6;
   animation: biff-flash 1.1s ease 2;
+}
+
+/* 甘特时间选择:非选中小时段的场次淡化(仍可 hover / 点选,仅视觉降噪) */
+@utility hour-dim {
+  opacity: 0.35;
+  transition: opacity 120ms ease;
+  &:hover { opacity: 1; }
+}
+
+/* 甘特「现在」时刻参考线(纵向贯穿网格) */
+@utility now-line {
+  background: color-mix(in srgb, var(--color-biff) 78%, transparent);
 }
 
 /* ---- 缩写说明 tooltip(tip.ts 运行时单例,data-tip 触发) ---- */

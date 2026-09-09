@@ -16,6 +16,12 @@ export function hmsToMin(hhmm: string): number {
   return h * 60 + m;
 }
 
+/** 本地时区 'YYYY-MM-DD'(与 dateInfo 同用本地时间,避免 UTC 解析偏移) */
+export function todayIsoLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function minToHms(min: number): string {
   const h = Math.floor(min / 60);
   const m = Math.round(min % 60);

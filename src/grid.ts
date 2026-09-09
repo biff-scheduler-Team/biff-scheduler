@@ -2,7 +2,7 @@
 // 全量化:网格 / 卡片 / 标签 / 时间标尺 / 转场紧底色提示 / ⓘ / 冲突旗 / 其他旗 全部 Tailwind utility。
 
 import type { Catalog, Group, Mapping, PlanEntry, Priority, Screening } from "./types";
-import { OK_SLACK, el, escapeHtml, fmtMinRange, hmsToMin } from "./util";
+import { OK_SLACK, el, fmtMinRange, hmsToMin, todayIsoLocal } from "./util";
 import { screeningsByVenue } from "./data";
 import { codeTip, screeningBadgeKeys } from "./badges";
 import { appendMetaRow, durChip, venueTip } from "./legend";
@@ -26,6 +26,7 @@ export interface GridCtx {
   conflictCodes: Set<string> | undefined; // 当日、当前方案冲突 code
   transitMin: number; // 跨馆转场缓冲(1a 余量判定)
   avail: number; // grid-scroll 可用宽度(px)——渲染前由 caller 测好
+  hourFilter?: number | null; // 点击时间轴整点 → 只看该小时段场次(其余 hour-dim);null = 不过滤
 }
 
 /** 视口足够宽 → 装得下默认 1.5;否则压缩 px/min 直到装下;压缩仍过密 → 退回默认 + 横向滚动 */
@@ -64,18 +65,56 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
   const ruler = el("div", `${ROW_BASE_CLS} border-b border-line`);
   // 粘性影厅列内右对齐放 AXIS_START 标签(原 h=9 tick 会落在 x=0 被粘性列遮住,只露出 ":00" → 看上去像 "00");
   // 把首根小时标签放进粘性列内,标尺里从 h=10 起画,左缘截断问题消除。
+  // 该标签同样可点(时间筛选:只看 09 点段)。
   const rulerLabel = el("div", LABEL_BOX_CLS);
   rulerLabel.innerHTML = `<span class="self-end text-[10.5px] text-muted tabular-nums pr-[6px]">9:00</span>`;
+  const labelTick = rulerLabel.querySelector("span")!;
+  labelTick.classList.add(
+    "cursor-pointer",
+    "rounded-[4px]",
+    "transition-colors"
+  );
+  if (ctx.hourFilter === 9) labelTick.classList.add("bg-biff-soft", "text-biff", "font-bold");
+  else labelTick.classList.add("hover:bg-hover", "hover:text-biff");
+  labelTick.dataset.hour = "9";
+  labelTick.title = "只看 09:00–09:59 段场次;再点取消";
   const rulerTicks = el("div", "relative");
   rulerTicks.style.width = `${trackW + LAST_TICK_BUMP}px`;
+  // 整点小时 tick = 时间选择热区(绝对定位,内对称 padding 不改变中心对准整点刻度线)
   for (let h = AXIS_START / 60 + 1; h <= AXIS_END / 60; h++) {
+    const on = ctx.hourFilter === h;
     const t = el(
-      "span",
-      "absolute top-[2px] text-[10.5px] text-muted -translate-x-1/2 tabular-nums",
+      "button",
+      "absolute top-[1px] border-0 bg-transparent px-[6px] py-[1px] -translate-x-1/2 tabular-nums cursor-pointer rounded-[4px] transition-colors text-[10.5px] " +
+        (on ? "text-biff bg-biff-soft font-bold" : "text-muted hover:bg-hover hover:text-biff"),
       `${h}:00`
     );
     t.style.left = `${(h * 60 - AXIS_START) * pxPerMin}px`;
+    t.dataset.hour = String(h);
+    t.title = `只看 ${h}:00–${h + 1}:00 段场次;再点取消`;
     rulerTicks.appendChild(t);
+  }
+  // 「现在」时刻竖线 + 标签:仅当天且当前时刻落在轴内时画(渲染即取当前时间,点选/重建自然刷新)
+  const nowPx =
+    todayIsoLocal() === date
+      ? (() => {
+          const d = new Date();
+          const m = d.getHours() * 60 + d.getMinutes();
+          return m >= AXIS_START && m <= AXIS_END ? (m - AXIS_START) * pxPerMin : null;
+        })()
+      : null;
+  if (nowPx !== null) {
+    const nowMark = el("span", "absolute top-0 bottom-0 w-[1.5px] now-line pointer-events-none z-[5]");
+    nowMark.style.left = `${nowPx - 0.75}px`;
+    rulerTicks.appendChild(nowMark);
+    const d = new Date();
+    const nowTag = el(
+      "span",
+      "absolute top-[1px] -translate-x-1/2 z-[6] pointer-events-none text-[9px] font-extrabold text-on-brand bg-biff leading-[1.3] px-[4px] py-px rounded-[3px] whitespace-nowrap shadow-[0_0_0_1px_var(--color-card)]",
+      `现在 ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+    );
+    nowTag.style.left = `${nowPx}px`;
+    rulerTicks.appendChild(nowTag);
   }
   ruler.append(rulerLabel, rulerTicks);
   min.appendChild(ruler);
@@ -89,8 +128,20 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
     );
     const label = el("div", LABEL_BOX_CLS);
     const vname = venue ? venue.name : list[0]?.venue_id ?? "?";
-    // 只展示英文场馆名,去掉韩语副标(name_kr)
-    label.innerHTML = `<span class="text-[12px] font-semibold leading-[1.3]">${escapeHtml(vname)}</span>`;
+    // 场馆行:官方代码 chip + 英文名(整行 hover 看 全名/韩名/分区/代码 说明)
+    if (venue) label.dataset.tip = venueTip(venue);
+    const line = el("div", "flex items-center gap-[5px] min-w-0");
+    if (venue?.code) {
+      const c = el(
+        "i",
+        "shrink-0 not-italic text-[10px] font-extrabold text-biff bg-biff-soft border border-biff-line rounded-[3px] px-[3px] py-px",
+        venue.code
+      );
+      c.dataset.tip = `影院代码 ${venue.code} — 官方日程表代码(2025 届同馆口径 mock;2026 以官网为准)`;
+      line.appendChild(c);
+    }
+    line.appendChild(el("span", "text-[12px] font-semibold leading-[1.3] truncate min-w-0", vname));
+    label.appendChild(line);
     row.appendChild(label);
 
     const tracks = el("div", "relative");
@@ -103,6 +154,12 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
     for (const s of list) {
       const card = appendCard(tracks, s, ctx, pxPerMin);
       cardEls.set(s.code, card);
+    }
+    // 「现在」时刻竖线贯穿各行(标尺已画带标签的一段,行内补全高)
+    if (nowPx !== null) {
+      const rowNow = el("span", "absolute top-0 bottom-0 w-[1.5px] now-line pointer-events-none z-[5]");
+      rowNow.style.left = `${nowPx - 0.75}px`;
+      tracks.appendChild(rowNow);
     }
     row.appendChild(tracks);
     min.appendChild(row);
@@ -186,10 +243,10 @@ function attachPan(scroll: HTMLElement): void {
 }
 
 /** §14 1a:当前方案同日相邻场次,余量 slack=间隔−跨馆缓冲 <OK_SLACK 时,把「衔接的两场」用整卡淡底色标出来:
- *  琥珀=偏紧(tight)/ 红=扣除缓冲后不足(bad),底色叠加在 in-plan 选中态上(左优先级条/光晕仍保留),
+ *  琥珀=偏紧(tight)/ 红=扣除缓冲后不足(bad);通过 card.style.background 内联覆盖 in-plan 选中态底色
+ *  (冲突等级更高;tight/bad 与同冲突组无重叠 — 冲突已由 conf 视觉独立覆盖)。
  *  整卡面积提示 → 不遮文字、不受间隔宽窄与同馆/跨馆影响;hover 卡片即时浮窗看完整算式(data-tip)。
- *  中间片同时接两对紧转场时取更严重状态(bad 盖 tight),浮窗列出其参与的所有衔接。
- *  重叠冲突已由 conf 视觉覆盖,不重复标;与 agenda 16-D 同阈值/同色。 */
+ *  中间片同时接两对紧转场时取更严重状态(bad 盖 tight),浮窗列出其参与的所有衔接。 */
 const TIGHT_BG = "color-mix(in srgb, var(--color-maybe) 16%, var(--color-card))";
 const BAD_BG = "color-mix(in srgb, var(--color-conf) 13%, var(--color-card))";
 
@@ -237,13 +294,20 @@ function markTightPairs(ctx: GridCtx, date: string, cardEls: Map<string, HTMLEle
   for (const [code, m] of marks) {
     const card = cardEls.get(code);
     if (!card) continue;
-    card.style.background = m.bad ? BAD_BG : TIGHT_BG;
+    // 同卡若同时为 in-plan,把优先级色(~9%)再叠进 tight/bad 底色 → 红/琥珀/灰 在同色系内仍可区分
+    // (避免整卡底色压过优先级提示;同 in-plan 与紧转场两套交互叠用)
+    const pcCls = [...card.classList].find((c) => c === "p-must" || c === "p-maybe" || c === "p-wild");
+    const pcColor = pcCls === "p-must" ? "must" : pcCls === "p-maybe" ? "maybe" : pcCls === "p-wild" ? "wild" : null;
+    const base = m.bad ? BAD_BG : TIGHT_BG;
+    card.style.background = pcColor
+      ? `color-mix(in srgb, var(--color-${pcColor}) 9%, ${base})`
+      : base;
     card.dataset.tip =
       (m.bad ? "转场不足 · 缓冲后赶不上" : "转场偏紧 · 间隔较紧") + "\n" + m.notes.join("\n");
   }
 }
 
-function appendCard(tracks: HTMLElement, s: Screening, ctx: GridCtx): HTMLElement {
+function appendCard(tracks: HTMLElement, s: Screening, ctx: GridCtx, pxPerMin: number): HTMLElement {
   const start = hmsToMin(s.start_time);
   const end = hmsToMin(s.end_time);
   const entry = ctx.plan.get(s.code);
@@ -271,15 +335,30 @@ function appendCard(tracks: HTMLElement, s: Screening, ctx: GridCtx): HTMLElemen
 
   const card = el("div", parts.join(" "));
   card.dataset.code = s.code;
-  card.style.left = `${(start - AXIS_START) * PX_PER_MIN + 2}px`;
+  card.style.left = `${(start - AXIS_START) * pxPerMin + 2}px`;
   card.style.top = "6px";
-  card.style.width = `${(end - start) * PX_PER_MIN - 4}px`;
+  card.style.width = `${(end - start) * pxPerMin - 4}px`;
   card.style.height = `${ROW_H - 12}px`;
 
-  // 第一行:CODE + 起时间(缩写说明:CODE 数字 hover 提示官方场次编号)
-  const t1 = el("span", "flex items-center gap-[3px] text-[12px] text-muted whitespace-nowrap");
-  t1.innerHTML = `<b class="text-ink text-[12px]">${escapeHtml(s.code)}</b> ${fmtMinRange(s.start_time, s.end_time)}`;
-  t1.querySelector("b")!.dataset.tip = codeTip(s.code);
+  // 时间筛选:非选中小时段的场次淡化(hour-dim),保留上下文与 hover 可读
+  if (ctx.hourFilter != null) {
+    const inHour = start < (ctx.hourFilter + 1) * 60 && end > ctx.hourFilter * 60;
+    if (!inHour) card.classList.add("hour-dim");
+  }
+
+  // 第一行:CODE + 起止时间。时间文本独立 span:
+  // 窄卡放不下完整 "09:00–10:40" 时,由 fitTimeTexts(挂载后实测)降级为只显开始时间,完整时间移入 hover。
+  const t1 = el("span", "flex items-center gap-[3px] text-[12px] text-muted whitespace-nowrap overflow-hidden");
+  const codeB = el("b", "shrink-0 text-ink text-[12px]", s.code);
+  codeB.dataset.tip = codeTip(s.code);
+  const timeSpan = el(
+    "span",
+    "card-time shrink-0 text-[11.5px] font-semibold text-ink-2 tabular-nums",
+    fmtMinRange(s.start_time, s.end_time)
+  );
+  timeSpan.dataset.full = fmtMinRange(s.start_time, s.end_time);
+  timeSpan.dataset.short = s.start_time; // 降级备选:只显开始时刻
+  t1.append(codeB, timeSpan);
   card.appendChild(t1);
 
   // 字段徽章行:等级 → 字幕 → 特性(GV/首映…) → 页码 → 片长;各徽章 data-tip 悬停即示义。
@@ -318,4 +397,27 @@ function appendCard(tracks: HTMLElement, s: Screening, ctx: GridCtx): HTMLElemen
 
   tracks.appendChild(card);
   return card;
+}
+
+/**
+ * 卡片时间防截断:网格已挂载到 DOM 后调用(此时可同步量 t1.scrollWidth)。
+ * 完整 "09:00–10:40" 放不下 → 降级为只显开始时间 "09:00";仍放不下 → 时间文本藏起,
+ * 完整区间放入 data-tip(hover 即时可见)——绝不出现 "00:0…" 这类被裁断的中间态。
+ */
+export function fitTimeTexts(host: HTMLElement): void {
+  host.querySelectorAll<HTMLElement>(".card-time").forEach((span) => {
+    const row = span.parentElement as HTMLElement | null;
+    if (!row) return;
+    const full = span.dataset.full ?? "";
+    const short = span.dataset.short ?? "";
+    const show = (t: string): void => {
+      span.textContent = t;
+      span.dataset.tip = full; // 完整时间永远可 hover 查看
+    };
+    show(full);
+    if (row.scrollWidth <= row.clientWidth + 1) return; // 完整放得下
+    show(short);
+    if (row.scrollWidth <= row.clientWidth + 1) return; // 开始时间放得下
+    show(""); // 极端窄:藏时间,CODE 与 hover 兜底
+  });
 }
