@@ -1,6 +1,10 @@
 // 选片打标(wish)共享层 —— 三档顺序 / 色类 / 分段控件构造。
 // 「影片库」行内三选、「我的选片」总览、影片详情弹层 共用同一套档位语义与视觉,
 // 避免多处各写一份 must/maybe/wild 文案与色类(Tailwind v4 只生成源码完整出现的类)。
+//
+// 三档配色 = 冷色系(蓝 `--pri-must` / 紫 `--pri-maybe` / 灰蓝 `--pri-wild`):
+// 色点画在甘特卡上,而卡底是红绿灯(绿=已选 / 黄=时间紧张 / 红=冲突),
+// 故档位整族搬离红黄绿 —— 与底色正交才能一眼看出「是不是我想看的」。
 
 import type { Priority } from "./types";
 import { el } from "./util";
@@ -16,23 +20,23 @@ export const PRI_LABEL: Record<Priority, string> = { must: "必看", maybe: "备
 
 /** seg / 章 on 态完整字面量(勿改回动态拼接) */
 export const PRI_BG_ON: Record<Priority, string> = {
-  must: "bg-must text-on-brand",
-  maybe: "bg-maybe text-on-brand",
-  wild: "bg-wild text-on-brand",
+  must: "bg-pri-must text-on-brand",
+  maybe: "bg-pri-maybe text-on-brand",
+  wild: "bg-pri-wild text-on-brand",
 };
 
 /** 档位小色点(甘特卡标题行前的打标标记)完整字面量 */
 export const PRI_DOT_BG: Record<Priority, string> = {
-  must: "bg-must",
-  maybe: "bg-maybe",
-  wild: "bg-wild",
+  must: "bg-pri-must",
+  maybe: "bg-pri-maybe",
+  wild: "bg-pri-wild",
 };
 
 /** 档位文字色(评分分项 / 未纳入原因等小字)完整字面量 */
 export const PRI_TEXT: Record<Priority, string> = {
-  must: "text-must",
-  maybe: "text-maybe",
-  wild: "text-wild",
+  must: "text-pri-must",
+  maybe: "text-pri-maybe",
+  wild: "text-pri-wild",
 };
 
 export interface WishSegOpts {

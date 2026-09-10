@@ -1,11 +1,12 @@
 // 我的行程 — 按日期分组的议程列表:冲突标红、优先级/方案可直接切换。
 // 全量化:行程行 / 优先级三段 / chip / 转场间隔三态 全部 Tailwind utility。
 
-import type { Catalog, Group, Mapping, PlanEntry, Priority, Screening } from "./types";
+import type { Catalog, Group, Mapping, PlanEntry, Screening } from "./types";
 import { OK_SLACK, dateInfo, el, escapeHtml, hmsToMin } from "./util";
 import { effEndHms, effEndMin, gvTalkMin } from "./gv";
 import { codeTip } from "./badges";
 import { appendMetaRow } from "./legend";
+import { PRI_BG_ON, WISH_ORDER } from "./pick";
 import type { ConflictResult } from "./conflict";
 
 export interface AgendaCtx {
@@ -21,20 +22,6 @@ export interface AgendaCtx {
   slotDate?: string;
   slotHour?: number | null;
 }
-
-/** 优先级三段顺序(§14 2c,替代循环 chip) */
-const PRI_ORDER: [Priority, string][] = [
-  ["must", "必看"],
-  ["maybe", "备选"],
-  ["wild", "随缘"],
-];
-
-/** seg on 态:完整字面量(勿改回 `bg-${p}` 动态拼接 — Tailwind v4 只生成源码完整出现的类) */
-const PRI_BG_ON: Record<Priority, string> = {
-  must: "bg-must text-on-brand",
-  maybe: "bg-maybe text-on-brand",
-  wild: "bg-wild text-on-brand",
-};
 
 export function buildAgenda(ctx: AgendaCtx): HTMLElement {
   const wrap = el("div", "grid gap-[14px]");
@@ -189,8 +176,9 @@ function buildRow(
   grpBtn.dataset.act = "grp";
   grpBtn.title = "切换到另一方案(点击翻转)";
   // §14 2c:优先级三段 seg(必看/备选/随缘),当前态实心着色;点击直接定位
+  // 顺序与色类同「我的选片」打标(单一来源 pick.ts),两层档位视觉口径永远一致
   const priSeg = el("div", "inline-flex border border-line rounded-full overflow-hidden bg-card");
-  PRI_ORDER.forEach(([p, label], i) => {
+  WISH_ORDER.forEach(([p, label], i) => {
     const on = entry.priority === p;
     const stateCls = on
       ? PRI_BG_ON[p]
@@ -243,7 +231,7 @@ function gapNote(prev: Screening, s: Screening, ctx: AgendaCtx): HTMLElement {
     txt += ` · 需缓冲 ${need}min`;
   } else if (slack < OK_SLACK) {
     state = "tight";
-    stateCls = " text-maybe font-bold";
+    stateCls = " text-tight font-bold";
   }
   const g = el("span", `${baseCls}${stateCls}`, txt);
   g.title = cross

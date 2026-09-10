@@ -23,13 +23,18 @@
   --biff-red-tint-3: #fbecec;
   --biff-selection: #ffe1e3;
 
-  /* 状态与优先级(红绿灯:绿=已选 / 黄=时间紧张 / 红=冲突;must/maybe/wild 仅行程 seg 与顺位用) */
+  /* 状态(红绿灯:绿=已选 / 黄=时间紧张 / 红=冲突)—— 只回答「排得怎么样」,不参与档位着色 */
   --status-danger: var(--biff-red);
-  --status-warning: #d97706;
   --status-ok: #2f9e44;
   --status-tight: #e6a800; /* 紧转场黄(网格「时间紧张」整卡底色源色) */
-  --status-wild: #8a8f98;
   --amber-soft: #f5c16a;
+
+  /* 档位(必看 / 备选 / 随缘)—— 冷色系:蓝 / 紫 / 灰蓝。
+     与红绿灯底色(红/黄/绿)整族错开 —— 甘特色点正是画在这三种底色卡上,同色系会互相吃掉。
+     行程行优先级 seg 与「我的选片」色点同源(见 pick.ts)。 */
+  --pri-must: #1d4ed8;
+  --pri-maybe: #7e22ce;
+  --pri-wild: #64748b;
 
   /* 观影等级(2025 Schedule Guide 图例色系:ALL 绿 / 12 橙 / 15 红 / 19 深红) */
   --rate-all: #1e7b34;
@@ -77,9 +82,6 @@
   --brand: var(--biff-red);
   --brand-2: var(--biff-red-2);
   --brand-ink: var(--text-on-brand);
-  --must: var(--status-danger);
-  --maybe: var(--status-warning);
-  --wild: var(--status-wild);
   --gv: var(--text-primary);
   --conf: var(--status-danger);
 
@@ -127,9 +129,9 @@
   --color-line-soft: var(--border-soft);
   --color-line-strong: var(--border-strong);
   --color-line-faint: var(--border-faint);
-  --color-must: var(--status-danger);
-  --color-maybe: var(--status-warning);
-  --color-wild: var(--status-wild);
+  --color-pri-must: var(--pri-must);
+  --color-pri-maybe: var(--pri-maybe);
+  --color-pri-wild: var(--pri-wild);
   --color-ok: var(--status-ok);
   --color-tight: var(--status-tight);
   --color-conf: var(--biff-red);

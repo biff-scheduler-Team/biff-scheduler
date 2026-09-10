@@ -331,7 +331,7 @@ export function openLibrary(ctx: LibraryCtx): void {
           (m, s) => m + (ctx.plan.get(s.code)?.group === ctx.group ? 1 : 0),
           0
         );
-        if (pick > 0) ops.appendChild(el("span", "text-[11px] font-bold text-on-brand bg-must rounded-full px-2 py-px whitespace-nowrap", `${ctx.group} 已选 ${pick}`));
+        if (pick > 0) ops.appendChild(el("span", "text-[11px] font-bold text-on-brand bg-biff rounded-full px-2 py-px whitespace-nowrap", `${ctx.group} 已选 ${pick}`));
         const detail = el(
           "button",
           "border rounded-[6px] px-[10px] py-1 text-[12px] font-bold bg-card text-ink border-line hover:opacity-90",
@@ -708,7 +708,7 @@ export function openMyPicks(ctx: LibraryCtx): void {
       const picked = n.shows.reduce((m, s) => m + (ctx.plan.get(s.code)?.group === ctx.group ? 1 : 0), 0);
       if (picked > 0)
         ops.appendChild(
-          el("span", "text-[11px] font-bold text-on-brand bg-must rounded-full px-2 py-px whitespace-nowrap", `${ctx.group} 已选 ${picked}`)
+          el("span", "text-[11px] font-bold text-on-brand bg-biff rounded-full px-2 py-px whitespace-nowrap", `${ctx.group} 已选 ${picked}`)
         );
       const go = el(
         "button",
