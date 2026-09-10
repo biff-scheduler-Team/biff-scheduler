@@ -15,6 +15,7 @@ const PX_PER_MIN = 2.2; // D1:时间刻度固定(每小时 132px)。卡片横向
 // 且各日期比例一致 → 常规视口必然横向溢出 → 滚动条 + 拖拽平移常态化浏览(不再按视口压缩刻度)
 const AXIS_FALLBACK = { start: 9 * 60, end: 23 * 60 }; // A1:当日无排片时的时间轴兜底窗口
 const AXIS_LEAD_MIN = 30; // A1:首场开映前保留的呼吸时间(轴起点对齐到整点)
+const CARD_INSET_Y = 2; // 卡片上下留白(满高泳道:6 → 2px,几乎顶满行;行与行靠 border-line-soft 分隔线区分)
 
 /** 冲突 / 紧转场 / 已选 的红绿灯底色:优先级不参与网格染色(见行程行 seg),故无 p-* 类映射。 */
 export interface GridCtx {
@@ -89,7 +90,7 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
   for (const { venue, list } of rows) {
     const row = el(
       "div",
-      `${ROW_BASE_CLS}${venueIdx > 0 ? " border-t border-line-faint" : ""}`
+      `${ROW_BASE_CLS}${venueIdx > 0 ? " border-t border-line-soft" : ""}`
     );
     const label = el("div", LABEL_BOX_CLS);
     const vname = venue ? venue.name : list[0]?.venue_id ?? "?";
@@ -377,9 +378,9 @@ function appendCard(
   // GV 拆分:主卡只画「正片段」(结束=正片末),谈段由右侧紧贴的 talk 块承接 → 视觉两张拼接
   const cardEnd = talk > 0 ? filmEndMin(s) : end;
   card.style.left = `${(start - axisStart) * pxPerMin + 2}px`;
-  card.style.top = "6px";
+  card.style.top = `${CARD_INSET_Y}px`;
   card.style.width = `${(cardEnd - start) * pxPerMin - 4}px`;
-  card.style.height = `${ROW_H - 12}px`;
+  card.style.height = `${ROW_H - CARD_INSET_Y * 2}px`;
 
   // 时间筛选:非选中小时段的场次淡化(hour-dim),保留上下文与 hover 可读(槽位整段含谈判定)
   if (ctx.hourFilter != null) {
@@ -447,9 +448,9 @@ function appendCard(
     // 几何:紧贴正片卡右缘(无间隙拼接),右缘与整场槽位右缘对齐
     const filmW = (filmEndMin(s) - start) * pxPerMin - 4;
     talkEl.style.left = `${(start - axisStart) * pxPerMin + 2 + filmW}px`;
-    talkEl.style.top = "6px";
+    talkEl.style.top = `${CARD_INSET_Y}px`;
     talkEl.style.width = `${talk * pxPerMin}px`;
-    talkEl.style.height = `${ROW_H - 12}px`;
+    talkEl.style.height = `${ROW_H - CARD_INSET_Y * 2}px`;
 
     // 状态外观:冲突沿用红(整场都在冲突区);已选且参加 → 同 in-plan 绿 = 两张一起选中;
     // 放弃映后谈 → gv-talk-off 灰虚线淡出(块仍占槽位,只表示"我不参加")
