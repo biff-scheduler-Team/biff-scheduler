@@ -7,9 +7,16 @@ import { dateInfo, el, filmNodeKey } from "./util";
 import { codeTip } from "./badges";
 import { appendMetaRow, doubanChip } from "./legend";
 import { openModal } from "./modal";
-import { PRI_BG_ON, PRI_LABEL, PRI_TEXT, WISH_ORDER, buildWishSeg } from "./pick";
+import { PRI_BG_ON, PRI_LABEL, WISH_ORDER, buildWishSeg, priTag } from "./pick";
 import { removePick, replaceGroup, setCurrentGroup, setWish, store } from "./state";
-import { suggestPlans, type EngineFilm, type EnginePick, type EnginePlan } from "./engine";
+import {
+  DROP_LABEL,
+  suggestPlans,
+  type EngineDrop,
+  type EngineFilm,
+  type EnginePick,
+  type EnginePlan,
+} from "./engine";
 
 export interface LibraryCtx {
   cat: Catalog;
@@ -404,7 +411,7 @@ export function openLibrary(ctx: LibraryCtx): void {
           shows.appendChild(
             el(
               "div",
-              "px-[14px] py-[10px] text-[12px] text-muted border-t border-dashed border-line",
+              "px-[14px] py-[10px] text-[12px] text-muted border-t border-line-faint",
               "官方排期未发布 — 可先用行右侧「详情 ⓘ」关联豆瓣条目;Catalogue 排期公布并引入后,这里会自动出现可定位的场次"
             )
           );
@@ -455,7 +462,14 @@ export function openLibrary(ctx: LibraryCtx): void {
   render();
 }
 
-/* ---- M2.5:智能排片弹层 —— 「影片库」与「我的选片」共用入口(同源 picks,避免两处各写一份) ---- */
+/* ---- M2.5:智能排片弹层 —— 「影片库」与「我的选片」共用入口(同源 picks,避免两处各写一份) ----
+ *  2026-09-10 视觉重排(降噪):
+ *   · 顶部只留一行短标签 + `i` 悬停看完整规则,不再铺一段小字长句;
+ *   · A / B 改分段控件 + **共用一张卡** —— 原先是两张各自完整的卡,「未纳入原因」在 A、B 各印一遍,
+ *     这正是「多条重复文案占满视觉空间」的根因,合并后天然消失;
+ *   · 卡内按日期分组(组头 `10/8 周四` 只出现一次);行内「时间」深色半加粗、「影院」降为第二行次级灰;
+ *   · 分隔靠留白 + hover 底色,不再用虚线把每一行切成一格;
+ *   · 未纳入按 (kind, reason) 合并同类项,每组一张浅色 Card(浅灰 = 等排期,浅红 = 需取舍)。 */
 function openEngineDialog(filmList: FilmNode[], ctx: LibraryCtx): void {
   // 只有「已定档」的片进引擎:未设档位(只点了场次)无法参与质量分,与 SCORE_W 口径一致
   const wanted: EngineFilm[] = [];
@@ -484,100 +498,231 @@ function openEngineDialog(filmList: FilmNode[], ctx: LibraryCtx): void {
   }
   const transitMin = store.settings.transitMin;
   const plans = suggestPlans({ films: wanted, transitMin });
-  box.appendChild(
-    el(
-      "div",
-      "text-[12.5px] text-muted",
-      `基于 ${wanted.length} 部已打标影片:同一天不重叠 + 跨馆缓冲 ${transitMin}min;必看尽量全覆盖(冲突时给牺牲说明),备选按评分/GV 权重填空,随缘不进自动单。`
-    )
-  );
-  const list = el("div", "grid gap-3");
-  for (const plan of plans) list.appendChild(enginePlanBox(plan, ctx));
-  box.appendChild(list);
+  box.appendChild(engineRuleBar(wanted.length, transitMin));
+  if (plans.length === 0) {
+    box.appendChild(el("div", "text-[12.5px] text-muted py-[6px] px-[2px]", "没有可排的场次。"));
+  } else {
+    box.appendChild(enginePlansPanel(plans, ctx));
+  }
   openModal("智能排片 · 建议行程", box, true);
 }
 
-function enginePlanBox(plan: EnginePlan, ctx: LibraryCtx): HTMLElement {
+/** 顶部规则区:一行短标签 + `i` 悬停看完整规则(替代原来 12.5px 未分段的整句) */
+function engineRuleBar(n: number, transitMin: number): HTMLElement {
+  const bar = el("div", "flex items-center gap-[6px] flex-wrap");
+  bar.appendChild(el("span", "text-[12.5px] font-semibold text-ink-2 mr-[2px]", `基于 ${n} 部已打标影片`));
+  const chip = (t: string): HTMLElement =>
+    el(
+      "span",
+      "inline-flex items-center rounded-full border border-line-faint bg-hover px-[8px] py-px text-[11px] text-ink-2 whitespace-nowrap",
+      t
+    );
+  bar.appendChild(chip(transitMin > 0 ? `跨馆缓冲 ${transitMin}min` : "跨馆无缓冲"));
+  bar.appendChild(chip("必看优先覆盖"));
+  bar.appendChild(chip("随缘不自动排"));
+  const info = el(
+    "button",
+    "shrink-0 border border-line rounded-full w-[17px] h-[17px] p-0 text-[10px] font-bold leading-none text-muted bg-card hover:text-ink hover:border-line-strong",
+    "i"
+  );
+  info.dataset.tip = [
+    "智能排片规则",
+    "同一天不重叠 — 两场时间相撞时只保留其一",
+    transitMin > 0
+      ? `跨馆缓冲 ${transitMin}min — 换影院时额外预留的转场时间`
+      : "跨馆缓冲 0min — 当前不留转场余量,换影院直接接场(可在「设置」里调)",
+    "必看优先 — 尽量全覆盖,实在排不下时给出牺牲说明",
+    "备选填空 — 按豆瓣评分 / GV 权重排序补空档",
+    "随缘不排 — 需手动加入行程",
+    "评分只是排序参考 — 不是「好片指数」",
+  ].join("\n");
+  bar.appendChild(info);
+  return bar;
+}
+
+/** A / B 分段控件 + 单张方案卡:切换只重绘卡体 —— 两个方案共用一处「未纳入原因」,不再各印一遍 */
+function enginePlansPanel(plans: EnginePlan[], ctx: LibraryCtx): HTMLElement {
+  const panel = el("div", "grid gap-[10px]");
+  const seg = el("div", "inline-flex border border-line rounded-full overflow-hidden bg-card justify-self-start");
+  const body = el("div", "");
+  const adopted = new Set<string>(); // 已采纳过的方案名(切回来仍显示 ✓,不会重复可点)
+  let cur = 0;
+
+  const render = (): void => {
+    seg.replaceChildren();
+    plans.forEach((plan, i) => {
+      const on = i === cur;
+      const b = el(
+        "button",
+        "border-0 px-[14px] py-[4px] text-[12px] font-bold transition-[background,color] duration-[120ms] ease-in-out " +
+          (on ? "bg-biff text-on-brand" : "bg-card text-muted hover:text-ink") +
+          (i > 0 ? " border-l border-line" : ""),
+        `${plan.name} 方案`
+      );
+      b.title = `查看 ${plan.name} 方案(${plan.picks.length} 场)`;
+      b.addEventListener("click", () => {
+        if (cur === i) return;
+        cur = i;
+        render();
+      });
+      seg.appendChild(b);
+    });
+    body.replaceChildren(enginePlanBox(plans[cur], ctx, adopted, render));
+  };
+
+  panel.append(seg, body);
+  render();
+  return panel;
+}
+
+function enginePlanBox(
+  plan: EnginePlan,
+  ctx: LibraryCtx,
+  adopted: Set<string>,
+  refresh: () => void
+): HTMLElement {
   const s = plan.stats;
-  const box = el("div", "border border-line rounded-[10px] px-3 py-[10px] bg-card");
-  const head = el("div", "flex items-center gap-[10px] flex-wrap mb-[6px]");
-  const badgeCls =
-    plan.name === "A"
-      ? "text-[12px] font-extrabold text-on-brand rounded-[5px] px-2 py-[2px] bg-biff"
-      : "text-[12px] font-extrabold text-on-brand rounded-[5px] px-2 py-[2px] bg-ink";
-  head.appendChild(el("span", badgeCls, `${plan.name} 方案`));
-  // P0-2:评分徽章(must×3/maybe×2 + GV+1 − 紧转场×1;hover 看分项)
+  // 极浅实线描边(替代原来的灰实框 + 行间虚线):靠留白与 hover 底色分组,不把每行切成一格
+  const box = el("div", "border border-line-faint rounded-[12px] bg-card overflow-hidden");
+
+  /* 头:统计 + 评分 + 采纳(方案名已由上方分段控件表达,这里不重复占位) */
+  const head = el("div", "flex items-center gap-[10px] flex-wrap px-3 py-[10px] bg-hover");
+  head.appendChild(
+    el(
+      "div",
+      "text-[12px] text-ink-2 flex-1 min-w-0",
+      `必看 ${s.mustIn}/${s.must} · 备选 ${s.maybeIn}/${s.maybe}${s.wild ? ` · 随缘 ${s.wild}(不自动排)` : ""}`
+    )
+  );
   if (plan.score) {
     const p = plan.score.parts;
     const chip = el(
       "span",
-      "inline-flex items-center border border-line rounded-full bg-card py-px px-[9px] text-[12px] font-extrabold tabular-nums text-ink whitespace-nowrap cursor-default hover:border-biff hover:text-biff",
+      "inline-flex items-center border border-line rounded-full bg-card py-px px-[9px] text-[12px] font-extrabold tabular-nums text-ink whitespace-nowrap cursor-help hover:border-biff hover:text-biff",
       `评分 ${plan.score.total}`
     );
-    chip.title =
-      `必看 ${p.must.in}/${p.must.total}(+${p.must.pts}) · 备选 ${p.maybe.in}/${p.maybe.total}(+${p.maybe.pts})` +
-      (p.wild.total ? ` · 随缘 ${p.wild.in}/${p.wild.total}(+${p.wild.pts})` : "") +
-      (p.gv.total ? ` · GV ${p.gv.in}/${p.gv.total}(+${p.gv.pts})` : "") +
-      (p.tight.count ? ` · 紧转场 ${p.tight.count}(${p.tight.pts})` : "") +
-      ` = ${plan.score.total}`;
+    const lines = [
+      `评分 ${plan.score.total}`,
+      `必看 ${p.must.in}/${p.must.total} — +${p.must.pts}`,
+      `备选 ${p.maybe.in}/${p.maybe.total} — +${p.maybe.pts}`,
+    ];
+    if (p.wild.total) lines.push(`随缘 ${p.wild.in}/${p.wild.total} — +${p.wild.pts}`);
+    if (p.gv.total) lines.push(`GV ${p.gv.in}/${p.gv.total} — +${p.gv.pts}`);
+    if (p.tight.count) lines.push(`紧转场 ${p.tight.count} — ${p.tight.pts}`);
+    lines.push("档位权重 — 必看×3 / 备选×2 / 随缘×1");
+    chip.dataset.tip = lines.join("\n");
     head.appendChild(chip);
   }
-  head.appendChild(
-    el(
-      "span",
-      "text-[12px] text-muted flex-1 min-w-0",
-      `必看 ${s.mustIn}/${s.must} · 备选 ${s.maybeIn}/${s.maybe}${s.wild ? ` · 随缘 ${s.wild}(不自动排)` : ""}`
-    )
-  );
+  const done = adopted.has(plan.name);
   const adopt = el(
     "button",
-    "border-0 rounded-[6px] px-[10px] py-1 text-[12px] font-bold text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05]",
-    `采纳为 ${plan.name} 方案`
+    "border-0 rounded-[7px] px-[12px] py-[5px] text-[12px] font-bold whitespace-nowrap " +
+      (done
+        ? "text-muted bg-raised cursor-default"
+        : "text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05]"),
+    done ? `✓ 已采纳为 ${plan.name} 方案` : `采纳为 ${plan.name} 方案`
   );
-  adopt.addEventListener("click", () => adoptPlan(plan, adopt, ctx));
+  if (done) adopt.disabled = true;
+  else adopt.addEventListener("click", () => adoptPlan(plan, ctx, adopted, refresh));
   head.appendChild(adopt);
   box.appendChild(head);
 
-  if (plan.picks.length === 0) box.appendChild(el("div", "text-[12.5px] text-muted py-[6px] px-[2px]", "该方案无可用场次(见下方未纳入原因)"));
-  const rows = el("div", "grid gap-px max-h-[300px] overflow-y-auto");
-  for (const p of plan.picks) rows.appendChild(enginePickRow(p));
-  box.appendChild(rows);
-
-  if (plan.unscheduled.length) {
-    const drop = el("div", "mt-[6px] border-t border-dashed border-line pt-2 grid gap-[3px]");
-    drop.appendChild(el("div", "text-[11px] font-bold text-muted", "未纳入与原因"));
-    for (const d of plan.unscheduled) {
-      const line = el("div", "text-[12px] flex gap-[6px] items-baseline text-muted");
-      line.append(
-        el("span", `text-[10.5px] font-extrabold ${PRI_TEXT[d.priority]}`, PRI_LABEL[d.priority]),
-        el("span", "", `${d.zh} — ${d.reason}`)
-      );
-      drop.appendChild(line);
-    }
-    box.appendChild(drop);
+  /* 主体:按日期分组 —— 组头只出现一次,行内不再重复日期 */
+  const list = el("div", "px-2 py-1 max-h-[320px] overflow-y-auto");
+  if (plan.picks.length === 0) {
+    list.appendChild(el("div", "text-[12.5px] text-muted py-[10px] px-2", "该方案无可用场次(见下方未纳入原因)"));
   }
+  for (const [date, picks] of groupByDate(plan.picks)) {
+    const { label, weekday } = dateInfo(date);
+    list.appendChild(el("div", "text-[11px] font-bold text-meta pt-[9px] pb-[2px] px-2", `${label} ${weekday}`));
+    for (const p of picks) list.appendChild(enginePickRow(p, ctx));
+  }
+  box.appendChild(list);
+
+  const drops = engineDropSection(plan.unscheduled);
+  if (drops) box.appendChild(drops);
   return box;
 }
 
-function enginePickRow(p: EnginePick): HTMLElement {
-  const row = el("div", "flex gap-2 items-center border-b border-dashed border-line-faint py-[5px] px-[2px]");
-  const { label, weekday } = dateInfo(p.show.date);
-  const main = el("div", "min-w-0");
-  const t = el("div", "flex items-center gap-2 text-[13px] font-semibold flex-wrap");
-  t.append(
-    el("span", "font-extrabold text-[10.5px] text-on-brand bg-ink rounded px-1 py-px", p.show.code),
-    el("span", "", p.zh),
-    el("span", `text-[10.5px] font-extrabold ${PRI_TEXT[p.priority]}`, PRI_LABEL[p.priority])
+/** 按日期切段(plan.picks 已按 日期 → 开始时间 排序,相邻归并即可) */
+function groupByDate(picks: EnginePick[]): [string, EnginePick[]][] {
+  const out: [string, EnginePick[]][] = [];
+  for (const p of picks) {
+    const last = out[out.length - 1];
+    if (last && last[0] === p.show.date) last[1].push(p);
+    else out.push([p.show.date, [p]]);
+  }
+  return out;
+}
+
+/** 未纳入与原因 —— 同因合并成一张浅色 Card(浅灰 = 等排期,浅红 = 需取舍),不再一条一行地刷屏 */
+function engineDropSection(drops: EngineDrop[]): HTMLElement | null {
+  if (!drops.length) return null;
+  const wrap = el("div", "border-t border-line-faint px-3 py-[10px] grid gap-[8px]");
+  wrap.appendChild(el("div", "text-[11px] font-bold text-meta", `未纳入 ${drops.length} 部`));
+
+  const groups = new Map<string, EngineDrop[]>();
+  for (const d of drops) {
+    const k = `${d.kind}\u0000${d.reason}`; // kind + reason 同时相同才合并
+    const arr = groups.get(k);
+    if (arr) arr.push(d);
+    else groups.set(k, [d]);
+  }
+  for (const arr of groups.values()) {
+    const soft = arr[0].kind === "noshow"; // 等官方排期 = 中性信息;其余 = 需要取舍
+    const card = el("div", `rounded-[8px] px-3 py-[9px] grid gap-[7px] ${soft ? "bg-hover" : "bg-biff-soft"}`);
+    const labelCls = soft ? "text-meta" : "text-biff";
+    const head = el("div", "flex items-baseline gap-[7px] flex-wrap");
+    head.append(
+      el("span", `text-[11px] font-extrabold whitespace-nowrap ${labelCls}`, DROP_LABEL[arr[0].kind]),
+      el("span", `text-[11px] font-bold whitespace-nowrap ${labelCls}`, `${arr.length} 部`),
+      el("span", "text-[11.5px] text-ink-2 min-w-0", arr[0].reason)
+    );
+    card.appendChild(head);
+    const chips = el("div", "flex flex-wrap gap-[6px]");
+    for (const d of arr) {
+      const c = el(
+        "span",
+        "inline-flex items-center gap-[5px] min-w-0 max-w-full rounded-[6px] bg-card border border-line-faint px-[7px] py-[3px]"
+      );
+      c.append(priTag(d.priority), el("span", "text-[12px] text-ink truncate", d.zh));
+      chips.appendChild(c);
+    }
+    card.appendChild(chips);
+    wrap.appendChild(card);
+  }
+  return wrap;
+}
+
+/** 一场建议:左列「时间」深色半加粗(扫日程用),右列片名 + 档位 Tag + code / 影院(次级灰,第二行)。
+ *  整行可点 → 跳到该场在时间轴上的位置(与影片库场次行同一个出口)。 */
+function enginePickRow(p: EnginePick, ctx: LibraryCtx): HTMLElement {
+  const row = el(
+    "div",
+    "grid grid-cols-[84px_minmax(0,1fr)] gap-[10px] items-start px-2 py-[7px] rounded-[7px] cursor-pointer hover:bg-hover"
   );
-  main.appendChild(t);
-  main.appendChild(
-    el("div", "text-[11.5px] text-muted", `${label} ${weekday} ${p.show.start_time}–${p.show.end_time} · ${p.show.venue_display}`)
+  row.title = "跳到该场在时间轴上的位置";
+  row.appendChild(
+    el(
+      "div",
+      "tabular-nums whitespace-nowrap text-[12.5px] font-semibold text-ink pt-px",
+      `${p.show.start_time}–${p.show.end_time}`
+    )
   );
+  const main = el("div", "min-w-0 grid gap-[2px]");
+  const top = el("div", "flex items-center gap-[6px] min-w-0");
+  top.append(
+    el("span", "text-[13px] font-semibold text-ink truncate", p.zh),
+    priTag(p.priority, "shrink-0"),
+    el("span", "ml-auto shrink-0 tabular-nums text-[10.5px] font-bold text-faint", p.show.code)
+  );
+  main.append(top, el("div", "text-[11.5px] text-meta truncate", p.show.venue_display));
   row.appendChild(main);
+  row.addEventListener("click", () => ctx.onLocate(p.code));
   return row;
 }
 
-function adoptPlan(plan: EnginePlan, btn: HTMLButtonElement, ctx: LibraryCtx): void {
+function adoptPlan(plan: EnginePlan, ctx: LibraryCtx, adopted: Set<string>, refresh: () => void): void {
   const g = plan.name as Group;
   const existing = [...ctx.slots.values()].filter((s) => s.group === g).length;
   if (existing > 0 && !window.confirm(`将覆盖 ${g} 方案现有 ${existing} 场(建议 ${plan.picks.length} 场),继续?`)) return;
@@ -586,8 +731,8 @@ function adoptPlan(plan: EnginePlan, btn: HTMLButtonElement, ctx: LibraryCtx): v
     plan.picks.map((p) => ({ key: p.filmKey, code: p.code, priority: p.priority }))
   );
   if (store.group !== g) setCurrentGroup(g);
-  btn.textContent = `✓ 已采纳为 ${g} 方案`;
-  btn.disabled = true;
+  adopted.add(plan.name);
+  refresh();
 }
 
 /* ---- 「我的选片」总览 —— 唯一数据源(store.picks)的**按片视图** ----
@@ -819,7 +964,7 @@ export function openMyPicks(ctx: LibraryCtx): void {
       item.appendChild(
         el(
           "div",
-          "px-3 py-[7px] text-[11.5px] text-muted border-t border-dashed border-line",
+          "px-3 py-[7px] text-[11.5px] text-muted border-t border-line-faint",
           `还没排场 — 这部片有 ${n.shows.length} 场可选,去「影片库」或时间轴点选场次,选完这里就会出现(选片意向已保留)`
         )
       );

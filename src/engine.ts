@@ -23,10 +23,21 @@ export interface EnginePick {
   show: Screening;
 }
 
+/** 未纳入的三类原因 —— UI 按 kind 选色、按 reason 文案合并同类项(见 library.ts) */
+export type DropKind = "noshow" | "blocked" | "unpicked";
+
+/** 三类原因的分类标签(UI 侧统一取用,勿在视图里各写一份) */
+export const DROP_LABEL: Record<DropKind, string> = {
+  noshow: "暂无排期",
+  blocked: "时段冲突",
+  unpicked: "权重未命中",
+};
+
 export interface EngineDrop {
   filmKey: string;
   zh: string;
   priority: Priority;
+  kind: DropKind;
   reason: string;
 }
 
@@ -181,16 +192,18 @@ function maybeWeight(film: EngineFilm): number {
   return (film.rating ?? 0) * 2 + (film.shows.some((s) => s.is_gv) ? 1 : 0);
 }
 
-/** 未纳入理由:暂无排期 / 时段被占用(去重列出至多 3 个) */
-function describeDrop(film: EngineFilm, chosen: Placed[], transitMin: number): string {
-  if (film.shows.length === 0) return "暂无排期(等 9/11 官方排期后自动可排)";
+/** 未纳入理由(kind = 分类标签,reason = 该类的补充说明)。
+ *  reason 只写「差异部分」—— 类别名由 DROP_LABEL 出,弹层按 (kind, reason) 合并同类项成一张卡,
+ *  同因多片只印一次(旧版把「暂无排期(等 9/11 官方排期后自动可排)」逐条重印,占满版面)。 */
+function describeDrop(film: EngineFilm, chosen: Placed[], transitMin: number): { kind: DropKind; reason: string } {
+  if (film.shows.length === 0) return { kind: "noshow", reason: "预计 9/11 排期发布后可自动排" };
   const blocked = new Set<string>();
   for (const sh of film.shows) {
     for (const b of blockersOf(sh, chosen, transitMin)) blocked.add(b);
   }
   return blocked.size
-    ? `候选场次时段与已排重叠:${[...blocked].slice(0, 3).join("、")}`
-    : "未纳入(备选权重排序未命中,可手动加入)";
+    ? { kind: "blocked", reason: `与 ${[...blocked].slice(0, 3).join("、")} 时段重叠` }
+    : { kind: "unpicked", reason: "备选权重排序未命中,可手动加入" };
 }
 
 /** must 全覆盖 DFS:收集全部可行解,取「场次数最多、其次总结束最早」的前两个不同解(A/B) */
@@ -291,7 +304,12 @@ export function suggestPlans(input: EngineInput): EnginePlan[] {
     for (const f of films) {
       if (f.priority === "wild") continue; // 随缘不进自动单,也不提示
       if (inPlan.has(f.key)) continue;
-      drops.push({ filmKey: f.key, zh: f.zh, priority: f.priority, reason: describeDrop(f, plan.picks.map((p) => ({ filmKey: p.filmKey, zh: p.zh, priority: p.priority, show: p.show })), transitMin) });
+      const d = describeDrop(
+        f,
+        plan.picks.map((p) => ({ filmKey: p.filmKey, zh: p.zh, priority: p.priority, show: p.show })),
+        transitMin
+      );
+      drops.push({ filmKey: f.key, zh: f.zh, priority: f.priority, kind: d.kind, reason: d.reason });
     }
     plan.unscheduled = drops;
   }

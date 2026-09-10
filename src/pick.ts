@@ -32,12 +32,33 @@ export const PRI_DOT_BG: Record<Priority, string> = {
   wild: "bg-pri-wild",
 };
 
-/** 档位文字色(评分分项 / 未纳入原因等小字)完整字面量 */
+/** 档位纯文字色 —— 只给「不足以放一枚 Tag」的极小字用(如评分分项说明)。
+ *  常规场景请用 priTag():档位以统一微圆角 Tag 呈现,别再以纯文本混进标题里。 */
 export const PRI_TEXT: Record<Priority, string> = {
   must: "text-pri-must",
   maybe: "text-pri-maybe",
   wild: "text-pri-wild",
 };
+
+/** 档位 Tag 配色 —— 统一微圆角标签(浅底 + 同族深字)。
+ *  浅底走 --pri-*-soft token:与红绿灯底色(红/黄/绿)整族错开,落在任何底色上都不撞。 */
+export const PRI_TAG: Record<Priority, string> = {
+  must: "bg-pri-must-soft text-pri-must",
+  maybe: "bg-pri-maybe-soft text-pri-maybe",
+  wild: "bg-pri-wild-soft text-pri-wild",
+};
+
+/** 统一档位 Tag(必看 / 备选 / 随缘)—— 建议行程、未纳入原因、行程行等处共用同一枚。
+ *  之前各处把档位写成 `text-pri-*` 纯文本混在标题里,视觉上不成体系,故收口到这里。 */
+export function priTag(p: Priority, extraCls?: string): HTMLElement {
+  return el(
+    "span",
+    "inline-flex items-center rounded-[5px] px-[6px] py-px text-[10.5px] font-bold leading-[1.5] whitespace-nowrap " +
+      PRI_TAG[p] +
+      (extraCls ? " " + extraCls : ""),
+    PRI_LABEL[p]
+  );
+}
 
 export interface WishSegOpts {
   /** 当前档位;undefined = 未打标 */
