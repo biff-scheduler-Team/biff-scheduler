@@ -431,6 +431,13 @@ export function setSettings(patch: Partial<Settings>): void {
   notify();
 }
 
+/** 甘特缩放倍率:只落盘、**不 notify** —— 缩放只影响网格,让 renderAll 重建行程/角标是白干,
+ *  且重建时机由调用方掌握(要先按旧刻度算好锚点再改倍率)。重绘由 main 侧自己调 renderGrid()。 */
+export function setZoom(z: number): void {
+  store.settings = { ...store.settings, zoom: z };
+  saveSettingsLocal();
+}
+
 function saveSettingsLocal(): void {
   try {
     localStorage.setItem(LS_SETTINGS, JSON.stringify(store.settings));

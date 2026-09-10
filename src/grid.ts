@@ -10,18 +10,58 @@ import { appendMetaRow, durChip, venueTip } from "./legend";
 import { PRI_DOT_BG, PRI_LABEL } from "./pick";
 
 export const ROW_H = 92;
-const LABEL_W = 148; // 粘性影厅列宽(沿用旧值,不动)
+export const LABEL_W = 148; // 粘性影厅列宽(沿用旧值,不动;ROW_BASE_CLS 里的 148px 必须与它同值)
 const TRAIL_PAD = 60; // A3:末 tick 右侧 +60px 安全边距(标签半宽 + 呼吸),两端标签永不悬出/被裁
-const PX_PER_MIN = 3.0; // D1+再加长:时间刻度固定 3.0px/min(每小时 180px;1.5h≈270px;2h≈360px)。
-// 横向更舒展 → 6 chip 徽章行单行排开、短场次(60–95min)不再因行宽不足换行或降级时间;
-// 各日期比例一致 → 常规视口必然横向溢出 → 滚动条 + 拖拽平移常态化浏览(沿用 D3)。
+export const PX_PER_MIN = 3.0; // 100% 基准刻度(每小时 180px;1.5h≈270px;2h≈360px)
+// 横向更舒展 → 6 chip 徽章行单行排开、短场次(60–95min)不再因行宽不足换行或降级时间。
+// 缩放(2026-09-10 加)在此基础上乘倍率:小倍率「整天一眼看完」,大倍率「单场细节 + 更密刻度」;
+// 实际刻度一律由 main 侧算好经 GridCtx.pxPerMin 传入 —— grid 内部不再持有刻度常量。
 const AXIS_FALLBACK = { start: 9 * 60, end: 23 * 60 }; // A1:当日无排片时的时间轴兜底窗口
 const AXIS_LEAD_MIN = 30; // A1:首场开映前保留的呼吸时间(轴起点对齐到整点)
 const CARD_INSET_Y = 2; // 卡片上下留白(满高泳道:6 → 2px,几乎顶满行;行与行靠 border-line-soft 分隔线区分)
 
+/* ---------------- 时间轴缩放(倍率阶梯 / 适应宽度 / 轴界) ---------------- */
+/** 缩放阶梯(×PX_PER_MIN):0.35≈63px/h(整天一眼)…1=180px/h…3=540px/h(单场细节)。
+ *  刻意离散:每档都落在「好读」的刻度上,连续缩放只会让卡片时间文本在截断/恢复之间反复抖。 */
+export const ZOOM_LEVELS: number[] = [0.35, 0.5, 0.7, 1, 1.4, 2, 3];
+export const ZOOM_MIN = ZOOM_LEVELS[0];
+export const ZOOM_MAX = ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
+
+export function clampZoom(z: number): number {
+  if (!Number.isFinite(z)) return 1;
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+}
+
+/** 沿阶梯走一档:严格大于当前倍率的最小档(放大)/ 严格小于的最大档(缩小)。
+ *  不先吸附再位移 —— 「适应」算出的是档间连续值(如 0.43),吸附会让 +/− 跳过相邻档。 */
+export function stepZoom(z: number, dir: 1 | -1): number {
+  if (dir === 1) {
+    const up = ZOOM_LEVELS.find((l) => l > z + 1e-6);
+    return up ?? ZOOM_MAX;
+  }
+  const idx = ZOOM_LEVELS.findIndex((l) => l >= z - 1e-6);
+  return idx <= 0 ? ZOOM_MIN : ZOOM_LEVELS[idx - 1];
+}
+
+/** 适应宽度:把当天整条轴塞进可用宽度 → 返回连续倍率(已钳制)。
+ *  可用轨道宽 = 容器宽 − 粘性影厅列 − 右端 TRAIL_PAD(末 tick 标签不被裁)。 */
+export function fitZoom(cat: Catalog, date: string, availW: number): number {
+  const axis = axisRangeFor(cat, date);
+  const axisMin = Math.max(axis.end - axis.start, 60);
+  const trackAvail = Math.max(availW - LABEL_W - TRAIL_PAD, 240);
+  return clampZoom(trackAvail / (axisMin * PX_PER_MIN));
+}
+
+/** 当日时间轴起点分钟 —— 轨道内 x = LABEL_W 处即该时刻(供 main 侧换算缩放锚点) */
+export function axisStartFor(cat: Catalog, date: string): number {
+  return axisRangeFor(cat, date).start;
+}
+
 /** 冲突 / 紧转场 / 已选 的红绿灯底色:优先级不参与网格染色(见行程行 seg),故无 p-* 类映射。 */
 export interface GridCtx {
   cat: Catalog;
+  /** 时间轴刻度(px/min)= PX_PER_MIN × 缩放倍率。由 main 侧算好传入 —— 缩放是视图偏好,grid 只负责画 */
+  pxPerMin: number;
   /** 已选场次投影:code → { 影片 key, 方案 }。判「已选 / 在哪个方案」全走它(唯一数据源) */
   slots: Map<string, { key: string; group: Group }>;
   group: Group;
@@ -73,13 +113,15 @@ function titleFor(s: Screening, map: Mapping | undefined): string {
 const LABEL_BOX_CLS =
   "sticky left-0 z-[3] bg-page border-r border-line px-[10px] py-[6px] flex flex-col justify-center min-h-[28px]";
 
+// ⚠ 这里的 148px 必须与 LABEL_W 同值 —— Tailwind v4 只生成源码里的完整字面量类,不能拼 `grid-cols-[${LABEL_W}px]`;
+//   main 侧的缩放锚点换算依赖「轨道起点 = 影厅列宽 = LABEL_W」。
 const ROW_BASE_CLS = "grid grid-cols-[148px_1fr]";
 
 export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
   const rows = screeningsByVenue(ctx.cat, date);
   const axis = axisRangeFor(ctx.cat, date); // A1:当日动态轴(最早开映→最晚散场,整点对齐)
   const axisMin = axis.end - axis.start;
-  const pxPerMin = PX_PER_MIN; // D1:固定刻度,不再按视口压缩(各日期比例一致)
+  const pxPerMin = ctx.pxPerMin; // 缩放后的刻度(100% = PX_PER_MIN);由 main 侧随 GridCtx 传入
   const trackW = axisMin * pxPerMin;
   const totalW = LABEL_W + trackW + TRAIL_PAD;
   const nowPx = todayIsoLocal() === date ? nowPxFor(axis, pxPerMin) : null;
@@ -128,10 +170,21 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
     tracks.style.height = `${ROW_H}px`;
     const hourPx = 60 * pxPerMin;
     const halfPx = 30 * pxPerMin;
-    // A2 甘特列感:整点竖线 ink 10%、半点竖线 ink 4%,贯穿整行(卡片浮于线上);与标尺整点刻度同 x 对齐
+    // A2 甘特列感:整点竖线 ink 10%、半点竖线 ink 4%,贯穿整行(卡片浮于线上);与标尺整点刻度同 x 对齐。
+    // 放大后(hourPx ≥ 300)再叠一层刻钟竖线 ink 2.5% —— 高倍下半小时间距近 100px,不给细刻度就只剩空挡。
+    // 层序:先写的在上层,故 hour → half → quarter 依次降权。
     const hourLine = "color-mix(in srgb, var(--color-ink) 10%, transparent)";
     const halfLine = "color-mix(in srgb, var(--color-ink) 4%, transparent)";
-    tracks.style.backgroundImage = `repeating-linear-gradient(90deg, transparent 0 ${hourPx - 1}px, ${hourLine} ${hourPx - 1}px ${hourPx}px), repeating-linear-gradient(90deg, transparent 0 ${halfPx - 1}px, ${halfLine} ${halfPx - 1}px ${halfPx}px)`;
+    const grads = [
+      `repeating-linear-gradient(90deg, transparent 0 ${hourPx - 1}px, ${hourLine} ${hourPx - 1}px ${hourPx}px)`,
+      `repeating-linear-gradient(90deg, transparent 0 ${halfPx - 1}px, ${halfLine} ${halfPx - 1}px ${halfPx}px)`,
+    ];
+    if (hourPx >= 300) {
+      const q = 15 * pxPerMin;
+      const qLine = "color-mix(in srgb, var(--color-ink) 2.5%, transparent)";
+      grads.push(`repeating-linear-gradient(90deg, transparent 0 ${q - 1}px, ${qLine} ${q - 1}px ${q}px)`);
+    }
+    tracks.style.backgroundImage = grads.join(", ");
 
     for (const s of list) {
       const { card, talkEl } = appendCard(tracks, s, ctx, pxPerMin, axis.start);
@@ -160,8 +213,17 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
   return scroll;
 }
 
+/** 分钟 → 标尺标签。**24+ 时制**:h ≥ 24 加「次日」前缀,小时折回 24h 内显示(1440 → "次日 00:00")。
+ *  整点标签与缩放后补的半点/刻钟标签共用它 —— 一处口径,跨午夜轴不会两种写法。 */
+function clockLabel(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${h >= 24 ? "次日 " : ""}${String(h % 24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 /** 标尺刻度区:整点标签(A1 加粗表格数字、可点=时间筛选)+ 整点 +6px 短刻度线 + 「现在」线/角标。
- *  A3:首根整点标签左锚定(不居中,左半永不越界);末 tick 之后容器留有 TRAIL_PAD 右侧安全边距。 */
+ *  A3:首根整点标签左锚定(不居中,左半永不越界);末 tick 之后容器留有 TRAIL_PAD 右侧安全边距。
+ *  缩放:整点间距随刻度拉开 → 放大后补半点 / 刻钟标签(标尺行同时加高一行),否则 3.0× 时一屏只剩一个标签。 */
 function buildRulerTicks(
   ctx: GridCtx,
   axis: { start: number; end: number },
@@ -169,7 +231,10 @@ function buildRulerTicks(
   trackW: number,
   nowPx: number | null
 ): HTMLElement {
-  const ticks = el("div", "relative");
+  const hourPx = 60 * pxPerMin;
+  // 细刻度步长:≥240px/小时 → 半点;≥480px/小时 → 刻钟。0 = 不补(100% 及以下,原样)
+  const subStep = hourPx >= 480 ? 15 : hourPx >= 240 ? 30 : 0;
+  const ticks = el("div", `relative ${subStep ? "min-h-[44px]" : "min-h-[28px]"}`);
   ticks.style.width = `${trackW + TRAIL_PAD}px`;
   const h0 = axis.start / 60;
   const h1 = axis.end / 60;
@@ -180,13 +245,23 @@ function buildRulerTicks(
     dayLine.dataset.tip = "跨午夜分界 —— 右侧为次日凌晨";
     ticks.appendChild(dayLine);
   }
+  // 细刻度标签(半点 / 刻钟):贴标尺下沿、比整点小一档灰一档;整点位置由主标签占据,故跳过整点
+  if (subStep) {
+    const subCls = "absolute bottom-[7px] -translate-x-1/2 pointer-events-none tabular-nums text-[9.5px] text-muted";
+    for (let m = axis.start + subStep; m < axis.end; m += subStep) {
+      if (m % 60 === 0) continue;
+      const sub = el("span", subCls, clockLabel(m));
+      sub.style.left = `${(m - axis.start) * pxPerMin}px`;
+      ticks.appendChild(sub);
+    }
+  }
   for (let h = h0; h <= h1; h++) {
     const x = (h * 60 - axis.start) * pxPerMin;
     const isFirst = h === h0; // A3:首根左锚定,不 -translate-x-1/2
     const on = ctx.hourFilter === h;
     // 24+ 时制:整点标签取模 24(24:00 → "00:00"),h ≥ 24 一律加「次日」前缀
-    const label = `${h >= 24 ? "次日 " : ""}${String(h % 24).padStart(2, "0")}:00`;
-    const nextLabel = `${h + 1 >= 24 ? "次日 " : ""}${String((h + 1) % 24).padStart(2, "0")}:00`;
+    const label = clockLabel(h * 60);
+    const nextLabel = clockLabel((h + 1) * 60);
     const b = el(
       "button",
       "absolute top-[1px] border-0 bg-transparent px-[5px] py-[1px] tabular-nums text-[10.5px] font-bold rounded-[4px] transition-colors cursor-pointer " +

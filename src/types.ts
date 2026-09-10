@@ -128,6 +128,8 @@ export interface Settings {
   /** GV 映后谈默认时长(分钟)。**单场覆写 `store.gvTalkMinOv[code]` 优先**,缺省用本值;默认 25。
    *  仅 `is_gv` 场次生效;0 = 不拆映后段。口径见 `gv.ts` 文件头(时长可配置,不再从数据推导)。 */
   gvTalkMin: number;
+  /** 甘特时间轴缩放倍率(1 = 100%,基准 3.0px/min)。视图偏好:随设置持久化,但不出现在设置弹层。 */
+  zoom?: number;
 }
 
 export interface Catalog {

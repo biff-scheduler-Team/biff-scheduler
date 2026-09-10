@@ -40,7 +40,11 @@
       <div id="date-chips" class="flex gap-[6px] flex-wrap mb-[10px]" data-page-node-id="laZc2XY6YE1UCNZfyxjzDd"></div>
       <div class="flex items-baseline justify-between mb-[10px] gap-2 flex-wrap" data-page-node-id="PqNAkzpjzbBJlBwKEjdAsA">
         <h2 id="grid-date-title" class="m-0 text-[15px] inline-flex items-center gap-2 tracking-[0.01em] before:content-[''] before:w-[9px] before:h-[9px] before:border-[2.5px] before:border-biff before:rounded-[2px] before:box-border" data-page-node-id="kVKn3UBCFUzWJU8RoDz9sY"></h2>
-        <span id="grid-count" class="text-muted text-[13px] font-normal" data-page-node-id="0uH3GMPDbJxAhH6NhgVuDc"></span>
+        <div class="flex items-center gap-[10px] flex-wrap ml-auto" data-page-node-id="kBcNFUpgEoVRTM8QgnhJcf">
+          <span id="grid-count" class="text-muted text-[13px] font-normal" data-page-node-id="0uH3GMPDbJxAhH6NhgVuDc"></span>
+          <!-- 甘特缩放:按钮由 main.ts::renderZoomCtl 渲染(需反映当前倍率与两端置灰);提示在各按钮上 -->
+          <div id="zoom-ctl" class="inline-flex items-center border border-line rounded-[7px] overflow-hidden bg-card" data-page-node-id="TnRQgEJKvWoU8mZAxdPbcH"></div>
+        </div>
       </div>
       <div id="grid-scroll" data-page-node-id="5FkgLrGnq0fDbM1jPTN9XE"></div>
       <!-- 图例悬停说明:data-tip 用 &#10; 分行 —— 第 1 行作标题,其余逐条分点(渲染见 src/tip.ts) -->

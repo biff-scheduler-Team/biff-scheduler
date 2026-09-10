@@ -113,6 +113,16 @@
   「JS 运行时打上的状态类」要覆盖元素自身 `hover:` 工具类,声明必须带 `!important`(本仓库 `hl-card`/`hl-row` 的
   `border-color`/`box-shadow`/`z-index` 已统一如此)。踩坑:正片卡自带 `hover:shadow-[var(--shadow-hover)] hover:z-[2]`
   → 吃掉 `hl-card` 外晕,表现为联动「单向亮」。排查:先确认 JS 侧打的类对称,再查 CSS 权重。
+- **甘特缩放(2026-09-10)**:
+  - 刻度 = `PX_PER_MIN × store.settings.zoom`(默认 1 = 100%);倍率离散阶梯
+    `[0.35, 0.5, 0.7, 1, 1.4, 2, 3]`,沿阶梯走用 `grid.ts::stepZoom`。
+  - `PX_PER_MIN` / `LABEL_W` 是 grid 内部刻度 / 粘性列宽常量;`ROW_BASE_CLS` 里的字面量 `148px` 必须与
+    `LABEL_W` 同值(Tailwind v4 不能拼类名)。`main.ts` 的缩放锚点换算依赖
+    `轴起点 = axisStartFor(cat, date)`,`轨道内 x = LABEL_W`,这两个由 grid.ts 单一来源导出。
+  - 网格每次重建都换新滚动容器,**缩放锚点按「旧刻度算 + 新刻度回写」换算**(`pendingAnchor`),
+    不能沿用旧 `scrollLeft` —— 同一日期内换刻度会跳。切日期 / 首渲 anchor=null → 回最左。
+  - 缩放写 `store.settings.zoom` 走 `state.ts::setZoom`(只落盘、**不 notify**)——
+    缩放只影响网格,让 renderAll 重建行程/角标是白干;且必须先算锚点再改倍率。
 
 ## 五、基础设施 / 工具
 

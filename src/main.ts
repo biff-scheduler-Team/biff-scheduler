@@ -23,13 +23,14 @@ import {
   setGvTalkMin,
   setPriorityOfCode,
   setSettings,
+  setZoom,
   slotOf,
   store,
   subscribe,
   syncFromCloud,
   toggleScreening,
 } from "./state";
-import { buildGrid, fitTimeTexts } from "./grid";
+import { buildGrid, fitTimeTexts, fitZoom, axisStartFor, clampZoom, stepZoom, LABEL_W, PX_PER_MIN, ZOOM_MAX, ZOOM_MIN } from "./grid";
 import { buildAgenda } from "./agenda";
 import { abbrTooltip } from "./badges";
 import { attachTip } from "./tip";
@@ -43,10 +44,14 @@ let currentDate = "";
 let conflicts = new Map<string, ConflictResult>();
 /** 甘特时间筛选:点击时间轴整点置为对应小时;null = 不过滤(切日期/再点/重置均清除) */
 let hourFilter: number | null = null;
-/** 甘特横向平移记忆:网格每次重建都换新滚动容器(scrollLeft 会归零)——
- *  同一日期内的重建(选片/优先级/分钟推进…)恢复上次平移位置;换日期/首渲不恢复(回最左)。 */
+/** 甘特缩放倍率(1 = 100% = PX_PER_MIN):视图偏好,持久化在 store.settings.zoom */
+let zoom = 1;
+/** 网格横向视口记忆:锚点 = 容器内某个屏幕 x(相对容器左缘)对应的时刻。
+ *  网格每次重建都换新滚动容器(scrollLeft 会归零)—— 同日期重建(选片/优先级/分钟推进/缩放)
+ *  把锚点时刻重新对回原 x(缩放前后视口不跳);换日期/首渲不恢复(回最左)。
+ *  缩放时由 applyZoom 按**旧刻度**预先算好挂在这里(renderGrid 里那时刻度已经变了)。 */
+let pendingAnchor: { min: number; screenX: number } | null = null;
 let lastGridDate = "";
-let lastGridLeft = 0;
 
 /** code → 影片节点 key(全站单一 key 口径:grid / agenda / 影片库 / 详情弹层同源);
  *  排期里已没有该 code(数据换版)时返回 null。 */
@@ -120,6 +125,7 @@ function renderAll(): void {
   renderBadge();
   renderSync();
   renderPicksBadge();
+  renderZoomCtl();
 }
 
 /** 日期 chip 类名(idle / 选中 — 背景/边框色 走 IDLE/ON 各自完整串,避免同类叠加后写者赢) */
@@ -153,15 +159,82 @@ function renderGroupSeg(): void {
   });
 }
 
+/* ---------------- 甘特缩放 ---------------- */
+
+/** 视口锚点:容器内屏幕 x(clientX 缺省 = 视口中心)对应的时刻。
+ *  轨道在容器内从 x = LABEL_W 起算(左侧粘性影厅列宽),故 x 至少取到影厅列右缘 ——
+ *  光标落在粘性列上时锚定列缘,避免算出轴界之外的负数时刻。 */
+function gridAnchor(scroll: HTMLElement, clientX?: number): { min: number; screenX: number } {
+  const px = PX_PER_MIN * zoom;
+  const rel = clientX == null ? scroll.clientWidth / 2 : clientX - scroll.getBoundingClientRect().left;
+  const screenX = Math.max(rel, LABEL_W);
+  return { min: axisStartFor(cat, currentDate) + (scroll.scrollLeft + screenX - LABEL_W) / px, screenX };
+}
+
+/** 缩放:改刻度并就地重绘网格。**只重绘网格** —— 缩放不影响行程/角标,走 notify → renderAll 是白干,
+ *  且必须先按旧刻度算锚点再改倍率(见 pendingAnchor 注释)。
+ *  clientX 给出时锚定光标下的时刻,否则锚定视口中心;fromLeft = 从轴起点贴左(「适应」用)。 */
+function applyZoom(next: number, opts: { clientX?: number; fromLeft?: boolean } = {}): void {
+  const z = clampZoom(next);
+  const changed = Math.abs(z - zoom) > 1e-4;
+  if (!changed && !opts.fromLeft) {
+    renderZoomCtl();
+    return;
+  }
+  const scroll = document.getElementById("grid-scroll");
+  pendingAnchor = opts.fromLeft
+    ? { min: axisStartFor(cat, currentDate), screenX: LABEL_W }
+    : scroll
+      ? gridAnchor(scroll, opts.clientX)
+      : null;
+  if (changed) {
+    zoom = z;
+    setZoom(z); // 持久化视图偏好(不广播 —— 下面这行自己重绘)
+  }
+  renderGrid();
+  renderZoomCtl();
+}
+
+/** 缩放控件(网格标题行右侧):− / 当前百分比(=复位) / + / 适应宽度。到两端置灰。 */
+const ZBTN_CLS =
+  "border-0 bg-card px-[8px] py-[3px] text-[12px] font-bold leading-[1.5] text-ink-2 hover:bg-[var(--bg-hover-soft)] disabled:opacity-30 disabled:cursor-not-allowed";
+const ZMID_CLS =
+  "border-0 border-x border-line-soft bg-card px-[6px] py-[3px] text-[12px] font-bold tabular-nums text-ink min-w-[48px] leading-[1.5] hover:bg-[var(--bg-hover-soft)]";
+const ZFIT_CLS =
+  "border-0 border-l border-line-soft bg-card px-[9px] py-[3px] text-[12px] font-bold leading-[1.5] text-ink-2 hover:bg-[var(--bg-hover-soft)]";
+
+function zoomBtn(label: string, act: string, tip: string, dis: boolean, cls: string): HTMLButtonElement {
+  const b = el("button", cls, label);
+  b.dataset.zoom = act;
+  b.dataset.tip = tip;
+  if (dis) b.disabled = true;
+  return b;
+}
+
+function renderZoomCtl(): void {
+  const host = document.getElementById("zoom-ctl");
+  if (!host) return;
+  const pct = `${Math.round(zoom * 100)}%`;
+  host.replaceChildren(
+    zoomBtn("−", "out", `缩小时间轴(当前 ${pct})\n也可按住 Ctrl / ⌘ 滚轮(触控板双指捏合)`, zoom <= ZOOM_MIN + 1e-6, ZBTN_CLS),
+    zoomBtn(pct, "reset", `当前缩放 ${pct} —— 点击回到 100%`, false, ZMID_CLS),
+    zoomBtn("+", "in", `放大时间轴(当前 ${pct})\n也可按住 Ctrl / ⌘ 滚轮(触控板双指捏合)`, zoom >= ZOOM_MAX - 1e-6, ZBTN_CLS),
+    zoomBtn("适应", "fit", "适应宽度:尽量把当天整条时间轴塞进视口,左缘对齐轴起点(到 35% 下限为止;更长则保留小量横向滚动)", false, ZFIT_CLS)
+  );
+}
+
 function renderGrid(): void {
   const host = document.getElementById("grid-scroll")!;
-  // 换节点前先记平移位置:同日期重建(选片/优先级/分钟推进)才恢复;切日期/首渲归 0 回最左
-  lastGridLeft = currentDate === lastGridDate ? host.scrollLeft : 0;
+  // 换节点前先记视口锚点:缩放走 applyZoom 预算好的(那时刻度还是旧值),其余同日期重建按当前刻度就地算;
+  // 切日期/首渲 anchor = null → 回最左
+  const anchor = pendingAnchor ?? (currentDate === lastGridDate ? gridAnchor(host) : null);
+  pendingAnchor = null;
   const conf = conflicts.get(currentDate);
-  // D1:时间刻度固定(PX_PER_MIN),网格总宽与视口无关 → 不再每次测 avail
+  const pxPerMin = PX_PER_MIN * zoom;
   const grid = buildGrid(
     {
       cat,
+      pxPerMin,
       slots: store.slotIndex,
       group: store.group,
       mappingOf: (c) => store.mappings.get(c),
@@ -175,9 +248,10 @@ function renderGrid(): void {
   );
   host.replaceWith(grid);
   grid.id = "grid-scroll";
-  // 同日期内容总宽一致(轴界只依赖静态 schedule)→ 立即回写精确恢复,不闪最左;钳制防御越界
-  if (lastGridLeft > 0) {
-    grid.scrollLeft = Math.min(lastGridLeft, grid.scrollWidth - grid.clientWidth);
+  // 锚点回算:同一日期内刻度可能变了(缩放),故必须用新刻度重算 scrollLeft,不能沿用旧 scrollLeft
+  if (anchor) {
+    const left = (anchor.min - axisStartFor(cat, currentDate)) * pxPerMin - (anchor.screenX - LABEL_W);
+    grid.scrollLeft = Math.max(0, Math.min(left, grid.scrollWidth - grid.clientWidth));
   }
   lastGridDate = currentDate;
   fitTimeTexts(grid); // 挂载后量测:窄卡时间文本降级,绝不截断
@@ -303,6 +377,20 @@ function bindEvents(): void {
       return;
     }
 
+    // 甘特缩放:− / + 走档位阶梯(视口中心锚定);点百分比复位 100%;「适应」把整天塞进视口
+    const zc = t.closest<HTMLElement>("#zoom-ctl [data-zoom]");
+    if (zc) {
+      const act = zc.dataset.zoom;
+      if (act === "in") applyZoom(stepZoom(zoom, 1));
+      else if (act === "out") applyZoom(stepZoom(zoom, -1));
+      else if (act === "reset") applyZoom(1);
+      else if (act === "fit") {
+        const scroll = document.getElementById("grid-scroll");
+        if (scroll) applyZoom(fitZoom(cat, currentDate, scroll.clientWidth), { fromLeft: true });
+      }
+      return;
+    }
+
     // 方案切换
     const g = t.closest<HTMLElement>("#group-switch [data-g]");
     if (g) {
@@ -413,6 +501,26 @@ function bindEvents(): void {
   // §14 1b/2a:文档级委托,grid 卡 ↔ agenda 行 双向 hover(冲突组联动一并处理)
   document.addEventListener("mouseover", (ev) => onHoverLinkMove(ev, true));
   document.addEventListener("mouseout", (ev) => onHoverLinkMove(ev, false));
+
+  // 甘特缩放:Ctrl / ⌘ + 滚轮(macOS 触控板双指捏合同为 ctrl+wheel)→ 以光标下的时刻为锚点走一档。
+  // 必须 passive:false 才能 preventDefault 掉浏览器整页缩放。deltaY 累加到 60 才走一档 ——
+  // 一次捏合会连发几十个 wheel 事件,不累积会瞬间从 100% 跳到 300%。
+  let wheelAcc = 0;
+  document.addEventListener(
+    "wheel",
+    (ev: WheelEvent) => {
+      if (!ev.ctrlKey && !ev.metaKey) return; // 普通滚轮不接管(仍走页面纵向滚动 / 容器横向滚动)
+      const scroll = (ev.target as HTMLElement | null)?.closest?.("#grid-scroll");
+      if (!scroll) return;
+      ev.preventDefault();
+      wheelAcc += ev.deltaY;
+      if (Math.abs(wheelAcc) < 60) return;
+      const dir: 1 | -1 = wheelAcc < 0 ? 1 : -1;
+      wheelAcc = 0;
+      applyZoom(stepZoom(zoom, dir), { clientX: ev.clientX });
+    },
+    { passive: false }
+  );
 }
 
 function exportIcs(which: "A" | "B" | "ALL"): void {
@@ -744,6 +852,7 @@ async function boot(): Promise<void> {
   loadSettings();
   loadGvTalk();
   loadGvTalkMin();
+  zoom = clampZoom(store.settings.zoom ?? 1); // 缩放倍率随设置恢复(renderAll 里的 renderZoomCtl 同步控件态)
   cat = await loadCatalog();
   currentDate = cat.dates[0] ?? "";
   // 选片记录(唯一数据源)必须在 cat 就绪之后载入:首次迁移要用 filmNodeKey(cat, s)
@@ -753,8 +862,8 @@ async function boot(): Promise<void> {
   subscribe(renderAll);
   bindEvents();
   attachTip(); // 缩写说明悬停 tooltip(data-tip 文档级委托,渲染重建无需重绑)
-  // D1:刻度固定后网格总宽与视口无关 —— 移除旧 ResizeObserver 重渲(缩窗不再需改 px/min;
-  // 且重渲 replaceWith 会丢失用户横向平移位置,保留反而是回归)
+  // D1:刻度不再随视口自动压缩(各日期比例一致),改由用户经缩放控件 / Ctrl+滚轮 自选 ——
+  // 故仍不挂 ResizeObserver 重渲(重渲 replaceWith 会丢视口锚点;要「塞满宽度」用「适应」按钮)
   // 图例「ⓘ 日程表说明」:hover 快速多行提示(单源自 badges.ts abbrTooltip);点击打开总览弹层。
   // 末条分点提示「可点开总览」—— 不挂原生 title(它会先弹一条样式不可控的长横条,与本 tooltip 打架)
   const abbrHelp = document.getElementById("abbr-help");
