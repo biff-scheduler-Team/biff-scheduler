@@ -64,8 +64,10 @@ function titleFor(s: Screening, map: Mapping | undefined): string {
   return s.title_zh || map?.title_cn || s.title_en;
 }
 
+// 粘性场馆列 / 标尺左上空格:底色 = 画布灰(bg-page),与卡片白底拉开层级;
+// 列分隔交给 border-r,不再用白底(旧值 bg-card 与卡片同色 → 场馆名像浮在空白上)
 const LABEL_BOX_CLS =
-  "sticky left-0 z-[3] bg-card border-r border-line px-[10px] py-[6px] flex flex-col justify-center min-h-[28px]";
+  "sticky left-0 z-[3] bg-page border-r border-line px-[10px] py-[6px] flex flex-col justify-center min-h-[28px]";
 
 const ROW_BASE_CLS = "grid grid-cols-[148px_1fr]";
 
@@ -79,7 +81,9 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
   const nowPx = todayIsoLocal() === date ? nowPxFor(axis, pxPerMin) : null;
 
   // D3:横向溢出常态化 → 原生滚动条始终可用 + cursor-grab 拖拽平移恒挂(attachPan 内部对装得下的容器自行守卫)
-  const scroll = el("div", "overflow-x-auto pb-[6px] cursor-grab");
+  // 画布底板:极浅灰(bg-page)+ 内嵌圆角 —— 外层白面板(#grid-wrap)成为「画框」,
+  // 未选中的白卡落在灰底上才有轮廓(旧版画布无底色 → 透出面板白,与卡片「白底叠白底」)。
+  const scroll = el("div", "overflow-x-auto pb-[6px] cursor-grab bg-page rounded-[8px]");
   const min = el("div", "w-max min-w-full");
   min.style.width = `${totalW}px`;
 
@@ -174,7 +178,8 @@ function buildRulerTicks(
       "button",
       "absolute top-[1px] border-0 bg-transparent px-[5px] py-[1px] tabular-nums text-[10.5px] font-bold rounded-[4px] transition-colors cursor-pointer " +
         (isFirst ? "left-0 text-left" : "-translate-x-1/2 ") +
-        (on ? "bg-biff text-on-brand" : "text-ink-2 hover:bg-hover hover:text-biff"),
+        // hover 底用 bg-card(白药丸)而非 bg-hover(#fafafa)—— 画布已是浅灰底,再 hover 成更浅色等于没反馈
+        (on ? "bg-biff text-on-brand" : "text-ink-2 hover:bg-card hover:text-biff"),
       label
     );
     b.style.left = `${x}px`;
@@ -363,6 +368,9 @@ function appendCard(
   const isConflict = Boolean(ctx.conflictCodes?.has(s.code));
   const inCurrent = Boolean(slot && slot.group === ctx.group);
   const inOther = Boolean(slot && slot.group !== ctx.group);
+  // 待选(未选中且没选在另一方案):画布灰底上的白卡 —— 极淡边框 + 中灰文字,视为「待激活容器」;
+  // hover 时描边加深(叠既有 shadow-hover 投影 + hl-card 红晕),文字不恢复墨色(激活靠点选后的整卡底色)。
+  const isIdle = !isConflict && !inCurrent && !inOther;
 
   // 基底 + 选中 / 冲突 / 其他方案 等状态组合在构造时一次算完(JS 后续不需 toggle)
   const parts: string[] = ["group"];
@@ -373,7 +381,7 @@ function appendCard(
     // 完全冲突(时间重叠,无法同看):红底 in-conf + 2px 红框,红标题 + ⚠;与绿/黄同一整卡底色语法
     parts.push("border-2 border-conf in-conf");
   } else {
-    parts.push("border border-line");
+    parts.push(isIdle ? "border border-line hover:border-line-strong" : "border border-line");
     if (inCurrent) parts.push("in-plan"); // 已选 = 绿底(优先级不参与网格染色 — 见行程行 seg)
     else if (inOther) parts.push("in-other");
   }
@@ -397,11 +405,16 @@ function appendCard(
   // 窄卡放不下完整 "09:00–10:40" 时由挂载后实测降级为只显开始时间,完整时间移入 hover —— 绝不硬裁)。
   // E1:pr-[20px] 把行尾让给右上角标(ⓘ 右 3~18px / ⚠ 右 22px+),角标悬浮于预留空白,不遮挡时间文本。
   const t1 = el("span", "flex items-center gap-[3px] text-[12px] text-muted whitespace-nowrap overflow-hidden pr-[20px]");
-  const codeB = el("b", "shrink-0 text-ink text-[12px]", s.code);
+  // 待选卡:CODE / 时间降一档灰阶(text-muted / text-ink-2);已选/冲突/另一方案仍用墨色(text-ink)
+  const codeB = el("b", `shrink-0 text-[12px] ${isIdle ? "text-muted" : "text-ink"}`, s.code);
   codeB.dataset.tip = codeTip(s.code);
   const filmEndTxt = minToHms(filmEndMin(s));
   const cardRange = talk > 0 ? `${s.start_time}–${filmEndTxt}` : fmtMinRange(s.start_time, s.end_time);
-  const timeSpan = el("span", "card-time shrink-0 text-[12px] font-semibold text-ink tabular-nums", cardRange);
+  const timeSpan = el(
+    "span",
+    `card-time shrink-0 text-[12px] font-semibold tabular-nums ${isIdle ? "text-ink-2" : "text-ink"}`,
+    cardRange
+  );
   timeSpan.dataset.full = cardRange;
   timeSpan.dataset.short = s.start_time; // 降级备选:只显开始时刻
   t1.append(codeB, timeSpan);
@@ -411,7 +424,9 @@ function appendCard(
   // 徽章流不再横插在时间与片名之间 —— 宽卡下单行放下,不再 wrap 挤压标题区;
   // mt-auto 把徽章贴到卡底,与标题区形成天然分组。信息零删除,各徽章 data-tip 悬停即示义。
   const zh = titleFor(s, ctx.mappingOf(s.code));
-  const ttlCls = `text-[13px] font-bold truncate flex-1 min-w-0${isConflict ? " text-conf" : ""}`;
+  const ttlCls = `text-[13px] font-bold truncate flex-1 min-w-0${
+    isConflict ? " text-conf" : isIdle ? " text-ink-2" : ""
+  }`;
   // 「我的选片」档位色点(7px):标题行最前 —— 与红绿灯整卡底色正交,一眼看出"这是我标的必看/随缘"
   const wishP = ctx.wishOf?.(s);
   const ttlRow = el("span", "flex items-center gap-[4px] min-w-0");
@@ -483,14 +498,15 @@ function appendCard(
       "repeating-linear-gradient(-45deg, color-mix(in srgb, var(--color-ink) 6%, transparent) 0 5px, transparent 5px 10px)";
     talkEl.appendChild(hatch);
 
+    // 未选中(待选)时谈块与正片卡同一「待激活」灰阶,避免两张拼接卡文字一深一浅
     const rng = el(
       "span",
-      "relative text-[8.5px] tabular-nums leading-[1.2] whitespace-nowrap text-ink-2",
+      `relative text-[8.5px] tabular-nums leading-[1.2] whitespace-nowrap ${isIdle ? "text-muted" : "text-ink-2"}`,
       talkTimeRange(s)
     );
     const lab = el(
       "span",
-      "relative text-[9px] font-bold whitespace-nowrap leading-[1.3] text-ink",
+      `relative text-[9px] font-bold whitespace-nowrap leading-[1.3] ${isIdle ? "text-ink-2" : "text-ink"}`,
       talkOn && inCurrent ? `✓ 映后 ${talk}′` : `映后 ${talk}′`
     );
     if (!talkOn) lab.classList.add("text-muted", "line-through");
