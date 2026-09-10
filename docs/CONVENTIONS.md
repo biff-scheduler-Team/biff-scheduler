@@ -60,13 +60,7 @@
   —— 不要再写「两层档位互不影响」。派生 `store.slotIndex: Map<code,{key,group}>`;写入经 `state.ts` 私有 `commit()`
   (本地 → rebuildIndex → notify → 云端 `user_pick` 表);查询走 `slotOf`/`inGroup`/`codesOfGroup`/`priorityOfCode`/`priorityOfKey`。
 - **移除场次语义**:行程行 ✕(`removeScreening`)= 只删该场,记录保留(仍在「我的选片」,标「未排场」);
-  「整片移除」= `removePick(key)`;设置里「清空」= `clearScreeningSlots()`。
-- **「未设档位」= 非法状态(2026-09-10 下线)**:档位是「入选片单」的必要条件 —— 「无档位 + 有场次」不允许存在。
-  三条兜底互为保险:① **加入场次强制定档** —— `main.ts::pickScreening()` 收口网格卡 / GV 谈块 / 详情弹层「加入 X 方案」
-  三处入口,未打标先弹「选择档位」,选定才落场次(GV 谈块的「弃映后」用 `after` 回调保证仍是原子一步);
-  ② **`setWish(key, null)` = 整片移出**(整条删除,含全部场次);③ **`pruneUnsetPicks()`** 在 `loadPicks()` /
-  `syncFromCloud()` 后各跑一次,幂等清存量脏记录(本地 + 云端 DELETE),运行期不再产生故无需迁移脚本。
-  `agenda.ts` 的 `priority==null` 分支仅作防御保留(明示「未设」好过三段全灰被误读成「默认备选」)。
+  仅当「档位未设 + 无备注 + 最后一场」才整条删。「整片移除」= `removePick(key)`;设置里「清空」= `clearScreeningSlots()`。
 - **影片节点 key 单一来源**:`util.ts` 的 `filmNodeKey(cat, s)`(目录命中 → `cat:<id>`,否则 `sched:<片名小写>`;
   纯目录片 `cat:<f###>`)。影片库合并/智能排片/选片总览/甘特打标全走它。匹配顺序:
   ① `(title_zh || title_orig) === s.title_zh` → `cat:<id>`;② `title_orig === s.title_en` → `cat:<id>`;③ 否则 `sched:<…>`。

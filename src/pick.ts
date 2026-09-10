@@ -88,7 +88,7 @@ export function buildWishSeg(o: WishSegOpts): HTMLElement {
       `border-0 ${pad} font-semibold transition-[background,color] duration-[120ms] ease-in-out ${stateCls}${sepCls}`,
       label
     );
-    b.title = `${o.tipPrefix ?? ""}标为「${label}」${on ? "(再点取消 → 该片退出选片,已排场次一并移出)" : " — 供「智能排片」生成行程"}`;
+    b.title = `${o.tipPrefix ?? ""}标为「${label}」${on ? "(再点取消打标)" : " — 供「智能排片」生成行程"}`;
     b.addEventListener("click", (ev) => {
       ev.stopPropagation(); // 三选常嵌在可点容器内(影片库行 / 甘特卡),避免顺带触发展开或选中
       o.onPick(on ? null : p);

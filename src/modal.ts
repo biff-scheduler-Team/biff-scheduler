@@ -1,12 +1,12 @@
 // 弹层:通用容器 + 影片详情(含同片场次 / 豆瓣映射管理)。
 // 全量化:overlay / modal / 详情弹层结构 全部 Tailwind utility。
 
-import type { Catalog, Mapping, Priority, Screening } from "./types";
+import type { Catalog, Mapping, Screening } from "./types";
 import { dateInfo, el, filmNodeKey, fmtMinRange } from "./util";
 import { appendMetaRow, doubanChip } from "./legend";
 import { api } from "./api";
 import { setWish, slotOf, store } from "./state";
-import { PRI_BG_ON, WISH_ORDER, buildWishSeg } from "./pick";
+import { buildWishSeg } from "./pick";
 
 /* ---------- 通用容器(弹层栈) ----------
  *  2026-09-10:由「单弹层覆盖」改为「弹层栈」——
@@ -104,43 +104,6 @@ export function closeModal(): void {
 /** 关闭整栈 —— 「定位 ▸」这类要跳到页面主体的出口必须整栈关掉,否则列表还盖着网格 */
 export function closeAllModals(): void {
   while (modalStack.length) topModal()!.dismiss(false);
-}
-
-/* ---------- 加入场次强制定档 ---------- */
-
-/** 「加入行程前先定档」小弹层:未打标的片点选时,先选必看 / 备选 / 随缘才落场次
- *  —— 「无档位 + 有场次」这个非法状态从此不再产生(档位是入选片单的必要条件)。
- *  顺序不可反:先 onPick(p) 落数据,再 closeModal() 恢复下层并触发它的 onReturn,
- *  下层(详情弹层 / 列表)才能重绘到最新态。Esc / ✕ / 取消 = 放弃加入,不落任何数据。 */
-export function openPriorityPicker(title: string, hint: string, onPick: (p: Priority) => void): void {
-  const body = el("div", "grid gap-[14px]");
-  body.appendChild(el("div", "text-[12.5px] text-muted leading-[1.7]", hint));
-  const row = el("div", "flex gap-[8px] flex-wrap");
-  for (const [p, label] of WISH_ORDER) {
-    const b = el(
-      "button",
-      `border-0 rounded-[8px] px-[20px] py-[9px] text-[14px] font-bold whitespace-nowrap transition-[filter] duration-[120ms] hover:brightness-110 active:translate-y-px ${PRI_BG_ON[p]}`,
-      label
-    );
-    b.title = `标为「${label}」并加入行程`;
-    b.addEventListener("click", () => {
-      onPick(p);
-      closeModal();
-    });
-    row.appendChild(b);
-  }
-  body.appendChild(row);
-  const foot = el("div", "flex");
-  const cancel = el(
-    "button",
-    "border border-line rounded-[7px] px-[12px] py-[5px] text-[12.5px] font-semibold bg-card text-muted hover:border-line-strong hover:text-ink",
-    "取消(不加入)"
-  );
-  cancel.title = "不设档位、不加入行程(该场次保持未选)";
-  cancel.addEventListener("click", () => closeModal());
-  foot.appendChild(cancel);
-  body.appendChild(foot);
-  openModal(`选择档位 · ${title}`, body);
 }
 
 /* ---------- 影片详情 ---------- */
