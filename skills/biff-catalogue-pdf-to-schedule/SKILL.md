@@ -1,6 +1,6 @@
 ---
 name: biff-catalogue-pdf-to-schedule
-description: 把釜山国际电影节(BIFF)官方 Ticket Catalogue PDF 解析成排期 JSON(schedule.json + venues.json),以及从**影片介绍页**抽出影片目录(films.json)。当用户给来一份 BIFF 排期册/售票册 PDF(如 `2025_BIFF_Ticket_Catalogue_web.pdf`),或要求「读取排片 / 解析排期 / 导入场次 / 把册子变成可排片的 JSON / 导入影片信息 / 片单和排期对不上」时使用。也适用于任何「文字旋转 90°、行=时间段、列=场馆、单元格=独立 span」的竖排表格 PDF。内含 18 条实测版面陷阱、自检指标基线、换年份适配清单(排期线 + 影片目录线),以及可直接运行的 CLI 命令。本 skill 随仓库版本化(`.codebuddy/skills/`),解析器在 `tools/extract_schedule.py`(BIFF 适配层)+ `tools/festival_common.py`(通用底座)。
+description: 把釜山国际电影节(BIFF)官方 Ticket Catalogue PDF 解析成排期 JSON(schedule.json + venues.json),以及从**影片介绍页**抽出影片目录(films.json)。当用户给来一份 BIFF 排期册/售票册 PDF(如 `2025_BIFF_Ticket_Catalogue_web.pdf`),或要求「读取排片 / 解析排期 / 导入场次 / 把册子变成可排片的 JSON / 导入影片信息 / 片单和排期对不上」时使用。也适用于任何「文字旋转 90°、行=时间段、列=场馆、单元格=独立 span」的竖排表格 PDF。内含 18 条实测版面陷阱、自检指标基线、换年份适配清单(排期线 + 影片目录线),以及可直接运行的 CLI 命令。本 skill 随仓库版本化(`skills/`),解析器在 `tools/extract_schedule.py`(BIFF 适配层)+ `tools/festival_common.py`(通用底座)。
 description_zh: BIFF 排期 + 影片目录 PDF 解析成 JSON
 description_en: BIFF catalogue PDF to schedule + film catalog JSON
 disable: false
@@ -32,7 +32,7 @@ agent_created: true
 
 ### 1. 找到脚本(单一来源)
 
-本 skill 随仓库版本化(`<repo>/.codebuddy/skills/biff-catalogue-pdf-to-schedule/`),
+本 skill 随仓库版本化(`<repo>/skills/biff-catalogue-pdf-to-schedule/`),
 解析器就在**同一仓库**里:
 
 | 文件 | 职责 |
@@ -594,7 +594,7 @@ title_en = 'Winner of the Camellia Award] Special Talk [The Cinematic Life of Sy
 ## 新增电影节(复制适配层)
 
 **约定:一个电影节一份独立 SKILL + 一份独立适配层脚本**(彼此独立,允许重复)。
-仓库内路径:`<repo>/.codebuddy/skills/<festival>-catalogue-pdf-to-schedule/SKILL.md`。
+仓库内路径:`<repo>/skills/<festival>-catalogue-pdf-to-schedule/SKILL.md`。
 
 **通用底座 `tools/festival_common.py` 已抽出**以下能力,新电影节直接 import,不要重写:
 

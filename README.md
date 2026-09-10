@@ -219,7 +219,7 @@ PUT    /api/mapping/:code   → { douban_url | subject_id }
 ├─ migrations/             # D1 迁移：0001_init / 0002_priority_nullable / 0003_user_pick
 ├─ public/                 # 静态数据：schedule.json / venues.json / films.json / brand/ / robots.txt
 ├─ tools/                  # 离线数据管线：festival_common.py（通用底座）+ extract_schedule.py（BIFF 适配层）
-├─ .codebuddy/skills/      # 随仓库版本化的 SKILL：biff-catalogue-pdf-to-schedule（PDF→JSON 操作手册）
+├─ skills/                 # 项目能力（Skills）：数据管线 / 部署 / 无头验收 / 并行提交 / Tailwind 核对
 ├─ data/                   # 离线中间产物（enriched_douban.json、films-2026.json 等）
 ├─ docs/                   # CONVENTIONS.md（工程约定）+ plans/（逐需求 PLAN）+ history/
 ├─ PLAN.md                 # 活文档：当前状态 / 决策 / 待办 / 架构
@@ -247,7 +247,25 @@ npm run deploy              # 构建 + wrangler pages deploy dist（production �
 
 ---
 
-## 八、数据从哪来（部署时**不需要**解析 PDF）
+## 八、项目能力（Skills）
+
+仓库的 `skills/` 目录把**可复用的开发能力**固化下来，随代码版本化 —— 每份 skill 是一份 `SKILL.md`（可选 `scripts/`），写清「何时用、怎么做、踩过哪些坑」。索引见 [`skills/README.md`](./skills/README.md)。
+
+| Skill | 用途 | 何时触发 |
+|---|---|---|
+| [`biff-catalogue-pdf-to-schedule`](./skills/biff-catalogue-pdf-to-schedule/SKILL.md) | BIFF 官方 Catalogue PDF → `schedule.json` / `venues.json` / `films.json` | 换届、更新排期、导入影片目录 |
+| [`cloudflare-pages-d1-deploy`](./skills/cloudflare-pages-d1-deploy/SKILL.md) | Cloudflare Pages + D1 + Functions 全栈部署（非交互模式） | 首次建站、`npm run deploy` 异常 |
+| [`parallel-agent-safe-commit`](./skills/parallel-agent-safe-commit/SKILL.md) | 多会话并行时只提交自己的改动（blob 手术 + 隔离 worktree 部署） | 提交前发现工作区有他人在途改动 |
+| [`web-ui-headless-interaction-qa`](./skills/web-ui-headless-interaction-qa/SKILL.md) | playwright-core 无头交互验收（DOM 断言） | 改完交互要证据、部署后验证线上 |
+| [`tailwind-v4-built-css-verify`](./skills/tailwind-v4-built-css-verify/SKILL.md) | 核对 Tailwind v4 类是否真的进了构建产物 | 改完样式确认是否生效 |
+
+**怎么用**：人直接读对应 `SKILL.md`；AI 助手把它作为上下文或按 frontmatter `description` 触发。
+
+> IDE 的 skill 自动加载只认用户级目录（本机为 `~/.workbuddy/skills/`）。`skills/` 是**权威副本**；需要自动触发时把改动同步到用户级目录即可。
+
+---
+
+## 九、数据从哪来（部署时**不需要**解析 PDF）
 
 **一句话**：部署链路与 PDF 无关。运行时数据就是仓库里的三个静态 JSON，它们**已经检入 git**，`npm run build` 时被 Vite 原样拷进 `dist/`，前端 `data.ts` 用 `fetch("schedule.json")` 加载。
 
@@ -295,19 +313,19 @@ python tools/enrich_douban.py
 
 ---
 
-### 解析能力：适配层 + 通用底座 + 仓库内 SKILL
+### 解析能力的代码分工
 
 | 文件 | 角色 |
 |---|---|
 | `tools/festival_common.py` | **通用底座** —— 页面拆 line / 版面几何选择器 / META 扫描 / 自检哨兵 / JSON 写出（与电影节无关） |
 | `tools/extract_schedule.py` | **BIFF 适配层** —— 场馆表 / token 正则 / 版面几何 / 午夜联映块 |
-| `.codebuddy/skills/biff-catalogue-pdf-to-schedule/SKILL.md` | **给 AI 的操作手册** —— 19 条版面陷阱、自检基线、换年份适配清单（随仓库版本化，不再依赖本机用户目录） |
+| `skills/biff-catalogue-pdf-to-schedule/SKILL.md` | **操作手册** —— 19 条版面陷阱、自检基线、换年份适配清单 |
 
-新增其他电影节（HKIFF / PYIFF 等）：复制适配层 → 替换 `VENUE_NAME` / `RE_*` / `LAYOUT` / `META_SYNTAX` 与特殊板块 → 另建一份独立 SKILL。可复用边界与完整步骤见 SKILL 的「新增电影节」一节。
+新增其他电影节（HKIFF / PYIFF 等）：复制适配层 → 替换 `VENUE_NAME` / `RE_*` / `LAYOUT` / `META_SYNTAX` 与特殊板块 → 另建一份独立 SKILL。可复用边界与完整步骤见该 SKILL 的「新增电影节」一节；全部能力清单见 §八。
 
 ---
 
-## 九、数据说明与许可
+## 十、数据说明与许可
 
 - 排期 / 场次信息来源于 biff.kr 公开页面，**仅作个人非商用排片参考**，不收费、不对外分发；页脚已保留出处归属。
 - `public/brand/` 下的 BIFF 官方 logo 素材（favicon / 字标 / ft_logo）版权归 BIFF 组委会所有，**如转为商业或公开大规模用途，需移除并替换为自有设计**（详见 `PLAN.md` §8）。
