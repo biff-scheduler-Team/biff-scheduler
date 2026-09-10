@@ -571,73 +571,134 @@ function jumpToScreening(code: string): void {
   );
 }
 
-/* ---------------- 设置 ---------------- */
-function settingsField(label: string, hint: string): { box: HTMLElement; row: HTMLElement } {
-  const box = el("label", "grid gap-1");
-  const row = el("div", "flex items-center gap-[10px]");
-  row.appendChild(el("span", "font-semibold text-[13.5px]", label));
-  box.append(row);
-  box.appendChild(el("div", "text-muted text-[12px]", hint));
-  return { box, row };
+/* ---------------- 设置 ----------------
+ *  排版口径(2026-09-10 优化):① 标题 + 控件同行**流式左对齐**(控件紧贴标题,标签长短不一也不会
+ *  散成右侧一列);② 单位(分钟)移到**框外**做后缀,标题里不再带括号;③ 说明另起一行 12px muted、
+ *  行高 1.6;④ 字段之间 14px,分组之间浅灰分割线 —— 一整片文字被切成两块,密度显著下降。 */
+
+/** 设置项数字输入框:统一宽度 / 居中数字 / focus 红描边(与 modal.ts 豆瓣输入框同一口径)。
+ *  单位不进框内 —— 由 settingsField 的 unit 参数渲染在框外,避免「分钟」被当成可编辑内容。 */
+function settingsInput(value: string, max: number): HTMLInputElement {
+  const inp = el(
+    "input",
+    "w-[76px] text-center tabular-nums border border-line rounded-[8px] px-2 py-[5px] text-[13px] " +
+      "focus:border-biff focus:[outline:2px_solid_color-mix(in_srgb,var(--color-biff)_30%,var(--color-card))]"
+  ) as HTMLInputElement;
+  inp.type = "number";
+  inp.min = "0";
+  inp.max = String(max);
+  inp.value = value;
+  return inp;
+}
+
+/** 设置项骨架:标题 + 控件同一行(左对齐流式),可选单位后缀,说明另起一行小字。
+ *  ⚠ `tag` 默认 `label`(点标题即聚焦输入框);**内含 button 的控件(分段选择器)必须传 `"div"`** ——
+ *  否则点标题会冒泡到 label 内首个 button,表现为「点文字误选了选项」。 */
+function settingsField(
+  label: string,
+  hint: string,
+  control: HTMLElement,
+  unit = "",
+  tag: "label" | "div" = "label"
+): HTMLElement {
+  const box = el(tag, "flex flex-col gap-[3px]");
+  const row = el("div", "flex items-center gap-[8px]");
+  row.appendChild(el("span", "font-semibold text-[13.5px] whitespace-nowrap", label));
+  row.appendChild(control);
+  if (unit) row.appendChild(el("span", "text-[12.5px] text-ink-2", unit));
+  box.append(row, el("div", "text-muted text-[12px] leading-[1.6]", hint));
+  return box;
+}
+
+/** iOS 风分段选择器:低饱和灰轨道 + 白色滑块(选中),替代旧「品牌红实底白字」胶囊 ——
+ *  设置项里的次要开关不该比「保存设置」这个主按钮更抢眼。两段互斥,点击即切换;
+ *  类名口径收口在 cls(),初渲与后续重绘共用一份。 */
+function segmented<T extends string>(
+  opts: { value: T; label: string }[],
+  cur: T,
+  onPick: (v: T) => void
+): HTMLElement {
+  const cls = (on: boolean): string =>
+    "border-0 rounded-[6px] px-[10px] py-[4px] text-[12.5px] font-semibold whitespace-nowrap " +
+    "transition-[background-color,color,box-shadow] duration-[120ms] " +
+    (on ? "bg-card text-ink shadow-[var(--shadow-card)]" : "bg-transparent text-muted hover:text-ink");
+  const track = el("div", "inline-flex items-center gap-[2px] p-[2px] rounded-[8px] bg-raised");
+  const btns = new Map<T, HTMLElement>();
+  const set = (v: T): void => {
+    btns.forEach((b, k) => (b.className = cls(k === v)));
+  };
+  for (const o of opts) {
+    const b = el("button", cls(o.value === cur), o.label);
+    b.type = "button";
+    b.addEventListener("click", () => {
+      onPick(o.value);
+      set(o.value);
+    });
+    btns.set(o.value, b);
+    track.appendChild(b);
+  }
+  return track;
 }
 
 function openSettings(): void {
-  const body = el("div", "grid gap-3");
+  const body = el("div", "flex flex-col");
 
-  const f1 = settingsField("提醒提前量(分钟)", "导出 .ics 的闹钟,建议 30–60");
-  const alarm = el("input", "w-[90px] border border-line rounded-[8px] px-2 py-[5px] text-[13px]") as HTMLInputElement;
-  alarm.type = "number";
-  alarm.min = "0";
-  alarm.max = "180";
-  alarm.value = String(store.settings.alarmMin);
-  f1.row.appendChild(alarm);
+  // ---- 分组 1:导出 / 转场 ----
+  const alarm = settingsInput(String(store.settings.alarmMin), 180);
+  const f1 = settingsField(
+    "提醒提前量",
+    "导出 .ics 日历时的闹钟提醒，建议 30 - 60 分钟。",
+    alarm,
+    "分钟"
+  );
 
-  const f2 = settingsField("跨场馆转场缓冲(分钟)", "跨影院场次按此值判定冲突;同影院不受影响。默认 0 = 仅判时间重叠");
-  const transit = el("input", "w-[90px] border border-line rounded-[8px] px-2 py-[5px] text-[13px]") as HTMLInputElement;
-  transit.type = "number";
-  transit.min = "0";
-  transit.max = "120";
-  transit.value = String(store.settings.transitMin);
-  f2.row.appendChild(transit);
+  const transit = settingsInput(String(store.settings.transitMin), 120);
+  const f2 = settingsField(
+    "跨场馆转场缓冲",
+    "仅用于判定跨影院场次的冲突，同一影院不受影响（默认 0 为仅判定时间重叠）。",
+    transit,
+    "分钟"
+  );
 
+  const group1 = el("div", "flex flex-col gap-[14px]");
+  group1.append(f1, f2);
+
+  // ---- 分组 2:GV 映后谈(浅灰分割线分组,不另加小标题 —— 标签已自解释,少一层文字) ----
+  let gvDef = store.settings.gvTalkOn;
+  const seg = segmented(
+    [
+      { value: "on", label: "参加 (含映后)" },
+      { value: "off", label: "不参加 (仅正片)" },
+    ],
+    gvDef ? "on" : "off",
+    (v) => {
+      gvDef = v === "on";
+    }
+  );
   const f3 = settingsField(
     "GV 场默认映后谈",
-    "仅对未单独设置的 GV 场生效:新加入时是否连映后谈一起选。放弃的场按正片结束算转场/冲突(可逐场在网格映后块或行程开关翻转)"
+    "新增 GV 场次时默认选中的状态（后续可在具体行程中单独切换）。",
+    seg,
+    "",
+    "div"
   );
-  let gvDef = store.settings.gvTalkOn;
-  const segCls = (on: boolean): string =>
-    `border-0 px-[12px] py-[5px] text-[12.5px] font-bold transition-[background,color] duration-[120ms] ${
-      on === gvDef ? "bg-biff text-on-brand" : "bg-card text-muted hover:text-ink"
-    }`;
-  const seg = el("div", "inline-flex border border-line rounded-full overflow-hidden bg-card");
-  const mkGvOpt = (on: boolean, label: string): HTMLElement => {
-    const b = el("button", segCls(on), label);
-    b.addEventListener("click", () => {
-      gvDef = on;
-      seg.querySelectorAll<HTMLElement>("button").forEach((x) => (x.className = segCls(x.dataset.on === "1")));
-    });
-    b.dataset.on = on ? "1" : "0";
-    return b;
-  };
-  seg.append(mkGvOpt(true, "参加(含映后)"), mkGvOpt(false, "不参加(仅正片)"));
-  f3.row.appendChild(seg);
 
   // f4:GV 映后谈时长(全局默认)—— 改这里 = 谈段长度 / 有效结束 / 转场 / 冲突 / .ics 全链路跟着变
+  const talkMin = settingsInput(String(store.settings.gvTalkMin), 240);
   const f4 = settingsField(
-    "GV 映后谈默认时长(分钟)",
-    "所有 GV 场次按「正片 + 映后谈 N′」拆两段(时长变了,有效结束 / 转场 / 冲突 / 导出同步变)。逐场可在行程行点 ⏱ 覆写;设 0 = 该批场次不拆映后段。官方排期里 GV 场次已含 25min,故默认 25"
+    "GV 映后谈默认时长",
+    "官方排期包含 25 分钟映后谈，设为 0 则不拆分映后段（可逐场覆写）。",
+    talkMin,
+    "分钟"
   );
-  const talkMin = el("input", "w-[90px] border border-line rounded-[8px] px-2 py-[5px] text-[13px]") as HTMLInputElement;
-  talkMin.type = "number";
-  talkMin.min = "0";
-  talkMin.max = "240";
-  talkMin.value = String(store.settings.gvTalkMin);
-  f4.row.appendChild(talkMin);
 
-  const actions = el("div", "flex gap-[10px] mt-1");
+  const group2 = el("div", "flex flex-col gap-[14px] mt-[16px] pt-[16px] border-t border-line-soft");
+  group2.append(f3, f4);
+
+  // ---- 底部主操作:全弹层唯一的亮色按钮(右对齐)----
   const apply = el(
     "button",
-    "border-0 rounded-[6px] px-[14px] py-[6px] text-[13px] font-bold text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05]",
+    "border-0 rounded-[6px] px-[16px] py-[7px] text-[13px] font-bold text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05] active:translate-y-px",
     "保存设置"
   );
   apply.addEventListener("click", () => {
@@ -650,9 +711,14 @@ function openSettings(): void {
     closeModal();
     toast("设置已保存");
   });
+  const actions = el("div", "flex justify-end mt-[18px]");
+  actions.appendChild(apply);
+
+  // ---- 危险操作:降级为无边框/无底色的灰色文字按钮,并挪到弹窗最底部单独区域,
+  //      与主按钮之间再隔一条分割线 —— 视觉权重拉低 + 误触路径物理隔开 ----
   const danger = el(
     "button",
-    "border rounded-[6px] px-[10px] py-1 text-[12px] font-bold bg-biff-soft text-conf border-biff-line",
+    "border-0 bg-transparent p-0 text-[12px] text-muted underline-offset-2 hover:text-conf hover:underline",
     "清空全部已排场次(A+B)"
   );
   danger.title = "只清场次 —— 「我的选片」的选片意向(档位)保留,清完仍可一键智能排片";
@@ -663,8 +729,10 @@ function openSettings(): void {
       toast("已清空全部已排场次(选片意向保留)");
     }
   });
-  actions.append(apply, danger);
-  body.append(f1.box, f2.box, f3.box, f4.box, actions);
+  const dangerZone = el("div", "flex mt-[14px] pt-[12px] border-t border-line-soft");
+  dangerZone.appendChild(danger);
+
+  body.append(group1, group2, actions, dangerZone);
 
   openModal("设置", body);
 }
@@ -678,18 +746,15 @@ function openTalkMinModal(code: string): void {
   const cur = gvTalkMinOv.get(code);
   const body = el("div", "grid gap-3");
 
-  const f = settingsField(
-    `本场映后谈时长(分钟) · ${code}`,
-    `留空 = 跟随全局默认 ${def}′。仅本场生效(其它 GV 场不动);设 0 = 本场不拆映后段`
-  );
-  const inp = el("input", "w-[90px] border border-line rounded-[8px] px-2 py-[5px] text-[13px]") as HTMLInputElement;
-  inp.type = "number";
-  inp.min = "0";
-  inp.max = "240";
+  const inp = settingsInput(cur == null ? "" : String(cur), 240);
   inp.placeholder = String(def);
-  inp.value = cur == null ? "" : String(cur);
-  f.row.appendChild(inp);
-  body.appendChild(f.box);
+  const f = settingsField(
+    `本场映后谈时长 · ${code}`,
+    `留空 = 跟随全局默认 ${def}′;仅本场生效（其它 GV 场不动），设 0 则不拆映后段。`,
+    inp,
+    "分钟"
+  );
+  body.appendChild(f);
 
   const actions = el("div", "flex gap-[10px] mt-1");
   const ok = el(
