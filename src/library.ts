@@ -256,7 +256,8 @@ export function openLibrary(ctx: LibraryCtx): void {
   const list = el("div", "grid gap-2 max-h-[min(62vh,560px)] overflow-y-auto pt-[2px] px-[2px] pb-1");
   body.appendChild(list);
 
-  openModal("影片库 · 全部影片", body, true);
+  // 返回本层时刷新列表(详情里改过档位/场次 → 「已选 N」计数要跟上);弹层栈保留 DOM,滚动位置不丢
+  openModal("影片库 · 全部影片", body, true, () => render());
   if (window.matchMedia("(pointer: fine)").matches) search.focus();
 
   // ---- 渲染 ----
@@ -264,7 +265,8 @@ export function openLibrary(ctx: LibraryCtx): void {
   let kw = "";
   let unit: string | null = null;
 
-  function render(): void {
+  /** 重建列表;外层 render() 负责保住滚动位置(点行内档位 / 从详情返回后不跳回顶部) */
+  function paint(): void {
     const q = kw.trim().toLowerCase();
     list.innerHTML = "";
 
@@ -422,6 +424,12 @@ export function openLibrary(ctx: LibraryCtx): void {
     }
   }
 
+  function render(): void {
+    const keepTop = list.scrollTop;
+    paint();
+    list.scrollTop = keepTop;
+  }
+
   search.addEventListener("input", () => {
     kw = search.value;
     render();
@@ -457,7 +465,7 @@ export function openLibrary(ctx: LibraryCtx): void {
   });
 
   /* ---- M2.5:智能排片 ▸(AI 按钮 → 引擎建议 → 一键采纳) ---- */
-  aiBtn.addEventListener("click", () => openEngineDialog(filmList, ctx));
+  aiBtn.addEventListener("click", () => openEngineDialog(filmList, ctx, render));
 
   render();
 }
@@ -469,8 +477,9 @@ export function openLibrary(ctx: LibraryCtx): void {
  *     这正是「多条重复文案占满视觉空间」的根因,合并后天然消失;
  *   · 卡内按日期分组(组头 `10/8 周四` 只出现一次);行内「时间」深色半加粗、「影院」降为第二行次级灰;
  *   · 分隔靠留白 + hover 底色,不再用虚线把每一行切成一格;
- *   · 未纳入按 (kind, reason) 合并同类项,每组一张浅色 Card(浅灰 = 等排期,浅红 = 需取舍)。 */
-function openEngineDialog(filmList: FilmNode[], ctx: LibraryCtx): void {
+ *   · 未纳入按 (kind, reason) 合并同类项,每组一张浅色 Card(浅灰 = 等排期,浅红 = 需取舍)。
+ *  onReturn:返回上一层(影片库 / 我的选片)时刷新其列表 —— 采纳方案后「已选 N 场」计数要跟上。 */
+function openEngineDialog(filmList: FilmNode[], ctx: LibraryCtx, onReturn?: () => void): void {
   // 只有「已定档」的片进引擎:未设档位(只点了场次)无法参与质量分,与 SCORE_W 口径一致
   const wanted: EngineFilm[] = [];
   for (const n of filmList) {
@@ -493,7 +502,7 @@ function openEngineDialog(filmList: FilmNode[], ctx: LibraryCtx): void {
         "还没有给任何影片打标 — 在片名行右侧点「必看 / 备选 / 随缘」;打标后再点「智能排片」即可生成建议行程。"
       )
     );
-    openModal("智能排片 · AI 建议行程", box);
+    openModal("智能排片 · AI 建议行程", box, false, onReturn);
     return;
   }
   const transitMin = store.settings.transitMin;
@@ -504,7 +513,7 @@ function openEngineDialog(filmList: FilmNode[], ctx: LibraryCtx): void {
   } else {
     box.appendChild(enginePlansPanel(plans, ctx));
   }
-  openModal("智能排片 · 建议行程", box, true);
+  openModal("智能排片 · 建议行程", box, true, onReturn);
 }
 
 /** 顶部规则区:一行短标签 + `i` 悬停看完整规则(替代原来 12.5px 未分段的整句) */
@@ -761,7 +770,7 @@ export function openMyPicks(ctx: LibraryCtx): void {
     "智能排片 ▸"
   );
   aiBtn.title = "按已定档「必看/备选/随缘」本地求解生成建议行程(零联网、可解释)";
-  aiBtn.addEventListener("click", () => openEngineDialog(filmList, ctx));
+  aiBtn.addEventListener("click", () => openEngineDialog(filmList, ctx, render));
   tool.appendChild(aiBtn);
   body.appendChild(tool);
 
@@ -774,7 +783,8 @@ export function openMyPicks(ctx: LibraryCtx): void {
   const UNSET = "unset";
   let filter: Priority | typeof UNSET | null = null;
 
-  function render(): void {
+  /** 重建清单;外层 render() 保住滚动位置(改档 / 从详情返回后不跳回顶部) */
+  function paint(): void {
     const rows = rowsNow();
     const counts: Record<Priority, number> = { must: 0, maybe: 0, wild: 0 };
     let unset = 0;
@@ -831,6 +841,12 @@ export function openMyPicks(ctx: LibraryCtx): void {
       return;
     }
     for (const n of shown) list.appendChild(pickRow(n));
+  }
+
+  function render(): void {
+    const keepTop = list.scrollTop;
+    paint();
+    list.scrollTop = keepTop;
   }
 
   function pickRow(n: FilmNode): HTMLElement {
@@ -987,6 +1003,7 @@ export function openMyPicks(ctx: LibraryCtx): void {
     render();
   });
 
-  openModal("我的选片", body, true);
+  // 返回本层时刷新清单(详情里加/减场次 → 「已排 N 场」要跟上);弹层栈保留 DOM,滚动位置不丢
+  openModal("我的选片", body, true, () => render());
   render();
 }

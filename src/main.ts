@@ -33,7 +33,7 @@ import { abbrTooltip } from "./badges";
 import { attachTip } from "./tip";
 import { buildGuideBody } from "./legend";
 import { scorePlanRows, type ScoredRow } from "./engine";
-import { closeModal, openModal, showCatalogFilmModal, showFilmModal } from "./modal";
+import { closeAllModals, closeModal, openModal, showCatalogFilmModal, showFilmModal } from "./modal";
 import { openLibrary, openMyPicks } from "./library";
 
 let cat: Catalog;
@@ -53,9 +53,10 @@ function filmKeyOfCode(code: string): string | null {
   return s ? filmNodeKey(cat, s) : null;
 }
 
-/** 影片详情弹层的公共上下文(网格 ⓘ 与影片库共用) */
+/** 影片详情弹层的公共上下文(网格 ⓘ 与影片库共用)。
+ *  不给 slots —— 弹层一律走 slotOf() 实时查询(rebuildIndex 是整体换新 Map,持有引用会读到旧快照)。 */
 function filmModalCtx() {
-  return { cat, slots: store.slotIndex, group: store.group, mappings: store.mappings, toggle: toggleScreening };
+  return { cat, group: store.group, mappings: store.mappings, toggle: toggleScreening };
 }
 
 /** 影片库 / 我的选片 共用上下文 —— 同一份数据(store.picks)的两个视图,两处入口行为一致 */
@@ -68,7 +69,7 @@ function libraryCtx() {
     mappings: store.mappings,
     onLocate: jumpToScreening,
     onFilm: (code: string) => {
-      closeModal();
+      // 详情压在列表之上(弹层栈),「← 返回」回列表 —— 不再 closeModal() 把列表销毁
       // f### = 目录片 id(暂无排期):走目录片弹层,可先关联豆瓣
       if (/^f\d{3}$/.test(code)) showCatalogFilmModal(code, filmModalCtx());
       else showFilmModal(code, filmModalCtx());
@@ -426,7 +427,7 @@ function exportIcs(which: "A" | "B" | "ALL"): void {
 function jumpToScreening(code: string): void {
   const s = cat.byCode.get(code);
   if (!s) return;
-  closeModal();
+  closeAllModals(); // 整栈关闭:列表/详情任何一层都不能还盖着网格
   if (currentDate !== s.date) {
     currentDate = s.date;
     hourFilter = null;
