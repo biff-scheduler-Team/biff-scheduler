@@ -218,7 +218,8 @@ PUT    /api/mapping/:code   → { douban_url | subject_id }
 ├─ functions/api/          # Pages Functions：pick、mapping 动态路由
 ├─ migrations/             # D1 迁移：0001_init / 0002_priority_nullable / 0003_user_pick
 ├─ public/                 # 静态数据：schedule.json / venues.json / films.json / brand/ / robots.txt
-├─ tools/                  # 离线数据管线（Python / Node，不入部署）
+├─ tools/                  # 离线数据管线：festival_common.py（通用底座）+ extract_schedule.py（BIFF 适配层）
+├─ .codebuddy/skills/      # 随仓库版本化的 SKILL：biff-catalogue-pdf-to-schedule（PDF→JSON 操作手册）
 ├─ data/                   # 离线中间产物（enriched_douban.json、films-2026.json 等）
 ├─ docs/                   # CONVENTIONS.md（工程约定）+ plans/（逐需求 PLAN）+ history/
 ├─ PLAN.md                 # 活文档：当前状态 / 决策 / 待办 / 架构
@@ -291,6 +292,18 @@ python tools/enrich_douban.py
 
 - **2025（第 30 届）**：Catalogue PDF —— 排期页 p9–p16、影片介绍页 p22–p97；699 场 / 29 厅 / 10 天（当前仓库内置）
 - **2026（第 31 届）**：影片目录已暂存 `data/films-2026.json`；官方排期发布后用同一套管线解析即可切换，**前端代码零改动**
+
+---
+
+### 解析能力：适配层 + 通用底座 + 仓库内 SKILL
+
+| 文件 | 角色 |
+|---|---|
+| `tools/festival_common.py` | **通用底座** —— 页面拆 line / 版面几何选择器 / META 扫描 / 自检哨兵 / JSON 写出（与电影节无关） |
+| `tools/extract_schedule.py` | **BIFF 适配层** —— 场馆表 / token 正则 / 版面几何 / 午夜联映块 |
+| `.codebuddy/skills/biff-catalogue-pdf-to-schedule/SKILL.md` | **给 AI 的操作手册** —— 19 条版面陷阱、自检基线、换年份适配清单（随仓库版本化，不再依赖本机用户目录） |
+
+新增其他电影节（HKIFF / PYIFF 等）：复制适配层 → 替换 `VENUE_NAME` / `RE_*` / `LAYOUT` / `META_SYNTAX` 与特殊板块 → 另建一份独立 SKILL。可复用边界与完整步骤见 SKILL 的「新增电影节」一节。
 
 ---
 

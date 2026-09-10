@@ -1,8 +1,9 @@
 # biff-scheduler 工程约定
 
 > 从 `.workbuddy/memory/MEMORY.md` 拆出(该文件有 3,000 字上限)。**改代码前先读这份**。
-> 关联 SKILL:`biff-catalogue-pdf-to-schedule`(PDF→JSON)、`parallel-agent-safe-commit`(并行提交)、
-> `web-ui-headless-interaction-qa`(无头交互验收)、`tailwind-v4-built-css-verify`(产物类名核对)。
+> 关联 SKILL:仓库内 **`.codebuddy/skills/biff-catalogue-pdf-to-schedule/`**(PDF→JSON)、
+> 用户级 `parallel-agent-safe-commit`(并行提交)、`web-ui-headless-interaction-qa`(无头交互验收)、
+> `tailwind-v4-built-css-verify`(产物类名核对)。
 
 ## 一、工作流与协作纪律
 
@@ -163,12 +164,14 @@
   是核对线上表结构/数据最快手段(输出用 python 解 JSON)。
 - **改 D1 契约三件套顺序**:迁移(改库) → 部署(Functions + 前端) → `curl` 打线上 `/api/...` 端到端探针
   (**用不存在的 code 探针,探完 DELETE,别污染真实数据**)。
-- **`tools/extract_schedule.py`**:排期表 = 官方册子 **p9–p16**(旋转 90° 的表格)。
+- **`tools/extract_schedule.py`**(BIFF 适配层):排期表 = 官方册子 **p9–p16**(旋转 90° 的表格)。
+  与电影节无关的通用逻辑已抽到 **`tools/festival_common.py`**(以 `LayoutSpec` / `MetaSyntax` 注入差异);
+  新增电影节时复制适配层、替换场馆表与 token 正则即可,输出契约对齐 `src/types.ts`。
 - **`tools/extract_films_2025.py`**(2026-09-10 新建):影片介绍页 = **p22–p97**(印刷页 42–194),
   每页 2 栏(`x0 < 250` 为左栏),**每遇到一条元数据行 `<国别>|<年>|<N>min|<格式>|<color>` 就开启一部新片**,
   其后到下一元数据行的场次行都归它(**不能用 y 窗口** —— 一页 2~3 部片);国别过长会换行 → 按 **x 邻近(±20pt)** 回看;
   单元按 p18 `SECTIONS` 起始印刷页;片名按 `code` 关联排期(排期表才是权威)。输出严格只含 `FilmItem` 十字段。
-  完整工作流 + 17 条陷阱见 SKILL **`biff-catalogue-pdf-to-schedule`**。
+  完整工作流 + 19 条陷阱见 **`.codebuddy/skills/biff-catalogue-pdf-to-schedule/SKILL.md`**。
 - **排期的 `page` 字段不是影片唯一键**:一个印刷页装 3 部片(89 个 `page` 值带多片名,如 `page=119` → The Blue Trail + The Chronology of Water),
   另有 10 个 code 的 `page` 为空(`800`/`164`/`X1601`/`621–626`/`002`)。**关联方向是反的**:从影片介绍页读出该片的 code 清单,再用 code 去排期取片名。
 - **实测基线**:2025 = **699 场 / 29 厅 / 10 天(09-17~09-26)**;影片目录 **224 片**(`cat:` 命中 646/699 = 92.4%,
