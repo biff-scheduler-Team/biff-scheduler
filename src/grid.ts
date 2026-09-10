@@ -12,8 +12,9 @@ import { PRI_DOT_BG, PRI_LABEL } from "./pick";
 export const ROW_H = 92;
 const LABEL_W = 148; // 粘性影厅列宽(沿用旧值,不动)
 const TRAIL_PAD = 60; // A3:末 tick 右侧 +60px 安全边距(标签半宽 + 呼吸),两端标签永不悬出/被裁
-const PX_PER_MIN = 2.2; // D1:时间刻度固定(每小时 132px)。卡片横向舒展(1h≈132px/1.5h≈198px/2h≈264px),
-// 且各日期比例一致 → 常规视口必然横向溢出 → 滚动条 + 拖拽平移常态化浏览(不再按视口压缩刻度)
+const PX_PER_MIN = 3.0; // D1+再加长:时间刻度固定 3.0px/min(每小时 180px;1.5h≈270px;2h≈360px)。
+// 横向更舒展 → 6 chip 徽章行单行排开、短场次(60–95min)不再因行宽不足换行或降级时间;
+// 各日期比例一致 → 常规视口必然横向溢出 → 滚动条 + 拖拽平移常态化浏览(沿用 D3)。
 const AXIS_FALLBACK = { start: 9 * 60, end: 23 * 60 }; // A1:当日无排片时的时间轴兜底窗口
 const AXIS_LEAD_MIN = 30; // A1:首场开映前保留的呼吸时间(轴起点对齐到整点)
 const CARD_INSET_Y = 2; // 卡片上下留白(满高泳道:6 → 2px,几乎顶满行;行与行靠 border-line-soft 分隔线区分)
