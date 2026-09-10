@@ -2,7 +2,7 @@
 
 import type { Catalog, Group, Mapping, PickEntry, Priority, Screening } from "./types";
 import { effEndHms, gvTalkMin } from "./gv";
-import { esc } from "./util";
+import { esc, fmtMinRange } from "./util";
 
 /** 导出用的「一场已选」行:方案 / 场次来自场次级,档位 / 备注来自影片级(唯一数据源的投影) */
 export interface PickRow {
@@ -14,6 +14,9 @@ export interface PickRow {
 
 const KST_OFFSET_MS = 9 * 3600 * 1000; // KST = UTC+9
 
+/** "YYYY-MM-DD" + "HH:MM" → UTC 时间戳。
+ *  ⚠️ 跨午夜场用 **24+ 时制**(endHms 可能是 "29:35"):`Date.UTC(y,m-1,d,29,35)` 由 JS 自动进位到次日 05:35,
+ *  故这里**不要**对小时取模 —— 取模会把 DTEND 折到 DTSTART 之前(旧版 `%24` 数据下实测 DTEND 早 18.4h)。 */
 function toUtcStamp(dateIso: string, hhmm: string): string {
   const [y, m, d] = dateIso.split("-").map(Number);
   const [h, min] = hhmm.split(":").map(Number);
@@ -74,7 +77,7 @@ export function buildIcs(
     const desc: string[] = [];
     desc.push(`${s.title_en}${s.title_kr ? " / " + s.title_kr : ""}`);
     const timeNote = talk > 0 ? (talkOn ? ` · 含映后 ${talk}min` : ` · 已放弃映后谈(仅正片)`) : "";
-    desc.push(`时间(KST):${s.start_time}–${endHms} · ${s.duration_min}min${timeNote}`);
+    desc.push(`时间(KST):${fmtMinRange(s.start_time, endHms)} · ${s.duration_min}min${timeNote}`);
     desc.push(`场馆:${s.venue_display}`);
     desc.push(`方案:${e.group} · ${priorityTag(e.priority)}`);
     if (map?.douban_url) desc.push(`豆瓣:${map.douban_url}`);

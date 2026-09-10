@@ -2,11 +2,11 @@
 // 全量化:仅维护基础骨架(顶栏/面板/弹层根/Toast/底部),所有内部样式由 markup 端 Tailwind utility 表达。
 
 import type { Catalog, Group, Priority, Screening } from "./types";
-import { OK_SLACK, dateInfo, el, filmNodeKey, hmsToMin, todayIsoLocal } from "./util";
+import { OK_SLACK, dateInfo, el, filmNodeKey, fmtMinRangeMin, hmsToMin, todayIsoLocal } from "./util";
 import { loadCatalog } from "./data";
 import { computeConflicts, conflictGroupFor, type ConflictResult, type Slot } from "./conflict";
 import { buildIcs, downloadIcs, pickEntries, priorityTag } from "./ics";
-import { effEndHms, effEndMin, gvTalkMin, resolveTalk } from "./gv";
+import { effEndMin, gvTalkMin, resolveTalk } from "./gv";
 import {
   clearScreeningSlots,
   codesOfGroup,
@@ -591,11 +591,12 @@ function copyPicklist(): void {
     // 有效结束 + GV 标记:含映后 / 仅正片(放弃)两种标注,转场口径与网格/行程一致
     const talk = gvTalkMin(s);
     const talkOn = talk > 0 ? gvTalkOf(code) : true;
-    const endTxt = effEndHms(s, talkOn);
+    // 24+ 时制:跨午夜场终点折回 24h 内并带「次日」标记(如 "23:59–次日 05:35")
+    const endMin = effEndMin(s, talkOn);
     const gvMark =
       talk > 0 ? (talkOn ? "(GV·含映后)" : "(GV·仅正片)") : s.is_gv ? "(GV)" : "";
     lines.push(
-      `${i + 1}. [${priorityTag(priority)}] ${s.code} ${title} ${label} ${weekday} ${s.start_time}–${endTxt} ${s.venue_display}${gvMark}`
+      `${i + 1}. [${priorityTag(priority)}] ${s.code} ${title} ${label} ${weekday} ${fmtMinRangeMin(hmsToMin(s.start_time), endMin)} ${s.venue_display}${gvMark}`
     );
   });
   void copyText(lines.join("\n")).then((ok) =>

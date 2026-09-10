@@ -6,6 +6,10 @@
 //
 // 规则:映后谈时长一律按数据推导(槽位 − 正片),不新增字段 —— 真实排期若某场未把谈后算进
 // end_time 则自动 = 0(该场不拆、无开关),向前兼容。
+//
+// 跨午夜:本文件所有算术都直接用 `hmsToMin(end_time)`,**不做任何取模** ——
+// 24+ 时制下 end_time 可 ≥ "24:00"(如 "29:35"),`hmsToMin` 得 1775 > start,推导天然正确;
+// 一旦在数据侧折回 "05:35",gvTalkMin 会算出负数并被 max(0,·) 吞掉(映后谈静默消失)。
 
 import type { Screening } from "./types";
 import { hmsToMin, minToHms } from "./util";

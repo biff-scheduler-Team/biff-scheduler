@@ -1,6 +1,7 @@
 // 静态数据加载:schedule.json / venues.json / films.json(随部署走静态资源)
 
 import type { Catalog, FilmsFile, Screening, Venue, VenuesFile, ScheduleFile } from "./types";
+import { hmsToMin, minToHms } from "./util";
 
 async function loadJson<T>(url: string): Promise<T | null> {
   try {
@@ -21,6 +22,15 @@ export async function loadCatalog(): Promise<Catalog> {
 
   const venueById = new Map<string, Venue>();
   for (const v of venuesFile.venues) venueById.set(v.id, v);
+
+  // 跨午夜场唯一归一化闸门 —— 数据端一律 24+ 时制(end_time ≥ "24:00",如 23:59 场 → "29:35")。
+  // 前端全部算术(轴界 / 卡片宽度 / 排序 / 整点筛选 / 冲突 / ICS 进位)都建立在 end > start 上;
+  // 这里原地补 24h,既兜解析器漏改,也让手改 / 旧版 JSON 自愈(所有消费方读的是同一批对象)。
+  for (const s of schedule.screenings) {
+    const st = hmsToMin(s.start_time);
+    const en = hmsToMin(s.end_time);
+    if (en <= st) s.end_time = minToHms(en + 24 * 60);
+  }
 
   const byCode = new Map<string, Screening>();
   for (const s of schedule.screenings) byCode.set(s.code, s);

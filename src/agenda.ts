@@ -3,8 +3,8 @@
 // 全量化:行程行 / 优先级三段 / chip / 转场间隔三态 全部 Tailwind utility。
 
 import type { Catalog, Group, Mapping, PickEntry, Screening } from "./types";
-import { OK_SLACK, dateInfo, el, escapeHtml, hmsToMin } from "./util";
-import { effEndHms, effEndMin, gvTalkMin } from "./gv";
+import { OK_SLACK, dateInfo, el, escapeHtml, fmtEndClock, hmsToMin } from "./util";
+import { effEndMin, filmEndMin, gvTalkMin } from "./gv";
 import { codeTip } from "./badges";
 import { appendMetaRow } from "./legend";
 import { PRI_BG_ON, WISH_ORDER } from "./pick";
@@ -102,12 +102,12 @@ function buildRow(
   // GV 映后谈:放弃(或 talk=0 不拆)时本行有效区间 = 正片末;参加 = 槽位末。开关在操作列。
   const talk = gvTalkMin(s);
   const talkOn = talk > 0 ? ctx.gvTalkOf(s.code) : true;
-  const endHms = effEndHms(s, talkOn);
+  const endHms = fmtEndClock(effEndMin(s, talkOn)); // 跨午夜 → "次日 05:35"
 
   // 基底 + 冲突态一次算完(JS 后续不需 toggle)
   const rowCls = entryConf
-    ? "grid grid-cols-[110px_minmax(0,1fr)_auto] gap-[10px] items-center border border-conf rounded-[8px] px-[10px] py-2 bg-biff-tint shadow-[var(--shadow-card)] transition-[border-color,box-shadow] duration-[120ms] ease-in-out hover:border-line-strong hover:shadow-[var(--shadow-hover)] max-[720px]:grid-cols-[96px_minmax(0,1fr)]"
-    : "grid grid-cols-[110px_minmax(0,1fr)_auto] gap-[10px] items-center border border-line rounded-[8px] px-[10px] py-2 bg-card shadow-[var(--shadow-card)] transition-[border-color,box-shadow] duration-[120ms] ease-in-out hover:border-line-strong hover:shadow-[var(--shadow-hover)] max-[720px]:grid-cols-[96px_minmax(0,1fr)]";
+    ? "grid grid-cols-[118px_minmax(0,1fr)_auto] gap-[10px] items-center border border-conf rounded-[8px] px-[10px] py-2 bg-biff-tint shadow-[var(--shadow-card)] transition-[border-color,box-shadow] duration-[120ms] ease-in-out hover:border-line-strong hover:shadow-[var(--shadow-hover)] max-[720px]:grid-cols-[110px_minmax(0,1fr)]"
+    : "grid grid-cols-[118px_minmax(0,1fr)_auto] gap-[10px] items-center border border-line rounded-[8px] px-[10px] py-2 bg-card shadow-[var(--shadow-card)] transition-[border-color,box-shadow] duration-[120ms] ease-in-out hover:border-line-strong hover:shadow-[var(--shadow-hover)] max-[720px]:grid-cols-[110px_minmax(0,1fr)]";
   const row = el("div", rowCls);
   row.dataset.code = s.code;
 
@@ -118,7 +118,8 @@ function buildRow(
     const en = hmsToMin(s.end_time);
     const inSlot = st < (ctx.slotHour + 1) * 60 && en > ctx.slotHour * 60;
     row.classList.add(inSlot ? "slot-hit" : "hour-dim");
-    if (inSlot) row.title = `位于所选 ${String(ctx.slotHour).padStart(2, "0")}:00–${String(ctx.slotHour + 1).padStart(2, "0")}:00 时段(时间筛选联动)`;
+    if (inSlot)
+      row.title = `位于所选 ${fmtEndClock(ctx.slotHour * 60)}–${fmtEndClock((ctx.slotHour + 1) * 60)} 时段(时间筛选联动)`;
   }
 
   const mapped = ctx.mappings.get(s.code);
@@ -169,12 +170,12 @@ function buildRow(
     talkBtn = el(
       "button",
       `rounded-full px-[9px] py-[3px] text-[12px] font-semibold whitespace-nowrap transition-colors hover:border-biff hover:text-biff ${talkOn ? onCls : offCls}`,
-      talkOn ? `✓ 含映后 ${talk}′` : `✕ 弃映后 · 至 ${effEndHms(s, false)}`
+      talkOn ? `✓ 含映后 ${talk}′` : `✕ 弃映后 · 至 ${fmtEndClock(filmEndMin(s))}`
     );
     talkBtn.dataset.act = "gv-talk";
     talkBtn.title = talkOn
-      ? `当前连映后谈一起参加(到 ${s.end_time} 结束)。点击放弃 → 只看正片,本场按 ${endHms} 结束,与后场的转场/冲突即时按正片末放宽`
-      : `已放弃映后谈(正片至 ${endHms} 结束)。点击恢复 → 连映后谈一起参加,按 ${s.end_time} 结束`;
+      ? `当前连映后谈一起参加(到 ${fmtEndClock(hmsToMin(s.end_time))} 结束)。点击放弃 → 只看正片,本场按 ${fmtEndClock(filmEndMin(s))} 结束,与后场的转场/冲突即时按正片末放宽`
+      : `已放弃映后谈(正片至 ${fmtEndClock(filmEndMin(s))} 结束)。点击恢复 → 连映后谈一起参加,按 ${fmtEndClock(hmsToMin(s.end_time))} 结束`;
   }
   const grpBtn = el(
     "button",
@@ -238,7 +239,7 @@ function buildRow(
 function gapNote(prev: Screening, s: Screening, ctx: AgendaCtx): HTMLElement {
   // 上一场按「有效结束」算(放弃映后谈 → 正片末,间隔随之放宽)
   const prevTalkOn = gvTalkMin(prev) > 0 ? ctx.gvTalkOf(prev.code) : true;
-  const prevEnd = effEndHms(prev, prevTalkOn);
+  const prevEnd = fmtEndClock(effEndMin(prev, prevTalkOn));
   const gap = hmsToMin(s.start_time) - effEndMin(prev, prevTalkOn);
   const cross = prev.venue_id !== s.venue_id;
   const need = cross ? ctx.transitMin : 0;

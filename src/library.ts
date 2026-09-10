@@ -3,7 +3,7 @@
 // 16-B 单元 chip / 评分章 / 选片三选 / 智能排片结果 同源 —— 都读写 store.picks(唯一数据源)。
 
 import type { Catalog, FilmItem, Group, Mapping, PickEntry, Priority, Screening } from "./types";
-import { dateInfo, el, filmNodeKey } from "./util";
+import { dateInfo, el, filmNodeKey, fmtMinRange } from "./util";
 import { codeTip } from "./badges";
 import { appendMetaRow, doubanChip } from "./legend";
 import { openModal } from "./modal";
@@ -393,7 +393,7 @@ export function openLibrary(ctx: LibraryCtx): void {
             );
             codeEl.dataset.tip = codeTip(s.code); // 缩写说明:CODE 数字 hover 提示
             when.appendChild(codeEl);
-            when.appendChild(el("span", "", `${label} ${weekday} ${s.start_time}–${s.end_time}`));
+            when.appendChild(el("span", "", `${label} ${weekday} ${fmtMinRange(s.start_time, s.end_time)}`));
             const where = el(
               "div",
               "text-[12px] text-muted min-w-0 flex gap-[6px] items-center truncate max-[720px]:col-span-full max-[720px]:row-start-2",
@@ -715,7 +715,7 @@ function enginePickRow(p: EnginePick, ctx: LibraryCtx): HTMLElement {
     el(
       "div",
       "tabular-nums whitespace-nowrap text-[12.5px] font-semibold text-ink pt-px",
-      `${p.show.start_time}–${p.show.end_time}`
+      `${fmtMinRange(p.show.start_time, p.show.end_time)}`
     )
   );
   const main = el("div", "min-w-0 grid gap-[2px]");
@@ -960,7 +960,7 @@ export function openMyPicks(ctx: LibraryCtx): void {
         if (s) {
           const { label, weekday } = dateInfo(s.date);
           left.append(
-            el("span", "tabular-nums whitespace-nowrap shrink-0", `${label} ${weekday} ${s.start_time}–${s.end_time}`),
+            el("span", "tabular-nums whitespace-nowrap shrink-0", `${label} ${weekday} ${fmtMinRange(s.start_time, s.end_time)}`),
             el("span", "truncate", s.venue_display)
           );
         } else {

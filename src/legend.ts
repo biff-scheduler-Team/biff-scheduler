@@ -348,7 +348,7 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     // 「元素」列一律渲染真节点(章 / 字段),不再写纯文本 —— 纯文本既没有章的外形,
     // 也没有 data-tip,tip.ts 的文档级委托命不中 → 表现为「只有 GV 有悬停」。
     const { tbl, tbody } = mkTable(["元素", "含义"]);
-    addRow(tbody, [timeField("09:00–10:40"), "放映时间(起–止,KST)。GV 映后场的结束时间含映后谈(正片 + 映后 N′),该段在卡片上单独可弃:放弃后按正片结束算转场"]);
+    addRow(tbody, [timeField("09:00–10:40"), "放映时间(起–止,KST)。GV 映后场的结束时间含映后谈(正片 + 映后 N′),该段在卡片上单独可弃:放弃后按正片结束算转场。跨午夜场(如通宵马拉松)按 24+ 时制显示为「23:59–次日 05:35」,时间轴同步外扩到次日并在 24:00 处画跨日分隔线"]);
     addRow(tbody, [codeField("004"), "放映 CODE — 本场唯一场次编号;同片多场各异,对表 / 抢票以此为准"]);
     addRow(tbody, [chipEl(RATING_DEFS["15"]), "观影等级 — 未满对应年龄不得入场(下节表)"]);
     addRow(tbody, [chipEl(SUBS_DEFS.KE), "字幕 / 对白标识(下节表);格内空白 = 未标注(英字 + 韩语对白)"]);

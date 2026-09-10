@@ -2,7 +2,7 @@
 // 全量化:网格 / 卡片 / 标签 / 时间标尺 / 转场紧底色提示 / ⓘ / 冲突旗 / 其他旗 全部 Tailwind utility。
 
 import type { Catalog, Group, Mapping, Priority, Screening } from "./types";
-import { OK_SLACK, el, fmtMinRange, hmsToMin, minToHms, todayIsoLocal } from "./util";
+import { OK_SLACK, el, fmtEndClock, fmtMinRange, fmtMinRangeMin, hmsToMin, todayIsoLocal } from "./util";
 import { screeningsByVenue } from "./data";
 import { codeTip, screeningBadgeKeys } from "./badges";
 import { effEndMin, filmEndMin, gvTalkMin } from "./gv";
@@ -36,7 +36,9 @@ export interface GridCtx {
 }
 
 /** A1 动态时间轴:轴界由「当日最早开映 − 呼吸时间」与「最晚散场」对齐整点推导,不再写死 09:00–23:00 ——
- *  早场 / 午夜场(00:xx 收场)自动外扩;整点标签取模 24 显示(24:00 → "00:00"),配合 TRAIL_PAD 不被右缘裁成 "00"。 */
+ *  早场 / 午夜场(00:xx 收场)自动外扩;整点标签取模 24 显示(24:00 → "00:00"),配合 TRAIL_PAD 不被右缘裁成 "00"。
+ *  **24+ 时制**:跨午夜场的 end_time ≥ "24:00"(如 "29:35"),`hmsToMin` 直接得 1775 → 轴界自然外扩到次日;
+ *  刻度 h ≥ 24 的标签加「次日」前缀,并在 24:00 处画一条日期分隔线(见 buildRulerTicks)。 */
 function axisRangeFor(cat: Catalog, date: string): { start: number; end: number } {
   let first = Infinity;
   let last = -Infinity;
@@ -169,11 +171,20 @@ function buildRulerTicks(
   ticks.style.width = `${trackW + TRAIL_PAD}px`;
   const h0 = axis.start / 60;
   const h1 = axis.end / 60;
+  // 跨午夜(轴越过 24:00):在 24:00 处画一条虚线日期分隔线,提示右侧刻度属次日
+  if (axis.end > 24 * 60) {
+    const dayLine = el("span", "absolute top-0 bottom-0 w-px bg-ink/40 pointer-events-none");
+    dayLine.style.left = `${(24 * 60 - axis.start) * pxPerMin - 0.5}px`;
+    dayLine.dataset.tip = "跨午夜分界 —— 右侧为次日凌晨";
+    ticks.appendChild(dayLine);
+  }
   for (let h = h0; h <= h1; h++) {
     const x = (h * 60 - axis.start) * pxPerMin;
     const isFirst = h === h0; // A3:首根左锚定,不 -translate-x-1/2
     const on = ctx.hourFilter === h;
-    const label = `${String(h % 24).padStart(2, "0")}:00`; // A1:跨午夜整点按 24h 取模(24:00 → "00:00",不截断)
+    // 24+ 时制:整点标签取模 24(24:00 → "00:00"),h ≥ 24 一律加「次日」前缀
+    const label = `${h >= 24 ? "次日 " : ""}${String(h % 24).padStart(2, "0")}:00`;
+    const nextLabel = `${h + 1 >= 24 ? "次日 " : ""}${String((h + 1) % 24).padStart(2, "0")}:00`;
     const b = el(
       "button",
       "absolute top-[1px] border-0 bg-transparent px-[5px] py-[1px] tabular-nums text-[10.5px] font-bold rounded-[4px] transition-colors cursor-pointer " +
@@ -184,7 +195,7 @@ function buildRulerTicks(
     );
     b.style.left = `${x}px`;
     b.dataset.hour = String(h);
-    b.title = `只看 ${label}–${String((h + 1) % 24).padStart(2, "0")}:00 段场次;再点取消`;
+    b.title = `只看 ${label}–${nextLabel} 段场次;再点取消`;
     ticks.appendChild(b);
     // A1:整点刻度 +6px 短线(与场馆行内整点竖线同 x,视觉上标尺与行内刻度相连)
     const tickLine = el("span", "absolute bottom-0 w-px h-[6px] bg-ink/25 pointer-events-none");
@@ -315,8 +326,10 @@ function markTightPairs(
     if (slack >= OK_SLACK) continue;
 
     const bad = slack < 0;
-    const endATxt = minToHms(endA);
-    const note = `${a.code} ${endATxt}结束${endATxt !== a.end_time ? "(已弃映后)" : ""} → ${b.code} ${b.start_time}开始 · 间隔 ${gap}min${
+    const endATxt = fmtEndClock(endA);
+    // 「已弃映后」判定走分钟比较 —— 显示文本可能带「次日」前缀,不能再与 end_time 裸串比
+    const endADropped = endA !== hmsToMin(a.end_time);
+    const note = `${a.code} ${endATxt}结束${endADropped ? "(已弃映后)" : ""} → ${b.code} ${b.start_time}开始 · 间隔 ${gap}min${
       need ? ` · 跨馆需缓冲 ${need}min` : ""
     } · 余量 ${slack}min(${bad ? "不足" : "偏紧"})`;
     for (const code of [a.code, b.code]) {
@@ -348,9 +361,10 @@ function markTightPairs(
   }
 }
 
-/** GV 映后谈块上的两行小字时间区(谈段区间,如 15:45–16:10);块窄,字号再降一级 */
+/** GV 映后谈块上的两行小字时间区(谈段区间,如 15:45–16:10);块窄,字号再降一级。
+ *  跨午夜时两端都折回 24h 内并带「次日」标记(如「次日 01:30–次日 02:00」)。 */
 function talkTimeRange(s: Screening): string {
-  return fmtMinRange(minToHms(filmEndMin(s)), s.end_time);
+  return fmtMinRangeMin(filmEndMin(s), hmsToMin(s.end_time));
 }
 
 function appendCard(
@@ -408,8 +422,8 @@ function appendCard(
   // 待选卡:CODE / 时间降一档灰阶(text-muted / text-ink-2);已选/冲突/另一方案仍用墨色(text-ink)
   const codeB = el("b", `shrink-0 text-[12px] ${isIdle ? "text-muted" : "text-ink"}`, s.code);
   codeB.dataset.tip = codeTip(s.code);
-  const filmEndTxt = minToHms(filmEndMin(s));
-  const cardRange = talk > 0 ? `${s.start_time}–${filmEndTxt}` : fmtMinRange(s.start_time, s.end_time);
+  // GV 拆分卡只显「正片段」区间(谈段由右侧拼接块自述);跨午夜两端带「次日」标记
+  const cardRange = talk > 0 ? fmtMinRangeMin(start, filmEndMin(s)) : fmtMinRange(s.start_time, s.end_time);
   const timeSpan = el(
     "span",
     `card-time shrink-0 text-[12px] font-semibold tabular-nums ${isIdle ? "text-ink-2" : "text-ink"}`,
@@ -527,8 +541,9 @@ function appendCard(
 
 /** 映后谈块 hover 说明(按当前状态切换文案;第 1 行标题 = 谈段区间,其余分点) */
 function talkTip(s: Screening, talk: number, talkOn: boolean, inCurrent: boolean): string {
-  const filmEnd = minToHms(filmEndMin(s));
-  const range = `${filmEnd}–${s.end_time} 映后谈 ${talk}min(GV 嘉宾到场)`;
+  const endMin = hmsToMin(s.end_time);
+  const filmEnd = fmtEndClock(filmEndMin(s));
+  const range = `${fmtMinRangeMin(filmEndMin(s), endMin)} 映后谈 ${talk}min(GV 嘉宾到场)`;
   if (!inCurrent)
     return [
       range,
@@ -541,7 +556,7 @@ function talkTip(s: Screening, talk: number, talkOn: boolean, inCurrent: boolean
         "已在行程中 — 默认连映后谈一起选",
         `点这里放弃 → 该场按 ${filmEnd} 结束,后续转场按正片末算`,
       ].join("\n")
-    : [range, `已放弃 — 仅正片,${filmEnd} 结束`, `点这里恢复参加 → 按 ${s.end_time} 结束`].join("\n");
+    : [range, `已放弃 — 仅正片,${filmEnd} 结束`, `点这里恢复参加 → 按 ${fmtEndClock(endMin)} 结束`].join("\n");
 }
 
 /**

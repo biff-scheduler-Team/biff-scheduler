@@ -8,8 +8,14 @@ export interface Screening {
   title_kr: string;
   title_zh: string;
   date: string; // YYYY-MM-DD
-  start_time: string; // HH:MM KST
-  end_time: string; // HH:MM KST（GV 已含 +25min）
+  start_time: string; // HH:MM KST（当日,恒 < 24:00）
+  /**
+   * HH:MM KST（GV 已含映后谈时长）。**24+ 时制**:跨午夜场保留 ≥24 的小时 ——
+   * 如 `23:59` 开场、次日 05:35 散场 → `"29:35"`。前端全部算术(轴界 / 卡片宽度 / 排序 /
+   * 整点筛选 / 冲突 / ICS 进位)都依赖 `end > start`;显示一律走 `fmtEndClock` / `fmtMinRange`。
+   * `data.ts::loadCatalog` 是唯一归一化闸门(见该处注释)。
+   */
+  end_time: string;
   duration_min: number;
   venue_id: string;
   venue_display: string;

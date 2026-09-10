@@ -472,6 +472,15 @@ def parse_page(page: pymupdf.Page, page_no: int, args, stats: Counter) -> list[d
         elif meta["dur"] and abs(printed_span - meta["dur"]) > 2:
             stats["end_ne_dur"] += 1
 
+        # 跨午夜场:end_min ≥ 1440 **保留 24+ 时制**(输出 "29:35" = 次日 05:35),绝不 %24 折回 ——
+        # 前端 hmsToMin / 轴界 / 卡片宽度 / 冲突 / ICS 进位全靠 end > start。
+        # (2025 版实测 4 场 Midnight Passion:23:59 → 次日 05:26~06:04)
+        if end_min >= 24 * 60:
+            stats["cross_midnight"] += 1
+            _log("INFO",
+                 f"p{page_no} code={code} 跨午夜 {meta['start']}–"
+                 f"{end_min // 60:02d}:{end_min % 60:02d}(24+ 时制)")
+
         rows.append({
             "code": code,
             "title_en": title_en,
@@ -479,7 +488,8 @@ def parse_page(page: pymupdf.Page, page_no: int, args, stats: Counter) -> list[d
             "title_zh": "",
             "date": date(args.year, args.month, dl["day"]).isoformat(),
             "start_time": meta["start"],
-            "end_time": f"{(end_min // 60) % 24:02d}:{end_min % 60:02d}",
+            # 24+ 时制:跨午夜场保留 ≥24 的小时(如 "29:35" = 次日 05:35),前端按「次日」渲染
+            "end_time": f"{end_min // 60:02d}:{end_min % 60:02d}",
             "duration_min": dur,
             "venue_id": (vcode or "unknown").lower(),
             "venue_display": VENUE_NAME.get(vcode, ("", "", "", ""))[0] if vcode else "",
