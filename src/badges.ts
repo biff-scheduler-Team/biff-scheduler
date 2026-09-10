@@ -9,26 +9,30 @@
 import type { Screening } from "./types";
 import { el } from "./util";
 
-/** 卡片/行程/影片库行内 CODE 数字的 hover 说明 */
+/** 卡片/行程/影片库行内 CODE 数字的 hover 说明(标题 + 分点;tip.ts 渲染) */
 export function codeTip(code: string): string {
-  return `放映 CODE ${code} — 官方日程表里本场放映的场次编号(同片多场各有独立 CODE;对表/抢票以此为准)`;
+  return [
+    `放映 CODE ${code}`,
+    "官方日程表里本场放映的场次编号",
+    "同片多场各有独立 CODE — 对表 / 抢票以此为准",
+  ].join("\n");
 }
 
 /** 「豆 x.x」评分章的 hover 说明(豆 = 豆瓣) */
 export const DOUBAN_CHIP_TITLE = "豆瓣用户评分(满分 10 分)";
 
-/** 排片表缩写总览(单源;网格图例「ⓘ 缩写说明」用)。逐行 mark — 中文释义 */
+/** 排片表缩写总览(单源;网格图例「ⓘ 缩写说明」用)。逐行 mark — 中文释义(渲染成标题 + 分点) */
 const ABBR_LINES: [string, string][] = [
-  ["CODE 001", "场次编号 — 每场放映唯一,同片多场编号不同;对表/抢票以此为准"],
-  ["评级 ALL / 12 / 15 / 19", "观影年龄分级 — 未满对应年龄不得入场(ALL=全年龄)"],
-  ["字幕 KE / KN / KK / NO", "KE=韩字+英字/英配 · KN=韩字+非英外语 · KK=韩字+韩配 · NO=无对白 · 无标=英字+韩配"],
-  ["GV", "Guest Visit 嘉宾到场 — 映后交流(可在卡片/行程单独放弃:放弃后该场按正片结束算转场;官方提示:可能临时变动,部分场次无英文口译)"],
+  ["CODE 001", "场次编号 — 每场放映唯一,同片多场编号不同;对表 / 抢票以此为准"],
+  ["评级 ALL / 12 / 15 / 19", "观影年龄分级 — 未满对应年龄不得入场(ALL = 全年龄)"],
+  ["字幕 KE / KN / KK / NO", "KE = 韩字 + 英字/英配 · KN = 韩字 + 非英外语 · KK = 韩字 + 韩配 · NO = 无对白 · 无标 = 英字 + 韩配"],
+  ["GV", "Guest Visit 嘉宾到场 — 映后交流(可在卡片 / 行程单独放弃;官方提示:可能临时变动)"],
   ["묶", "Batch Screening 连场放映"],
 ];
 
-/** 图例悬停用的多行说明文本 */
+/** 图例悬停用的多行说明文本(第 1 行标题,其余为分点) */
 export function abbrTooltip(): string {
-  return "排片表标记说明(官方口径)\n" + ABBR_LINES.map(([m, zh]) => `${m} — ${zh}`).join("\n");
+  return ["排片表标记说明(官方口径)", ...ABBR_LINES.map(([m, zh]) => `${m} — ${zh}`)].join("\n");
 }
 
 export interface BadgeDef {
@@ -44,7 +48,11 @@ export const BADGE_DEFS: BadgeDef[] = [
   {
     key: "gv",
     label: "GV",
-    title: "Guest Visit · 嘉宾到场映后对谈(本工具把 GV 场拆成「正片 + 映后谈」两段:默认一起选,可点映后块/行程开关单独放弃;放弃后该场按正片结束算转场。官方提示:场次可能临时变动)",
+    title:
+      "GV · 嘉宾到场映后对谈\n" +
+      "本工具把 GV 场拆成「正片 + 映后谈」两段:默认一起选,可点映后块 / 行程开关单独放弃\n" +
+      "放弃后该场按正片结束算转场,后续冲突即时放宽\n" +
+      "官方提示:场次可能临时变动,部分场次无英文口译",
     // GV 默认外观:实心黑底白字(与历史 .gv-tag 等价)
     cls: "px-1 py-px text-on-brand bg-ink",
   },

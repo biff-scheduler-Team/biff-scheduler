@@ -43,12 +43,13 @@
         <span id="grid-count" class="text-muted text-[13px] font-normal" data-page-node-id="0uH3GMPDbJxAhH6NhgVuDc"></span>
       </div>
       <div id="grid-scroll" data-page-node-id="5FkgLrGnq0fDbM1jPTN9XE"></div>
+      <!-- 图例悬停说明:data-tip 用 &#10; 分行 —— 第 1 行作标题,其余逐条分点(渲染见 src/tip.ts) -->
       <div class="flex flex-wrap gap-[14px] mt-[10px] text-[12px] text-muted items-center" data-page-node-id="eoDeBqVCujSXPrOYWZ8vQn">
-        <span data-tip="已加入当前方案(A/B)— 整卡淡绿底"><i class="inline-block w-[10px] h-[10px] rounded-[3px] mr-[5px] align-[-1px] border border-ok" style="background:color-mix(in srgb, var(--color-ok) 14%, var(--color-card))"></i>已选</span>
-        <span data-tip="同方案相邻两场衔接紧张(间隔小于转场缓冲,或余量 <15min):两张卡整卡淡黄底,hover 卡片看算式"><i class="inline-block w-[10px] h-[10px] rounded-[3px] mr-[5px] align-[-1px] border border-tight" style="background:color-mix(in srgb, var(--color-tight) 24%, var(--color-card))"></i>时间紧张</span>
-        <span class="text-conf font-semibold" data-tip="同方案内两场放映时间重叠(完全冲突,无法同时观看)— 整卡红底红框 + ⚠">⚠ 完全冲突</span>
-        <span data-tip="「我的选片」档位色点:在影片库打标后,甘特卡标题行前出现 7px 圆点 — 蓝=必看 / 紫=备选 / 灰蓝=随缘(冷色系,与整卡红绿灯底色相互独立;点顶栏「我的选片」可总览)"><i class="inline-block w-[7px] h-[7px] rounded-full mr-[4px] align-[1px] bg-pri-must"></i><i class="inline-block w-[7px] h-[7px] rounded-full mr-[4px] align-[1px] bg-pri-maybe"></i><i class="inline-block w-[7px] h-[7px] rounded-full mr-[5px] align-[1px] bg-pri-wild"></i>我的选片</span>
-        <span id="abbr-help" class="cursor-help hover:text-biff" title="点击打开排片表说明总览(字段/等级/字幕/影院代码等)">ⓘ 日程表说明</span>
+        <span data-tip="已选 — 已加入当前方案(A / B)&#10;整卡淡绿底,与「时间紧张」的淡黄底互斥"><i class="inline-block w-[10px] h-[10px] rounded-[3px] mr-[5px] align-[-1px] border border-ok" style="background:color-mix(in srgb, var(--color-ok) 14%, var(--color-card))"></i>已选</span>
+        <span data-tip="时间紧张 — 同方案相邻两场衔接偏紧&#10;间隔小于转场缓冲,或余量不足 15min&#10;两张卡整卡淡黄底;hover 卡片看完整算式"><i class="inline-block w-[10px] h-[10px] rounded-[3px] mr-[5px] align-[-1px] border border-tight" style="background:color-mix(in srgb, var(--color-tight) 24%, var(--color-card))"></i>时间紧张</span>
+        <span class="text-conf font-semibold" data-tip="完全冲突 — 同方案内两场放映时间重叠&#10;无法同时观看:整卡红底红框 + ⚠">⚠ 完全冲突</span>
+        <span data-tip="我的选片档位色点&#10;蓝 = 必看 · 紫 = 备选 · 灰蓝 = 随缘(冷色系)&#10;在影片库打标后,甘特卡标题行前出现 7px 圆点&#10;与整卡红绿灯底色相互独立;点顶栏「我的选片」可总览"><i class="inline-block w-[7px] h-[7px] rounded-full mr-[4px] align-[1px] bg-pri-must"></i><i class="inline-block w-[7px] h-[7px] rounded-full mr-[4px] align-[1px] bg-pri-maybe"></i><i class="inline-block w-[7px] h-[7px] rounded-full mr-[5px] align-[1px] bg-pri-wild"></i>我的选片</span>
+        <span id="abbr-help" class="cursor-help hover:text-biff">ⓘ 日程表说明</span>
       </div>
     </section>
 

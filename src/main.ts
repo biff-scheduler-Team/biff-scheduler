@@ -682,10 +682,11 @@ async function boot(): Promise<void> {
   attachTip(); // 缩写说明悬停 tooltip(data-tip 文档级委托,渲染重建无需重绑)
   // D1:刻度固定后网格总宽与视口无关 —— 移除旧 ResizeObserver 重渲(缩窗不再需改 px/min;
   // 且重渲 replaceWith 会丢失用户横向平移位置,保留反而是回归)
-  // 图例「ⓘ 日程表说明」:hover 快速多行提示(单源自 badges.ts abbrTooltip);点击打开总览弹层
+  // 图例「ⓘ 日程表说明」:hover 快速多行提示(单源自 badges.ts abbrTooltip);点击打开总览弹层。
+  // 末条分点提示「可点开总览」—— 不挂原生 title(它会先弹一条样式不可控的长横条,与本 tooltip 打架)
   const abbrHelp = document.getElementById("abbr-help");
   if (abbrHelp) {
-    abbrHelp.dataset.tip = abbrTooltip();
+    abbrHelp.dataset.tip = `${abbrTooltip()}\n点击打开完整说明总览(字段 / 等级 / 字幕 / 影院代码)`;
     abbrHelp.addEventListener("click", () => openModal("排片表说明 · 图例总览", buildGuideBody(cat), true));
   }
   renderAll();

@@ -1,14 +1,21 @@
 // 即时悬停说明(tooltip)— 替代浏览器原生 title 的延迟与不可控样式。
-// 触发:任意带 data-tip 的元素;纯文本,支持 \n 换行(pre-line 渲染)。
+// 触发:任意带 data-tip 的元素。内容为**纯文本**(不渲染 HTML/Markdown → 无 XSS 面),
+// 用 \n 分行,约定极简结构:
+//   · 第 1 行 = 标题(加粗 + 底部细分隔线);
+//   · 其余行 = 分点条目(自动加 · 悬挂缩进;行内首段含 " — " 时加粗前段,便于扫读缩写表);
+//   · 只有 1 行 = 直接作正文段落 —— 靠 tip-card 的窄宽自然折行(不再被拉成「一整条」)。
 // 单例 DOM + 文档级事件委托;对卡片/行程重建安全(元素重建无需重新绑定)。
-// 全量化:外观全 Tailwind utility;显隐走 is-hidden(@utility,style.css 定义)。
+// 外观全 Tailwind utility(宽度上限用 style.css 的 @utility tip-card);显隐走 is-hidden。
+
+import { el } from "./util";
 
 const TIP_DELAY = 80; // ms,扫过不闪
 const TIP_GAP = 14; // 距光标偏移 px
+const EDGE = 8; // 距视口边缘留白 px
 
 const TIP_CLS =
-  "fixed z-[300] max-w-[70vw] px-[10px] py-[7px] rounded-[8px] text-[12px] leading-[1.5] " +
-  "bg-[var(--toast-bg)] text-on-brand whitespace-pre-line pointer-events-none " +
+  "fixed z-[300] tip-card px-[11px] py-[9px] rounded-[9px] text-[12px] leading-[1.55] " +
+  "bg-[var(--toast-bg)] text-on-brand pointer-events-none " +
   "shadow-[var(--shadow-modal)] is-hidden";
 
 let tipEl: HTMLDivElement | null = null;
@@ -26,6 +33,38 @@ function ensure(): HTMLDivElement {
   return tipEl;
 }
 
+/** 一条分点:· + 正文(首段含 " — " 时前段加粗,如「CODE 001 — 场次编号…」) */
+function bulletRow(text: string): HTMLElement {
+  const row = el("div", "flex gap-[6px]");
+  row.appendChild(el("span", "shrink-0 text-on-brand/55", "·"));
+  const body = el("span", "min-w-0");
+  const dash = text.indexOf(" — ");
+  if (dash > 0) {
+    body.append(el("b", "font-semibold", text.slice(0, dash)), document.createTextNode(text.slice(dash)));
+  } else {
+    body.textContent = text;
+  }
+  row.appendChild(body);
+  return row;
+}
+
+/** 把 data-tip 文本渲染成「标题 + 分点」结构(单行则退化为纯段落) */
+function paint(node: HTMLDivElement, text: string): void {
+  node.replaceChildren();
+  const lines = text
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (lines.length <= 1) {
+    node.textContent = lines[0] ?? "";
+    return;
+  }
+  node.appendChild(el("div", "font-semibold mb-[6px] pb-[5px] border-b border-white/20", lines[0]));
+  const list = el("div", "flex flex-col gap-[4px]");
+  for (const line of lines.slice(1)) list.appendChild(bulletRow(line));
+  node.appendChild(list);
+}
+
 function hide(): void {
   window.clearTimeout(timer);
   timer = undefined;
@@ -41,8 +80,8 @@ function show(e: PointerEvent): void {
   window.clearTimeout(timer);
   timer = window.setTimeout(() => {
     const el = ensure();
-    el.textContent = host.dataset.tip ?? "";
-    el.classList.remove("is-hidden");
+    paint(el, host.dataset.tip ?? "");
+    el.classList.remove("is-hidden"); // 先显示再量尺寸(offsetWidth/Height 需要可见)
     place(el, e.clientX, e.clientY);
   }, TIP_DELAY);
 }
@@ -51,11 +90,15 @@ function place(el: HTMLDivElement, x: number, y: number): void {
   el.style.left = "0px";
   el.style.top = "0px";
   const w = el.offsetWidth;
+  const h = el.offsetHeight;
   const vw = window.innerWidth;
+  const vh = window.innerHeight;
   let left = x + TIP_GAP;
-  if (left + w > vw - 8) left = Math.max(8, x - w - TIP_GAP); // 右侧放不下 → 放左侧
+  if (left + w > vw - EDGE) left = Math.max(EDGE, x - w - TIP_GAP); // 右侧放不下 → 放左侧
+  let top = y + TIP_GAP;
+  if (top + h > vh - EDGE) top = Math.max(EDGE, y - h - TIP_GAP); // 下方放不下 → 翻到上方
   el.style.left = `${left}px`;
-  el.style.top = `${y + TIP_GAP}px`; // 下方溢出交给滚动,通常卡片在中上部
+  el.style.top = `${top}px`;
 }
 
 function move(e: PointerEvent): void {

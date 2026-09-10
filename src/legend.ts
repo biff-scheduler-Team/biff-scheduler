@@ -115,7 +115,7 @@ export function pageChip(page: number): HTMLElement {
   return chipEl({
     label: `P.${page}`,
     cls: `${CHIP_BASE} text-meta bg-card border-line`,
-    tip: `节目册页码 P.${page}\n该场在官方 Ticket Catalogue(节目册)中的页码;购票 / 翻册对表用`,
+    tip: `节目册页码 P.${page}\n该场在官方 Ticket Catalogue(节目册)中的页码\n购票 / 翻册对表用`,
   });
 }
 
@@ -127,7 +127,7 @@ export function durChip(min: number, opts?: { boxed?: boolean }): HTMLElement {
     ? `${CHIP_BASE} text-meta bg-card border-line`
     : `${CHIP_BASE} text-meta bg-transparent border-transparent px-[2px]`;
   const node = el("i", cls, `${min}'`);
-  node.dataset.tip = `片长 ${min} 分钟(正片时长;GV 场另有映后谈,可在卡片/行程里单独放弃)`;
+  node.dataset.tip = `片长 ${min} 分钟\n正片时长(不含映后谈)\nGV 场另有映后谈,可在卡片 / 行程里单独放弃`;
   return node;
 }
 
@@ -149,7 +149,9 @@ export function doubanChip(rating: number, extraCls?: string): HTMLElement {
 function timeField(range: string): HTMLElement {
   const node = el("b", "text-[12.5px] font-semibold tabular-nums whitespace-nowrap cursor-help", range);
   node.dataset.tip =
-    "放映时间 起–止(KST)\nGV 映后场的结束时间含映后谈(正片 + 映后 N′);该段可在卡片 / 行程单独放弃,放弃后按正片结束算转场";
+    "放映时间 起–止(KST)\n" +
+    "GV 映后场的结束时间含映后谈(正片 + 映后 N′)\n" +
+    "该段可在卡片 / 行程单独放弃 — 放弃后按正片结束算转场";
   return node;
 }
 
@@ -163,7 +165,7 @@ function codeField(code: string): HTMLElement {
 /** 「未标注」占位章:虚线空框 = 格内没有这枚标识 */
 function blankChip(): HTMLElement {
   const node = el("i", `${CHIP_BASE} text-meta bg-card border-line border-dashed`, "(空白)");
-  node.dataset.tip = "格内未标注该字段 — 字幕未标注即「英文字幕 + 韩语对白」(官方默认)";
+  node.dataset.tip = "格内未标注该字段\n字幕未标注 = 官方默认「英文字幕 + 韩语对白」";
   return node;
 }
 
@@ -202,13 +204,12 @@ const GROUP_AREA: Record<string, string> = {
   haeundae: "海云台区 — 非本届官方 8 馆名单(仅 mock 跨馆演示)",
 };
 
-/** 场馆行悬停说明(全名 + 韩文名 + 分区 + 官方代码) */
+/** 场馆行悬停说明(全名 + 韩文名作标题;分区 / 官方代码分点) */
 export function venueTip(v: Venue): string {
-  const lines = [v.name];
-  if (v.name_kr) lines.push(v.name_kr);
-  lines.push(GROUP_AREA[v.group] ?? "—");
+  const lines = [v.name_kr ? `${v.name} · ${v.name_kr}` : v.name];
+  lines.push(`分区 — ${GROUP_AREA[v.group] ?? "—"}`);
   if (v.code) {
-    lines.push(`官方日程表影院代码 ${v.code} — 按此与官方 Catalogue 对表(mock 演示,2026 以官网为准)`);
+    lines.push(`官方影院代码 ${v.code} — 按此与官方 Catalogue 对表(mock 演示,2026 以官网为准)`);
   }
   return lines.join("\n");
 }

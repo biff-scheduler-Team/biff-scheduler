@@ -249,25 +249,9 @@
   background: color-mix(in srgb, var(--color-biff) 8%, var(--color-card)) !important;
 }
 
-/* ---- 缩写说明 tooltip(tip.ts 运行时单例,data-tip 触发) ---- */
-.tip {
-  position: fixed;
-  left: 0;
-  top: 0;
-  z-index: 300; /* 高于 modal(z-100)与 toast(z-200) */
-  max-width: min(360px, calc(100vw - 20px));
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  background: var(--toast-bg);
-  color: var(--text-on-brand);
-  font-size: 12px;
-  line-height: 1.55;
-  white-space: pre-line; /* 多行缩写总览(\n 换行) */
-  pointer-events: none; /* 不拦截 hover/点击 */
-  box-shadow: var(--shadow-modal);
-  opacity: 0;
-  transition: opacity 90ms ease;
-}
-.tip.show {
-  opacity: 1;
+/* 悬停说明 tooltip(tip.ts 运行时单例,data-tip 触发)的宽度上限。
+   收在 320px:长句折成 2~3 行 → 近矩形而非「一整条」横条;窄屏退化为 100vw - 24px。
+   用 CSS 写 min()/calc() 而非 Tailwind 任意值(免去 `calc(100vw_-_24px)` 的下划线转义)。 */
+@utility tip-card {
+  max-width: min(320px, calc(100vw - 24px));
 }

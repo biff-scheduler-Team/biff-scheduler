@@ -108,7 +108,7 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
         "shrink-0 not-italic text-[10px] font-extrabold text-biff bg-biff-soft border border-biff-line rounded-[3px] px-[3px] py-px",
         venue.code
       );
-      c.dataset.tip = `影院代码 ${venue.code} — 官方日程表代码(2025 届同馆口径 mock;2026 以官网为准)`;
+      c.dataset.tip = `影院代码 ${venue.code}\n官方日程表的场馆缩写 — 与官方 Catalogue 对表(2025 届同馆口径 mock;2026 以官网为准)`;
       line.appendChild(c);
     }
     line.appendChild(el("span", "text-[12px] font-semibold leading-[1.3] truncate min-w-0", vname));
@@ -509,15 +509,23 @@ function appendCard(
   return { card, talkEl: null };
 }
 
-/** 映后谈块 hover 说明(按当前状态切换文案) */
+/** 映后谈块 hover 说明(按当前状态切换文案;第 1 行标题 = 谈段区间,其余分点) */
 function talkTip(s: Screening, talk: number, talkOn: boolean, inCurrent: boolean): string {
   const filmEnd = minToHms(filmEndMin(s));
   const range = `${filmEnd}–${s.end_time} 映后谈 ${talk}min(GV 嘉宾到场)`;
   if (!inCurrent)
-    return `${range}\n你还没加入本场:点正片 = 连映后谈一起加入;点这里 = 只看正片(放弃映后谈,该场按 ${filmEnd} 结束,转场/冲突即时放宽)`;
+    return [
+      range,
+      "你还没加入本场 — 点正片 = 连映后谈一起加入",
+      `点这里 = 只看正片(放弃映后谈,该场按 ${filmEnd} 结束,转场 / 冲突即时放宽)`,
+    ].join("\n");
   return talkOn
-    ? `${range}\n已在行程中(默认连映后谈一起选);点这里放弃 → 该场按 ${filmEnd} 结束,后续转场按正片末算`
-    : `${range}\n已放弃(仅正片,${filmEnd} 结束);点这里恢复参加 → 按 ${s.end_time} 结束`;
+    ? [
+        range,
+        "已在行程中 — 默认连映后谈一起选",
+        `点这里放弃 → 该场按 ${filmEnd} 结束,后续转场按正片末算`,
+      ].join("\n")
+    : [range, `已放弃 — 仅正片,${filmEnd} 结束`, `点这里恢复参加 → 按 ${s.end_time} 结束`].join("\n");
 }
 
 /**
