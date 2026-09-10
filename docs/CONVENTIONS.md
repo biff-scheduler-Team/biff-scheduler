@@ -136,9 +136,24 @@
 - **甘特缩放(2026-09-10)**:
   - 刻度 = `PX_PER_MIN × store.settings.zoom`(默认 1 = 100%);倍率离散阶梯
     `[0.35, 0.5, 0.7, 1, 1.4, 2, 3]`,沿阶梯走用 `grid.ts::stepZoom`。
-  - `PX_PER_MIN` / `LABEL_W` 是 grid 内部刻度 / 粘性列宽常量;`ROW_BASE_CLS` 里的字面量 `148px` 必须与
-    `LABEL_W` 同值(Tailwind v4 不能拼类名)。`main.ts` 的缩放锚点换算依赖
-    `轴起点 = axisStartFor(cat, date)`,`轨道内 x = LABEL_W`,这两个由 grid.ts 单一来源导出。
+  - `PX_PER_MIN` 是 grid 内部基准刻度;`main.ts` 的缩放锚点换算依赖
+    `轴起点 = axisStartFor(cat, date)` 与 `轨道内 x = labelMetrics(pxPerMin).labelW`,由 grid.ts 单一来源导出。
+  - **影厅列宽随缩放一起变(2026-09-10 改)**:`grid.ts::labelMetrics(pxPerMin)` 单源导出
+    `{labelW, chipW, fontPx, padX}` —— 100% 列宽 ≈49px(只装一枚代码 chip),300% ≈87px、chip 字号 10 → 18px。
+    旧版 `LABEL_W = 148` 恒定,只有轨道在伸缩,用户否定这不是「缩放」。字号按 `z^0.6` 阻尼
+    (线性则 300% 要 30px 字号 + 150px 列宽,视觉上只剩空白);`chipW = round(fontPx·2.8)`、`padX = fontPx`,
+    三者同源挂在字号上 ⇒ 列宽与 chip 严格等比。
+    ⚠ 列宽**不能**拼 Tailwind 字面量类(`grid-cols-[${n}px]` 生成不出来,`@utility` 那套权重陷阱同源)
+    → 一律内联 `gridTemplateColumns`(`ROW_BASE_CLS` 已退化成只有 `"grid"`,`LABEL_BOX_CLS` 去掉 `px-[10px]`)。
+    `main.ts` 三处锚点换算(`gridAnchor` / `applyZoom fromLeft` / `renderGrid` 回写 `scrollLeft`)
+    **必须全部走 labelMetrics**,各自独立算就会在缩放瞬间跳位;`fitZoom` 因列宽依赖倍率需**两次迭代**收敛
+    (单次算 z>1 会溢出)。
+  - **行标签 = 官方影院代码 chip(2026-09-10 改)**:只放 `B1` / `BT` / `L10` / `BCM`,整格 hover 出
+    全名 + 韩名 + 分区(`legend.ts::venueTip`)。旧版放影院名:148px 列只有 ~100px 可用而全名要 205px
+    → 必被 `truncate` 裁成「Busan Cinema …」,且 B1/B2/B3 三行一模一样。改代码后列宽可缩到 49px,
+    时间轴多出约 100px。
+  - **「1:1」按钮回原始比例 100%(2026-09-10 加)**:缩放控件 = `− / 百分比(纯读数,非按钮) / + / 适应 / 1:1`;
+    旧版把中间百分比做成按钮,用户反馈「没发现」。`renderZoomCtl` 每次 `replaceChildren` 换节点。
   - 网格每次重建都换新滚动容器,**缩放锚点按「旧刻度算 + 新刻度回写」换算**(`pendingAnchor`),
     不能沿用旧 `scrollLeft` —— 同一日期内换刻度会跳。切日期 / 首渲 anchor=null → 回最左。
   - 缩放写 `store.settings.zoom` 走 `state.ts::setZoom`(只落盘、**不 notify**)——

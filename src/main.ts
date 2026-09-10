@@ -30,7 +30,7 @@ import {
   syncFromCloud,
   toggleScreening,
 } from "./state";
-import { buildGrid, fitTimeTexts, fitZoom, axisStartFor, clampZoom, stepZoom, LABEL_W, PX_PER_MIN, ZOOM_MAX, ZOOM_MIN } from "./grid";
+import { buildGrid, fitTimeTexts, fitZoom, axisStartFor, clampZoom, stepZoom, labelMetrics, PX_PER_MIN, ZOOM_MAX, ZOOM_MIN } from "./grid";
 import { buildAgenda } from "./agenda";
 import { abbrTooltip } from "./badges";
 import { attachTip } from "./tip";
@@ -191,13 +191,15 @@ function renderGroupSeg(): void {
 /* ---------------- 甘特缩放 ---------------- */
 
 /** 视口锚点:容器内屏幕 x(clientX 缺省 = 视口中心)对应的时刻。
- *  轨道在容器内从 x = LABEL_W 起算(左侧粘性影厅列宽),故 x 至少取到影厅列右缘 ——
- *  光标落在粘性列上时锚定列缘,避免算出轴界之外的负数时刻。 */
+ *  轨道在容器内从 x = labelW 起算(左侧粘性影厅列宽,**随缩放一起变**),故 x 至少取到影厅列右缘 ——
+ *  光标落在粘性列上时锚定列缘,避免算出轴界之外的负数时刻。
+ *  列宽一律取自 `grid.ts::labelMetrics`(与 buildGrid 同源),这里按**当前** zoom 取旧列宽。 */
 function gridAnchor(scroll: HTMLElement, clientX?: number): { min: number; screenX: number } {
   const px = PX_PER_MIN * zoom;
+  const lw = labelMetrics(px).labelW;
   const rel = clientX == null ? scroll.clientWidth / 2 : clientX - scroll.getBoundingClientRect().left;
-  const screenX = Math.max(rel, LABEL_W);
-  return { min: axisStartFor(cat, currentDate) + (scroll.scrollLeft + screenX - LABEL_W) / px, screenX };
+  const screenX = Math.max(rel, lw);
+  return { min: axisStartFor(cat, currentDate) + (scroll.scrollLeft + screenX - lw) / px, screenX };
 }
 
 /** 缩放:改刻度并就地重绘网格。**只重绘网格** —— 缩放不影响行程/角标,走 notify → renderAll 是白干,
@@ -211,8 +213,10 @@ function applyZoom(next: number, opts: { clientX?: number; fromLeft?: boolean } 
     return;
   }
   const scroll = document.getElementById("grid-scroll");
+  // fromLeft:轴起点贴左 → screenX 取**新**倍率下的列宽(renderGrid 用同一个值回算 ⇒ scrollLeft 恰为 0);
+  // 其余路径按**旧**刻度算锚点(此刻 zoom 尚未改,gridAnchor 读到的就是旧列宽)。
   pendingAnchor = opts.fromLeft
-    ? { min: axisStartFor(cat, currentDate), screenX: LABEL_W }
+    ? { min: axisStartFor(cat, currentDate), screenX: labelMetrics(PX_PER_MIN * z).labelW }
     : scroll
       ? gridAnchor(scroll, opts.clientX)
       : null;
@@ -224,11 +228,13 @@ function applyZoom(next: number, opts: { clientX?: number; fromLeft?: boolean } 
   renderZoomCtl();
 }
 
-/** 缩放控件(网格标题行右侧):− / 当前百分比(=复位) / + / 适应宽度。到两端置灰。 */
+/** 缩放控件(网格标题行右侧):− / 当前倍率(**纯读数,非按钮**) / + / 适应宽度 / 1:1 回到原始比例。
+ *  到两端置灰。百分比降级为读数:回 100% 交给独立的「1:1」按钮 —— 旧版把百分比做成按钮,
+ *  用户反馈「不像按钮、没发现」,故显式给一个入口。 */
 const ZBTN_CLS =
   "border-0 bg-card px-[8px] py-[3px] text-[12px] font-bold leading-[1.5] text-ink-2 hover:bg-[var(--bg-hover-soft)] disabled:opacity-30 disabled:cursor-not-allowed";
 const ZMID_CLS =
-  "border-0 border-x border-line-soft bg-card px-[6px] py-[3px] text-[12px] font-bold tabular-nums text-ink min-w-[48px] leading-[1.5] hover:bg-[var(--bg-hover-soft)]";
+  "border-0 border-x border-line-soft bg-card px-[6px] py-[3px] text-[12px] font-bold tabular-nums text-ink min-w-[48px] leading-[1.5] text-center select-none";
 const ZFIT_CLS =
   "border-0 border-l border-line-soft bg-card px-[9px] py-[3px] text-[12px] font-bold leading-[1.5] text-ink-2 hover:bg-[var(--bg-hover-soft)]";
 
@@ -244,11 +250,14 @@ function renderZoomCtl(): void {
   const host = document.getElementById("zoom-ctl");
   if (!host) return;
   const pct = `${Math.round(zoom * 100)}%`;
+  const readout = el("span", ZMID_CLS, pct);
+  readout.dataset.tip = `当前缩放 ${pct} —— 影厅列与时间轴一起缩放`;
   host.replaceChildren(
-    zoomBtn("−", "out", `缩小时间轴(当前 ${pct})\n也可按住 Ctrl / ⌘ 滚轮(触控板双指捏合)`, zoom <= ZOOM_MIN + 1e-6, ZBTN_CLS),
-    zoomBtn(pct, "reset", `当前缩放 ${pct} —— 点击回到 100%`, false, ZMID_CLS),
-    zoomBtn("+", "in", `放大时间轴(当前 ${pct})\n也可按住 Ctrl / ⌘ 滚轮(触控板双指捏合)`, zoom >= ZOOM_MAX - 1e-6, ZBTN_CLS),
-    zoomBtn("适应", "fit", "适应宽度:尽量把当天整条时间轴塞进视口,左缘对齐轴起点(到 35% 下限为止;更长则保留小量横向滚动)", false, ZFIT_CLS)
+    zoomBtn("−", "out", `缩小时间轴与影厅列(当前 ${pct})\n也可按住 Ctrl / ⌘ 滚轮(触控板双指捏合)`, zoom <= ZOOM_MIN + 1e-6, ZBTN_CLS),
+    readout,
+    zoomBtn("+", "in", `放大时间轴与影厅列(当前 ${pct})\n也可按住 Ctrl / ⌘ 滚轮(触控板双指捏合)`, zoom >= ZOOM_MAX - 1e-6, ZBTN_CLS),
+    zoomBtn("适应", "fit", "适应宽度:尽量把当天整条时间轴塞进视口,左缘对齐轴起点(到 35% 下限为止;更长则保留小量横向滚动)", false, ZFIT_CLS),
+    zoomBtn("1:1", "reset", `回到原始比例 100%(当前 ${pct})\n影厅列与时间轴一起回到基准刻度`, false, ZFIT_CLS)
   );
 }
 
@@ -260,6 +269,7 @@ function renderGrid(): void {
   pendingAnchor = null;
   const conf = conflicts.get(currentDate);
   const pxPerMin = PX_PER_MIN * zoom;
+  const newLw = labelMetrics(pxPerMin).labelW; // 影厅列宽随缩放 —— 回算 scrollLeft 必须用**新**列宽
   const grid = buildGrid(
     {
       cat,
@@ -279,7 +289,7 @@ function renderGrid(): void {
   grid.id = "grid-scroll";
   // 锚点回算:同一日期内刻度可能变了(缩放),故必须用新刻度重算 scrollLeft,不能沿用旧 scrollLeft
   if (anchor) {
-    const left = (anchor.min - axisStartFor(cat, currentDate)) * pxPerMin - (anchor.screenX - LABEL_W);
+    const left = (anchor.min - axisStartFor(cat, currentDate)) * pxPerMin - (anchor.screenX - newLw);
     grid.scrollLeft = Math.max(0, Math.min(left, grid.scrollWidth - grid.clientWidth));
   }
   lastGridDate = currentDate;
@@ -406,7 +416,7 @@ function bindEvents(): void {
       return;
     }
 
-    // 甘特缩放:− / + 走档位阶梯(视口中心锚定);点百分比复位 100%;「适应」把整天塞进视口
+    // 甘特缩放:− / + 走档位阶梯(视口中心锚定);「1:1」回原始比例 100%;「适应」把整天塞进视口
     const zc = t.closest<HTMLElement>("#zoom-ctl [data-zoom]");
     if (zc) {
       const act = zc.dataset.zoom;

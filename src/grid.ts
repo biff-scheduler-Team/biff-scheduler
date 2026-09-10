@@ -10,7 +10,6 @@ import { appendMetaRow, durChip, venueTip } from "./legend";
 import { PRI_DOT_BG, PRI_LABEL } from "./pick";
 
 export const ROW_H = 92;
-export const LABEL_W = 148; // 粘性影厅列宽(沿用旧值,不动;ROW_BASE_CLS 里的 148px 必须与它同值)
 const TRAIL_PAD = 60; // A3:末 tick 右侧 +60px 安全边距(标签半宽 + 呼吸),两端标签永不悬出/被裁
 export const PX_PER_MIN = 3.0; // 100% 基准刻度(每小时 180px;1.5h≈270px;2h≈360px)
 // 横向更舒展 → 6 chip 徽章行单行排开、短场次(60–95min)不再因行宽不足换行或降级时间。
@@ -43,16 +42,48 @@ export function stepZoom(z: number, dir: 1 | -1): number {
   return idx <= 0 ? ZOOM_MIN : ZOOM_LEVELS[idx - 1];
 }
 
+/* ---------------- 影厅列几何(随缩放) ---------------- */
+/**
+ * 影厅列几何 —— **列宽 / 代码 chip 宽 / chip 字号三者同源**。
+ *
+ * 行标签只放官方影院代码(B1 / BT / L10 / BCM),整格 hover 出全名 + 韩名 + 分区(legend.ts::venueTip)。
+ * 列宽于是从「装下最长全名 205px」变成「装下一枚代码 chip」:100% 由 148px 收到 ~49px,
+ * 多出来的宽度全给时间轴,且**再也不会截断**(旧版 148px 只有 100px 可用,而全名要 205px)。
+ *
+ * **缩放连带影厅列**:列宽与 chip 字号一起变 —— 100% → 300% 时列宽 49 → 87px、字号 10 → 18px,
+ * 整列与时间轴一起缩/展,而不是「只有轨道在拉伸、影厅列钉死 148px」。字号按 z^0.6 阻尼而非线性:
+ * 线性的话 300% 要 30px 字号 + 150px 列宽,视觉上只剩空白。
+ *
+ * ⚠ 列宽**不能**写成 Tailwind 字面量类(`grid-cols-[${n}px]` 拼不出来,见 buildGrid 注释),
+ *   一律走内联 `gridTemplateColumns`;`main.ts` 的缩放锚点换算依赖「轨道起点 = labelW」,必须同源。
+ */
+export function labelMetrics(pxPerMin: number): {
+  labelW: number;
+  chipW: number;
+  fontPx: number;
+  padX: number;
+} {
+  const z = pxPerMin / PX_PER_MIN;
+  const fontPx = Math.round(Math.min(18, Math.max(9, 10 * Math.pow(z, 0.6))));
+  const chipW = Math.round(fontPx * 2.8); // 容下 3 字符代码(L10 / BCM)+ 左右边框
+  const padX = fontPx; // 列内边距跟着字号走 → 列宽与 chip 严格等比
+  return { labelW: chipW + 2 * padX + 1, chipW, fontPx, padX };
+}
+
 /** 适应宽度:把当天整条轴塞进可用宽度 → 返回连续倍率(已钳制)。
- *  可用轨道宽 = 容器宽 − 粘性影厅列 − 右端 TRAIL_PAD(末 tick 标签不被裁)。 */
+ *  可用轨道宽 = 容器宽 − 粘性影厅列 − 右端 TRAIL_PAD(末 tick 标签不被裁)。
+ *  **两次迭代**:列宽本身依赖倍率(放大 → 列更宽 → 可用轨道更窄),一次算不准会溢出。
+ *  迭代单调收敛(倍率↑ ⇒ 列宽↑ ⇒ 解出的倍率↓),两轮足够。 */
 export function fitZoom(cat: Catalog, date: string, availW: number): number {
   const axis = axisRangeFor(cat, date);
   const axisMin = Math.max(axis.end - axis.start, 60);
-  const trackAvail = Math.max(availW - LABEL_W - TRAIL_PAD, 240);
-  return clampZoom(trackAvail / (axisMin * PX_PER_MIN));
+  const solve = (labelW: number): number =>
+    clampZoom(Math.max(availW - labelW - TRAIL_PAD, 240) / (axisMin * PX_PER_MIN));
+  const first = solve(labelMetrics(PX_PER_MIN).labelW);
+  return solve(labelMetrics(PX_PER_MIN * first).labelW);
 }
 
-/** 当日时间轴起点分钟 —— 轨道内 x = LABEL_W 处即该时刻(供 main 侧换算缩放锚点) */
+/** 当日时间轴起点分钟 —— 轨道内 x = `labelMetrics().labelW` 处即该时刻(供 main 侧换算缩放锚点) */
 export function axisStartFor(cat: Catalog, date: string): number {
   return axisRangeFor(cat, date).start;
 }
@@ -109,21 +140,27 @@ function titleFor(s: Screening, map: Mapping | undefined): string {
 }
 
 // 粘性场馆列 / 标尺左上空格:底色 = 画布灰(bg-page),与卡片白底拉开层级;
-// 列分隔交给 border-r,不再用白底(旧值 bg-card 与卡片同色 → 场馆名像浮在空白上)
+// 列分隔交给 border-r,不再用白底(旧值 bg-card 与卡片同色 → 代码 chip 像浮在空白上)。
+// 左右内边距由 buildGrid 按缩放内联写(labelMetrics().padX)—— 这里不写死 px-*,否则列宽与内边距不同步。
 const LABEL_BOX_CLS =
-  "sticky left-0 z-[3] bg-page border-r border-line px-[10px] py-[6px] flex flex-col justify-center min-h-[28px]";
+  "sticky left-0 z-[3] bg-page border-r border-line py-[6px] flex flex-col justify-center min-h-[28px]";
 
-// ⚠ 这里的 148px 必须与 LABEL_W 同值 —— Tailwind v4 只生成源码里的完整字面量类,不能拼 `grid-cols-[${LABEL_W}px]`;
-//   main 侧的缩放锚点换算依赖「轨道起点 = 影厅列宽 = LABEL_W」。
-const ROW_BASE_CLS = "grid grid-cols-[148px_1fr]";
+// 行 / 标尺的栅格骨架:**只有 "grid"**,列宽由 buildGrid 内联 `gridTemplateColumns` 写。
+// ⚠ Tailwind v4 只生成源码里的完整字面量类,拼不出 `grid-cols-[${n}px]` 这种动态宽度 ——
+//   缩放要改影厅列宽,所以必须走内联样式;main 侧的缩放锚点换算依赖
+//   「轨道起点 = 影厅列宽 = labelMetrics().labelW」,同源。
+const ROW_BASE_CLS = "grid";
 
 export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
   const rows = screeningsByVenue(ctx.cat, date);
   const axis = axisRangeFor(ctx.cat, date); // A1:当日动态轴(最早开映→最晚散场,整点对齐)
   const axisMin = axis.end - axis.start;
   const pxPerMin = ctx.pxPerMin; // 缩放后的刻度(100% = PX_PER_MIN);由 main 侧随 GridCtx 传入
+  const { labelW, chipW, fontPx, padX } = labelMetrics(pxPerMin); // 影厅列宽随缩放(与 main 侧锚点换算同源)
   const trackW = axisMin * pxPerMin;
-  const totalW = LABEL_W + trackW + TRAIL_PAD;
+  const totalW = labelW + trackW + TRAIL_PAD;
+  /** 行 / 标尺共用的栅格列宽 —— 内联写(见 ROW_BASE_CLS 注释:Tailwind 拼不出动态宽度) */
+  const rowCols = `${labelW}px 1fr`;
   const nowPx = todayIsoLocal() === date ? nowPxFor(axis, pxPerMin) : null;
 
   // D3:横向溢出常态化 → 原生滚动条始终可用 + cursor-grab 拖拽平移恒挂(attachPan 内部对装得下的容器自行守卫)
@@ -136,6 +173,7 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
   // 时间标尺(ruler):底部强描边与场馆行分隔。粘性列空占位(动态轴首根整点标签左锚定画在轨道内,
   // 替代旧「9:00 放粘性列」的写法 —— 轴界不再固定 9 点,只有当日首场那一格需要贴左)。
   const ruler = el("div", `${ROW_BASE_CLS} border-b border-line`);
+  ruler.style.gridTemplateColumns = rowCols;
   ruler.append(el("div", LABEL_BOX_CLS), buildRulerTicks(ctx, axis, pxPerMin, trackW, nowPx));
   min.appendChild(ruler);
 
@@ -147,21 +185,26 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
       "div",
       `${ROW_BASE_CLS}${venueIdx > 0 ? " border-t border-line-soft" : ""}`
     );
+    row.style.gridTemplateColumns = rowCols;
     const label = el("div", LABEL_BOX_CLS);
-    const vname = venue ? venue.name : list[0]?.venue_id ?? "?";
-    // 场馆行:官方代码 chip + 英文名(整行 hover 看 全名/韩名/分区/代码 说明)
+    label.style.paddingLeft = `${padX}px`;
+    label.style.paddingRight = `${padX}px`;
+    // 行标签 = **官方影院代码一枚**(B1 / BT / L10 / BCM),整格 hover 出全名 / 韩名 / 分区 / 代码说明。
+    // 不再放影院名:旧版 148px 列里只有 100px 可用,而最长全名要 205px,必被 truncate 裁成
+    // 「Busan Cinema …」—— 且区分性字词全在末尾(B1/B2/B3 会截成一模一样)。代码是唯一塞得进
+    // 窄列又不丢信息的写法;全名不丢,由 tooltip 兜住(见 legend.ts::venueTip)。
+    const codeText = venue ? venue.code ?? venue.id.toUpperCase() : list[0]?.venue_id ?? "?";
     if (venue) label.dataset.tip = venueTip(venue);
-    const line = el("div", "flex items-center gap-[5px] min-w-0");
-    if (venue?.code) {
-      const c = el(
-        "i",
-        "shrink-0 not-italic text-[10px] font-extrabold text-biff bg-biff-soft border border-biff-line rounded-[3px] px-[3px] py-px",
-        venue.code
-      );
-      c.dataset.tip = `影院代码 ${venue.code}\n官方日程表的场馆缩写 — 与官方 Catalogue 对表(2025 届同馆口径 mock;2026 以官网为准)`;
-      line.appendChild(c);
-    }
-    line.appendChild(el("span", "text-[12px] font-semibold leading-[1.3] truncate min-w-0", vname));
+    const line = el("div", "flex items-center justify-center min-w-0");
+    const code = el(
+      "i",
+      "not-italic font-extrabold text-biff bg-biff-soft border border-biff-line rounded-[3px] text-center whitespace-nowrap",
+      codeText
+    );
+    code.style.width = `${chipW}px`;
+    code.style.fontSize = `${fontPx}px`;
+    code.style.lineHeight = "1.45";
+    line.appendChild(code);
     label.appendChild(line);
     row.appendChild(label);
 
