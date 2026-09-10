@@ -44,6 +44,12 @@
   --rate-19: #6e1522;
   --rate-19-soft: #f7eaec;
 
+  /* 特别节目(Community BIFF 单元:Talk / Commentary / Event)—— 青绿族。
+     与档位(蓝/紫/灰蓝)、红绿灯(红/黄/绿)、观影等级(绿/橙/深红)三族都错开;
+     三个徽章同色不同重(实心 → 实线描边 → 虚线描边),见 badges.ts 的 BADGE_DEFS。 */
+  --ev-teal: #0f766e;
+  --ev-teal-soft: #e6f2f0;
+
   /* 中性面 */
   --bg-page: #f4f4f5;
   --bg-card: #ffffff;
@@ -142,6 +148,8 @@
   --color-rate-12-soft: var(--rate-12-soft);
   --color-rate-19: var(--rate-19);
   --color-rate-19-soft: var(--rate-19-soft);
+  --color-ev-teal: var(--ev-teal);
+  --color-ev-teal-soft: var(--ev-teal-soft);
 }
 
 /* ---- base reset & element defaults ---- */

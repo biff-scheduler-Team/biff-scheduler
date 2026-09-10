@@ -440,7 +440,7 @@ function appendCard(
   card.append(ttlRow, sub);
 
   // 徽章行:等级 → 字幕 → 特性(GV/首映…) → 页码 → 片长。无任何徽章(理论仅 mock 缺字段)时不创建,避免空行。
-  if (s.rating || s.subs || typeof s.page === "number" || screeningBadgeKeys(s).length) {
+  if (s.rating || s.subs?.length || typeof s.page === "number" || screeningBadgeKeys(s).length) {
     const bdgRow = el("span", "mt-auto flex gap-[3px] flex-wrap items-center leading-none");
     appendMetaRow(bdgRow, s);
     bdgRow.appendChild(durChip(s.duration_min));

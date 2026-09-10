@@ -103,6 +103,18 @@ const SUBS_UNMARKED = {
   zh: "英文字幕 + 韩语对白(未标注 = 即此义)",
 };
 
+/**
+ * `subs` 归一化成数组(渲染入口唯一归一化点)。
+ * 官方 META 会**同时印多个**标识 —— 实测 `KE KK`(2025 版 4 场:028/029/109/268),
+ * 语义是「有韩字 + 有英字,且配韩语对白」的**叠加**,不是二选一。
+ * 2026-09-10 起数据契约是 `SubsKey[]`;但 `public/schedule.json`(2026 mock 演示数据)
+ * 仍是早期的标量字符串,这里一并兼容,免得 `SUBS_DEFS[array]` 取到 undefined 静默不渲染。
+ */
+export function subsKeys(subs: Screening["subs"] | SubsKey): SubsKey[] {
+  if (!subs) return [];
+  return Array.isArray(subs) ? subs : [subs];
+}
+
 /** 单个徽章 DOM(label + data-tip) */
 function chipEl(def: { label: string; cls: string; tip: string }): HTMLElement {
   const node = el("i", def.cls, def.label);
@@ -191,8 +203,8 @@ function labeled(icon: HTMLElement, text: string): HTMLElement {
 export function appendMetaRow(host: HTMLElement, s: Screening): void {
   const rate = s.rating ? RATING_DEFS[s.rating] : null;
   if (rate) host.appendChild(chipEl(rate));
-  const subs = s.subs ? SUBS_DEFS[s.subs] : null;
-  if (subs) host.appendChild(chipEl(subs));
+  // 字幕标识可同时多个(官方叠加印,如 KE KK)→ 逐个成章;归一化见 subsKeys()
+  for (const k of subsKeys(s.subs)) host.appendChild(chipEl(SUBS_DEFS[k]));
   for (const k of screeningBadgeKeys(s)) host.appendChild(badgeEl(k));
   if (typeof s.page === "number" && s.page > 0) host.appendChild(pageChip(s.page));
 }

@@ -66,13 +66,21 @@
 10. **场次特性 token 不止 GV**。实测 META 里出现:`GV`(347)、`Talk`(6)、
    `Commentary`(3)、`Event`(1)。`GV` 走 `is_gv`;其余按原义小写进
    `tags`(`talk` / `commentary` / `event`)。前端 `badges.ts` 只渲染已注册
-   的键(gv / masterclass / premiere / open_talk / batch),未注册键**安全忽略**,
-   想让它显示只需在 `BADGE_DEFS` 里加一条。
+   的键,未注册键**安全忽略** —— 2026-09-10 起 `talk` / `commentary` /
+   `event` 三条已注册(青绿族 `--ev-teal`),想再加特性只需在 `BADGE_DEFS`
+   里加一条 + `ABBR_LINES` 里补一行缩写说明。
 11. **少数特别场册子里不印片长**。已知:002(闭幕式+获奖作联映)、
    BAFA 毕展。若把 `duration_min` 留 0,前端 `gvTalkMin()` =
    `(end - start) - duration_min` 会把整段时长当成「映后谈」,002 会凭空
    多出 240 分钟映后谈。→ 缺片长时回退成「印出来的整段时长」,
    映后谈自然归 0。(见 `stats['dur_missing']`,2025 版 = 1。)
+12. **字幕标识可以同时印多个**,`subs` 必须是**数组**。实测 4 场印
+   `KE KK`(028 / 029 / 109 / 268,全在 C3)。语义是叠加而非二选一:
+   `KE` = 有韩字 + 有英字,`KK` = 配韩语对白。早期写法
+   `if out["subs"] is None: out["subs"] = t` 只接第一个,第二个掉进
+   `extra` 而被剥掉 → **静默丢数据**(自检里 `cells_with_extra` 恰好等于
+   这些场次,就是它的哨兵)。现改为 `subs: list` 且逐个 append(去重)。
+   前端 `SubsKey[]` + `legend.ts` 的 `subsKeys()` 归一化(兼容早期标量数据)。
 
 输出对齐 src/types.ts 的 Screening / Venue。
 """
@@ -311,7 +319,7 @@ def parse_meta(meta_spans: list[dict]) -> dict | None:
         "end_min": end,
         "code": None,
         "rating": None,
-        "subs": None,
+        "subs": [],
         "gv": False,
         "flags": [],
         "dur": None,
@@ -329,8 +337,13 @@ def parse_meta(meta_spans: list[dict]) -> dict | None:
         if out["rating"] is None and RE_RATING.match(t):
             out["rating"] = "ALL" if t.upper() == "ALL" else t
             continue
-        if out["subs"] is None and RE_SUBS.match(t):
-            out["subs"] = t
+        if RE_SUBS.match(t):
+            # 陷阱 12:官方会**同时印多个**字幕标识(实测 `KE KK`),两者是叠加关系
+            # (KE = 有韩字 + 有英字;KK = 配韩语对白),不是二选一。
+            # 早期写法 `if out["subs"] is None` 只接第一个,第二个掉进 extra
+            # 被剥掉 → 静默丢数据(自检里 cells_with_extra 恰好 = 这些场次)。
+            if t not in out["subs"]:
+                out["subs"].append(t)
             continue
         if t.upper() == "GV":
             out["gv"] = True
@@ -473,14 +486,19 @@ def parse_page(page: pymupdf.Page, page_no: int, args, stats: Counter) -> list[d
             "is_gv": meta["gv"],
             "tags": tags_for(title_en, title_kr, notes, meta["flags"]),
             "rating": meta["rating"],
-            "subs": meta["subs"],
+            # 空数组落 null:与前端 `subs?: SubsKey[]` 的可选语义一致(不用 [] 表示未标注)
+            "subs": meta["subs"] or None,
             "page": meta["pages"][0] if meta["pages"] else None,
             "_page": page_no,
             "_wd": dl["wd"],
             "_extra": meta["extra"],
         })
         if meta["extra"]:
+            # 陷阱 12 修完后,2025 版这里应为 0(原 4 个 = KE KK 的第二值)。
+            # 非 0 = META 里有解析器没认领的 token(新特性 / 新标识 / 版式变化)
+            # → 大声报出来,不要再让它静默丢进 extra。
             stats["cells_with_extra"] += 1
+            _log("WARN", f"p{page_no} code={code} 未认领 token {meta['extra']} (title_en={title_en!r})")
         stats[f"day_{dl['day']}"] += 1
 
     return rows
@@ -599,7 +617,12 @@ def main() -> int:
     _log("SANITY", f"空 title_en: {sum(1 for r in all_rows if not r['title_en'])}"
                    f"  全空(中英韩皆空): {sum(1 for r in all_rows if not r['title_en'] and not r['title_kr'])}")
     _log("SANITY", f"rating 分布: {dict(Counter(r['rating'] for r in all_rows))}")
-    _log("SANITY", f"subs 分布: {dict(Counter(r['subs'] for r in all_rows))}")
+    # subs 已是列表 → Counter 不能直接吃。按「每个标识各计一次」统计,
+    # 另外单报未标注场次与**多值场次**(陷阱 12 的回归哨兵:2025 版应为 4 场 KE KK)。
+    subs_flat = Counter(t for r in all_rows for t in (r["subs"] or []))
+    subs_multi = [r["code"] for r in all_rows if r["subs"] and len(r["subs"]) > 1]
+    _log("SANITY", f"subs 分布: {dict(subs_flat)}  未标注: {sum(1 for r in all_rows if not r['subs'])}"
+                   f"  多值场次: {len(subs_multi)} {subs_multi}")
     _log("SANITY", f"GV 场次: {sum(1 for r in all_rows if r['is_gv'])} / {len(all_rows)}")
     _log("SANITY", f"tags 分布: {dict(Counter(t for r in all_rows for t in r['tags']))}")
     _log("SANITY", f"统计: {dict(stats)}")

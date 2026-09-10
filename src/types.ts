@@ -2,7 +2,6 @@
 
 export type RatingKey = "ALL" | "12" | "15" | "19"; // 观影年龄分级(2025 官方口径,2026 同制)
 export type SubsKey = "KE" | "KN" | "KK" | "NO"; // 字幕/对白标识(缺省 = 未标注:英字 + 韩语对白)
-
 export interface Screening {
   code: string;
   title_en: string;
@@ -19,8 +18,11 @@ export interface Screening {
   tags?: string[];
   /** 观影等级 ALL/12/15/19;缺省不展示(官方每场必有,导入管线保证) */
   rating?: RatingKey;
-  /** 字幕/对白标识;缺省 = 未标注(英字 + 韩语对白) */
-  subs?: SubsKey;
+  /**
+   * 字幕/对白标识;**官方 META 会同时印多个**(实测 `KE KK`,2025 版 4 场)。
+   * 缺省 = 未标注(英字 + 韩语对白)。
+   */
+  subs?: SubsKey[];
   /** 官方 Ticket Catalogue 节目册页码(翻册对表用) */
   page?: number;
 }

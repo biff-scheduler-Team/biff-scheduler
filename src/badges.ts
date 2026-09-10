@@ -25,8 +25,11 @@ export const DOUBAN_CHIP_TITLE = "豆瓣用户评分(满分 10 分)";
 const ABBR_LINES: [string, string][] = [
   ["CODE 001", "场次编号 — 每场放映唯一,同片多场编号不同;对表 / 抢票以此为准"],
   ["评级 ALL / 12 / 15 / 19", "观影年龄分级 — 未满对应年龄不得入场(ALL = 全年龄)"],
-  ["字幕 KE / KN / KK / NO", "KE = 韩字 + 英字/英配 · KN = 韩字 + 非英外语 · KK = 韩字 + 韩配 · NO = 无对白 · 无标 = 英字 + 韩配"],
+  ["字幕 KE / KN / KK / NO", "KE = 韩字 + 英字/英配 · KN = 韩字 + 非英外语 · KK = 韩字 + 韩配 · NO = 无对白 · 无标 = 英字 + 韩配 · **可同时标注多个**(如 KE KK)"],
   ["GV", "Guest Visit 嘉宾到场 — 映后交流(可在卡片 / 行程单独放弃;官方提示:可能临时变动)"],
+  ["Talk", "对谈 / 分享场 — 官方 Community BIFF 토크 单元(2025 例:커비북스 图书 · 잇츠시네마 饮食)"],
+  ["评论音轨", "Commentary — 实时双向评论音轨场(실시간 양방향 코멘터리 픽쳐 쇼);放映全程叠加人声解说 / 互动"],
+  ["Event", "联动活动场 — 官方 연계이벤트(2025 例:907 라이브 드로잉 现场作画)"],
   ["묶", "Batch Screening 连场放映"],
 ];
 
@@ -81,6 +84,38 @@ export const BADGE_DEFS: BadgeDef[] = [
     title: "Batch Screening · 连场连续放映(官方偶用;显示即以此为义)",
     // 虚线描边 = 「成组/连场」;与 premiere/open_talk 的实线描边区分,不与 KN 的虚线撞(那是等级色虚线)
     cls: "px-[3px] py-px text-ink-2 bg-card border border-line-strong border-dashed",
+  },
+  // ---- 特别节目(2025 Community BIFF 单元;解析器 tags 直出这三个键)----
+  // 配色:青绿族(--ev-teal),与档位色(蓝/紫/灰蓝)、红绿灯(红/黄/绿)、
+  // 观影等级(绿/橙/深红)三族全部错开;三者靠「实心 → 实线描边 → 虚线描边」分权重。
+  {
+    key: "talk",
+    label: "Talk",
+    title:
+      "Talk · 对谈 / 分享场\n" +
+      "官方 Community BIFF 的 토크 单元 — 主题对谈 / 分享(2025 例:커비북스 图书 · 잇츠시네마 饮食)\n" +
+      "与 GV 的区别:GV 是「剧组 / 嘉宾到场」,Talk 是「主题对谈节目」;两者可能同场并存",
+    // 实心青绿底 + 白字:与 gv 的实心黑同族,表达「有人到场」
+    cls: "px-1 py-px text-on-brand bg-ev-teal",
+  },
+  {
+    key: "commentary",
+    label: "评论音轨",
+    title:
+      "Commentary · 实时双向评论音轨场\n" +
+      "官方原文 실시간 양방향 코멘터리 픽쳐 쇼 — 放映全程叠加实时双向评论音轨\n" +
+      "观影体验与常规场不同:全程有人声解说 / 互动",
+    // 实线描边:表达「额外挂了一条音轨」(不是到场、也不是活动)
+    cls: "px-[3px] py-px text-ev-teal bg-card border border-ev-teal",
+  },
+  {
+    key: "event",
+    label: "Event",
+    title:
+      "Event · 联动活动场\n" +
+      "官方 Community BIFF 的 연계이벤트 — 与放映联动的现场演出 / 活动(2025 例:907 라이브 드로잉 现场作画)",
+    // 虚线描边 + 浅底:表达「非正式节目 / 临时活动」;与 batch 的虚线区分在色相
+    cls: "px-[3px] py-px text-ev-teal bg-ev-teal-soft border border-ev-teal border-dashed",
   },
 ];
 
