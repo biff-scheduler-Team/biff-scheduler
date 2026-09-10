@@ -206,8 +206,8 @@ function buildRow(
   grpBtn.title = "切换到另一方案(点击翻转;只动本场归属,不改影片档位)";
   // §14 2c:优先级三段 seg(必看/备选/随缘),当前态实心着色;点击直接定位
   // 档位只有一份且在影片级(与「我的选片」同源,见 pick.ts)→ 点这里 = 改该片档位,同片所有场次同步
-  // priority=null = 未设档位(直接点选场次、影片库未打标)→ 三段全 off,并在左侧明示「未设」,
-  // 避免用户误以为「全灰 = 默认备选」。未分级不参与质量分。
+  // priority=null(「未设」)已下线:加入场次时强制定档、清空档位即整片移出,载入还会清掉存量脏记录。
+  // 下面的兜底分支保留作防御 —— 真出现 null 时左侧明示「未设」,好过三段全灰被误读成「默认备选」。
   if (priority == null) {
     acts.appendChild(el("span", "text-[11px] text-muted font-semibold whitespace-nowrap", "未设"));
   }
@@ -231,8 +231,10 @@ function buildRow(
     b.dataset.act = "pri";
     b.dataset.pri = p;
     // 再点当前档 = 取消 → 回到「未设」(与「我的选片」打标 seg 同语义)
+    // 再点当前档 = 取消 → 该片退出选片(整条删除,已排场次一并移出)。「未设」不再是合法状态
+    // (档位是入选片单的必要条件,与加入场次时的强制定档互为兜底),故不再回到「未设」。
     b.title = on
-      ? `取消「${label}」→ 回到未设(不参与质量分)${syncHint}`
+      ? `取消「${label}」→ 该片退出选片(已排 ${slotCount} 场一并移出)${syncHint}`
       : `设为「${label}」${p === "must" ? "(冲突高优先级,导出顺位靠前)" : ""}${syncHint}`;
     priSeg.appendChild(b);
   });

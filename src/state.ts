@@ -235,6 +235,7 @@ export function loadPicks(filmKeyOf: (code: string) => string | null): void {
     migrateLegacy(filmKeyOf);
   }
   rebuildIndex();
+  pruneUnsetPicks(); // 存量脏数据(未设档位 + 有场次)载入即清
 }
 
 /** 一次性迁移:旧两套 → 统一记录。
@@ -314,13 +315,15 @@ export async function syncFromCloud(): Promise<void> {
       store.mappings.set(r.code, { code: r.code, subject_id: r.subject_id, title_cn: r.title_cn, douban_url: r.douban_url });
     }
   }
+  pruneUnsetPicks(); // 云端可能带回脏记录(旧客户端写过的「未设 + 有场次」)→ 同步后立即清
   notify();
 }
 
 /* ---------- 变更入口(本地即时 + 云端异步) ---------- */
 
 /** 设/清某影片的档位(全站唯一一份档位)。
- *  清成 null 且该片已无场次 → 整条记录删除;有场次则保留(回到「未设档位」)。 */
+ *  清成 null = 该片退出选片 → **整条删除(含全部场次)**。「无档位 + 有场次」是非法状态
+ *  (档位是入选片单的必要条件,与「加入场次强制定档」互为兜底),不再保留「未设」记录。 */
 export function setWish(key: string, priority: Priority | null): void {
   const cur = store.picks.get(key);
   if (!cur) {
@@ -328,8 +331,8 @@ export function setWish(key: string, priority: Priority | null): void {
     return;
   }
   if (cur.priority === priority) return;
-  if (!priority && cur.picks.length === 0 && !cur.note) {
-    commit(key); // 空壳(只打标、无场次、无备注)取消 → 删记录
+  if (!priority) {
+    commit(key); // 取消档位 → 整片移出(空壳 / 有场次 / 有备注一律删,「未设」不再是合法状态)
     return;
   }
   commit(key, { ...cur, priority });
@@ -349,7 +352,10 @@ export function toggleScreening(key: string, code: string, initialPriority: Prio
     commit(key); // 只剩空壳 → 删记录
     return;
   }
-  commit(key, { ...cur, picks });
+  // 加入新场次时,若该片仍未定档且调用方给了档位 → 一并定档。第三参原本只在「记录不存在」分支生效,
+  // 脏记录(未设 + 已有场次)会继续留 null → 「未设」就消灭不掉。这是强制定档的兜底半边。
+  const priority = !has && cur.priority == null && initialPriority ? initialPriority : cur.priority;
+  commit(key, { ...cur, priority, picks });
 }
 
 /** 行程行 ✕:只移除该场,记录保留(选片意向不丢 —— 该片仍留在「我的选片」里,标注「未排场」)。
@@ -388,6 +394,15 @@ export function flipGroup(code: string): void {
 /** 整片移除(记录 + 其全部场次) */
 export function removePick(key: string): void {
   commit(key);
+}
+
+/** 清理「未设档位 + 有场次」的非法记录(强制定档上线前的存量脏数据)。
+ *  档位是入选片单的必要条件 → 这类记录整条删除(本地 + 云端 DELETE);有档位 / 无场次的一律不动。
+ *  载入与云端同步后各跑一次,幂等 —— 运行期不会再产生,故不需要迁移脚本。 */
+export function pruneUnsetPicks(): void {
+  for (const e of [...store.picks.values()]) {
+    if (e.priority == null && e.picks.length > 0) commit(e.key);
+  }
 }
 
 /** 整组替换为给定选片(§13.4 M2.5「采纳建议」):先清掉该方案现有场次,再按建议落场次 + 档位。

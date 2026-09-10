@@ -36,7 +36,7 @@ import { abbrTooltip } from "./badges";
 import { attachTip } from "./tip";
 import { buildGuideBody } from "./legend";
 import { scorePlanRows, type ScoredRow } from "./engine";
-import { closeAllModals, closeModal, openModal, showCatalogFilmModal, showFilmModal } from "./modal";
+import { closeAllModals, closeModal, openModal, openPriorityPicker, showCatalogFilmModal, showFilmModal } from "./modal";
 import { openLibrary, openMyPicks } from "./library";
 
 let cat: Catalog;
@@ -60,10 +60,38 @@ function filmKeyOfCode(code: string): string | null {
   return s ? filmNodeKey(cat, s) : null;
 }
 
+/** 加入场次 = 强制定档的唯一入口:未打标的片先弹「选择档位」,选定才落场次 —— 「未设」不再产生。
+ *  已选(任一方案) → 移出(不需要档位);已有档位 → 直接加入并继承。
+ *  网格卡 / GV 谈块 / 详情弹层「加入 X 方案」三处入口全部走它。
+ *  `after` = 场次落定后的收尾(仅 GV 谈块用:加入后要一并覆写「放弃映后谈」),移出路径同样执行。 */
+function pickScreening(key: string, code: string, after?: () => void): void {
+  if (slotOf(code)) {
+    toggleScreening(key, code); // 已在任一方案 → 移出(不改档位)
+    after?.();
+    return;
+  }
+  const p = store.picks.get(key)?.priority;
+  if (p) {
+    toggleScreening(key, code, p);
+    after?.();
+    return;
+  }
+  const s = cat.byCode.get(code);
+  const zh = s ? s.title_zh || s.title_en : code;
+  openPriorityPicker(
+    zh,
+    `「${zh}」还没定档。加入「${store.group} 方案」前先选一个档位 —— 档位是影片级的，该片所有场次同步；之后可在行程行随时改。`,
+    (p2) => {
+      toggleScreening(key, code, p2);
+      after?.();
+    }
+  );
+}
+
 /** 影片详情弹层的公共上下文(网格 ⓘ 与影片库共用)。
  *  不给 slots —— 弹层一律走 slotOf() 实时查询(rebuildIndex 是整体换新 Map,持有引用会读到旧快照)。 */
 function filmModalCtx() {
-  return { cat, group: store.group, mappings: store.mappings, toggle: toggleScreening };
+  return { cat, group: store.group, mappings: store.mappings, toggle: pickScreening };
 }
 
 /** 影片库 / 我的选片 共用上下文 —— 同一份数据(store.picks)的两个视图,两处入口行为一致 */
@@ -426,19 +454,18 @@ function bindEvents(): void {
         setGvTalk(code, !talkOnOf(code));
       } else {
         // 未在当前方案(含在另一方案):一枪「只要正片」= 加入当前方案 + 覆写放弃映后谈;
-        // 档位按该片已有记录继承(从未打标 → null 未设)
+        // 档位按该片已有记录继承;从未打标 → 先弹「选择档位」(强制定档),选定后一并落场次 + 弃映后
         const key = filmKeyOfCode(code);
-        if (key) toggleScreening(key, code, store.picks.get(key)?.priority ?? null);
-        setGvTalk(code, false);
+        if (key) pickScreening(key, code, () => setGvTalk(code, false));
       }
       return;
     }
     const card = t.closest<HTMLElement>("#grid-scroll [data-code]");
     if (card) {
-      // 新加入按该片已有档位继承(影片库打标 / 详情弹层设过);从未打标 → null(未设,不再默认备选)
+      // 新加入按该片已有档位继承(影片库打标 / 详情弹层设过);从未打标 → 先弹「选择档位」(强制定档)
       const code = card.dataset.code!;
       const key = filmKeyOfCode(code);
-      if (key) toggleScreening(key, code, store.picks.get(key)?.priority ?? null);
+      if (key) pickScreening(key, code);
       return;
     }
 
