@@ -388,10 +388,10 @@ function renderSync(): void {
   dot.title = store.online ? "D1 云端同步中" : "云端不可用 · 仅本地保存";
 }
 
-/** 顶栏「我的选片」实时计数 = 影片记录数(打标 / 点选场次 → commit 广播 → renderAll → 这里刷新;0 时角标隐藏) */
+/** 顶栏「影片库 · 选片」实时计数 = 影片记录数(打标 / 点选场次 → commit 广播 → renderAll → 这里刷新;0 时角标隐藏) */
 function renderPicksBadge(): void {
   const n = store.picks.size;
-  const cnt = document.getElementById("my-picks-count");
+  const cnt = document.getElementById("picker-count");
   if (!cnt) return;
   cnt.textContent = String(n);
   cnt.classList.toggle("is-hidden", n === 0);
@@ -452,8 +452,8 @@ function bindEvents(): void {
       return;
     }
 
-    // 影片库 / 我的选片:同一个左右双栏弹窗(左 = 全部影片可搜可筛,右 = 选片总览)
-    if (t.closest("#library-btn") || t.closest("#my-picks-btn")) {
+    // 「影片库 · 选片」:一个左右双栏弹窗(左 = 全部影片可搜可筛,右 = 选片总览)
+    if (t.closest("#library-btn")) {
       openFilmPicker(libraryCtx());
       return;
     }

@@ -124,6 +124,37 @@ const CHIP_UNIT_BASE =
 const CHIP_UNIT_IDLE = `${CHIP_UNIT_BASE} border-line bg-card text-muted hover:text-ink`;
 const CHIP_UNIT_ON = `${CHIP_UNIT_BASE} border-ink bg-ink text-on-brand`;
 
+/** 带行标的 chip 行(「日期」/「档位」)—— 两排 chips 外观相同,靠这枚极小行标区分,
+ *  否则两排各有一个「全部」,用户分不清哪个在筛什么。 */
+function chipRow(label: string, chips: HTMLElement): HTMLElement {
+  const row = el("div", "flex items-start gap-[6px]");
+  row.appendChild(el("span", "text-[11px] text-faint font-semibold shrink-0 pt-[4px]", label));
+  row.appendChild(chips);
+  return row;
+}
+
+/** 场次按日期切段(入参已按 日期 → 开始时间 排好,相邻归并即可)—— 「我的选片」右栏的日期分节用。
+ *  ⚠ 与文件后半的 `groupByDate()`(AI 结果卡,吃 `AiPlanPick[]`)同名不同物,故另起名。 */
+function groupShowsByDate(list: Screening[]): [string, Screening[]][] {
+  const out: [string, Screening[]][] = [];
+  for (const s of list) {
+    const last = out[out.length - 1];
+    if (last && last[0] === s.date) last[1].push(s);
+    else out.push([s.date, [s]]);
+  }
+  return out;
+}
+
+/** 日期小标题(「10/21 周三 · 2 场」)—— 右栏按日期分节时的节头 */
+function dateHead(date: string, count: number): HTMLElement {
+  const { label, weekday } = dateInfo(date);
+  return el(
+    "div",
+    "px-3 py-[5px] text-[11px] font-bold text-meta bg-[var(--bg-hover-soft)] border-t border-line-faint",
+    `${label} ${weekday} · ${count} 场`
+  );
+}
+
 /** 影片库 / 我的选片 共用的节点清单(目录 ↔ 排期合并 + 目录全集 + 排序) */
 export interface FilmListData {
   filmList: FilmNode[];
@@ -276,9 +307,13 @@ export function openFilmPicker(ctx: LibraryCtx): void {
   pickHead.appendChild(el("span", "text-[13px] font-bold whitespace-nowrap", "我的选片"));
   const pickStat = el("div", "text-[12px] text-muted flex-1 min-w-0");
   pickHead.appendChild(pickStat);
-  const pickChips = el("div", "flex flex-wrap gap-[6px]");
+  // 右栏两排筛选:日期(有已排场次的每一天)+ 档位(必看/备选/随缘/未设)
+  const pickDateChips = el("div", "flex flex-wrap gap-[6px] min-w-0 flex-1");
+  const pickDateRow = chipRow("日期", pickDateChips);
+  const pickChips = el("div", "flex flex-wrap gap-[6px] min-w-0 flex-1");
+  const pickChipsRow = chipRow("档位", pickChips);
   const pickList = el("div", "grid gap-2 content-start max-h-[min(58vh,520px)] overflow-y-auto pt-[2px] px-[2px] pb-1");
-  pickPane.append(pickHead, pickChips, pickList);
+  pickPane.append(pickHead, pickDateRow, pickChipsRow, pickList);
 
   body.append(libPane, pickPane);
 
@@ -292,6 +327,8 @@ export function openFilmPicker(ctx: LibraryCtx): void {
   /** 右栏档位筛选:null = 全部;UNSET = 未设档位(只点了场次没定档) */
   const UNSET = "unset";
   let filter: Priority | typeof UNSET | null = null;
+  /** 右栏日期筛选:null = 全部日期;否则只看该日的已排场次 */
+  let dateFilter: string | null = null;
 
   // 返回本层时刷新(详情里改过档位/场次 → 两栏计数要跟上);弹层栈保留 DOM,滚动位置不丢
   openModal("影片库 · 我的选片", body, "xl", () => render());
@@ -409,9 +446,17 @@ export function openFilmPicker(ctx: LibraryCtx): void {
     const shows = el("div");
     const rows = mode === "picks" ? pickedShows(n, rec) : n.shows;
     if (rows.length) {
-      rows.forEach((s, idx) => shows.appendChild(showRow(s, idx > 0)));
-      // 已排场次里对不上当前排期的(数据换版)—— 如实说明,不静默吞掉
-      if (mode === "picks" && rec && rec.picks.length > rows.length) {
+      if (mode === "picks") {
+        // 右栏:按日期分节 —— 节头给日期,节内场次行就不再重复印日期(见 showRow 的 hideDate)
+        for (const [date, list] of groupShowsByDate(rows)) {
+          shows.appendChild(dateHead(date, list.length));
+          list.forEach((s, idx) => shows.appendChild(showRow(s, idx > 0, true)));
+        }
+      } else {
+        rows.forEach((s, idx) => shows.appendChild(showRow(s, idx > 0)));
+      }
+      // 已排场次里对不上当前排期的(数据换版)—— 如实说明,不静默吞掉(按日期筛时该口径不成立)
+      if (mode === "picks" && dateFilter === null && rec && rec.picks.length > rows.length) {
         shows.appendChild(
           el(
             "div",
@@ -438,8 +483,9 @@ export function openFilmPicker(ctx: LibraryCtx): void {
   }
 
   /** 场次行 —— 两栏**共用**(影片库那套完整版:官方代码章 / 时长 / 特性徽章 / 定位 ▸ / 加入移出三态)。
-   *  `withTopBorder` = 同一部片的第 2 场起画分隔线。 */
-  function showRow(s: Screening, withTopBorder: boolean): HTMLElement {
+   *  `withTopBorder` = 同一节里的第 2 场起画分隔线;
+   *  `hideDate` = 右栏按日期分节后日期已由节头给出,行内只留时间(否则「10/21 周三」会连印两行)。 */
+  function showRow(s: Screening, withTopBorder: boolean, hideDate = false): HTMLElement {
     const rowCls = `grid grid-cols-[176px_minmax(0,1fr)_auto_auto] gap-[10px] items-center px-3 py-[7px] max-[720px]:grid-cols-[minmax(0,1fr)_auto_auto]${
       withTopBorder ? " border-t border-line-faint" : ""
     }`;
@@ -453,7 +499,8 @@ export function openFilmPicker(ctx: LibraryCtx): void {
     );
     codeEl.dataset.tip = codeTip(s.code); // 缩写说明:CODE 数字 hover 提示
     when.appendChild(codeEl);
-    when.appendChild(el("span", "", `${label} ${weekday} ${fmtMinRange(s.start_time, s.end_time)}`));
+    const range = fmtMinRange(s.start_time, s.end_time);
+    when.appendChild(el("span", "", hideDate ? range : `${label} ${weekday} ${range}`));
     // 影院只出「官方代码」徽章(B1 / BT / L4)—— 窄列放不下全名;全名 / 韩名 / 分区由 hover tooltip 兜住
     const venue = ctx.cat.venueById.get(s.venue_id);
     const vCode = venue ? venue.code ?? venue.id.toUpperCase() : s.venue_display;
@@ -491,11 +538,16 @@ export function openFilmPicker(ctx: LibraryCtx): void {
     return row;
   }
 
-  /** 右栏展开口径:只列**已排场次**(「我的行程」在这部片上的投影) */
+  /** 右栏展开口径:只列**已排场次**(「我的行程」在这部片上的投影)。
+   *  按 日期 → 开始时间 排序(旧版是点选先后顺序,跨天时读起来是乱的);日期筛选生效时只留该日。 */
   function pickedShows(n: FilmNode, rec: PickEntry | undefined): Screening[] {
     if (!rec?.picks.length) return [];
     const byCode = new Map(n.shows.map((s) => [s.code, s]));
-    return rec.picks.map((p) => byCode.get(p.code)).filter((s): s is Screening => Boolean(s));
+    return rec.picks
+      .map((p) => byCode.get(p.code))
+      .filter((s): s is Screening => Boolean(s))
+      .filter((s) => dateFilter === null || s.date === dateFilter)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time));
   }
 
   /** 左栏:全部影片(搜索 + 单元筛选) */
@@ -549,6 +601,8 @@ export function openFilmPicker(ctx: LibraryCtx): void {
   function paintPick(): void {
     const rows = pickNodes();
     const counts: Record<Priority, number> = { must: 0, maybe: 0, wild: 0 };
+    /** 有已排场次的每个日期 → 当日场次数(日期 chips 的数据源) */
+    const dateCount = new Map<string, number>();
     let unset = 0;
     let slots = 0;
     for (const n of rows) {
@@ -556,12 +610,35 @@ export function openFilmPicker(ctx: LibraryCtx): void {
       if (e.priority) counts[e.priority]++;
       else unset++;
       slots += e.picks.length;
+      for (const p of e.picks) {
+        const s = ctx.cat.byCode.get(p.code);
+        if (s) dateCount.set(s.date, (dateCount.get(s.date) ?? 0) + 1);
+      }
     }
     pickStat.textContent = rows.length
       ? `选片 ${rows.length} 部 · 必看 ${counts.must} / 备选 ${counts.maybe} / 随缘 ${counts.wild}${
           unset ? ` / 未设 ${unset}` : ""
         } · 已排 ${slots} 场`
       : "还没有任何选片";
+
+    // 日期筛选 chips(全部 + 有已排场次的每一天)。只有 1 天时不渲染 —— 只有一个选项的筛选没有意义
+    const dates = [...dateCount.keys()].sort();
+    if (dateFilter && !dateCount.has(dateFilter)) dateFilter = null; // 该天的场次被删光了 → 自动回到「全部」
+    pickDateRow.classList.toggle("is-hidden", dates.length <= 1);
+    pickDateChips.innerHTML = "";
+    if (dates.length > 1) {
+      const all = el("button", dateFilter === null ? CHIP_UNIT_ON : CHIP_UNIT_IDLE, `全部 ${dates.length} 天`);
+      all.dataset.pdate = "";
+      all.dataset.tip = "显示全部日期的选片";
+      pickDateChips.appendChild(all);
+      for (const d of dates) {
+        const { label, weekday } = dateInfo(d);
+        const b = el("button", dateFilter === d ? CHIP_UNIT_ON : CHIP_UNIT_IDLE, `${label} ${weekday} ${dateCount.get(d)}`);
+        b.dataset.pdate = d;
+        b.dataset.tip = `只看 ${label} ${weekday} 的选片(再点取消)`;
+        pickDateChips.appendChild(b);
+      }
+    }
 
     // 档位筛选 chips(全部 + 三档 + 未设,带实时计数)
     pickChips.innerHTML = "";
@@ -590,15 +667,17 @@ export function openFilmPicker(ctx: LibraryCtx): void {
       );
       return;
     }
-    const shown =
-      filter === null
-        ? rows
-        : rows.filter((n) => {
-            const p = ctx.picks.get(n.key)!.priority;
-            return filter === UNSET ? !p : p === filter;
-          });
+    const shown = rows
+      .filter((n) => {
+        const p = ctx.picks.get(n.key)!.priority;
+        return filter === null || (filter === UNSET ? !p : p === filter);
+      })
+      .filter((n) => {
+        if (dateFilter === null) return true;
+        return ctx.picks.get(n.key)!.picks.some((p) => ctx.cat.byCode.get(p.code)?.date === dateFilter);
+      });
     if (!shown.length) {
-      pickList.appendChild(el("div", "text-muted text-center py-[26px] text-[13px]", "该档位下暂无选片"));
+      pickList.appendChild(el("div", "text-muted text-center py-[26px] text-[13px]", "当前筛选下暂无选片"));
       return;
     }
     for (const n of shown) pickList.appendChild(filmRow(n, "picks", expPick.has(n.key)));
@@ -633,6 +712,14 @@ export function openFilmPicker(ctx: LibraryCtx): void {
     const k = b.dataset.pri!;
     const next: Priority | typeof UNSET | null = k === "" ? null : k === UNSET ? UNSET : (k as Priority);
     filter = filter === next ? null : next;
+    render();
+  });
+
+  pickDateChips.addEventListener("click", (ev) => {
+    const b = (ev.target as HTMLElement).closest<HTMLElement>("[data-pdate]");
+    if (!b) return;
+    const d = b.dataset.pdate!;
+    dateFilter = d === "" || dateFilter === d ? null : d; // 再点当前天 / 点「全部」= 取消
     render();
   });
 
