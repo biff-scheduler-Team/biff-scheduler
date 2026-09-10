@@ -38,7 +38,7 @@ import { buildGuideBody } from "./legend";
 import { scorePlanRows, type ScoredRow } from "./engine";
 import { aiReady, clearAiCfg, loadAiCfg, maskKey } from "./ai";
 import { closeAllModals, closeModal, openModal, showCatalogFilmModal, showFilmModal } from "./modal";
-import { openFilmPicker } from "./library";
+import { closePickerDrawer, isPickerDrawerOpen, openFilmPicker, setAgendaRenderer, setPickerTab, setPickerToggleHandler } from "./library";
 
 let cat: Catalog;
 let currentDate = "";
@@ -125,11 +125,15 @@ function renderAll(): void {
   conflicts = computeConflictsForCurrentGroup();
   renderChips();
   renderGroupSeg();
-  renderGrid();
-  renderAgenda();
   renderBadge();
   renderSync();
   renderPicksBadge();
+  // 选片抽屉**不隐藏**网格 / 行程(它只挤压宽度),故这里无条件重建 —— 旧的「页面打开时早退」
+  // 已随页面形态一起作废;抽屉开合导致的宽度变化由 library.ts 回调 renderGrid() 补(见 setPickerToggleHandler)。
+  renderGrid();
+  // 2026-09-10 起「我的行程」从主页面 #agenda-wrap 搬到选片抽屉的第三个 tab(`PLAN-20260910190916`):
+  //   抽屉 agenda tab 通过 `setAgendaRenderer(buildAgendaHost)` 注入,store 变化时由抽屉的
+  //   `subscribe` 自动重绘 —— 不需要在这里调用。
   renderZoomCtl();
 }
 
@@ -146,7 +150,7 @@ function renderChips(): void {
     const dayShows = cat.schedule.screenings.filter((s) => s.date === d).length;
     const cls = d === currentDate ? CHIP_DATE_ON : CHIP_DATE_IDLE;
     const btn = el("button", cls, `${label} ${weekday}`);
-    btn.title = `${dayShows} 场排片`;
+    btn.dataset.tip = `${dayShows} 场排片`;
     btn.dataset.date = d;
     bar.appendChild(btn);
   }
@@ -324,14 +328,55 @@ function renderGrid(): void {
       `只看 ${hh}:00 段 · 取消`
     );
     pill.dataset.clearHour = "1";
-    pill.title = "点击取消时间筛选";
+    pill.dataset.tip = "点击取消时间筛选";
     countEl.appendChild(pill);
   }
 }
 
-function renderAgenda(): void {
-  const host = document.getElementById("agenda")!;
-  const agenda = buildAgenda({
+// 2026-09-10 起「我的行程」从主页面 #agenda-wrap 搬到选片抽屉的第三个 tab(`PLAN-20260910190916`):
+//  原 `renderAgenda()`(把 `buildAgenda` 挂到 `#agenda`、写 `#agenda-summary`、追加质量分药丸)
+//  全部迁到下方的 `buildAgendaHost()`,由 `setAgendaRenderer()` 注入给抽屉,抽屉内 agenda tab
+//  每次重绘时调用。主页面不再有 `#agenda-wrap` / `#agenda-summary` / `#agenda` 挂载点。
+
+/** 「我的行程」抽屉 agenda tab 的**注入渲染函数**(2026-09-10,`PLAN-20260910190916`):
+ *  - 摘要行(A 方案 N 场 · ⚠M + 质量分药丸)替代原来的 `#agenda-summary`(被删)
+ *  - 行程 body = `buildAgenda(...)`,保留 `id="agenda"` 以让 `HOVER_SEL` 仍然命中。
+ *  - 每次抽屉 agenda tab 重绘时调用,读 main 的 `conflicts` / `gvTalkOf` / `currentDate` / `hourFilter` 闭包值。 */
+function buildAgendaHost(): HTMLElement {
+  const wrap = el("div", "grid gap-[8px]");
+
+  // 摘要行(原 #agenda-summary,现在是 agenda tab 顶部的一行)
+  const picked = codesOfGroup(store.group);
+  const nConf = totalConflictPairs();
+  const sum = el(
+    "div",
+    "px-3 pt-[2px] pb-[2px] text-[12px] text-meta flex items-center gap-[6px] flex-wrap",
+    `${store.group} 方案 ${picked.length} 场${nConf ? ` · ${nConf} 处冲突` : ""}`
+  );
+  // 质量分药丸(P0-2:与引擎同权重;仅展示,不改排序)
+  const rows: ScoredRow[] = [];
+  for (const code of picked) {
+    const s = cat.byCode.get(code);
+    if (s) rows.push({ priority: priorityOfCode(code) ?? null, screening: s });
+  }
+  if (rows.length) {
+    const sc = scorePlanRows(rows, store.settings.transitMin, OK_SLACK, (s) => effEndMin(s, gvTalkOf(s.code)));
+    const pill = el(
+      "span",
+      "inline-flex items-center border border-line rounded-full bg-card px-[8px] leading-[1.7] text-[11.5px] font-extrabold tabular-nums text-ink-2 whitespace-nowrap cursor-default hover:border-biff hover:text-biff",
+      `分 ${sc.total}`
+    );
+    pill.dataset.tip =
+      `行程质量分 ${sc.total} —— 必看 ×3 · 备选 ×2 · 随缘 ×1 · GV +1 · 紧转场 −1(未分级不计分)\n` +
+      `必看 ${sc.pri.must}×3 · 备选 ${sc.pri.maybe}×2 · 随缘 ${sc.pri.wild}×1` +
+      `${sc.unset ? ` · 未分级 ${sc.unset}×0` : ""}` +
+      `${sc.gv ? ` · GV +${sc.gv}` : ""}${sc.tight ? ` · 紧转场 −${sc.tight}` : ""} = ${sc.total}`;
+    sum.appendChild(pill);
+  }
+  wrap.appendChild(sum);
+
+  // 行程 body
+  const body = buildAgenda({
     cat,
     slots: store.slotIndex,
     picks: store.picks,
@@ -340,38 +385,13 @@ function renderAgenda(): void {
     transitMin: store.settings.transitMin,
     gvTalkOf,
     conflicts,
-    slotDate: currentDate, // C1:行程行同步网格整点筛选(命中高亮 / 未命中淡化)
+    slotDate: currentDate,
     slotHour: hourFilter,
   });
-  host.replaceWith(agenda);
-  agenda.id = "agenda";
+  body.id = "agenda"; // HOVER_SEL "#agenda [data-code]" 仍命中
+  wrap.appendChild(body);
 
-  const picked = codesOfGroup(store.group);
-  const nConf = totalConflictPairs();
-  const sum = document.getElementById("agenda-summary")!;
-  sum.textContent = `${store.group} 方案 ${picked.length} 场${nConf ? ` · ${nConf} 处冲突` : ""}`;
-  // P0-2:当前方案实时质量分(与引擎同权重;仅展示,不改排序)。档位来自影片级记录 → 同片多场必然同档。
-  const rows: ScoredRow[] = [];
-  for (const code of picked) {
-    const s = cat.byCode.get(code);
-    if (s) rows.push({ priority: priorityOfCode(code) ?? null, screening: s });
-  }
-  if (rows.length) {
-    // 质量分同口径:上一场按有效结束算紧转场(GV 放弃映后谈 → 正片末,实时放宽)
-    const sc = scorePlanRows(rows, store.settings.transitMin, OK_SLACK, (s) => effEndMin(s, gvTalkOf(s.code)));
-    const pill = el(
-      "span",
-      "inline-flex items-center ml-[6px] border border-line rounded-full bg-card px-[8px] leading-[1.7] text-[11.5px] font-extrabold tabular-nums text-ink-2 whitespace-nowrap cursor-default hover:border-biff hover:text-biff",
-      `分 ${sc.total}`
-    );
-    // 悬停说明走 tip.ts 的 data-tip(文档级委托,即时无延迟);不用原生 title(有延迟、样式不可控)
-    pill.dataset.tip =
-      `行程质量分 ${sc.total} —— 必看 ×3 · 备选 ×2 · 随缘 ×1 · GV +1 · 紧转场 −1(未分级不计分)\n` +
-      `必看 ${sc.pri.must}×3 · 备选 ${sc.pri.maybe}×2 · 随缘 ${sc.pri.wild}×1` +
-      `${sc.unset ? ` · 未分级 ${sc.unset}×0` : ""}` +
-      `${sc.gv ? ` · GV +${sc.gv}` : ""}${sc.tight ? ` · 紧转场 −${sc.tight}` : ""} = ${sc.total}`;
-    sum.appendChild(pill);
-  }
+  return wrap;
 }
 
 function renderBadge(): void {
@@ -385,7 +405,7 @@ function renderSync(): void {
   const dot = document.getElementById("sync-dot")!;
   dot.classList.toggle("bg-ok", store.online);
   dot.classList.toggle("bg-disabled", !store.online);
-  dot.title = store.online ? "D1 云端同步中" : "云端不可用 · 仅本地保存";
+  dot.dataset.tip = store.online ? "D1 云端同步中" : "云端不可用 · 仅本地保存";
 }
 
 /** 顶栏「影片库 · 选片」实时计数 = 影片记录数(打标 / 点选场次 → commit 广播 → renderAll → 这里刷新;0 时角标隐藏) */
@@ -409,7 +429,7 @@ function bindEvents(): void {
       hourFilter = null;
       renderChips();
       renderGrid();
-      renderAgenda();
+      // 行程已搬进抽屉(2026-09-10):抽屉 agenda tab 通过 subscribe 自动重绘 —— 无需调 renderAgenda
       return;
     }
 
@@ -419,7 +439,6 @@ function bindEvents(): void {
       const h = Number(hourHit.dataset.hour);
       hourFilter = hourFilter === h ? null : h;
       renderGrid();
-      renderAgenda();
       return;
     }
     // 标题旁「只看 X 段 · 取消」pill
@@ -427,7 +446,6 @@ function bindEvents(): void {
     if (clearHour) {
       hourFilter = null;
       renderGrid();
-      renderAgenda();
       return;
     }
 
@@ -452,9 +470,13 @@ function bindEvents(): void {
       return;
     }
 
-    // 「影片库 · 选片」:一个左右双栏弹窗(左 = 全部影片可搜可筛,右 = 选片总览)
+    // 「影片库 · 选片」:左侧挤压抽屉(左 = 全部影片可搜可筛 / 我的选片两个 tab)。
+    // 已打开时再点 = 收起(而不是重建内容丢搜索 / 筛选状态)。
+    // ⚠ 不在这里补 renderGrid():抽屉的开 / 收自己会回调(见 setPickerToggleHandler),
+    //   否则同一次开合会重绘网格两遍。
     if (t.closest("#library-btn")) {
-      openFilmPicker(libraryCtx());
+      if (isPickerDrawerOpen()) closePickerDrawer();
+      else openFilmPicker(libraryCtx());
       return;
     }
 
@@ -507,21 +529,19 @@ function bindEvents(): void {
       return;
     }
 
-    // 行程日期头 -> 跳到网格
+    // 行程日期头(2026-09-10 起位于抽屉内) -> 在抽屉 agenda tab 滚到该日期的 section header
+    // (原来是滚到主页面的网格,现在 agenda 在抽屉里 → 改成抽屉内滚动更自然,网格仍可由顶栏日期 chip 切)
     const jump = t.closest<HTMLElement>("[data-jump]");
     if (jump) {
-      currentDate = jump.dataset.jump!;
-      hourFilter = null;
-      renderChips();
-      renderGrid();
-      renderAgenda();
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      jump.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
 
-    // 冲突角标 -> 滚动到行程
+    // 冲突角标 -> 打开抽屉(若关着) + 切到「我的行程」tab(2026-09-10,`PLAN-20260910190916`)。
+    // 抽屉已开时只切 tab(保留当前 grid 日期);关着时打开抽屉(默认 tab),用户从 选片 进 行程 多一步。
     if (t.closest("#conflict-badge")) {
-      document.getElementById("agenda-wrap")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (isPickerDrawerOpen()) setPickerTab("agenda");
+      else openFilmPicker(libraryCtx());
       return;
     }
 
@@ -587,13 +607,19 @@ function exportIcs(which: "A" | "B" | "ALL"): void {
 function jumpToScreening(code: string): void {
   const s = cat.byCode.get(code);
   if (!s) return;
-  closeAllModals(); // 整栈关闭:列表/详情任何一层都不能还盖着网格
+  closeAllModals(); // 整栈关闭:详情弹层任何一层都不能还盖着网格
+  // ⚠ **不收起选片抽屉**(2026-09-10 改):抽屉是 `#main-col` 的 **flex 兄弟节点**,不是浮层 ——
+  // 网格里的卡片永远不可能被它挡住,故没有「必须收起」的理由;而收起会让「定位 A → 看一眼时间轴 →
+  // 再定位 B」每次都要重新打开抽屉(正是「有去无回」那条老毛病)。网格变窄由 jumpToScreening
+  // 下面的居中逻辑自然吸收:`scroll.clientWidth` 已是挤压后的宽度,卡片照样居中。
+  // (历史:独立页面形态下这里曾是 `closePickerPage()` —— 那时网格被 `display:none`,
+  //  不先恢复 rect 全 0 会滚错位;现在网格从不隐藏,该前提已不存在。)
   if (currentDate !== s.date) {
     currentDate = s.date;
     hourFilter = null;
     renderChips();
     renderGrid();
-    renderAgenda();
+    // 抽屉 agenda tab 通过 subscribe 自动重绘 —— 无需调 renderAgenda
   }
   // 页面滚到排片面板(顶部被吸顶栏盖住的部分留出)
   const wrap = document.getElementById("grid-wrap");
@@ -814,7 +840,7 @@ function openSettings(): void {
     "border-0 bg-transparent p-0 text-[12px] text-muted underline-offset-2 hover:text-conf hover:underline",
     "清空全部已排场次(A+B)"
   );
-  danger.title = "只清场次 —— 「我的选片」的选片意向(档位)保留,清完仍可一键智能排片";
+  danger.dataset.tip = "只清场次 —— 「我的选片」的选片意向(档位)保留,清完仍可一键智能排片";
   danger.addEventListener("click", () => {
     if (window.confirm("确定清空 A/B 两个方案的「全部已排场次」?选片意向(必看/备选/随缘)会保留。")) {
       clearScreeningSlots();
@@ -1021,6 +1047,13 @@ async function boot(): Promise<void> {
   loadPicks(filmKeyOfCode);
 
   subscribe(renderAll);
+  // 选片抽屉开 / 收会改变网格可用宽度 → 补一次 renderGrid(横向锚点由 renderGrid 内的
+  // pendingAnchor / gridAnchor 机制保住)。放在这里注入,library.ts 不必反向依赖 main。
+  setPickerToggleHandler(() => renderGrid());
+  // 「我的行程」从主页面 #agenda-wrap 搬到选片抽屉的第三个 tab(`PLAN-20260910190916`):
+  // 把 main 拥有的 `conflicts` / `gvTalkOf` / `currentDate` / `hourFilter` 闭包到 buildAgendaHost,
+  // 注入给抽屉;抽屉 agenda tab 每次重绘都读最新值。
+  setAgendaRenderer(buildAgendaHost);
   bindEvents();
   attachTip(); // 缩写说明悬停 tooltip(data-tip 文档级委托,渲染重建无需重绑)
   // D1:刻度不再随视口自动压缩(各日期比例一致),改由用户经缩放控件 / Ctrl+滚轮 自选 ——

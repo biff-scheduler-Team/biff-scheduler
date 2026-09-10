@@ -16,6 +16,9 @@
   --biff-red: #ce1e36;
   --biff-red-2: #e32e2f;
   --biff-red-hover: #b9151b;
+  /* 去饱和的品牌红(HSL 色相 / 明度不变,饱和度 75% → 55%)—— 「定位 ▸」这类**次要主操作**用:
+     同一族红保证「这是主操作」,但不再用亮红渐变抢眼(PLAN-20260910184745 §8 的按钮层级)。 */
+  --biff-red-muted: #b6354a;
   --biff-red-soft: #fdecec;
   --biff-red-line: #f3c3c7;
   --biff-red-tint: #fdf0f1;
@@ -117,6 +120,7 @@
   --color-biff: var(--biff-red);
   --color-biff-2: var(--biff-red-2);
   --color-biff-hover: var(--biff-red-hover);
+  --color-biff-muted: var(--biff-red-muted);
   --color-biff-soft: var(--biff-red-soft);
   --color-biff-line: var(--biff-red-line);
   --color-biff-tint: var(--biff-red-tint);
@@ -246,20 +250,6 @@
   background: var(--color-in-other);
 }
 
-/* 影片库「场次行主操作按钮」的**已加入当前方案**态(actState() 运行时切换,故走 @utility):
-   浅绿底 + 绿边 + 绿字 —— 与网格「已选」同一套绿(见 in-plan),一眼看出「这场已在方案里」;
-   hover 转红 = 「点了就是移除」的意图预告(否则 hover 只是 opacity 微变,用户以为按钮没反应)。 */
-@utility act-on {
-  border-color: color-mix(in srgb, var(--color-ok) 45%, var(--color-card));
-  background: color-mix(in srgb, var(--color-ok) 12%, var(--color-card));
-  color: var(--color-ok);
-  &:hover {
-    border-color: var(--color-biff);
-    background: var(--color-biff-soft);
-    color: var(--color-biff);
-  }
-}
-
 /* 放弃映后谈的 GV 谈块:块仍占槽位(表示该段物理存在),灰虚线已由 grid 端内联类给出,
    此处整体淡出 + 文字删除线已在块内 label 上处理 —— 语义 = "我在但不参加这段" */
 @utility gv-talk-off {
@@ -306,4 +296,30 @@
    用 CSS 写 min()/calc() 而非 Tailwind 任意值(免去 `calc(100vw_-_24px)` 的下划线转义)。 */
 @utility tip-card {
   max-width: min(320px, calc(100vw - 24px));
+}
+
+/* 「影片库 · 我的选片」抽屉打开时放宽 <main> 的容器上限(1280 → 1680)。
+   抽屉是**挤压式**的(`<main>` 是 flex 行,抽屉 520px 在左、`#main-col` flex-1 在右):
+   若 main 仍卡 1280,抽屉就会净吃掉网格 520px 宽度;放宽到 1680 后
+   `1680 − 32(px-4×2) − 520(抽屉) − 16(gap)` = 1112px(1440 视口下 ≈872px)
+   —— 即「打开选片尽量少牺牲网格宽度」。
+   选择器 `main.is-picker-open`(0,1,1) 压过 Tailwind 的 `.max-w-\[1280px\]`(0,1,0),不必 !important。 */
+main.is-picker-open {
+  max-width: 1680px;
+}
+
+/* 窄屏(≤1099px)放不下「抽屉 + 网格」并排 → 抽屉退化为全宽面板,主列暂时隐藏。
+   ⚠ 抽屉宽 / 位置那几条走 Tailwind 的 `max-[1099px]:` 变体(在 index.html 上),断点必须与此处逐字一致,
+   否则会出现「主列已隐藏但抽屉仍是 520px」的半吊子态。 */
+@media (max-width: 1099px) {
+  main.is-picker-open #main-col {
+    display: none;
+  }
+}
+
+/* 横向滚动条隐藏：日期导航 / 滚动列表用，鼠标滚轮 / 拖拽 / 方向键仍可滚。
+   WebKit + Firefox 各自一套伪元素，全 hide 才彻底。 */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
 }

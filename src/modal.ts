@@ -36,15 +36,15 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") topModal()?.dismiss();
 });
 
-/** 弹层宽度档:`md` 520 / `lg` 640 / `xl` 1280(左右双栏用 —— 左栏 flex-1 ≥ 536,右栏固定 480,
- *  两栏都放得下「场次行」那套完整徽章行;窄于 1100px 时两栏上下堆叠,见 library.ts)。
+/** 弹层宽度档:`md` 520 / `lg` 640。
+ *  **`xl`(1280)已删**(2026-09-10,`PLAN-20260910184745`):它当初只为「影片库 · 我的选片」
+ *  的左右双栏弹窗存在,而那块已改为 `<main>` 内的挤压式抽屉 —— 弹层里再无调用点,留着就是死档。
  *  兼容旧的布尔第三参 —— `true → lg`、`false / 省略 → md`(存量调用点不必改)。 */
-export type ModalSize = "md" | "lg" | "xl";
+export type ModalSize = "md" | "lg";
 
 const MODAL_WIDTH: Record<ModalSize, string> = {
   md: "w-[520px]",
   lg: "w-[640px]",
-  xl: "w-[1280px]",
 };
 
 export function openModal(
@@ -78,7 +78,7 @@ export function openModal(
         )
       : null;
   if (back) {
-    back.title = "返回上一层(列表状态保留)";
+    back.dataset.tip = "返回上一层(列表状态保留)";
     head.appendChild(back);
   }
   const close = el(
@@ -132,8 +132,13 @@ interface FilmModalCtx {
 /** 行内主操作按钮的三态(文案 + 完整类名 + 悬停说明)—— 初渲与「点击后就地重绘」共用的唯一来源。
  *  ⚠ 状态必须走 slotOf() 实时查询,不能缓存开弹层那一刻的 Map:commit() 里 rebuildIndex() 是
  *  `store.slotIndex = idx`(整体换新 Map),持有旧引用会读到点选前的快照 → 连重绘都会画错。
- *  三态:未加入 = 红渐变主按钮;已加入当前方案 = `act-on`(浅绿底 + 绿边 + 绿字,与网格「已选」
- *  同一套绿)且 hover 转红(= 「点了就是移除」的意图预告);已在另一方案 = 中性白底,hover 转红。
+ *  三态(2026-09-10 重排层级,见 PLAN-20260910184745 §8):
+ *    ① 未加入 = **中性描边次要按钮**(原为红渐变主按钮 —— 红色实底现在让给「定位 ▸」这唯一主操作,
+ *       两枚红按钮并排会互相抢眼,分不出主次);
+ *    ② 已加入当前方案 = **纯状态标签**(绿勾 + 绿字,无底无框)—— 它表达的是「这场已在方案里」这个
+ *       **状态**,用按钮外形会让人以为是待点的操作。⚠ 但仍**保留可点 = 移出**(否则这里就失去了
+ *       移除入口),故留 `cursor-pointer` + hover 下划线 + tooltip 明说「点击移出」;
+ *    ③ 已在另一方案 = 中性描边,hover 转红。
  *  ⚠ 文案必须与 toggleScreening() 的真实语义一致:一场只属于一个方案,点「已在 B 方案」的按钮
  *  是**移出**(不是搬运)—— 重绘修好之后按钮会当场翻成「＋ 加入」,再点一次才是改入,
  *  所以不能写成「改入 B」(写了两步的事就变成一步的承诺)。
@@ -141,29 +146,29 @@ interface FilmModalCtx {
  *  「加入 A 方案」把「你正在看的那一个」重复了一遍 —— 只在**跨方案**那态才点名(「已在 B 方案」),
  *  因为那才是「不在你当前方案里」这条信息本身。 */
 export function actState(code: string, group: string): { label: string; cls: string; tip: string } {
-  const base =
+  const btn =
     "border rounded-[6px] px-[9px] py-[3px] text-[11.5px] font-bold whitespace-nowrap " +
-    "transition-[background-color,border-color,color,filter] duration-[120ms] active:translate-y-px ";
+    "transition-[background-color,border-color,color] duration-[120ms] active:translate-y-px ";
   const hit = slotOf(code);
   if (hit?.group === group) {
     return {
       label: "✓ 已加入",
-      cls: base + "act-on",
+      cls:
+        "border-0 bg-transparent p-0 text-[11.5px] font-bold whitespace-nowrap text-ok " +
+        "cursor-pointer underline-offset-2 hover:underline",
       tip: "该场已在当前方案 — 点击移出(影片的选片意向 / 档位不受影响)",
     };
   }
   if (hit) {
     return {
       label: `⇄ 已在 ${hit.group}`,
-      cls: base + "border-line bg-card text-ink-2 hover:border-biff hover:text-biff",
+      cls: btn + "border-line bg-card text-ink-2 hover:border-biff hover:text-biff",
       tip: `该场在 ${hit.group} 方案(不是当前方案)— 一场只能属于一个方案:点击先移出,按钮会翻成「＋ 加入」,再点一次即改入当前方案`,
     };
   }
   return {
     label: "＋ 加入",
-    cls:
-      base +
-      "border-0 text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-110",
+    cls: btn + "border-line bg-card text-ink hover:border-biff hover:text-biff",
     tip: "把该场加入当前方案",
   };
 }
@@ -249,7 +254,7 @@ export function showFilmModal(code: string, ctx: FilmModalCtx): void {
   // ---- 豆瓣区 ----
   body.appendChild(buildDoubanBlock(code, anchor.title_zh || "", anchor.title_en));
 
-  openModal(`资料 · ${zh}`, body, true);
+  openModal(`资料 · ${zh}`, body, "lg");
 }
 
 /** 目录片资料(暂无排期):元信息 + 评分 + 豆瓣区(先关联,Catalogue 排期接入后同片自动带出) */
@@ -294,7 +299,7 @@ export function showCatalogFilmModal(
 
   // ---- 豆瓣区(code = 目录片 id,如 f001)----
   body.appendChild(buildDoubanBlock(film.id, film.title_zh || "", film.title_orig || ""));
-  openModal(`资料 · ${zh}`, body, true);
+  openModal(`资料 · ${zh}`, body, "lg");
 }
 
 /** 豆瓣区:已关联→直链;未关联→搜索链接 + 粘贴回填。code 可为排期 code(3 位)或目录片 id(f###) */

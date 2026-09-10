@@ -39,17 +39,76 @@
   所以**「详情 ⓘ」这类"从列表进详情"的入口不要再 `closeModal()` 再开**,直接开;用户用头部「← 返回」(栈深 > 1 才渲染)回去,
   列表的搜索词 / 筛选 / 展开态 / 滚动位置全保留。`closeModal()` = 关栈顶;**「定位 ▸」等要跳到页面主体的出口必须 `closeAllModals()`**
   (否则列表还盖着网格);Esc 是**模块级单监听**只关栈顶(原来每层各挂一个 → 叠层时一按全关)。
-  被压住的列表要在返回时刷新计数 → 开它时传 `onReturn`(「影片库 · 选片」双栏弹窗 / 智能排片两处都传 `render`)。
+  被压住的列表要在返回时刷新计数 → 开它时传 `onReturn`(现仅「智能排片」传 `render`;见下条)。
   列表类 `render()` 拆 `paint()` + 外层保存/恢复 `list.scrollTop`,否则点档位会跳回顶部。
+- **★「影片库 · 我的选片」= 左侧「挤压式抽屉」**(2026-09-10 二次改,`PLAN-20260910184745`;
+  演进:`xl` 弹窗 → 独立页面(`PLAN-20260910182939`)→ 抽屉)。用户对「独立页面」的反馈是「很奇怪」,
+  **根因不在宽度而在换页打断因果**(① 模态:打标时看不见网格,而打标与选场次本是同一件事的两步;
+  ② 不是路由:URL 不变、浏览器后退失效;③ 有去无回;④ 只有「影片库 → 定位 ▸ → 网格」单向)。
+  现在 `index.html` 的 `<main>` 是 **flex 行**:`#picker-drawer`(520px,`sticky top-[64px]`,在左)
+  + `#main-col`(`flex-1 min-w-0 grid gap-4`,原有 `#grid-wrap` / `#agenda-wrap` 收在里面)——
+  抽屉打开后网格**完全可见可点**,打标 → 卡片色点当场出现;点选 → 卡片当场变绿。
+  · 开 / 收:给 `main` 加 `.is-picker-open`(容器上限 1280 → 1680,`style.css` 原生规则,
+    权重 (0,1,1) 压过 Tailwind 的 `.max-w-\[1280px\]` —— 放宽后宽屏下抽屉尽量少抢网格宽度:
+    `1680 − 32 − 520 − 16 = 1112px`,1440 视口下 ≈872px)+ `#picker-drawer` 的 `is-hidden`;
+    出口 = 顶栏按钮(开关)/ 抽屉内「收起 ✕」/ `Esc`(仅无弹层时,与旧口径一致)。
+  · 抽屉内**两个 tab**(`影片库` / `我的选片`):520px 放不下并排双栏,但两 tab 复用同一套
+    `filmRow` / `showRow`,信息密度与原来双栏一致;`pickerTab` 跨开合保持。
+    ⚠ 520 而非更窄:场次行按需求排成**单行阅读流** `[CODE][时间][章组] →→ [操作]`(见下条),400px 排不下。
+    **`render()` 只画当前 tab** —— 抽屉会在用户点选网格时持续存活,若照旧两 tab 都重建,
+    一次网格点选就要顺手重建 250 行影片库(切 tab 时由 `setTab()` 重画)。
+  · 列表**不再自带宽高**(`max-h-[min(70vh,860px)]` + `overflow-y-auto` 已删),
+    统一由抽屉内的 `panel`(`min-h-0 flex-1 overflow-y-auto`)滚动,避免双滚动条。
+  · **网格宽度补偿**:抽屉开 / 收会改网格 `clientWidth`,由 `library.ts` 在
+    `showPickerDrawer()` / `closePickerDrawer()` 内回调 `main.ts` 注入的 `setPickerToggleHandler(fn)`
+    (`boot` 里注册 `() => renderGrid()`);横向锚点靠既有 `pendingAnchor` / `gridAnchor` 机制保住。
+    **`main.ts::renderAll()` 的「页面打开时早退」已删** —— 网格不再被 `display:none`,`clientWidth=0` 的前提不存在了。
+  · 「定位 ▸」这类出口**只 `closeAllModals()`,不收起抽屉**(2026-09-10 定案):抽屉是
+    `#main-col` 的 **flex 兄弟节点**而非浮层,网格卡片永远不会被它挡住,故无「必须收起」的理由;
+    而收起会让「定位 A → 看时间轴 → 再定位 B」每次都要重开抽屉(即老毛病「有去无回」)。
+    `jumpToScreening` 的居中逻辑读 `scroll.clientWidth`(挤压后的宽度),卡片照样居中。
+    ⚠ 别照搬独立页面时代的 `closePickerPage()` —— 那时网格被 `display:none`,
+    不先恢复 rect 全 0 会滚错位;现在网格从不隐藏,该前提不存在。
+  · 窄屏(≤1099px)放不下「抽屉 + 网格」并排:`style.css` 的媒体查询把 `#main-col` 隐藏,
+    抽屉退化为全宽面板。**断点必须与 `index.html` 上的 `max-[1099px]:` 变体逐字一致**,
+    否则会出现「主列已隐藏但抽屉仍 520px」的半吊子态。
+  · 抽屉**不进 modal 栈**:状态同步 = `library.ts::bindPickerState()` 订阅 `store`
+    (详情弹层改档位 / 网格点选 → 计数当场跟上);每次打开重建内容(`store.picks` 会被 `syncFromCloud` 整体替换)。
+  智能排片仍是**弹层**,压在抽屉之上(`onReturn = render` 现在是「AI 弹层关闭时刷新抽屉当前 tab」)。
+  上一轮为「弹窗叠弹窗」加的 `openModal(..., {keepBelow})` 与 `--overlay-bg-soft` **已删**(无使用场景,避免死代码)。
 - **弹层里的状态改动必须自己重绘**:`renderAll()` 只重建 chips / 网格 / 行程 / 角标,**弹层挂在 `#modal-root` 下不在任何重建范围内**
   → 弹层内控件「只改数据、按钮文案/配色一动不动」= 像点了没反应。凡在弹层里改状态,点击后要自己就地重绘
   (文案/类名/`title` 三态收口一处,初渲与重绘共用,再配该行 `flash` 作点击回执)。
   **弹层内查状态一律走 `slotOf()`** —— `rebuildIndex()` 是 `store.slotIndex = idx`(整体换新 Map),
   持有开弹层那一刻的引用会读到旧快照,连重绘都会画错(故 `FilmModalCtx.slots` 已删)。
-- **按钮「已加入」态 = `@utility act-on`**(浅绿底 + 绿边 + 绿字,与网格 `in-plan` 同一套绿)+ **hover 转红**
-  = 「点了就是移除」的意图预告(旧写法 `hover:opacity-90` 在白底描边按钮上几乎看不出)。
-  三态按钮统一 `transition` + `active:translate-y-px`。**按钮文案必须与 `toggleScreening` 真实语义一致**:
-  一场只属一个方案,对「已在另一组」的场次是**移出**不是搬运 → 文案写「已在 A 组 · 点击移出」(旧「改入 A」是错许诺)。
+- **影片卡片信息层级**(2026-09-10 重排,`PLAN-20260910184745` §8;`library.ts::filmRow` / `showRow`):
+  - **上半部(影片信息)**:片名 15px 加粗墨黑;副标题(原始片名 · 单元 · 国家 · 年份 · 导演)统一
+    `text-meta` 单行截断;场次计数与已排计数**合并成一枚状态标签** `共 4 场 / 已排 1 场`
+    (`bg-biff-soft text-biff`,浅红底深红字),**不再用两枚描边胶囊**。
+  - **右上角图标组**(常态 `opacity-45`,`group-hover:opacity-100` 才完全显现 —— 卡片上有 `group`):
+    档位 `★`(`pick.ts::wishIcon`,已定档按档位着色 / 未设定 `☆`,文字只走 `data-tip`)、
+    `ⓘ` 资料、`✕` 整片移除(仅「我的选片」tab,hover 转 `text-conf`)。
+    ⚠ **`★` 只在「影片库」tab**(2026-09-10,`PLAN-20260910192230`):「我的选片」是**已选视图**,
+    档位已由「排序(必看→备选→随缘)+ 档位筛选 chips 计数」表达,不再给每行一枚改档控件 ——
+    改档入口是「影片库」卡片 ★ / 任意 tab 的 `ⓘ` 资料弹层档位 seg / 行程行 ★(三处同一份 `store.picks`)。
+    别再为了「对称」把 ★ 加回 picks tab。
+    ⚠ 刻意**不用** `opacity-0`:触屏没有 hover,图标会永远看不见。
+    **原设计把「档位徽章 + N 场 + 已排 N 场 + ⓘ + ✕」五枚控件平铺在片名行右侧,把片名挤成 0 宽。**
+  - **下半部(场次行)= 单行阅读流** `[CODE][时间] [影院·时长·章组] ——→ [定位 ▸][✓已加入]`:
+    用 `flex flex-wrap`(**不是**固定 grid)+ `acts` 的 `ml-auto`,宽度变化自然降级 ——
+    旧的容器查询列模板(`style.css` 的 `@container … .show-row`)已随之删除。
+    CODE 11px 黑块白字 `px-[6px]`;时间 11.5px semibold 与 CODE 同字阶。
+  - **元数据章组 = 统一描边**(`appendMetaRow(..., { uniform: true })`):一律
+    `badges.ts::UNIFORM_CHIP_BASE` 的中性灰描边(统一高度 / 圆角 / 字阶),**只给观影等级**
+    留强调色描边(`legend.ts::RATING_ACCENT`)—— 场次行信息密度高,实心章会喧宾夺主。
+    ⚠ **网格卡 / 行程行不传 `uniform`**,保留各自实心章(那是「一眼看到有映后谈」的主信号)。
+  - **操作按钮层级**:`定位 ▸` = **唯一主操作**,去饱和品牌红实底(`--biff-red-muted`,不再是亮红渐变);
+    `＋ 加入` / `⇄ 已在 B` = 中性描边次要按钮;`✓ 已加入` = **纯状态标签**(绿勾 + 绿字,无底无框)
+    —— 它表达状态,用按钮外形会让人以为是待点的操作。⚠ 但仍**保留可点 = 移出**
+    (否则这里就失去移除入口),故留 `cursor-pointer` + hover 下划线 + tooltip 明说「点击移出」。
+    三态由 `modal.ts::actState()` 单源给出(`@utility act-on` 已随绿色实底按钮一起删除)。
+  **文案必须与 `toggleScreening` 真实语义一致**:一场只属一个方案,对「已在另一组」的场次是**移出**
+  不是搬运 → 文案写「已在 A 组 · 点击移出」(旧「改入 A」是错许诺)。
 - **交互类改动的验收方式**:无头 DOM 断言(playwright-core + 缓存 chromium + 临时 `python -m http.server` 对 `dist/`,用完 `pkill`)
   —— 见 SKILL `web-ui-headless-interaction-qa`;对线上只跑**只读**断言,别点会写接口的按钮。
 

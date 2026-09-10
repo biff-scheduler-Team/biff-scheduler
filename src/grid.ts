@@ -364,7 +364,7 @@ function buildRulerTicks(
     );
     b.style.left = `${x}px`;
     b.dataset.hour = String(h);
-    b.title = `只看 ${label}–${nextLabel} 段场次;再点取消`;
+    b.dataset.tip = `只看 ${label}–${nextLabel} 段场次;再点取消`;
     ticks.appendChild(b);
     // A1:整点刻度 +6px 短线(与场馆行内整点竖线同 x,视觉上标尺与行内刻度相连)
     const tickLine = el("span", "absolute bottom-0 w-px h-[6px] bg-ink/25 pointer-events-none");

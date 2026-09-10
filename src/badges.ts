@@ -139,6 +139,19 @@ export const BADGE_DEFS: BadgeDef[] = [
 const BADGE_BASE =
   "not-italic text-[9.5px] font-extrabold rounded-[3px] leading-[1.4] whitespace-nowrap select-none shrink-0 cursor-help";
 
+/* ---------- 统一章(uniform)—— 影片行「场次行」的元数据标签组专用 ----------
+ * 需求(PLAN-20260910184745 §8):标签组要**统一高度 / 圆角 / 描边 / 字色(灰)**,只给
+ * 「观影等级」留一点强调色边框;GV 等原先的黑底 / 红底实心章在密集的场次行里太吵,统一降为中性描边。
+ * ⚠ 只作用于 `appendMetaRow(..., { uniform: true })`(影片行场次行),**网格卡 / 行程行不受影响** ——
+ *   那两处的实心 GV 是「扫一眼看到有映后谈」的主信号,不能一起抹平。
+ * 字阶 9.5 → 10.5px 并统一 `rounded-[4px] px-[5px] py-[2px]`:原各变体的 padding / 圆角 / 字阶
+ * 互不相同,并排时高度参差(那正是「统一高度和圆角」要修的东西)。 */
+export const UNIFORM_CHIP_BASE =
+  "not-italic text-[10.5px] rounded-[4px] px-[5px] py-[2px] border leading-[1.35] " +
+  "whitespace-nowrap select-none shrink-0 cursor-help inline-flex items-center";
+/** 中性描边(默认;等级章另走 legend.ts 的强调色描边) */
+export const UNIFORM_CHIP = `${UNIFORM_CHIP_BASE} font-semibold text-ink-2 bg-card border-line`;
+
 const defByKey = new Map(BADGE_DEFS.map((d) => [d.key, d]));
 
 /** 该场次的特性键列表(去重保序:gv 恒在首位,其后按 tags 原序) */
@@ -153,16 +166,17 @@ export function screeningBadgeKeys(s: Screening): string[] {
   return keys;
 }
 
-/** 单个徽章 DOM — gv 走 BADGE_DEFS 中 cls(gv 默认实心黑),其它走各自变体 */
-export function badgeEl(key: string): HTMLElement {
+/** 单个徽章 DOM — gv 走 BADGE_DEFS 中 cls(gv 默认实心黑),其它走各自变体。
+ *  `opts.uniform` = 忽略该键自己的配色改走中性描边(label / tooltip 不变),见 UNIFORM_CHIP_BASE。 */
+export function badgeEl(key: string, opts?: { uniform?: boolean }): HTMLElement {
   const def = defByKey.get(key);
-  const cls = `${BADGE_BASE} ${def?.cls ?? BADGE_DEFS[0].cls}`;
+  const cls = opts?.uniform ? UNIFORM_CHIP : `${BADGE_BASE} ${def?.cls ?? BADGE_DEFS[0].cls}`;
   const node = el("i", cls, def?.label ?? key);
   if (def?.title) node.dataset.tip = def.title; // 缩写说明:悬停即时解释(经 tip.ts)
   return node;
 }
 
 /** 把某场次的全部特性徽章 append 到容器(保持内联流式布局) */
-export function appendBadges(host: HTMLElement, s: Screening): void {
-  for (const k of screeningBadgeKeys(s)) host.appendChild(badgeEl(k));
+export function appendBadges(host: HTMLElement, s: Screening, opts?: { uniform?: boolean }): void {
+  for (const k of screeningBadgeKeys(s)) host.appendChild(badgeEl(k, opts));
 }

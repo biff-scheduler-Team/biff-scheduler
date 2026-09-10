@@ -7,7 +7,7 @@
 
 import type { Catalog, RatingKey, Screening, SubsKey, Venue } from "./types";
 import { el } from "./util";
-import { BADGE_DEFS, badgeEl, codeTip, DOUBAN_CHIP_TITLE, screeningBadgeKeys } from "./badges";
+import { BADGE_DEFS, badgeEl, codeTip, DOUBAN_CHIP_TITLE, screeningBadgeKeys, UNIFORM_CHIP_BASE } from "./badges";
 
 /** 徽章基底(与 badges.ts 同字阶体系;全部字面量 → Tailwind v4 扫描可见) */
 const CHIP_BASE =
@@ -124,13 +124,14 @@ function chipEl(def: { label: string; cls: string; tip: string }): HTMLElement {
   return node;
 }
 
+/** 节目册页码的 hover 说明(uniform 与常规两条路径共用,避免文案漂移) */
+function pageTip(page: number): string {
+  return `节目册页码 P.${page}\n该场在官方 Ticket Catalogue(节目册)中的页码\n购票 / 翻册对表用`;
+}
+
 /** 节目册页码徽章:P.167 */
 export function pageChip(page: number): HTMLElement {
-  return chipEl({
-    label: `P.${page}`,
-    cls: `${CHIP_BASE} text-meta bg-card border-line`,
-    tip: `节目册页码 P.${page}\n该场在官方 Ticket Catalogue(节目册)中的页码\n购票 / 翻册对表用`,
-  });
+  return chipEl({ label: `P.${page}`, cls: `${CHIP_BASE} text-meta bg-card border-line`, tip: pageTip(page) });
 }
 
 /** 片长徽章:100'
@@ -198,18 +199,49 @@ function labeled(icon: HTMLElement, text: string): HTMLElement {
   return span;
 }
 
+/** 观影等级在 **uniform 模式**下的强调色描边(白底 + 同族描边 + 同族字)。
+ *  为什么只有等级留强调:它是**硬性准入信息**(未满岁不得入场),扫场次时必须一眼看到;
+ *  其余标签(字幕 / GV / 页码)是补充说明,统一灰描边即可。
+ *  ⚠ 必须字面量书写(Tailwind v4 只生成源码里完整出现的类),勿拼 `text-rate-${k}`。 */
+const RATING_ACCENT: Record<RatingKey, string> = {
+  ALL: "font-bold text-rate-all bg-card border-rate-all",
+  "12": "font-bold text-rate-12 bg-card border-rate-12",
+  "15": "font-bold text-biff bg-card border-biff",
+  "19": "font-bold text-rate-19 bg-card border-rate-19",
+};
+
+/** 统一章 DOM(uniform 模式):默认中性灰描边;`variant` 换配色 / 字重(等级走强调色描边)。
+ *  导出给影片行场次行自建「影院代码 / 时长」两枚章用 —— 保证与 appendMetaRow 那组**同一套**尺寸 / 圆角。 */
+export function uniformChipEl(label: string, tip: string, variant = ""): HTMLElement {
+  const node = el("i", `${UNIFORM_CHIP_BASE} ${variant || "font-semibold text-ink-2 bg-card border-line"}`, label);
+  node.dataset.tip = tip;
+  return node;
+}
+
 /**
  * 场次完整字段徽章流,按官方格序追加到 host:
  * 等级 → 字幕 → 场次特性(GV/首映/大师班…) → 节目册页码。
  * host 应为 flex/flex-wrap 容器(grid 卡 chips 行 / 行程标题行 / 弹层 when 行 / 影片库行)。
+ * `opts.uniform` = 影片行「场次行」那套**统一描边章**(见 badges.ts::UNIFORM_CHIP_BASE):
+ * 全部降为中性灰描边、只给观影等级留强调色 —— 场次行信息密度高,实心章会喧宾夺主。
+ * 网格卡 / 行程行**不传**该选项,保留各自的实心章(那是「一眼看到有映后谈」的主信号)。
  */
-export function appendMetaRow(host: HTMLElement, s: Screening): void {
-  const rate = s.rating ? RATING_DEFS[s.rating] : null;
-  if (rate) host.appendChild(chipEl(rate));
+export function appendMetaRow(host: HTMLElement, s: Screening, opts?: { uniform?: boolean }): void {
+  const u = opts?.uniform === true;
+  const rateKey = s.rating;
+  if (rateKey && RATING_DEFS[rateKey]) {
+    const def = RATING_DEFS[rateKey];
+    host.appendChild(u ? uniformChipEl(def.label, def.tip, RATING_ACCENT[rateKey]) : chipEl(def));
+  }
   // 字幕标识可同时多个(官方叠加印,如 KE KK)→ 逐个成章;归一化见 subsKeys()
-  for (const k of subsKeys(s.subs)) host.appendChild(chipEl(SUBS_DEFS[k]));
-  for (const k of screeningBadgeKeys(s)) host.appendChild(badgeEl(k));
-  if (typeof s.page === "number" && s.page > 0) host.appendChild(pageChip(s.page));
+  for (const k of subsKeys(s.subs)) {
+    const def = SUBS_DEFS[k];
+    host.appendChild(u ? uniformChipEl(def.label, def.tip) : chipEl(def));
+  }
+  for (const k of screeningBadgeKeys(s)) host.appendChild(badgeEl(k, u ? { uniform: true } : undefined));
+  if (typeof s.page === "number" && s.page > 0) {
+    host.appendChild(u ? uniformChipEl(`P.${s.page}`, pageTip(s.page)) : pageChip(s.page));
+  }
 }
 
 /* ---------------- 影院代码 / 分区 ---------------- */
@@ -486,9 +518,9 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     [
       ["一部片一条记录", "「我的选片」与「我的行程」是同一份数据的两个视图:按片看是选片清单,按场次看是行程。没有第二份拷贝,两边永远一致"],
       ["必看 / 备选 / 随缘", "影片行右侧的**档位徽章**(未设时显示「+ 标记」,已定档显示彩色「必看 / 备选 / 随缘」)点击即弹出三档 + 清除 —— 一枚控件代替原来的三段平铺。档位是「影片级」的:改一处,该片所有场次同步(影片资料弹层、行程行的三段 seg 改的也是它)"],
-      ["场次只在一处选", "影片行展开 = 唯一场次列表(左右两栏同款):每场并排「定位 ▸」(跳到时间轴)与「＋ 加入」(加入后变「✓ 已加入」,再点即移出;这场在另一方案时显示「⇄ 已在 B」);「ⓘ」只开影片资料 + 豆瓣,不再重复列排片"],
+      ["场次只在一处选", "影片行展开 = 唯一场次列表(两个 tab 同款):每场并排「定位 ▸」(跳到时间轴)与「＋ 加入」(加入后变「✓ 已加入」,再点即移出;这场在另一方案时显示「⇄ 已在 B」);「ⓘ」只开影片资料 + 豆瓣,不再重复列排片"],
       ["甘特色点", "定档后,甘特卡标题行前出现 7px 圆点(蓝=必看 / 紫=备选 / 灰蓝=随缘)——与整卡红绿灯底色相互独立:底色说「排得怎么样」,色点说「是不是我想看的」。档位刻意用冷色系(蓝/紫/灰蓝),避开底色的红/黄/绿,保证落在任何底色卡上都一眼可辨"],
-      ["顶栏「影片库 · 选片」", "一个按钮 = 一个弹窗的两栏:左栏 = 全部影片(搜索 / 单元筛选),右栏 = 我的选片(展示为主:**日期导航栏**「‹ 全部 N 天 10/21 周三 3 … ›」+ **档位** chips;每行只剩「档位徽章 + N 场 + ⓘ + ✕」)。两栏共用同一套影片行,所以打标 / 图标 / 场次行完全一致;右栏展开只列**已排场次**,并**按日期分节**(节头给「10/21 周三 · N 场」,行内只留时间)"],
+      ["顶栏「影片库 · 选片」", "一个按钮 = 左侧滑出的**选片面板**(再点一次 / 面板内「收起 ✕」/ Esc 收起):面板**不遮挡网格**,只是把网格挤窄一点 —— 所以打标、点选场次时始终能看到时间轴上的变化。面板内两个 tab:**影片库**(全部影片:搜索 / 单元筛选)与**我的选片**(展示为主:**日期导航栏**(单行横向滚动,`‹ ›` 左右滚)+ **档位** chips;每行只剩「档位徽章 + N 场 + ⓘ + ✕」)。两个 tab 共用同一套影片行,所以打标 / 图标 / 场次行完全一致;「我的选片」展开只列**已排场次**,并**按日期分节**(节头给「10/21 周三 · N 场」,行内只留时间)"],
       ["我的行程 ✕", "只移出这一场,选片意向保留 —— 该片仍留在「我的选片」里并标注「未排场」,「智能排片」照样会把它排进去"],
       ["智能排片", "**唯一排片通道**(原「本地引擎」已下线)。需你自己填入模型 API Key(DeepSeek / OpenAI / Moonshot / 硅基流动 / 自定义均可),由浏览器直连服务商生成一版建议行程,再选「并入 A / B 方案」(已有场次保留,只追加不冲突的新场次)。可先在「② 排哪几天」收窄日期;一部片都没打标也能排 —— 走「无片单模式」,怎么排看偏好文字。返回结果会本地复检:无效 code、同片多场、时段冲突一律剔除并明示,不信任模型的自我约束"],
       ["API Key 只在本机", "Key 只写入本机浏览器的 localStorage,不上传本站服务器、也不进任何发往本站的请求;排片请求由浏览器直连你填写的服务商。本站不提供也不转售模型服务(用你自己的额度),因此也读不到你的 Key。浏览器本地为明文存储 —— 公用电脑请勿保存,随时可在「设置」或弹层里点「清除 Key」"],

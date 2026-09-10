@@ -88,7 +88,7 @@ export function buildWishSeg(o: WishSegOpts): HTMLElement {
       `border-0 ${pad} font-semibold transition-[background,color] duration-[120ms] ease-in-out ${stateCls}${sepCls}`,
       label
     );
-    b.title = `${o.tipPrefix ?? ""}标为「${label}」${on ? "(再点取消打标)" : " — 供「智能排片」生成行程"}`;
+    b.dataset.tip = `${o.tipPrefix ?? ""}标为「${label}」${on ? "(再点取消打标)" : " — 供「智能排片」生成行程"}`;
     b.addEventListener("click", (ev) => {
       ev.stopPropagation(); // 三选常嵌在可点容器内(影片库行 / 甘特卡),避免顺带触发展开或选中
       o.onPick(on ? null : p);
@@ -176,7 +176,13 @@ function openWishMenu(anchor: HTMLElement, cur: Priority | null, onPick: (p: Pri
   wishMenuEl = menu;
 }
 
-export interface WishBadgeOpts {
+/* ---------- 档位**图标**(影片行右上角,2026-09-10 加,见 PLAN-20260910184745 §8) ----------
+ * 需求原话:「移除『必看』按钮…改为一个图标(如⭐),hover 时显示文字」——
+ * 带文字的档位徽章 + ⓘ + ✕ 三枚控件挤在片名行里,把片名挤成 0 宽、视觉噪声也大。
+ * 现在常态只有**一枚星标**:★ = 已定档(按档位着色)/ ☆ = 未设;文字只走 hover 提示
+ * (`data-tip`,与全站 tooltip 同源);点击仍弹**同一个** 必看 / 备选 / 随缘 / 清除 菜单。 */
+
+export interface WishIconOpts {
   /** 当前档位;null / undefined = 未设 */
   cur: Priority | null | undefined;
   /** 选中某档 / 清除档位(null) */
@@ -185,28 +191,23 @@ export interface WishBadgeOpts {
   tipPrefix?: string;
   /** 稳定锚点(菜单回关判定用),一般传影片 key */
   anchor?: string;
-  extraCls?: string;
 }
 
-/** 档位徽章 —— 常态只显示**当前档位**(= 用户要的那枚「颜色标签」),点击弹 必看/备选/随缘/清除。
- *  一行一个控件,取代原来的三段平铺。 */
-export function wishBadge(o: WishBadgeOpts): HTMLElement {
+/** 档位星标 —— 图标化入口,与 wishBadge() 共用同一个弹出菜单(openWishMenu)。 */
+export function wishIcon(o: WishIconOpts): HTMLElement {
   const cur = o.cur ?? null;
   const b = el(
     "button",
-    "inline-flex items-center gap-[5px] shrink-0 border rounded-[6px] px-[8px] py-px text-[10.5px] font-bold leading-[1.7] whitespace-nowrap transition-[border-color,background-color,color] duration-[120ms] " +
-      (cur
-        ? `border-line ${PRI_TAG[cur]}`
-        : "border-dashed border-line bg-card text-muted hover:border-line-strong hover:text-ink") +
-      (o.extraCls ? " " + o.extraCls : "")
+    "shrink-0 border-0 bg-transparent p-0 w-[20px] h-[20px] inline-flex items-center justify-center " +
+      "rounded-[5px] text-[13px] leading-none transition-[color,background-color] duration-[120ms] " +
+      "hover:bg-[var(--bg-hover-soft)] " +
+      (cur ? PRI_TEXT[cur] : "text-faint hover:text-ink")
   );
   b.dataset.wishAnchor = o.anchor ?? o.tipPrefix ?? "wish";
-  if (cur) b.appendChild(el("span", `w-[6px] h-[6px] rounded-full shrink-0 ${PRI_DOT_BG[cur]}`, ""));
-  b.appendChild(el("span", "", cur ? PRI_LABEL[cur] : "+ 标记"));
-  b.appendChild(el("span", "text-[8px] opacity-70", "▾"));
+  b.textContent = cur ? "★" : "☆";
   b.dataset.tip = `${o.tipPrefix ?? ""}档位「${cur ? PRI_LABEL[cur] : "未设"}」— 点击选 必看 / 备选 / 随缘,或清除档位`;
   b.addEventListener("click", (ev) => {
-    ev.stopPropagation(); // 常嵌在可点容器内(影片行头),避免顺带展开 / 折叠
+    ev.stopPropagation(); // 嵌在可点容器内(片名行),避免顺带展开 / 折叠
     openWishMenu(b, cur, o.onPick);
   });
   return b;
