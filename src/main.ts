@@ -226,6 +226,7 @@ function renderAgenda(): void {
     );
     pill.title =
       `行程质量分:必看 ${sc.pri.must}×3 · 备选 ${sc.pri.maybe}×2 · 随缘 ${sc.pri.wild}×1` +
+      `${sc.unset ? ` · 未分级 ${sc.unset}×0` : ""}` +
       `${sc.gv ? ` · GV +${sc.gv}` : ""}${sc.tight ? ` · 紧转场 −${sc.tight}` : ""} = ${sc.total}`;
     sum.appendChild(pill);
   }
@@ -322,15 +323,19 @@ function bindEvents(): void {
         // 已在当前方案:翻转含↔弃(覆写落 localStorage,不删场次、不动全局默认)
         setGvTalk(code, !resolveTalk(gvTalk.get(code), store.settings.gvTalkOn));
       } else {
-        // 未在当前方案(含在另一方案):一枪「只要正片」= 加入当前方案 + 覆写放弃映后谈
-        toggleCode(code);
+        // 未在当前方案(含在另一方案):一枪「只要正片」= 加入当前方案 + 覆写放弃映后谈;档位按 wish 继承
+        const s = cat.byCode.get(code);
+        toggleCode(code, s ? wish.get(filmNodeKey(cat, s)) ?? null : null);
         setGvTalk(code, false);
       }
       return;
     }
     const card = t.closest<HTMLElement>("#grid-scroll [data-code]");
     if (card) {
-      toggleCode(card.dataset.code!);
+      // 新加入按影片库打标(wish)继承档位;未打标 → null(未设,不再默认备选)
+      const code = card.dataset.code!;
+      const s = cat.byCode.get(code);
+      toggleCode(code, s ? wish.get(filmNodeKey(cat, s)) ?? null : null);
       return;
     }
 
@@ -339,8 +344,11 @@ function bindEvents(): void {
     if (act) {
       const code = act.closest<HTMLElement>("[data-code]")?.dataset.code;
       if (!code) return;
-      if (act.dataset.act === "pri") setPriority(code, act.dataset.pri as Priority);
-      else if (act.dataset.act === "grp") flipGroup(code);
+      if (act.dataset.act === "pri") {
+        // 再点当前档 = 取消 → 回到「未设」(与「我的选片」打标 seg 同语义,否则设过档就再也回不到未设)
+        const p = act.dataset.pri as Priority;
+        setPriority(code, (store.plan.get(code)?.priority ?? null) === p ? null : p);
+      } else if (act.dataset.act === "grp") flipGroup(code);
       else if (act.dataset.act === "del") removeCode(code);
       else if (act.dataset.act === "gv-talk") setGvTalk(code, !resolveTalk(gvTalk.get(code), store.settings.gvTalkOn));
       return;
@@ -526,6 +534,9 @@ function clampNum(v: string, fallback: number): number {
 /* ---------------- §14 4b:抢票顺位清单(复制) ---------------- */
 const PRI_TAG: Record<Priority, string> = { must: "必看", maybe: "备选", wild: "随缘" };
 const PRI_RANK: Record<Priority, number> = { must: 0, maybe: 1, wild: 2 };
+/** 未设档位(priority=null)在顺位清单里的兜底:标签「未分级」,排序视同备选(rank 1),不参与质量分 */
+const tagOf = (p: Priority | null): string => (p ? PRI_TAG[p] : "未分级");
+const rankOf = (p: Priority | null): number => (p ? PRI_RANK[p] : 1);
 
 function copyPicklist(): void {
   document.getElementById("export-menu")!.classList.add("is-hidden");
@@ -542,17 +553,25 @@ function copyPicklist(): void {
   }
   rows.sort(
     (a, b) =>
-      PRI_RANK[a.e.priority] - PRI_RANK[b.e.priority] ||
+      rankOf(a.e.priority) - rankOf(b.e.priority) ||
       Number(Boolean(b.s.is_gv)) - Number(Boolean(a.s.is_gv)) ||
       a.s.date.localeCompare(b.s.date) ||
       a.s.start_time.localeCompare(b.s.start_time)
   );
   const cnt: Record<Priority, number> = { must: 0, maybe: 0, wild: 0 };
-  rows.forEach((r) => cnt[r.e.priority]++);
+  let unset = 0;
+  rows.forEach((r) => {
+    if (r.e.priority == null) unset++;
+    else cnt[r.e.priority]++;
+  });
 
   const lines: string[] = [];
   lines.push(`【BIFF 2026 抢票顺位 · ${group} 方案】共 ${rows.length} 场`);
-  lines.push(`必看 ${cnt.must} · 备选 ${cnt.maybe} · 随缘 ${cnt.wild}(同优先级 GV/映后优先,同日按开场时间)`);
+  lines.push(
+    `必看 ${cnt.must} · 备选 ${cnt.maybe} · 随缘 ${cnt.wild}` +
+      (unset ? ` · 未分级 ${unset}` : "") +
+      "(同优先级 GV/映后优先,同日按开场时间)"
+  );
   lines.push("──");
   rows.forEach(({ e, s }, i) => {
     const { label, weekday } = dateInfo(s.date);
@@ -564,7 +583,7 @@ function copyPicklist(): void {
     const gvMark =
       talk > 0 ? (talkOn ? "(GV·含映后)" : "(GV·仅正片)") : s.is_gv ? "(GV)" : "";
     lines.push(
-      `${i + 1}. [${PRI_TAG[e.priority]}] ${s.code} ${title} ${label} ${weekday} ${s.start_time}–${endTxt} ${s.venue_display}${gvMark}`
+      `${i + 1}. [${tagOf(e.priority)}] ${s.code} ${title} ${label} ${weekday} ${s.start_time}–${endTxt} ${s.venue_display}${gvMark}`
     );
   });
   void copyText(lines.join("\n")).then((ok) =>
@@ -648,7 +667,7 @@ function restoreLocalPlan(): void {
       store.plan.set(r.code, {
         code: r.code,
         group: r.group,
-        priority: r.priority === "must" || r.priority === "wild" ? r.priority : "maybe",
+        priority: r.priority === "must" || r.priority === "maybe" || r.priority === "wild" ? r.priority : null,
         note: r.note ?? "",
       });
     }

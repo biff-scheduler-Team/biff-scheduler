@@ -15,12 +15,17 @@ export async function onRequestPut({ env, params, request }) {
     return Response.json({ ok: false, error: "body 需为 JSON" }, { status: 400 });
   }
   const group_tag = String(body.group_tag ?? "A").toUpperCase();
-  const priority = String(body.priority ?? "maybe").toLowerCase();
+  // priority 三态:
+  //   null      → SQL NULL(前端「未设档位」,必须原样落库,否则云端会把未设覆盖回 maybe)
+  //   undefined → 兼容旧客户端 / 异常载荷,沿用历史默认 'maybe'
+  //   字符串     → 校验 must|maybe|wild
+  const rawPriority = body.priority;
+  const priority = rawPriority === null ? null : String(rawPriority ?? "maybe").toLowerCase();
   if (!VALID_GROUP.has(group_tag)) {
     return Response.json({ ok: false, error: "group_tag 仅支持 A/B" }, { status: 400 });
   }
-  if (!VALID_PRIORITY.has(priority)) {
-    return Response.json({ ok: false, error: "priority 仅支持 must/maybe/wild" }, { status: 400 });
+  if (priority !== null && !VALID_PRIORITY.has(priority)) {
+    return Response.json({ ok: false, error: "priority 仅支持 must/maybe/wild 或 null" }, { status: 400 });
   }
   const note = String(body.note ?? "").slice(0, 200);
 

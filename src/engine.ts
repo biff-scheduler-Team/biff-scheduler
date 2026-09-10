@@ -44,7 +44,7 @@ export interface EngineInput {
 }
 
 /* ================= 方案评分(P0-2,纯函数,可解释) ================= */
-/** 各优先级单场权重:must×3 / maybe×2 / wild×1(GV 场次另 +1) */
+/** 各优先级单场权重:must×3 / maybe×2 / wild×1(GV 场次另 +1);未设档位(null)不参与计分 */
 export const SCORE_W: Record<Priority, number> = { must: 3, maybe: 2, wild: 1 };
 
 export interface PlanScoreParts {
@@ -61,13 +61,15 @@ export interface PlanScore {
 }
 
 export interface ScoredRow {
-  priority: Priority;
+  /** null = 未设档位(新加入且影片库未打标)→ 不参与计分 */
+  priority: Priority | null;
   screening: Screening;
 }
 
 export interface ScoreBreakdown {
   total: number;
   pri: Record<Priority, number>; // 各档命中场数
+  unset: number; // 未设档位场数(权重 ×0,仅用于说明,不影响 total)
   gv: number; // GV 命中场数
   tight: number; // 紧转场次数(0 ≤ 余量 < OK_SLACK)
 }
@@ -85,10 +87,12 @@ export function scorePlanRows(
     (a, b) => a.screening.date.localeCompare(b.screening.date) || a.screening.start_time.localeCompare(b.screening.start_time)
   );
   const pri: Record<Priority, number> = { must: 0, maybe: 0, wild: 0 };
+  let unset = 0;
   let gv = 0;
   let tight = 0;
   for (const r of sorted) {
-    pri[r.priority]++;
+    if (r.priority) pri[r.priority]++;
+    else unset++;
     if (r.screening.is_gv) gv++;
   }
   // 同日相邻对:余量 = 间隔 − 跨馆缓冲;重叠(余量<0)由冲突体系展示,不重复计入
@@ -105,7 +109,7 @@ export function scorePlanRows(
   }
   const total =
     pri.must * SCORE_W.must + pri.maybe * SCORE_W.maybe + pri.wild * SCORE_W.wild + gv - tight;
-  return { total, pri, gv, tight };
+  return { total, pri, unset, gv, tight };
 }
 
 /** 引擎方案评分:在 scorePlanRows 之上补齐各档分母(wish 输入量),供弹层展示 x/y。 */

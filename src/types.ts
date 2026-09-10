@@ -77,7 +77,8 @@ export type Priority = "must" | "maybe" | "wild";
 export interface PlanEntry {
   code: string;
   group: Group;
-  priority: Priority;
+  /** null = 用户未给该场设档位(新加入且影片库未打标 / 用户主动清空);不参与质量分 */
+  priority: Priority | null;
   note: string;
 }
 

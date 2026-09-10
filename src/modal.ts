@@ -1,7 +1,7 @@
 // 弹层:通用容器 + 影片详情(含同片场次 / 豆瓣映射管理)。
 // 全量化:overlay / modal / 详情弹层结构 全部 Tailwind utility。
 
-import type { Catalog, Mapping, PlanEntry, Screening } from "./types";
+import type { Catalog, Mapping, PlanEntry, Priority, Screening } from "./types";
 import { dateInfo, el, filmNodeKey, fmtMinRange } from "./util";
 import { DOUBAN_CHIP_TITLE } from "./badges";
 import { appendMetaRow } from "./legend";
@@ -62,7 +62,8 @@ interface FilmModalCtx {
   plan: Map<string, PlanEntry>;
   group: string;
   mappings: Map<string, Mapping>;
-  toggle: (code: string) => void;
+  /** 加入/移出当前方案;新加入时按影片库打标(wish)继承档位,null = 未设 */
+  toggle: (code: string, initialPriority?: Priority | null) => void;
 }
 
 /** 同片判定 key:中文/英文名任一同则视为同片 */
@@ -194,7 +195,10 @@ export function showFilmModal(code: string, ctx: FilmModalCtx): void {
   // 事件(每行独立绑定,避免全局委托)
   body.querySelectorAll<HTMLElement>("[data-toggle]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      ctx.toggle(btn.dataset.toggle!);
+      const code = btn.dataset.toggle!;
+      // 新加入按影片库打标(wish)继承档位;移除/改入按现有 priority 沿用
+      const s = ctx.cat.byCode.get(code);
+      ctx.toggle(code, s ? wish.get(filmNodeKey(ctx.cat, s)) ?? null : null);
     });
   });
 }

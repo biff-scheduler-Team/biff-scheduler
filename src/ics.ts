@@ -1,6 +1,6 @@
 // .ics 导出 — 一律 UTC(Z) 绝对时间 + 相对提醒;UID=code@biff-2026。
 
-import type { Catalog, Group, Mapping, PlanEntry, Screening } from "./types";
+import type { Catalog, Group, Mapping, PlanEntry, Priority, Screening } from "./types";
 import { effEndHms, gvTalkMin } from "./gv";
 import { esc } from "./util";
 
@@ -25,7 +25,13 @@ function fold(line: string): string {
   return parts.join("\r\n ");
 }
 
-export const PRIORITY_TAG: Record<string, string> = { must: "必看", maybe: "备选", wild: "随缘" };
+export const PRIORITY_TAG: Record<Priority, string> = { must: "必看", maybe: "备选", wild: "随缘" };
+/** 未设档位(priority=null)在 ICS 描述里的兜底标签 */
+export const PRIORITY_TAG_UNSET = "未分级";
+/** 档位标签(含未设兜底),供 ICS / 清单等文本出口复用 */
+export function priorityTag(p: Priority | null): string {
+  return p ? PRIORITY_TAG[p] : PRIORITY_TAG_UNSET;
+}
 
 export function buildIcs(
   cat: Catalog,
@@ -62,7 +68,7 @@ export function buildIcs(
     const timeNote = talk > 0 ? (talkOn ? ` · 含映后 ${talk}min` : ` · 已放弃映后谈(仅正片)`) : "";
     desc.push(`时间(KST):${s.start_time}–${endHms} · ${s.duration_min}min${timeNote}`);
     desc.push(`场馆:${s.venue_display}`);
-    desc.push(`方案:${e.group} · ${PRIORITY_TAG[e.priority]}`);
+    desc.push(`方案:${e.group} · ${priorityTag(e.priority)}`);
     if (map?.douban_url) desc.push(`豆瓣:${map.douban_url}`);
     if (e.note) desc.push(`备注:${e.note}`);
 

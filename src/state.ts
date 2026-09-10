@@ -110,7 +110,9 @@ export async function syncFromCloud(): Promise<void> {
     const localOnly = [...store.plan.keys()].filter((c) => !remote.has(c));
     const merged = new Map(store.plan);
     for (const r of planRows) {
-      merged.set(r.code, { code: r.code, group: r.group_tag, priority: r.priority, note: r.note });
+      // 云端为准;priority 允许 NULL(未设档位),非法值兜底为 null
+      const p: Priority | null = r.priority === "must" || r.priority === "maybe" || r.priority === "wild" ? r.priority : null;
+      merged.set(r.code, { code: r.code, group: r.group_tag, priority: p, note: r.note });
     }
     store.plan = merged;
     for (const c of localOnly) {
@@ -148,12 +150,18 @@ async function pushCloud(code: string, entry?: PlanEntry): Promise<void> {
   }
 }
 
-export function toggleCode(code: string): void {
+export function toggleCode(code: string, initialPriority: Priority | null = null): void {
   const existing = store.plan.get(code);
   if (existing && existing.group === store.group) {
     persist(code); // 同方案内再点 = 移除
   } else {
-    persist(code, { code, group: store.group, priority: existing?.priority ?? "maybe", note: existing?.note ?? "" });
+    // 新条目:沿用已有档位(existing.priority 可为 null)→ 否则按调用方传入的 wish 继承值 → 否则未设
+    persist(code, {
+      code,
+      group: store.group,
+      priority: existing?.priority ?? initialPriority,
+      note: existing?.note ?? "",
+    });
   }
 }
 
@@ -161,8 +169,8 @@ export function removeCode(code: string): void {
   persist(code);
 }
 
-/** 直接设某场优先级(§14 2c 三段 seg 用,替代原循环 chip) */
-export function setPriority(code: string, priority: Priority): void {
+/** 直接设某场优先级(§14 2c 三段 seg 用,替代原循环 chip);传 null = 清空为未设 */
+export function setPriority(code: string, priority: Priority | null): void {
   const e = store.plan.get(code);
   if (!e || e.priority === priority) return;
   persist(code, { ...e, priority });

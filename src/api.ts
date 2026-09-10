@@ -4,7 +4,8 @@
 export interface ApiPlanRow {
   code: string;
   group_tag: "A" | "B";
-  priority: "must" | "maybe" | "wild";
+  /** null = 未设档位(D1 侧 NULL;旧数据默认 'maybe' 已在 0001 迁移里落成非空) */
+  priority: "must" | "maybe" | "wild" | null;
   note: string;
 }
 
@@ -31,7 +32,7 @@ async function req<T>(url: string, init?: RequestInit): Promise<T | null> {
 
 export const api = {
   getPlan: () => req<ApiPlanRow[]>("/api/plan"),
-  putPlan: (code: string, body: { group_tag: string; priority: string; note: string }) =>
+  putPlan: (code: string, body: { group_tag: string; priority: string | null; note: string }) =>
     req<ApiPlanRow>(`/api/plan/${code}`, { method: "PUT", body: JSON.stringify(body) }),
   deletePlan: (code: string) => req<{ code: string }>(`/api/plan/${code}`, { method: "DELETE" }),
   getMapping: () => req<ApiMappingRow[]>("/api/mapping"),
