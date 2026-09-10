@@ -1,16 +1,18 @@
-// 弹层:通用容器 + 影片详情(含同片场次 / 豆瓣映射管理)。
-// 全量化:overlay / modal / 详情弹层结构 全部 Tailwind utility。
+// 弹层:通用容器 + 影片资料(片名 / 元信息 / 豆瓣映射管理)。
+// 2026-09-10:弹层不再列「同片全部场次」—— 唯一场次列表收敛到「影片库」行内展开
+// (library.ts,那里同时给「定位 ▸」与三态「加入方案」),避免同一部片出现两份排片列表。
+// 全量化:overlay / modal / 资料弹层结构 全部 Tailwind utility。
 
-import type { Catalog, Mapping, Screening } from "./types";
-import { dateInfo, el, filmNodeKey, fmtMinRange } from "./util";
-import { appendMetaRow, doubanChip } from "./legend";
+import type { Catalog, Mapping } from "./types";
+import { el, filmNodeKey } from "./util";
+import { doubanChip } from "./legend";
 import { api } from "./api";
 import { setWish, slotOf, store } from "./state";
 import { buildWishSeg } from "./pick";
 
 /* ---------- 通用容器(弹层栈) ----------
  *  2026-09-10:由「单弹层覆盖」改为「弹层栈」——
- *  原先 openModal 直接 `root.innerHTML = ""`,影片库点「详情 ⓘ」会把整个列表销毁,
+ *  原先 openModal 直接 `root.innerHTML = ""`,影片库点「资料 ⓘ」会把整个列表销毁,
  *  用户只能关闭、回不到列表(得重新打开 + 重新搜 + 重新展开)。
  *  现在新弹层**压栈**:被压住的那层留在 DOM 里(display:none),返回时原样恢复 ——
  *  列表滚动位置 / 展开态 / 搜索词都在,零重建;栈深 > 1 时头部给「← 返回」。 */
@@ -106,13 +108,10 @@ export function closeAllModals(): void {
   while (modalStack.length) topModal()!.dismiss(false);
 }
 
-/* ---------- 影片详情 ---------- */
+/* ---------- 影片资料(唯一场次列表在「影片库」行内展开,这里不再重复) ---------- */
 interface FilmModalCtx {
   cat: Catalog;
-  group: string;
   mappings: Map<string, Mapping>;
-  /** 加入/移出当前方案(按影片 key + 场次 code;档位是影片级的,新记录档位未设) */
-  toggle: (key: string, code: string) => void;
 }
 
 /** 行内主操作按钮的三态(文案 + 完整类名 + 悬停说明)—— 初渲与「点击后就地重绘」共用的唯一来源。
@@ -123,7 +122,7 @@ interface FilmModalCtx {
  *  ⚠ 文案必须与 toggleScreening() 的真实语义一致:一场只属于一个方案,点「已在 B 组」的按钮
  *  是**移出**(不是搬运)—— 重绘修好之后按钮会当场翻成「加入 A 方案」,再点一次才是改入,
  *  所以不能写成「改入 A」(写了两步的事就变成一步的承诺)。 */
-function actState(code: string, group: string): { label: string; cls: string; tip: string } {
+export function actState(code: string, group: string): { label: string; cls: string; tip: string } {
   const base =
     "border rounded-[6px] px-[10px] py-1 text-[12px] font-bold whitespace-nowrap " +
     "transition-[background-color,border-color,color,filter] duration-[120ms] active:translate-y-px ";
@@ -151,11 +150,6 @@ function actState(code: string, group: string): { label: string; cls: string; ti
   };
 }
 
-/** 同片判定 key:中文/英文名任一同则视为同片 */
-export function filmKey(s: Screening): string {
-  return (s.title_zh || s.title_en).toLowerCase().trim();
-}
-
 /** 「我的选片」档位行(详情弹层内直接改档位)—— key 走 filmNodeKey 单一口径,与影片库/甘特色点同源。
  *  档位是影片级的:这里改 = 「我的选片」与「我的行程」里该片所有场次同步。
  *  返回 `{ row, draw }`:场次增删后外部调 `draw()` 刷新 seg 与「已选 N 场」计数(弹层不在 renderAll 重建范围内)。 */
@@ -179,22 +173,12 @@ function buildWishRow(key: string): { row: HTMLElement; draw: () => void } {
     );
     const n = store.picks.get(key)?.picks.length ?? 0;
     hint.textContent = n
-      ? `已选 ${n} 场 · 档位为影片级,改这里全片同步;场次增删在网格 / 行程`
+      ? `已选 ${n} 场 · 档位为影片级,改这里全片同步;场次增删在网格 / 影片库`
       : "打标后可在顶栏「我的选片」总览;甘特图对应场次标题前显示档位色点";
   };
   draw();
   row.append(slot, hint);
   return { row, draw };
-}
-
-/** 该片全部场次(跨日期/跨影院),按日期时间排序 */
-export function siblingCodes(cat: Catalog, code: string): Screening[] {
-  const anchor = cat.byCode.get(code);
-  if (!anchor) return [];
-  const key = filmKey(anchor);
-  return cat.schedule.screenings
-    .filter((s) => filmKey(s) === key)
-    .sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time));
 }
 
 /** 目录评分查询(中文名精确 → 原始片名==排期英文名),无则 null */
@@ -208,7 +192,6 @@ function ratingOf(cat: Catalog, code: string): number | null {
 export function showFilmModal(code: string, ctx: FilmModalCtx): void {
   const anchor = ctx.cat.byCode.get(code);
   if (!anchor) return;
-  const siblings = siblingCodes(ctx.cat, code);
   const body = el("div", "film-modal");
 
   // ---- 片名区(16-A:有组评价则显示「豆 x.x」)----
@@ -245,77 +228,13 @@ export function showFilmModal(code: string, ctx: FilmModalCtx): void {
   const wish = buildWishRow(filmNodeKey(ctx.cat, anchor));
   body.appendChild(wish.row);
 
-  // ---- 同片全部场次 ----
-  const list = el("div", "grid gap-[6px] mb-[14px]");
-  /** 行内主操作按钮登记表:paintRows() 据此就地重绘(弹层不在 renderAll 重建范围内) */
-  const acts: { code: string; btn: HTMLElement }[] = [];
-  for (const s of siblings) {
-    const { label, weekday } = dateInfo(s.date);
-    const rowCls = s.code === code
-      ? "flex items-center justify-between gap-2 border border-biff rounded-[9px] px-[10px] py-2 bg-biff-tint-2"
-      : "flex items-center justify-between gap-2 border border-line rounded-[9px] px-[10px] py-2";
-    const row = el("div", rowCls);
-    row.dataset.code = s.code;
-
-    const when = el("div", "font-semibold tabular-nums", `${label} ${weekday}`);
-    const time = el("div", "tabular-nums", fmtMinRange(s.start_time, s.end_time));
-    const where = el(
-      "div",
-      "text-muted text-[12px] inline-flex items-center gap-[5px] min-w-0",
-      `${s.venue_display} · ${s.duration_min}min`
-    );
-    appendMetaRow(where, s); // 16-F:GV + 特性 + 等级/字幕/页码 徽章(hover 即示义)
-    const info = el("div", "flex gap-2 items-baseline flex-wrap text-[12.5px]");
-    info.append(when, time, where);
-
-    // 主操作按钮:三态文案 / 配色由 actState() 统一给(初渲与点击后重绘同一份口径)
-    const act = el("button", "", "");
-    act.dataset.toggle = s.code;
-    acts.push({ code: s.code, btn: act });
-    row.append(info, act);
-    list.appendChild(row);
-  }
-  body.appendChild(list);
-
-  /** 就地重绘全部行按钮 —— 弹层挂在 #modal-root 下,不在 renderAll() 的重建范围里;
-   *  不重绘就表现为「点完按钮文字/配色一动不动,只有背后的网格变了」= 像点了没反应。 */
-  const paintRows = (): void => {
-    for (const a of acts) {
-      const st = actState(a.code, ctx.group);
-      a.btn.textContent = st.label;
-      a.btn.className = st.cls;
-      a.btn.title = st.tip;
-    }
-  };
-  paintRows();
-
   // ---- 豆瓣区 ----
   body.appendChild(buildDoubanBlock(code, anchor.title_zh || "", anchor.title_en));
 
-  openModal(`详情 · ${zh}`, body, true);
-
-  // 事件(每行独立绑定,避免全局委托)。点完三件事:① 就地重绘按钮三态 ② 刷新「已选 N 场」
-  // ③ 该行闪一下(biff-flash)—— 按钮自身给出回执,不必关掉弹层才知道点到了。
-  body.querySelectorAll<HTMLElement>("[data-toggle]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const c = btn.dataset.toggle!;
-      const s = ctx.cat.byCode.get(c);
-      if (!s) return;
-      ctx.toggle(filmNodeKey(ctx.cat, s), c);
-      paintRows();
-      wish.draw();
-      const row = btn.closest<HTMLElement>("[data-code]");
-      if (row) {
-        row.classList.remove("flash");
-        void row.offsetWidth; // 强制回流:同一行连点也能重启动画
-        row.classList.add("flash");
-        window.setTimeout(() => row.classList.remove("flash"), 1200);
-      }
-    });
-  });
+  openModal(`资料 · ${zh}`, body, true);
 }
 
-/** 目录片详情(暂无排期):元信息 + 评分 + 豆瓣区(先关联,Catalogue 排期接入后同片自动带出) */
+/** 目录片资料(暂无排期):元信息 + 评分 + 豆瓣区(先关联,Catalogue 排期接入后同片自动带出) */
 export function showCatalogFilmModal(
   filmId: string,
   ctx: Pick<FilmModalCtx, "cat" | "mappings">
@@ -357,7 +276,7 @@ export function showCatalogFilmModal(
 
   // ---- 豆瓣区(code = 目录片 id,如 f001)----
   body.appendChild(buildDoubanBlock(film.id, film.title_zh || "", film.title_orig || ""));
-  openModal(`详情 · ${zh}`, body, true);
+  openModal(`资料 · ${zh}`, body, true);
 }
 
 /** 豆瓣区:已关联→直链;未关联→搜索链接 + 粘贴回填。code 可为排期 code(3 位)或目录片 id(f###) */
@@ -414,9 +333,10 @@ function buildDoubanBlock(code: string, qZh: string, qEn: string): HTMLElement {
   ) as HTMLInputElement;
   cnInput.placeholder = "中文片名(可选,排期缺中文名时展示用)";
   cnInput.value = map?.title_cn ?? "";
+  // 主按钮 `ml-auto`:窄屏两个输入框折行后,保存按钮不会孤零零落在左下角(仍贴右缘)
   const save = el(
     "button",
-    "border-0 rounded-[6px] px-[10px] py-1 text-[12px] font-bold text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05]",
+    "ml-auto border-0 rounded-[6px] px-[10px] py-1 text-[12px] font-bold text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05]",
     "保存映射"
   );
   save.addEventListener("click", async () => {

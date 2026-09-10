@@ -57,8 +57,8 @@ export function resolveTalk(override: boolean | undefined, globalOn: boolean): b
 
 /** 当前配置下某场映后谈**是否参加**:单场覆写 `store.gvTalk[code]` 优先,缺省跟随 `Settings.gvTalkOn`。
  *  与时长解析(`gvTalkMin`)正交 —— 一个管「去不去」,一个管「多久」。
- *  网格 / 行程 / 智能排片引擎 / .ics 导出共用这一处(引擎的互斥判定也必须按有效结束算,
- *  否则把映后时长调大后,引擎仍按官方槽位排 → 排出来的方案在网格里显示冲突)。 */
+ *  网格 / 行程 / 智能排片 / .ics 导出共用这一处 —— 谁按官方槽位算而不走有效结束,
+ *  映后时长一调大就会在网格里显示冲突。 */
 export function talkOnOf(code: string): boolean {
   return resolveTalk(gvTalk.get(code), store.settings.gvTalkOn);
 }

@@ -1,76 +1,28 @@
-// M2.5「AI 帮我排片」— 本地确定性求解引擎(无 LLM、零 key、可解释)。
-// 输入:影片 wish 打标(must/maybe/wild,来自 state.wish)+ 各片已发布场次;
-// 约束:同方案不重叠 + 跨馆转场缓冲(transitMin),与 conflict.ts 同一套判定;
-// 策略:must 强制全覆盖 → 冲突时给「牺牲」说明;maybe 按评分/GV 权重贪心填空档;
-//       wild 不进自动单(随缘可后续手动加)。产出 A(+存在差异时 B)两个建议方案,供一键采纳。
+// 排片**质量分** —— 对任意一组排片(手动行程 / AI 建议)算一个可解释的质量分。
+//
+// 历史:「本地确定性求解引擎」(must 全覆盖 DFS + maybe 贪心填空 + A/B 方案)已于 2026-09-10
+// **整体下线**(见 PLAN-20260910143516)——「智能排片」改为 AI 单通道。本文件只剩质量分与
+// 共享的影片入参类型。文件名沿用 `engine.ts` 以避开并行会话在途改动中的模块路径;可后续更名。
+//
+// 质量分的**唯一消费者**是「我的行程」头部那枚 `分 N` 药丸(main.ts::renderAgenda),
+// 它与「怎么排出建议」无关 —— 手动排的行程一样要能算分,所以本地引擎下线后它必须留下。
 
 import type { Priority, Screening } from "./types";
 import { OK_SLACK, hmsToMin } from "./util";
-import { effEndMin, talkOnOf } from "./gv";
 
+/** 排片入参:一部**已定档**影片(priority ≠ null)+ 它的全部已发布场次。
+ *  现在是「智能排片」打包送给模型的输入类型(ai.ts::buildPayload 消费)。 */
 export interface EngineFilm {
   key: string; // 影片节点 key(cat:<id> / sched:<片名>)
   zh: string; // 显示名(中文优先)
   priority: Priority; // 用户 wish
-  rating: number | null; // 目录豆瓣评分,maybe 权重用
+  rating: number | null; // 目录豆瓣评分(仅作打包信息送给模型)
   shows: Screening[]; // 已发布场次(空=暂无排期)
 }
 
-export interface EnginePick {
-  code: string;
-  filmKey: string;
-  zh: string;
-  priority: Priority;
-  show: Screening;
-}
-
-/** 未纳入的三类原因 —— UI 按 kind 选色、按 reason 文案合并同类项(见 library.ts) */
-export type DropKind = "noshow" | "blocked" | "unpicked";
-
-/** 三类原因的分类标签(UI 侧统一取用,勿在视图里各写一份) */
-export const DROP_LABEL: Record<DropKind, string> = {
-  noshow: "暂无排期",
-  blocked: "时段冲突",
-  unpicked: "权重未命中",
-};
-
-export interface EngineDrop {
-  filmKey: string;
-  zh: string;
-  priority: Priority;
-  kind: DropKind;
-  reason: string;
-}
-
-export interface EnginePlan {
-  name: "A" | "B";
-  picks: EnginePick[]; // 按日期/时间排序
-  unscheduled: EngineDrop[]; // wish 过但未纳入(暂无排期 / 被占用 / 未命中)
-  stats: { must: number; mustIn: number; maybe: number; maybeIn: number; wild: number };
-  score?: PlanScore; // P0-2:由 suggestPlans 附加的评分(供结果弹层展示)
-}
-
-export interface EngineInput {
-  films: EngineFilm[];
-  transitMin: number;
-}
-
-/* ================= 方案评分(P0-2,纯函数,可解释) ================= */
+/* ================= 方案评分(纯函数,可解释) ================= */
 /** 各优先级单场权重:must×3 / maybe×2 / wild×1(GV 场次另 +1);未设档位(null)不参与计分 */
 export const SCORE_W: Record<Priority, number> = { must: 3, maybe: 2, wild: 1 };
-
-export interface PlanScoreParts {
-  must: { in: number; total: number; pts: number };
-  maybe: { in: number; total: number; pts: number };
-  wild: { in: number; total: number; pts: number };
-  gv: { in: number; total: number; pts: number }; // GV 奖励(每场 +1)
-  tight: { count: number; pts: number }; // 紧转场扣分(每次 −1,pts ≤ 0)
-}
-
-export interface PlanScore {
-  total: number;
-  parts: PlanScoreParts;
-}
 
 export interface ScoredRow {
   /** null = 未设档位(新加入且影片库未打标)→ 不参与计分 */
@@ -86,9 +38,8 @@ export interface ScoreBreakdown {
   tight: number; // 紧转场次数(0 ≤ 余量 < OK_SLACK)
 }
 
-/** 对任意一组排片(引擎建议 / 手动行程)算质量分。
- *  endOf(s):该场实际结束分钟(缺省 = end_time)。手动行程侧传「有效结束」(GV 放弃映后谈 → 正片末),
- *  引擎自动排片不传(保守按含谈算 —— 放弃后只会更宽松,安全)。 */
+/** 对任意一组排片(手动行程 / AI 建议)算质量分。
+ *  endOf(s):该场实际结束分钟(缺省 = end_time)。手动行程侧传「有效结束」(GV 放弃映后谈 → 正片末)。 */
 export function scorePlanRows(
   rows: ScoredRow[],
   transitMin: number,
@@ -122,203 +73,4 @@ export function scorePlanRows(
   const total =
     pri.must * SCORE_W.must + pri.maybe * SCORE_W.maybe + pri.wild * SCORE_W.wild + gv - tight;
   return { total, pri, unset, gv, tight };
-}
-
-/** 引擎方案评分:在 scorePlanRows 之上补齐各档分母(wish 输入量),供弹层展示 x/y。 */
-export function planScore(
-  plan: EnginePlan,
-  opts: { transitMin: number; gvTotal: number; okSlack?: number }
-): PlanScore {
-  const bd = scorePlanRows(
-    plan.picks.map((p) => ({ priority: p.priority, screening: p.show })),
-    opts.transitMin,
-    opts.okSlack
-  );
-  const s = plan.stats;
-  const parts: PlanScoreParts = {
-    must: { in: bd.pri.must, total: s.must, pts: bd.pri.must * SCORE_W.must },
-    maybe: { in: bd.pri.maybe, total: s.maybe, pts: bd.pri.maybe * SCORE_W.maybe },
-    wild: { in: bd.pri.wild, total: s.wild, pts: bd.pri.wild * SCORE_W.wild },
-    gv: { in: bd.gv, total: opts.gvTotal, pts: bd.gv },
-    tight: { count: bd.tight, pts: -bd.tight },
-  };
-  return {
-    total: parts.must.pts + parts.maybe.pts + parts.wild.pts + parts.gv.pts + parts.tight.pts,
-    parts,
-  };
-}
-
-interface Placed {
-  filmKey: string;
-  zh: string;
-  priority: Priority;
-  show: Screening;
-}
-
-/** 两场是否互斥(同一天 + 时段重叠;跨馆则先结束场次追加转场缓冲再判)。
- *  结束一律取**有效结束**(`effEndMin` = 正片末 + 映后时长;放弃映后谈则 = 正片末)——
- *  与网格 / 行程 / 冲突同口径。否则映后时长调大后,引擎仍按官方槽位排,
- *  排出来的方案一进网格就显示冲突(见 gv.ts 文件头)。 */
-function blocks(a: Screening, b: Screening, transitMin: number): boolean {
-  if (a.date !== b.date) return false;
-  const [x, y] = a.start_time <= b.start_time ? [a, b] : [b, a];
-  const transit = x.venue_id !== y.venue_id ? transitMin : 0;
-  return effEndMin(x, talkOnOf(x.code)) + transit > hmsToMin(y.start_time);
-}
-
-function fits(cand: Screening, chosen: Placed[], transitMin: number): boolean {
-  return !chosen.some((p) => blocks(p.show, cand, transitMin));
-}
-
-function blockersOf(show: Screening, chosen: Placed[], transitMin: number): string[] {
-  const out: string[] = [];
-  for (const p of chosen) {
-    if (blocks(p.show, show, transitMin)) out.push(`${p.show.code} ${p.zh}`);
-  }
-  return out;
-}
-
-function sortShows(a: Screening, b: Screening): number {
-  return a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time);
-}
-
-/** 选出某片在当前已排集合下「最值」的可插场次:GV 优先 → 时间最早 */
-function bestFit(film: EngineFilm, chosen: Placed[], transitMin: number): Screening | null {
-  const pool = film.shows.filter((sh) => fits(sh, chosen, transitMin));
-  if (pool.length === 0) return null;
-  return pool.sort(
-    (a, b) => Number(Boolean(b.is_gv)) - Number(Boolean(a.is_gv)) || sortShows(a, b)
-  )[0];
-}
-
-/** maybe 权重:目录评分(×2)+ 该片任一场带 GV(+1) */
-function maybeWeight(film: EngineFilm): number {
-  return (film.rating ?? 0) * 2 + (film.shows.some((s) => s.is_gv) ? 1 : 0);
-}
-
-/** 未纳入理由(kind = 分类标签,reason = 该类的补充说明)。
- *  reason 只写「差异部分」—— 类别名由 DROP_LABEL 出,弹层按 (kind, reason) 合并同类项成一张卡,
- *  同因多片只印一次(旧版把「暂无排期(等 9/11 官方排期后自动可排)」逐条重印,占满版面)。 */
-function describeDrop(film: EngineFilm, chosen: Placed[], transitMin: number): { kind: DropKind; reason: string } {
-  if (film.shows.length === 0) return { kind: "noshow", reason: "预计 9/11 排期发布后可自动排" };
-  const blocked = new Set<string>();
-  for (const sh of film.shows) {
-    for (const b of blockersOf(sh, chosen, transitMin)) blocked.add(b);
-  }
-  return blocked.size
-    ? { kind: "blocked", reason: `与 ${[...blocked].slice(0, 3).join("、")} 时段重叠` }
-    : { kind: "unpicked", reason: "备选权重排序未命中,可手动加入" };
-}
-
-/** must 全覆盖 DFS:收集全部可行解,取「场次数最多、其次总结束最早」的前两个不同解(A/B) */
-function mustSolutions(musts: EngineFilm[], transitMin: number): Placed[][] {
-  const order = [...musts].sort((a, b) => a.shows.length - b.shows.length); // 候选少的先探
-  const sols: { chosen: Placed[]; sumEnd: number; key: string }[] = [];
-
-  const rec = (i: number, chosen: Placed[]): void => {
-    if (i === order.length) {
-      sols.push({
-        chosen,
-        sumEnd: chosen.reduce((s, p) => s + effEndMin(p.show, talkOnOf(p.show.code)), 0),
-        key: chosen.map((p) => p.show.code).sort().join(","),
-      });
-      return;
-    }
-    const film = order[i];
-    for (const sh of film.shows.filter((s) => fits(s, chosen, transitMin)).sort(sortShows)) {
-      rec(i + 1, [...chosen, { filmKey: film.key, zh: film.zh, priority: "must", show: sh }]);
-    }
-    rec(i + 1, chosen); // 本片放弃(=与既有 must 冲突,牺牲)
-  };
-  rec(0, []);
-
-  sols.sort(
-    (a, b) => b.chosen.length - a.chosen.length || a.sumEnd - b.sumEnd || a.key.localeCompare(b.key)
-  );
-  const uniq: Placed[][] = [];
-  for (const s of sols) {
-    if (!uniq.some((u) => u.map((p) => p.show.code).sort().join(",") === s.key)) uniq.push(s.chosen);
-    if (uniq.length >= 2) break;
-  }
-  return uniq;
-}
-
-/** 以给定 must 摆放为基础,maybe 贪心填空,产出完整方案 */
-function buildPlan(
-  name: "A" | "B",
-  mustChosen: Placed[],
-  maybeFilms: EngineFilm[],
-  transitMin: number,
-  total: { must: number; maybe: number; wild: number }
-): EnginePlan {
-  const chosen = [...mustChosen];
-  for (const film of [...maybeFilms].sort((a, b) => maybeWeight(b) - maybeWeight(a))) {
-    const pick = bestFit(film, chosen, transitMin);
-    if (pick) chosen.push({ filmKey: film.key, zh: film.zh, priority: "maybe", show: pick });
-  }
-
-  return {
-    name,
-    picks: chosen
-      .slice()
-      .sort((a, b) => sortShows(a.show, b.show))
-      .map((p) => ({ code: p.show.code, filmKey: p.filmKey, zh: p.zh, priority: p.priority, show: p.show })),
-    unscheduled: [], // 由 suggest() 按原 wish 输入补齐(需要无排期片信息)
-    stats: {
-      must: total.must,
-      mustIn: chosen.filter((p) => p.priority === "must").length,
-      maybe: total.maybe,
-      maybeIn: chosen.filter((p) => p.priority === "maybe").length,
-      wild: total.wild,
-    },
-  };
-}
-
-/** 主入口:返回 1~2 个建议方案(A 恒有;B 仅在存在与 A 不同的可行 must 摆放时给出) */
-export function suggestPlans(input: EngineInput): EnginePlan[] {
-  const { films, transitMin } = input;
-  const musts = films.filter((f) => f.priority === "must" && f.shows.length > 0);
-  const maybeFilms = films.filter((f) => f.priority === "maybe");
-  const total = {
-    must: films.filter((f) => f.priority === "must").length,
-    maybe: maybeFilms.length,
-    wild: films.filter((f) => f.priority === "wild").length,
-  };
-  // GV 分母:打了标(must/maybe)且任一场带 GV 的影片数
-  const gvTotal = films.filter((f) => f.priority !== "wild" && f.shows.some((sh) => sh.is_gv)).length;
-
-  const baseMust = mustSolutions(musts, transitMin);
-  const sols = baseMust.length ? baseMust : [[]]; // must 全无排期时也给出(空 must 单)
-  const plans: EnginePlan[] = [];
-  const seenKeys = new Set<string>();
-
-  for (const [i, mustChosen] of sols.entries()) {
-    if (plans.length >= 2) break;
-    const plan = buildPlan((i === 0 ? "A" : "B") as "A" | "B", mustChosen, maybeFilms, transitMin, total);
-    const key = plan.picks.map((p) => p.code).sort().join(",");
-    if (seenKeys.has(key)) continue; // B 与 A 完全相同则不出 B
-    seenKeys.add(key);
-    plans.push(plan);
-  }
-
-  // 补齐 each plan 的 unscheduled(must/maybe 原 wish 输入里没进 picks 的)
-  for (const plan of plans) {
-    const inPlan = new Set(plan.picks.map((p) => p.filmKey));
-    const drops: EngineDrop[] = [];
-    for (const f of films) {
-      if (f.priority === "wild") continue; // 随缘不进自动单,也不提示
-      if (inPlan.has(f.key)) continue;
-      const d = describeDrop(
-        f,
-        plan.picks.map((p) => ({ filmKey: p.filmKey, zh: p.zh, priority: p.priority, show: p.show })),
-        transitMin
-      );
-      drops.push({ filmKey: f.key, zh: f.zh, priority: f.priority, kind: d.kind, reason: d.reason });
-    }
-    plan.unscheduled = drops;
-  }
-  for (const plan of plans) {
-    plan.score = planScore(plan, { transitMin, gvTotal });
-  }
-  return plans;
 }

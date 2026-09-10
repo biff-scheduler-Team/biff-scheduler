@@ -335,7 +335,7 @@ export function setWish(key: string, priority: Priority | null): void {
   commit(key, { ...cur, priority });
 }
 
-/** 网格 / 详情弹层点选某场:已在 → 移出;不在 → 加入当前方案。
+/** 网格 / 影片库场次行点选某场:已在 → 移出;不在 → 加入当前方案。
  *  记录不存在时按 initialPriority 建(未打标的片传 null = 未设档位,不再默认「备选」)。 */
 export function toggleScreening(key: string, code: string, initialPriority: Priority | null = null): void {
   const cur = store.picks.get(key);
@@ -390,24 +390,31 @@ export function removePick(key: string): void {
   commit(key);
 }
 
-/** 整组替换为给定选片(§13.4 M2.5「采纳建议」):先清掉该方案现有场次,再按建议落场次 + 档位。
- *  只动 g 组 —— 另一方案的场次与影片档位不受影响(档位随后被建议覆盖为该片新档位)。 */
-export function replaceGroup(g: Group, picks: { key: string; code: string; priority: Priority }[]): void {
-  for (const e of [...store.picks.values()]) {
-    const rest = e.picks.filter((p) => p.group !== g);
-    if (rest.length === e.picks.length) continue;
-    if (!rest.length && e.priority == null && !e.note) commit(e.key);
-    else commit(e.key, { ...e, picks: rest });
-  }
+/** 把一批场次**追加**进方案 g(§13.4 M2.5「采纳建议」)。**不清空已有场次** ——
+ *  另一方案的场次与 g 的现有场次都不动,故「先排 9/19、再排 9/20」可以累积。
+ *  (旧 `replaceGroup` 是整组替换:第二次采纳会把第一次的场次一起清掉 —— 即用户报的「覆盖」bug。)
+ *  去重口径:该片在 g 里已有场次 → 跳过(每片一场,且保证幂等:重复采纳同一份建议不长出重复场次);
+ *  「同片已有 / 与 g 现有场次冲突」由 `ai.ts::planMerge()` 在调用前按网格同口径剔除。
+ *  `priority` 传 `null` = **「未设」**(无片单模式:用户从没给这些片打标,不该替他编一个档位);
+ *  此时若该片已有档位则**保留原档位**,不抹掉。
+ *  返回实际加入的场次数,供 UI 回执。 */
+export function addGroupPicks(
+  g: Group,
+  picks: { key: string; code: string; priority: Priority | null }[]
+): number {
+  let added = 0;
   for (const { key, code, priority } of picks) {
     const cur = store.picks.get(key);
     if (!cur) {
       commit(key, { key, priority, picks: [{ code, group: g }], note: "" });
+      added++;
       continue;
     }
-    const next = cur.picks.some((p) => p.code === code) ? cur.picks : [...cur.picks, { code, group: g }];
-    commit(key, { ...cur, priority, picks: next });
+    if (cur.picks.some((p) => p.group === g)) continue;
+    commit(key, { ...cur, priority: priority ?? cur.priority, picks: [...cur.picks, { code, group: g }] });
+    added++;
   }
+  return added;
 }
 
 /** 清空全部已排场次(A+B 两方案)。影片打标 / 选片意向保留 ——
@@ -431,8 +438,8 @@ export function setSettings(patch: Partial<Settings>): void {
   notify();
 }
 
-/** 甘特缩放倍率:只落盘、**不 notify** —— 缩放只影响网格,让 renderAll 重建行程/角标是白干,
- *  且重建时机由调用方掌握(要先按旧刻度算好锚点再改倍率)。重绘由 main 侧自己调 renderGrid()。 */
+/** 甘特缩放倍率(横纵共用的整体等比倍率):只落盘、**不 notify** —— 缩放只影响网格,让 renderAll
+ *  重建行程/角标是白干,且重建时机由调用方掌握(要先按旧倍率算好锚点再改倍率)。重绘由 main 侧 renderGrid()。 */
 export function setZoom(z: number): void {
   store.settings = { ...store.settings, zoom: z };
   saveSettingsLocal();

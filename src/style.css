@@ -186,6 +186,22 @@
   30%, 70% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--biff-red) 70%, transparent); }
 }
 
+/* 反向定位专用:带底色闪烁(1s × 3 = 3s)+ 红色描边常驻。
+   底色用 **inset box-shadow 覆盖层** 而不是直接动 background-color —— 卡片底色是红绿灯
+   (说「排得怎么样」),直接改 background 会在动画首尾把它抹成透明 → 卡片短暂「掉色」。 */
+@keyframes biff-locate-flash {
+  0%, 100% {
+    box-shadow:
+      0 0 0 0 transparent,
+      inset 0 0 0 0 transparent;
+  }
+  35%, 65% {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--biff-red) 70%, transparent),
+      inset 0 0 0 999px color-mix(in srgb, var(--biff-red) 20%, transparent);
+  }
+}
+
 /* ---- 动态状态类(JS 运行时切换,无法用静态 utility 表达) ---- */
 @utility is-hidden { display: none !important; }
 
@@ -230,7 +246,7 @@
   background: var(--color-in-other);
 }
 
-/* 详情弹层「场次行主操作按钮」的**已加入当前方案**态(actState() 运行时切换,故走 @utility):
+/* 影片库「场次行主操作按钮」的**已加入当前方案**态(actState() 运行时切换,故走 @utility):
    浅绿底 + 绿边 + 绿字 —— 与网格「已选」同一套绿(见 in-plan),一眼看出「这场已在方案里」;
    hover 转红 = 「点了就是移除」的意图预告(否则 hover 只是 opacity 微变,用户以为按钮没反应)。 */
 @utility act-on {
@@ -253,11 +269,18 @@
 /* 映后谈块 hover 恢复清晰度(仍在谈与弃谈块同感) */
 #grid-scroll [data-talk]:hover { opacity: 1; }
 
-/* 反向定位:卡片闪烁高亮 */
+/* 反向定位:卡片闪烁高亮(弹层场次行的「点到了」回执,1.1s × 2) */
 @utility flash {
   border-color: var(--color-biff);
   z-index: 6;
   animation: biff-flash 1.1s ease 2;
+}
+
+/* 反向定位(时间轴):定位到的场次带底色闪烁 3s,描边保持红色作为「就是这场」的落点标记 */
+@utility flash-locate {
+  border-color: var(--color-biff);
+  z-index: 6;
+  animation: biff-locate-flash 1s ease-in-out 3;
 }
 
 /* 甘特时间选择:非选中小时段的场次淡化(仍可 hover / 点选,仅视觉降噪) */

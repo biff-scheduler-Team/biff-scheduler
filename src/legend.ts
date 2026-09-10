@@ -1,7 +1,9 @@
 // 排片表「字段徽章 + 图例总览」单源模块(2025 官方 Schedule Guide 口径;2026 mock/待官方替换)
 //  - 等级 / 字幕 / 节目册页码 等小徽章:随卡片/行程/影片库/详情弹层渲染,每枚带 data-tip 即时说明
 //  - 「ⓘ 日程表说明」总览弹层内容(字段速读 / 等级 / 字幕 / 徽章 / 影院代码 / 网格图例 / 特别提示)
-// 场馆行与弹层只显示英文全名 → 官方影院代码(BT/B1/C1/L2…) 不直接当行标签用,改放图例与悬停说明。
+// 场馆名两层口径:紧凑层(甘特影厅列 / 影片库截断行)走 venues.json 的 `short` 短名,
+// 详情层(hover tooltip / 本弹层表 / ICS LOCATION)给英文全名 + 韩名。
+// 官方影院代码(BT/B1/C1/L2…)不单独当行标签,放行首 chip + 悬停说明。
 
 import type { Catalog, RatingKey, Screening, SubsKey, Venue } from "./types";
 import { el } from "./util";
@@ -224,6 +226,14 @@ const GROUP_AREA: Record<string, string> = {
   bcm: "南浦洞 · 釜山市民媒体中心",
 };
 
+/** 场馆短名 —— **紧凑层的唯一取用口**。甘特影厅列只有 148px(可写 ≈98~103px),全名
+ *  「Busan Cinema Center Cinema 1」(≈178px)必被截成「Busan Cinema …」,而三个厅的区分性
+ *  字词全在末尾 → B1/B2/B3 三行看起来一模一样。故行标签走 `short`(品牌 + 厅号,实测 ≤98px 零截断),
+ *  全名留给 tooltip / ⓘ 弹层 / ICS。旧 JSON 无 `short` 时回退全名(仅会截断,不会空白)。 */
+export function venueShort(v: Venue): string {
+  return v.short || v.name;
+}
+
 /** 场馆行悬停说明(全名 + 韩文名作标题;分区 / 官方代码分点) */
 export function venueTip(v: Venue): string {
   const lines = [v.name_kr ? `${v.name} · ${v.name_kr}` : v.name];
@@ -407,10 +417,16 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
   // ---- 5 影院与代码 ----
   body.appendChild(guideH("影院与官方代码"));
   {
-    const { tbl, tbody } = mkTable(["代码", "影厅(本工具行标签)", "分区"]);
+    const { tbl, tbody } = mkTable(["代码", "影厅(网格行标签 → 官方全名)", "分区"]);
     cat.venues.forEach((v) => {
       const codeCell = v.code ? chipEl({ label: v.code, cls: `${CHIP_BASE} text-biff bg-biff-soft border-current`, tip: `影院代码 ${v.code} — 2025 届同馆口径(mock),2026 以官网为准` }) : el("span", "text-meta", "—");
-      addRow(tbody, [codeCell, `${v.name}${v.name_kr ? `\n${v.name_kr}` : ""}`, GROUP_AREA[v.group] ?? "—"]);
+      // 短名 ↔ 全名对照:用户照着网格列里的短名能在这里对回官方全名(否则「BCC Cinema 1」无从溯源)
+      const nameCell = el("div", "grid gap-px");
+      nameCell.append(
+        el("div", "font-semibold text-ink", venueShort(v)),
+        el("div", "text-[11.5px] text-meta", `${v.name}${v.name_kr ? ` · ${v.name_kr}` : ""}`)
+      );
+      addRow(tbody, [codeCell, nameCell, GROUP_AREA[v.group] ?? "—"]);
     });
     body.appendChild(tbl);
 
@@ -469,12 +485,12 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     const ul = el("ul", "grid gap-[3px]");
     [
       ["一部片一条记录", "「我的选片」与「我的行程」是同一份数据的两个视图:按片看是选片清单,按场次看是行程。没有第二份拷贝,两边永远一致"],
-      ["必看 / 备选 / 随缘", "在「影片库」片名行右侧、影片详情弹层、或行程行的三段 seg 里设档位(再点同档取消)。档位是「影片级」的:改一处,该片所有场次同步"],
+      ["必看 / 备选 / 随缘", "在「影片库」片名行右侧、影片资料弹层、或行程行的三段 seg 里设档位(再点同档取消)。档位是「影片级」的:改一处,该片所有场次同步"],
+      ["场次只在一处选", "「影片库」片名行展开 = 唯一场次列表:每场并排「定位 ▸」(跳到时间轴)与「加入 A/B 方案」(再点即移出);「资料 ⓘ」只开影片资料 + 豆瓣,不再重复列排片"],
       ["甘特色点", "定档后,甘特卡标题行前出现 7px 圆点(蓝=必看 / 紫=备选 / 灰蓝=随缘)——与整卡红绿灯底色相互独立:底色说「排得怎么样」,色点说「是不是我想看的」。档位刻意用冷色系(蓝/紫/灰蓝),避开底色的红/黄/绿,保证落在任何底色卡上都一眼可辨"],
       ["顶栏「我的选片」", "汇总全部选片(含只点了场次、还没定档的「未设」),可按档位筛选、看已排场次、逐场定位、整片移除"],
       ["我的行程 ✕", "只移出这一场,选片意向保留 —— 该片仍留在「我的选片」里并标注「未排场」,「智能排片」照样会把它排进去"],
-      ["智能排片 · 本地引擎", "按已定档影片本地求解建议行程:同一天不重叠 + 跨馆缓冲;必看尽量全覆盖(冲突给牺牲说明),备选按评分/GV 填空,随缘不自动排。「未设」不参与"],
-      ["智能排片 · AI 排片", "需你自己填入模型 API Key(DeepSeek / OpenAI / Moonshot / 硅基流动 / 自定义均可),由浏览器直连服务商生成一版建议行程,再选「采纳为 A / B 方案」。返回结果会本地复检:无效 code、同片多场、时段冲突一律剔除并明示,不信任模型的自我约束"],
+      ["智能排片", "**唯一排片通道**(原「本地引擎」已下线)。需你自己填入模型 API Key(DeepSeek / OpenAI / Moonshot / 硅基流动 / 自定义均可),由浏览器直连服务商生成一版建议行程,再选「并入 A / B 方案」(已有场次保留,只追加不冲突的新场次)。可先在「② 排哪几天」收窄日期;一部片都没打标也能排 —— 走「无片单模式」,怎么排看偏好文字。返回结果会本地复检:无效 code、同片多场、时段冲突一律剔除并明示,不信任模型的自我约束"],
       ["API Key 只在本机", "Key 只写入本机浏览器的 localStorage,不上传本站服务器、也不进任何发往本站的请求;排片请求由浏览器直连你填写的服务商。本站不提供也不转售模型服务(用你自己的额度),因此也读不到你的 Key。浏览器本地为明文存储 —— 公用电脑请勿保存,随时可在「设置」或弹层里点「清除 Key」"],
     ].forEach(([k, v]) => ul.appendChild(el("li", "text-[12.5px] leading-[1.6]", `${k} — ${v}`)));
     body.appendChild(ul);

@@ -9,20 +9,26 @@ import { effEndMin, filmEndMin, gvTalkMin } from "./gv";
 import { appendMetaRow, durChip, venueTip } from "./legend";
 import { PRI_DOT_BG, PRI_LABEL } from "./pick";
 
-export const ROW_H = 92;
+export const ROW_H = 92; // 100% 基准行高(1 行 = 1 影厅);实际行高 = ROW_H × 缩放倍率,见 rowMetrics
 const TRAIL_PAD = 60; // A3:末 tick 右侧 +60px 安全边距(标签半宽 + 呼吸),两端标签永不悬出/被裁
 export const PX_PER_MIN = 3.0; // 100% 基准刻度(每小时 180px;1.5h≈270px;2h≈360px)
 // 横向更舒展 → 6 chip 徽章行单行排开、短场次(60–95min)不再因行宽不足换行或降级时间。
-// 缩放(2026-09-10 加)在此基础上乘倍率:小倍率「整天一眼看完」,大倍率「单场细节 + 更密刻度」;
-// 实际刻度一律由 main 侧算好经 GridCtx.pxPerMin 传入 —— grid 内部不再持有刻度常量。
+// 实际刻度一律由 main 侧算好经 GridCtx.pxPerMin 传入(横纵共用一个缩放倍率,见 ZOOM_LEVELS)。
 const AXIS_FALLBACK = { start: 9 * 60, end: 23 * 60 }; // A1:当日无排片时的时间轴兜底窗口
 const AXIS_LEAD_MIN = 30; // A1:首场开映前保留的呼吸时间(轴起点对齐到整点)
-const CARD_INSET_Y = 2; // 卡片上下留白(满高泳道:6 → 2px,几乎顶满行;行与行靠 border-line-soft 分隔线区分)
+const CARD_INSET_Y = 2; // 卡片上下留白(100% 档;随行高缩放,见 rowMetrics)
 
-/* ---------------- 时间轴缩放(倍率阶梯 / 适应宽度 / 轴界) ---------------- */
-/** 缩放阶梯(×PX_PER_MIN):0.35≈63px/h(整天一眼)…1=180px/h…3=540px/h(单场细节)。
- *  刻意离散:每档都落在「好读」的刻度上,连续缩放只会让卡片时间文本在截断/恢复之间反复抖。 */
-export const ZOOM_LEVELS: number[] = [0.35, 0.5, 0.7, 1, 1.4, 2, 3];
+/* ---------------- 缩放:横纵**同一倍率**(整体等比) ---------------- */
+/**
+ * 缩放倍率 —— **横向时间刻度与纵向行高共用同一个倍率**,卡片内所有组件(字号 / 留白 / 色点 / 徽章行)
+ * 也按同一倍率**线性**缩放。这样卡片「大 → 小」时内部排版严格等比:字号与卡片宽高同比例收放,
+ * 不会出现「行高先塌、字号没跟上」那种组件挤作一团的错乱(旧版字号走 z^0.6 阻尼、横向另有独立倍率)。
+ *
+ * 阶梯刻意离散(沿阶梯走用 stepZoom):连续缩放会让卡片文本在「换行 / 截断 / 显示几行」之间反复抖。
+ * 100% = ROW_H = 92px = PX_PER_MIN;55% 时行高 51px、字号 55%,一屏能看到约 17 影厅。
+ * 下限 0.55(再小标题就难以扫读),上限 1.2(卡片更舒展)。
+ */
+export const ZOOM_LEVELS: number[] = [0.55, 0.7, 0.9, 1, 1.2];
 export const ZOOM_MIN = ZOOM_LEVELS[0];
 export const ZOOM_MAX = ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
 
@@ -32,7 +38,7 @@ export function clampZoom(z: number): number {
 }
 
 /** 沿阶梯走一档:严格大于当前倍率的最小档(放大)/ 严格小于的最大档(缩小)。
- *  不先吸附再位移 —— 「适应」算出的是档间连续值(如 0.43),吸附会让 +/− 跳过相邻档。 */
+ *  不先吸附再位移 —— 旧值可能是持久化下来的档间值,吸附会让 +/− 跳过相邻档。 */
 export function stepZoom(z: number, dir: 1 | -1): number {
   if (dir === 1) {
     const up = ZOOM_LEVELS.find((l) => l > z + 1e-6);
@@ -42,7 +48,40 @@ export function stepZoom(z: number, dir: 1 | -1): number {
   return idx <= 0 ? ZOOM_MIN : ZOOM_LEVELS[idx - 1];
 }
 
-/* ---------------- 影厅列几何(随缩放) ---------------- */
+/** 行几何(行高 / 字号 / 留白 / 徽章行开关)—— 卡片与泳道**唯一**的取数口 */
+export interface RowMetrics {
+  /** 行高(px)= ROW_H × 倍率 */
+  rowH: number;
+  /** 卡片内字号倍率 —— **线性 = 行高倍率**(等比):字号与卡片宽高同比例,排版严格等比不挤乱。 */
+  fontScale: number;
+  /** 卡片上下留白(随行高收缩,但保底 1px —— 归零后相邻两行卡片会糊成一片) */
+  insetY: number;
+  /** 是否还画徽章行(等级/字幕/GV/页码/片长)—— 矮到装不下四行时最先舍它(信息在 ⓘ / hover 仍在) */
+  showBadges: boolean;
+}
+
+/**
+ * 行几何单一来源:行高 / 字号倍率 / 留白 / 徽章行开关全从这里派生。
+ *
+ * **字号倍率 = 行高倍率(线性)**:卡片宽高与字号同比例收放,内容高 / 行高之比恒定 ⇒ 无论缩到
+ * 哪一档,卡片内排版都严格等比,不会出现组件挤作一团(旧版字号走 z^0.6 阻尼,行高先塌、字号滞后)。
+ *
+ * 徽章行**整行按 `zoom` 等比缩**(见 appendCard):章体是 legend.ts 的显式 `text-[9.5px]`,父级
+ * font-size 不级联;而 `zoom` 是布局级缩放,子元素显式 px 也跟着缩 —— 那枚固定 17.78px 高的章
+ * 若不缩就会顶破矮行。`rowH < 80`(55 / 70% 两档)时整行不画:矮行里最先舍信息量最低的它 ——
+ * 等级 / 字幕 / GV / 页码 / 片长在 ⓘ 弹层与 hover 提示里都还在,不是信息删除。
+ */
+export function rowMetrics(z: number): RowMetrics {
+  const rowH = Math.round(ROW_H * z);
+  return {
+    rowH,
+    fontScale: z, // 等比:字号倍率 = 行高倍率(线性)
+    insetY: Math.max(1, Math.round(CARD_INSET_Y * z)),
+    showBadges: rowH >= 80,
+  };
+}
+
+/* ---------------- 影厅列几何(随横向倍率) ---------------- */
 /**
  * 影厅列几何 —— **列宽 / 代码 chip 宽 / chip 字号三者同源**。
  *
@@ -50,9 +89,9 @@ export function stepZoom(z: number, dir: 1 | -1): number {
  * 列宽于是从「装下最长全名 205px」变成「装下一枚代码 chip」:100% 由 148px 收到 ~49px,
  * 多出来的宽度全给时间轴,且**再也不会截断**(旧版 148px 只有 100px 可用,而全名要 205px)。
  *
- * **缩放连带影厅列**:列宽与 chip 字号一起变 —— 100% → 300% 时列宽 49 → 87px、字号 10 → 18px,
- * 整列与时间轴一起缩/展,而不是「只有轨道在拉伸、影厅列钉死 148px」。字号按 z^0.6 阻尼而非线性:
- * 线性的话 300% 要 30px 字号 + 150px 列宽,视觉上只剩空白。
+ * **列宽与字号同源,都跟缩放倍率走**:100%(= PX_PER_MIN)时列宽 ~49px、字号 10px;
+ * 缩放时与时间轴一起缩 / 展(整体等比),而不是「只有轨道在拉伸、影厅列钉死 148px」。
+ * 字号给 9~22px 的可读钳制(影厅列是导航而非卡片组件,极端倍率下保证仍能认出代码)。
  *
  * ⚠ 列宽**不能**写成 Tailwind 字面量类(`grid-cols-[${n}px]` 拼不出来,见 buildGrid 注释),
  *   一律走内联 `gridTemplateColumns`;`main.ts` 的缩放锚点换算依赖「轨道起点 = labelW」,必须同源。
@@ -64,23 +103,27 @@ export function labelMetrics(pxPerMin: number): {
   padX: number;
 } {
   const z = pxPerMin / PX_PER_MIN;
-  const fontPx = Math.round(Math.min(18, Math.max(9, 10 * Math.pow(z, 0.6))));
+  const fontPx = Math.round(Math.min(22, Math.max(9, 10 * z)));
   const chipW = Math.round(fontPx * 2.8); // 容下 3 字符代码(L10 / BCM)+ 左右边框
   const padX = fontPx; // 列内边距跟着字号走 → 列宽与 chip 严格等比
   return { labelW: chipW + 2 * padX + 1, chipW, fontPx, padX };
 }
 
-/** 适应宽度:把当天整条轴塞进可用宽度 → 返回连续倍率(已钳制)。
- *  可用轨道宽 = 容器宽 − 粘性影厅列 − 右端 TRAIL_PAD(末 tick 标签不被裁)。
- *  **两次迭代**:列宽本身依赖倍率(放大 → 列更宽 → 可用轨道更窄),一次算不准会溢出。
- *  迭代单调收敛(倍率↑ ⇒ 列宽↑ ⇒ 解出的倍率↓),两轮足够。 */
-export function fitZoom(cat: Catalog, date: string, availW: number): number {
+/** 适应宽度:在**离散缩放阶梯**里挑一个「刚好把当天整条轴塞进可用宽」的最大档(都塞不下则取最小档)。
+ *  每档总宽 = 影厅列 + 轴长 × 刻度 + 右端 TRAIL_PAD(末 tick 标签不被裁);与整体缩放同源 ——
+ *  选中的档同时作用于横向刻度与纵向行高。 */
+export function fitZoomLevel(cat: Catalog, date: string, availW: number): number {
   const axis = axisRangeFor(cat, date);
   const axisMin = Math.max(axis.end - axis.start, 60);
-  const solve = (labelW: number): number =>
-    clampZoom(Math.max(availW - labelW - TRAIL_PAD, 240) / (axisMin * PX_PER_MIN));
-  const first = solve(labelMetrics(PX_PER_MIN).labelW);
-  return solve(labelMetrics(PX_PER_MIN * first).labelW);
+  const totalW = (z: number): number => {
+    const pxPerMin = PX_PER_MIN * z;
+    return labelMetrics(pxPerMin).labelW + axisMin * pxPerMin + TRAIL_PAD;
+  };
+  let best = ZOOM_MIN;
+  for (const l of ZOOM_LEVELS) {
+    if (totalW(l) <= availW) best = l;
+  }
+  return best;
 }
 
 /** 当日时间轴起点分钟 —— 轨道内 x = `labelMetrics().labelW` 处即该时刻(供 main 侧换算缩放锚点) */
@@ -91,8 +134,10 @@ export function axisStartFor(cat: Catalog, date: string): number {
 /** 冲突 / 紧转场 / 已选 的红绿灯底色:优先级不参与网格染色(见行程行 seg),故无 p-* 类映射。 */
 export interface GridCtx {
   cat: Catalog;
-  /** 时间轴刻度(px/min)= PX_PER_MIN × 缩放倍率。由 main 侧算好传入 —— 缩放是视图偏好,grid 只负责画 */
+  /** 横向刻度(px/min)= PX_PER_MIN × 缩放倍率。由 main 侧算好传入 —— 缩放是视图偏好,grid 只负责画 */
   pxPerMin: number;
+  /** 行几何(行高 / 字号倍率 / 留白 / 徽章行开关)—— 由 main 侧 `rowMetrics(缩放倍率)` 算好传入 */
+  row: RowMetrics;
   /** 已选场次投影:code → { 影片 key, 方案 }。判「已选 / 在哪个方案」全走它(唯一数据源) */
   slots: Map<string, { key: string; group: Group }>;
   group: Group;
@@ -155,8 +200,9 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
   const rows = screeningsByVenue(ctx.cat, date);
   const axis = axisRangeFor(ctx.cat, date); // A1:当日动态轴(最早开映→最晚散场,整点对齐)
   const axisMin = axis.end - axis.start;
-  const pxPerMin = ctx.pxPerMin; // 缩放后的刻度(100% = PX_PER_MIN);由 main 侧随 GridCtx 传入
-  const { labelW, chipW, fontPx, padX } = labelMetrics(pxPerMin); // 影厅列宽随缩放(与 main 侧锚点换算同源)
+  const pxPerMin = ctx.pxPerMin; // 横向刻度(100% = PX_PER_MIN);由 main 侧随 GridCtx 传入
+  const { rowH } = ctx.row; // 泳道高(行高倍率派生);卡片留白由 appendCard 从 ctx.row 另取
+  const { labelW, chipW, fontPx, padX } = labelMetrics(pxPerMin); // 影厅列宽随横向倍率(与 main 侧锚点换算同源)
   const trackW = axisMin * pxPerMin;
   const totalW = labelW + trackW + TRAIL_PAD;
   /** 行 / 标尺共用的栅格列宽 —— 内联写(见 ROW_BASE_CLS 注释:Tailwind 拼不出动态宽度) */
@@ -186,6 +232,9 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
       `${ROW_BASE_CLS}${venueIdx > 0 ? " border-t border-line-soft" : ""}`
     );
     row.style.gridTemplateColumns = rowCols;
+    // 行锚点标识:行高缩放后 main 侧要按「参考线落在第几行(小数)」把页面滚动补回来,否则视口会跳走
+    // (见 main.ts::rowAnchor)。同时给无头验收当选择器用。
+    row.dataset.vrow = venue ? venue.id : list[0]?.venue_id ?? "";
     const label = el("div", LABEL_BOX_CLS);
     label.style.paddingLeft = `${padX}px`;
     label.style.paddingRight = `${padX}px`;
@@ -210,7 +259,7 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
 
     const tracks = el("div", "relative");
     tracks.style.width = `${trackW + TRAIL_PAD}px`;
-    tracks.style.height = `${ROW_H}px`;
+    tracks.style.height = `${rowH}px`;
     const hourPx = 60 * pxPerMin;
     const halfPx = 30 * pxPerMin;
     // A2 甘特列感:整点竖线 ink 10%、半点竖线 ink 4%,贯穿整行(卡片浮于线上);与标尺整点刻度同 x 对齐。
@@ -489,6 +538,27 @@ function talkTimeRange(s: Screening): string {
   return fmtMinRangeMin(filmEndMin(s), filmEndMin(s) + gvTalkMin(s));
 }
 
+/** 卡片内文本随行高等比缩小(基准 px × fontScale)。
+ *  行高**一并显式写**:`body` 的 `line-height: 1.45`(style.css)是无单位数,本来就会按元素自身
+ *  font-size 重算,所以这一步在基准情形下与继承结果逐字相同 —— 显式写是「自证」:卡片内每一行的
+ *  行盒高度只由本函数的两个入参决定,不受父级 font-size / 未来改全局行高影响。
+ *  `lineHeight` 可覆写:映后谈块那两行自带 `leading-[1.2]/[1.3]`,要原样传进去(否则会被 1.45 顶掉)。
+ *  ⚠ 一律内联:Tailwind v4 拼不出 `text-[${n}px]` 这种动态字面量(与 ROW_BASE_CLS 同一条坑)。
+ *  fontScale = 1(100% 档)时直接 return —— 保持类名基准,基准外观零变化。 */
+function scaleText(node: HTMLElement, basePx: number, scale: number, lineHeight = "1.45"): void {
+  if (Math.abs(scale - 1) < 1e-3) return;
+  node.style.fontSize = `${+(basePx * scale).toFixed(2)}px`;
+  node.style.lineHeight = lineHeight;
+}
+
+/** 方形元素(档位色点)等比缩 —— 只缩字号不会让它变小,矮行里就成了一枚突兀的大圆点 */
+function scaleBox(node: HTMLElement, basePx: number, scale: number): void {
+  if (Math.abs(scale - 1) < 1e-3) return;
+  const px = `${+(basePx * scale).toFixed(2)}px`;
+  node.style.width = px;
+  node.style.height = px;
+}
+
 function appendCard(
   tracks: HTMLElement,
   s: Screening,
@@ -507,6 +577,7 @@ function appendCard(
   // 待选(未选中且没选在另一方案):画布灰底上的白卡 —— 极淡边框 + 中灰文字,视为「待激活容器」;
   // hover 时描边加深(叠既有 shadow-hover 投影 + hl-card 红晕),文字不恢复墨色(激活靠点选后的整卡底色)。
   const isIdle = !isConflict && !inCurrent && !inOther;
+  const { rowH, insetY, fontScale, showBadges } = ctx.row; // 纵向行几何(由行高倍率派生)
 
   // 基底 + 选中 / 冲突 / 其他方案 等状态组合在构造时一次算完(JS 后续不需 toggle)
   const parts: string[] = ["group"];
@@ -527,9 +598,14 @@ function appendCard(
   // GV 拆分:主卡只画「正片段」(结束=正片末),谈段由右侧紧贴的 talk 块承接 → 视觉两张拼接
   const cardEnd = talk > 0 ? filmEndMin(s) : end;
   card.style.left = `${(start - axisStart) * pxPerMin + 2}px`;
-  card.style.top = `${CARD_INSET_Y}px`;
+  card.style.top = `${insetY}px`;
   card.style.width = `${(cardEnd - start) * pxPerMin - 4}px`;
-  card.style.height = `${ROW_H - CARD_INSET_Y * 2}px`;
+  card.style.height = `${rowH - insetY * 2}px`;
+  // 内边距随行高等比缩(基准 = 类名里的 pt-[5px] pb-1 px-[7px]);倍率 1 时写入值与之逐字相同 → 基准外观不变
+  card.style.paddingTop = `${+(5 * fontScale).toFixed(2)}px`;
+  card.style.paddingBottom = `${+(4 * fontScale).toFixed(2)}px`;
+  card.style.paddingLeft = `${+(7 * fontScale).toFixed(2)}px`;
+  card.style.paddingRight = `${+(7 * fontScale).toFixed(2)}px`;
 
   // 时间筛选:非选中小时段的场次淡化(hour-dim),保留上下文与 hover 可读(槽位整段含谈判定)
   if (ctx.hourFilter != null) {
@@ -554,7 +630,13 @@ function appendCard(
   timeSpan.dataset.full = cardRange;
   timeSpan.dataset.short = s.start_time; // 降级备选:只显开始时刻
   t1.append(codeB, timeSpan);
+  // 行尾让给右上角标(ⓘ / ⚠)的预留位也随倍率缩(基准 = 类名里的 pr-[20px]);倍率 1 时不写,保持基准外观
+  if (Math.abs(fontScale - 1) >= 1e-3) t1.style.paddingRight = `${+(20 * fontScale).toFixed(2)}px`;
   card.appendChild(t1);
+  // 字号随行高等比缩(基准 12px)。容器 t1 是 **flex** 而不是块容器 → 两个子项各自的行盒就是
+  // 自身 font-size × 1.45,不存在「父级 strut 撑住行高、矮行里行盒不缩」那个坑,故只缩叶子。
+  scaleText(codeB, 12, fontScale);
+  scaleText(timeSpan, 12, fontScale);
 
   // D2 重排:顺序 = 身份行(CODE+时间)→ 中文片名 → 英文名 → 徽章流沉底。
   // 徽章流不再横插在时间与片名之间 —— 宽卡下单行放下,不再 wrap 挤压标题区;
@@ -569,17 +651,32 @@ function appendCard(
   if (wishP) {
     const dot = el("span", `shrink-0 w-[7px] h-[7px] rounded-full ${PRI_DOT_BG[wishP]}`);
     dot.dataset.tip = `我的选片 · ${PRI_LABEL[wishP]}(在「我的选片」可总览/取消)`;
+    // 色点是**方盒**(w/h 写死 7px):只缩字号它不会变小,矮行里就成了一枚突兀的大圆点 → 走 scaleBox
+    scaleBox(dot, 7, fontScale);
     ttlRow.appendChild(dot);
   }
-  ttlRow.appendChild(el("span", ttlCls, zh));
+  const ttl = el("span", ttlCls, zh); // 13px:卡片内最大一号字,缩放基准
+  scaleText(ttl, 13, fontScale);
+  ttlRow.appendChild(ttl);
   const sub = el("span", "text-[11px] text-muted truncate", s.title_en !== zh ? s.title_en : `${s.duration_min}min`);
+  scaleText(sub, 11, fontScale);
   card.append(ttlRow, sub);
 
   // 徽章行:等级 → 字幕 → 特性(GV/首映…) → 页码 → 片长。无任何徽章(理论仅 mock 缺字段)时不创建,避免空行。
-  if (s.rating || s.subs?.length || typeof s.page === "number" || screeningBadgeKeys(s).length) {
+  // 缩放与门控两件事都在这里:
+  //  ① 缩放走 `zoom`(**布局级**)而不是 font-size —— 章体是 legend.ts 的显式 `text-[9.5px]`,
+  //     父级 font-size **不级联**下去;而 `zoom` 连子元素显式 px 一起缩(章高 17.78px → 90% 档 16.68px)。
+  //     不缩的话那枚固定高的章在 83px 行里会把卡片顶破(四行只剩 0.79px 余量)。
+  //  ② `rowH < 80`(55 / 70% 两档)整行不画:四行实在装不下,最先舍信息量最低的它 ——
+  //     等级 / 字幕 / GV / 页码 / 片长在 ⓘ 弹层与 hover 提示里都还在,不是信息删除。
+  if (
+    showBadges &&
+    (s.rating || s.subs?.length || typeof s.page === "number" || screeningBadgeKeys(s).length)
+  ) {
     const bdgRow = el("span", "mt-auto flex gap-[3px] flex-wrap items-center leading-none");
     appendMetaRow(bdgRow, s);
     bdgRow.appendChild(durChip(s.duration_min));
+    if (Math.abs(fontScale - 1) >= 1e-3) bdgRow.style.zoom = `${+fontScale.toFixed(3)}`;
     card.appendChild(bdgRow);
   }
 
@@ -589,18 +686,25 @@ function appendCard(
     : "absolute top-[3px] right-[3px] border-0 bg-transparent text-muted text-[11px] py-px px-[3px] rounded-[4px] opacity-0 transition-opacity duration-100 group-hover:opacity-[0.85] group-focus-within:opacity-[0.85] hover:text-biff hover:bg-[var(--biff-red-tint-3)]";
   const infoBtn = el("button", infoCls, "ⓘ");
   infoBtn.dataset.info = s.code;
-  infoBtn.dataset.tip = "影片详情 / 豆瓣";
+  infoBtn.dataset.tip = "影片资料 / 豆瓣";
+  scaleText(infoBtn, 11, fontScale); // 绝对定位、不影响行高,但缩了才与整卡同一比例
   card.appendChild(infoBtn);
 
-  if (inOther)
-    card.appendChild(
-      el(
-        "span",
-        "absolute left-[3px] top-[2px] text-[9px] font-bold text-muted border border-line rounded-[3px] px-[2px]",
-        slot!.group
-      )
+  // 两个角标也是「卡片的一部分」→ 同倍率缩(绝对定位,不影响行高预算)
+  if (inOther) {
+    const grpTag = el(
+      "span",
+      "absolute left-[3px] top-[2px] text-[9px] font-bold text-muted border border-line rounded-[3px] px-[2px]",
+      slot!.group
     );
-  if (isConflict) card.appendChild(el("span", "absolute right-[22px] top-[2px] text-[11px] text-conf", "⚠"));
+    scaleText(grpTag, 9, fontScale);
+    card.appendChild(grpTag);
+  }
+  if (isConflict) {
+    const warn = el("span", "absolute right-[22px] top-[2px] text-[11px] text-conf", "⚠");
+    scaleText(warn, 11, fontScale);
+    card.appendChild(warn);
+  }
 
   tracks.appendChild(card);
 
@@ -612,9 +716,9 @@ function appendCard(
     // 几何:紧贴正片卡右缘(无间隙拼接),右缘与整场槽位右缘对齐
     const filmW = (filmEndMin(s) - start) * pxPerMin - 4;
     talkEl.style.left = `${(start - axisStart) * pxPerMin + 2 + filmW}px`;
-    talkEl.style.top = `${CARD_INSET_Y}px`;
+    talkEl.style.top = `${insetY}px`;
     talkEl.style.width = `${talk * pxPerMin}px`;
-    talkEl.style.height = `${ROW_H - CARD_INSET_Y * 2}px`;
+    talkEl.style.height = `${rowH - insetY * 2}px`;
 
     // 状态外观:冲突沿用红(整场都在冲突区);已选且参加 → 同 in-plan 绿 = 两张一起选中;
     // 放弃映后谈 → gv-talk-off 灰虚线淡出(块仍占槽位,只表示"我不参加")
@@ -646,6 +750,9 @@ function appendCard(
       talkOn && inCurrent ? `✓ 映后 ${talk}′` : `映后 ${talk}′`
     );
     if (!talkOn) lab.classList.add("text-muted", "line-through");
+    // 谈块两行自带 leading-[1.2] / [1.3] → 原样传给 scaleText(否则会被默认的 1.45 顶掉、块变高)
+    scaleText(rng, 8.5, fontScale, "1.2");
+    scaleText(lab, 9, fontScale, "1.3");
     talkEl.append(rng, lab);
 
     talkEl.dataset.tip = talkTip(s, talk, talkOn, inCurrent);

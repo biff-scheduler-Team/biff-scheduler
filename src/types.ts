@@ -56,6 +56,15 @@ export interface Venue {
   id: string;
   name: string;
   name_kr: string;
+  /**
+   * 短名 —— **甘特图粘性影厅列的行标签**。列宽 148px,减去内边距 20px + 代码 chip ≈ 25~30px + gap 5px,
+   * 留给名字只有 ≈ 98~103px(12px semibold),而全名「Busan Cinema Center Cinema 1」约 178px
+   * 必被 `truncate` 裁掉 —— 且区分性字词全在末尾(Cinema 1 / Cinema 2 / Cinematheque),裁完三行一模一样。
+   * 故 short 取「**品牌 + 厅号**」并去掉与品牌重复的城市词(`CGV 1` / `LOTTE 10` / `MEGABOX 1` /
+   * `BCC Cinematek`);实测 29 条全部 ≤ 98px、零截断。**取用一律走 `legend.ts::venueShort()`**
+   * (带 `name` 兜底);全名只出现在 hover tooltip / ⓘ 说明弹层 / ICS LOCATION。可选 → 旧 JSON 仍合法。
+   */
+  short?: string;
   /** 影院(bcc / cgv / lotte / kofic / megabox / sohyang / bcm)—— 图例「分区」列按它聚合 */
   group: string;
   /** 分区:centum(CENTUM 主场区)/ nampo(南浦洞)。跨区连场需留足转场缓冲 */
@@ -128,7 +137,10 @@ export interface Settings {
   /** GV 映后谈默认时长(分钟)。**单场覆写 `store.gvTalkMinOv[code]` 优先**,缺省用本值;默认 25。
    *  仅 `is_gv` 场次生效;0 = 不拆映后段。口径见 `gv.ts` 文件头(时长可配置,不再从数据推导)。 */
   gvTalkMin: number;
-  /** 甘特时间轴缩放倍率(1 = 100%,基准 3.0px/min)。视图偏好:随设置持久化,但不出现在设置弹层。 */
+  /** 甘特**整体等比**缩放倍率(1 = 100%,基准行高 92px = `grid.ts::ROW_H`;阶梯 0.55 / 0.7 / 0.9 / 1 / 1.2)。
+   *  横向时间刻度与纵向行高共用它,卡片内字号 / 留白 / 徽章行也按同一倍率线性缩。
+   *  视图偏好:随设置持久化,但不出现在设置弹层。
+   *  ⚠ 旧版这个字段存的是**横向**刻度倍率(0.35~3)或旧行高倍率,读取时由 `clampZoom` 钳进新阶梯 —— 无需迁移。 */
   zoom?: number;
 }
 

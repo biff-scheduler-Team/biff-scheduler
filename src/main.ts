@@ -30,7 +30,7 @@ import {
   syncFromCloud,
   toggleScreening,
 } from "./state";
-import { buildGrid, fitTimeTexts, fitZoom, axisStartFor, clampZoom, stepZoom, labelMetrics, PX_PER_MIN, ZOOM_MAX, ZOOM_MIN } from "./grid";
+import { buildGrid, fitTimeTexts, fitZoomLevel, axisStartFor, clampZoom, stepZoom, rowMetrics, labelMetrics, PX_PER_MIN, ZOOM_MAX, ZOOM_MIN } from "./grid";
 import { buildAgenda } from "./agenda";
 import { abbrTooltip } from "./badges";
 import { attachTip } from "./tip";
@@ -45,12 +45,15 @@ let currentDate = "";
 let conflicts = new Map<string, ConflictResult>();
 /** 甘特时间筛选:点击时间轴整点置为对应小时;null = 不过滤(切日期/再点/重置均清除) */
 let hourFilter: number | null = null;
-/** 甘特缩放倍率(1 = 100% = PX_PER_MIN):视图偏好,持久化在 store.settings.zoom */
+/** 甘特缩放 —— **横纵共用的单一倍率**(整体等比):横向时间刻度 = PX_PER_MIN × zoom,
+ *  纵向行高 = ROW_H × zoom,卡片内字号 / 留白 / 色点 / 徽章行全部按同一倍率**线性**缩 ——
+ *  卡片变小的时候内部排版严格等比,不会挤乱。持久化在 store.settings.zoom(视图偏好)。 */
 let zoom = 1;
-/** 网格横向视口记忆:锚点 = 容器内某个屏幕 x(相对容器左缘)对应的时刻。
+/** 网格**横向**视口记忆:锚点 = 容器内某个屏幕 x(相对容器左缘)对应的时刻。
  *  网格每次重建都换新滚动容器(scrollLeft 会归零)—— 同日期重建(选片/优先级/分钟推进/缩放)
  *  把锚点时刻重新对回原 x(缩放前后视口不跳);换日期/首渲不恢复(回最左)。
- *  缩放时由 applyZoom 按**旧刻度**预先算好挂在这里(renderGrid 里那时刻度已经变了)。 */
+ *  缩放时由 applyZoom 按**旧倍率**预先算好挂在这里(renderGrid 里那时 zoom 已经变了)。
+ *  纵向另有一套:走 rowAnchor() 的实测行号 + window.scrollBy(见下)。 */
 let pendingAnchor: { min: number; screenX: number } | null = null;
 let lastGridDate = "";
 
@@ -61,10 +64,10 @@ function filmKeyOfCode(code: string): string | null {
   return s ? filmNodeKey(cat, s) : null;
 }
 
-/** 影片详情弹层的公共上下文(网格 ⓘ 与影片库共用)。
- *  不给 slots —— 弹层一律走 slotOf() 实时查询(rebuildIndex 是整体换新 Map,持有引用会读到旧快照)。 */
+/** 影片**资料**弹层的公共上下文(网格 ⓘ 与影片库共用)。
+ *  弹层只给「资料 + 豆瓣」—— 场次列表唯一入口在影片库行内展开(见 library.ts::LibraryCtx.onToggle)。 */
 function filmModalCtx() {
-  return { cat, group: store.group, mappings: store.mappings, toggle: toggleScreening };
+  return { cat, mappings: store.mappings };
 }
 
 /** 影片库 / 我的选片 共用上下文 —— 同一份数据(store.picks)的两个视图,两处入口行为一致 */
@@ -76,6 +79,7 @@ function libraryCtx() {
     group: store.group,
     mappings: store.mappings,
     onLocate: jumpToScreening,
+    onToggle: toggleScreening, // 唯一场次列表(影片库行内展开)的加入/移出 → 与网格整卡点选同源
     onFilm: (code: string) => {
       // 详情压在列表之上(弹层栈),「← 返回」回列表 —— 不再 closeModal() 把列表销毁
       // f### = 目录片 id(暂无排期):走目录片弹层,可先关联豆瓣
@@ -162,51 +166,79 @@ function renderGroupSeg(): void {
 
 /* ---------------- 甘特缩放 ---------------- */
 
-/** 视口锚点:容器内屏幕 x(clientX 缺省 = 视口中心)对应的时刻。
- *  轨道在容器内从 x = labelW 起算(左侧粘性影厅列宽,**随缩放一起变**),故 x 至少取到影厅列右缘 ——
- *  光标落在粘性列上时锚定列缘,避免算出轴界之外的负数时刻。
+/** **横向**视口锚点:容器视口中心对应的时刻。
+ *  轨道在容器内从 x = labelW 起算(左侧粘性影厅列宽,随缩放倍率变),故 x 至少取到影厅列右缘 ——
+ *  视口比影厅列还窄时锚定列缘,避免算出轴界之外的负数时刻。
  *  列宽一律取自 `grid.ts::labelMetrics`(与 buildGrid 同源),这里按**当前** zoom 取旧列宽。 */
-function gridAnchor(scroll: HTMLElement, clientX?: number): { min: number; screenX: number } {
+function gridAnchor(scroll: HTMLElement): { min: number; screenX: number } {
   const px = PX_PER_MIN * zoom;
   const lw = labelMetrics(px).labelW;
-  const rel = clientX == null ? scroll.clientWidth / 2 : clientX - scroll.getBoundingClientRect().left;
-  const screenX = Math.max(rel, lw);
+  const screenX = Math.max(scroll.clientWidth / 2, lw);
   return { min: axisStartFor(cat, currentDate) + (scroll.scrollLeft + screenX - lw) / px, screenX };
 }
 
-/** 缩放:改刻度并就地重绘网格。**只重绘网格** —— 缩放不影响行程/角标,走 notify → renderAll 是白干,
- *  且必须先按旧刻度算锚点再改倍率(见 pendingAnchor 注释)。
- *  clientX 给出时锚定光标下的时刻,否则锚定视口中心;fromLeft = 从轴起点贴左(「适应」用)。 */
-function applyZoom(next: number, opts: { clientX?: number; fromLeft?: boolean } = {}): void {
+/** **纵向**视口锚点:参考线(视口顶 y = 0;网格顶若还在视口下方则用网格顶)落在第几行(小数行号)。
+ *  纵向是**页面**在滚(`#grid-scroll` 只有 overflow-x-auto),而网格每次重建都换新容器、行高一缩
+ *  页面总高就变 —— 浏览器会把 window.scrollY 直接 clamp 到新范围,正在看的第 20 厅会瞬间飞出屏幕
+ *  (29 行 × 41px ≈ 1189px 的位移)。故重建前记行号、重建后补回。
+ *  行高从相邻两行的 top 差**实测**,不读任何常量(将来改行高公式也不会失效)。 */
+function rowAnchor(grid: HTMLElement): { row: number; refY: number } | null {
+  const rows = grid.querySelectorAll<HTMLElement>("[data-vrow]");
+  if (rows.length < 2) return null;
+  const top = rows[0].getBoundingClientRect().top;
+  const h = rows[1].getBoundingClientRect().top - top;
+  if (!(h > 1)) return null;
+  const refY = Math.max(top, 0); // 网格顶还在视口下方(没滚到它)→ 以网格顶为参考线,锚点即第 0 行
+  return { row: (refY - top) / h, refY };
+}
+
+/** 重建后把锚点行拉回参考线:delta > 0 = 该行跑到参考线下方了 → 向上滚。
+ *  视口够不着(已到页面两端)时浏览器会自行 clamp,这是预期行为,不再补偿。 */
+function applyRowAnchor(grid: HTMLElement, a: { row: number; refY: number }): void {
+  const rows = grid.querySelectorAll<HTMLElement>("[data-vrow]");
+  if (rows.length < 2) return;
+  const top = rows[0].getBoundingClientRect().top;
+  const h = rows[1].getBoundingClientRect().top - top;
+  if (!(h > 1)) return;
+  const delta = top + a.row * h - a.refY;
+  if (Math.abs(delta) > 0.5) window.scrollBy(0, delta);
+}
+
+/** 缩放:改**横纵共用**的倍率并就地重绘网格(整体等比)。**只重绘网格** —— 缩放不影响行程 / 角标,
+ *  走 notify → renderAll 是白干。横向视口锚点按**旧**倍率预算好(见 pendingAnchor);纵向视口由
+ *  renderGrid 里的 rowAnchor 兜住。fromLeft = 轴起点贴左(「适应」用)。 */
+function applyZoom(next: number, opts: { fromLeft?: boolean } = {}): void {
   const z = clampZoom(next);
-  const changed = Math.abs(z - zoom) > 1e-4;
-  if (!changed && !opts.fromLeft) {
+  if (Math.abs(z - zoom) <= 1e-4 && !opts.fromLeft) {
     renderZoomCtl();
     return;
   }
   const scroll = document.getElementById("grid-scroll");
   // fromLeft:轴起点贴左 → screenX 取**新**倍率下的列宽(renderGrid 用同一个值回算 ⇒ scrollLeft 恰为 0);
-  // 其余路径按**旧**刻度算锚点(此刻 zoom 尚未改,gridAnchor 读到的就是旧列宽)。
+  // 其余路径按**旧**倍率算锚点(此刻 zoom 尚未改,gridAnchor 读到的就是旧列宽)。
   pendingAnchor = opts.fromLeft
     ? { min: axisStartFor(cat, currentDate), screenX: labelMetrics(PX_PER_MIN * z).labelW }
     : scroll
-      ? gridAnchor(scroll, opts.clientX)
+      ? gridAnchor(scroll)
       : null;
-  if (changed) {
-    zoom = z;
-    setZoom(z); // 持久化视图偏好(不广播 —— 下面这行自己重绘)
-  }
+  zoom = z;
+  setZoom(z); // 持久化视图偏好(不广播 —— 下面这行自己重绘)
   renderGrid();
   renderZoomCtl();
 }
 
-/** 缩放控件(网格标题行右侧):− / 当前倍率(**纯读数,非按钮**) / + / 适应宽度 / 1:1 回到原始比例。
- *  到两端置灰。百分比降级为读数:回 100% 交给独立的「1:1」按钮 —— 旧版把百分比做成按钮,
- *  用户反馈「不像按钮、没发现」,故显式给一个入口。 */
+/** 「1:1」:回到原始比例 100%(横向刻度与纵向行高一起回基准)。 */
+function resetZoom(): void {
+  applyZoom(1);
+}
+
+/** 缩放控件(网格标题行右侧):− / 读数(**纯读数,非按钮**) / + / 适应宽度 / 1:1。
+ *  − / + 沿缩放阶梯走(横纵一起缩),到两端置灰;读数常显「缩放 xx%」。
+ *  「适应宽度」把当天整条时间轴塞进视口(横纵一起缩),「1:1」回基准比例。 */
 const ZBTN_CLS =
   "border-0 bg-card px-[8px] py-[3px] text-[12px] font-bold leading-[1.5] text-ink-2 hover:bg-[var(--bg-hover-soft)] disabled:opacity-30 disabled:cursor-not-allowed";
 const ZMID_CLS =
-  "border-0 border-x border-line-soft bg-card px-[6px] py-[3px] text-[12px] font-bold tabular-nums text-ink min-w-[48px] leading-[1.5] text-center select-none";
+  "border-0 border-x border-line-soft bg-card px-[6px] py-[3px] text-[12px] font-bold tabular-nums text-ink min-w-[68px] leading-[1.5] text-center select-none whitespace-nowrap";
 const ZFIT_CLS =
   "border-0 border-l border-line-soft bg-card px-[9px] py-[3px] text-[12px] font-bold leading-[1.5] text-ink-2 hover:bg-[var(--bg-hover-soft)]";
 
@@ -222,26 +254,31 @@ function renderZoomCtl(): void {
   const host = document.getElementById("zoom-ctl");
   if (!host) return;
   const pct = `${Math.round(zoom * 100)}%`;
-  const readout = el("span", ZMID_CLS, pct);
-  readout.dataset.tip = `当前缩放 ${pct} —— 影厅列与时间轴一起缩放`;
+  const readout = el("span", ZMID_CLS, `缩放 ${pct}`);
+  readout.dataset.tip =
+    `整体等比缩放 ${pct} —— 横向时间刻度与纵向行高一起缩,卡片内字号 / 留白 / 色点 / 徽章行全部同倍率线性缩,` +
+    `排版严格等比(矮到放不下时徽章行收起,等级 / 字幕 / 页码在 ⓘ 与悬停里仍在)`;
   host.replaceChildren(
-    zoomBtn("−", "out", `缩小时间轴与影厅列(当前 ${pct})\n也可按住 Ctrl / ⌘ 滚轮(触控板双指捏合)`, zoom <= ZOOM_MIN + 1e-6, ZBTN_CLS),
+    zoomBtn("−", "out", `缩小(当前 ${pct})—— 一屏看到更多影厅,时间轴同步收窄\n也可按住 Ctrl / ⌘ 滚轮(触控板双指捏合)`, zoom <= ZOOM_MIN + 1e-6, ZBTN_CLS),
     readout,
-    zoomBtn("+", "in", `放大时间轴与影厅列(当前 ${pct})\n也可按住 Ctrl / ⌘ 滚轮(触控板双指捏合)`, zoom >= ZOOM_MAX - 1e-6, ZBTN_CLS),
-    zoomBtn("适应", "fit", "适应宽度:尽量把当天整条时间轴塞进视口,左缘对齐轴起点(到 35% 下限为止;更长则保留小量横向滚动)", false, ZFIT_CLS),
-    zoomBtn("1:1", "reset", `回到原始比例 100%(当前 ${pct})\n影厅列与时间轴一起回到基准刻度`, false, ZFIT_CLS)
+    zoomBtn("+", "in", `放大(当前 ${pct})—— 卡片更舒展、徽章行更清楚,时间轴同步展宽\n也可按住 Ctrl / ⌘ 滚轮(触控板双指捏合)`, zoom >= ZOOM_MAX - 1e-6, ZBTN_CLS),
+    zoomBtn("适应", "fit", "适应宽度:在缩放阶梯里挑一个刚好把当天整条时间轴塞进视口的档(横纵一起缩,左缘对齐轴起点)", false, ZFIT_CLS),
+    zoomBtn("1:1", "reset", `回到原始比例 100%(当前 ${pct})\n横向时间刻度与纵向行高一起回到基准`, false, ZFIT_CLS)
   );
 }
 
 function renderGrid(): void {
   const host = document.getElementById("grid-scroll")!;
-  // 换节点前先记视口锚点:缩放走 applyZoom 预算好的(那时刻度还是旧值),其余同日期重建按当前刻度就地算;
-  // 切日期/首渲 anchor = null → 回最左
+  // 换节点前先记**两个方向**的视口锚点(必须都在 replaceWith 之前量 —— 新容器一挂上,旧 rect 就没了):
+  //   横向 —— 缩放走 applyZoom 预算好的(那时 zoom 还是旧值),其余同日期重建按当前倍率就地算;
+  //   纵向 —— 行高一变页面总高就变,不记行号会被浏览器的 scrollY clamp 甩到别处(见 rowAnchor);
+  //   切日期 / 首渲两者都为空 → 横向回最左、纵向不补偿(保持页面滚动位置)。
   const anchor = pendingAnchor ?? (currentDate === lastGridDate ? gridAnchor(host) : null);
   pendingAnchor = null;
+  const vAnchor = currentDate === lastGridDate ? rowAnchor(host) : null;
   const conf = conflicts.get(currentDate);
   const pxPerMin = PX_PER_MIN * zoom;
-  const newLw = labelMetrics(pxPerMin).labelW; // 影厅列宽随缩放 —— 回算 scrollLeft 必须用**新**列宽
+  const newLw = labelMetrics(pxPerMin).labelW; // 影厅列宽随缩放倍率 —— 回算 scrollLeft 必须用**新**列宽
   const grid = buildGrid(
     {
       cat,
@@ -254,16 +291,20 @@ function renderGrid(): void {
       gvTalkOf,
       wishOf: (s) => store.picks.get(filmNodeKey(cat, s))?.priority ?? undefined,
       hourFilter,
+      row: rowMetrics(zoom), // 行几何(行高 / 字号倍率 / 留白 / 徽章行开关)单一来源,随缩放倍率
     },
     currentDate
   );
   host.replaceWith(grid);
   grid.id = "grid-scroll";
-  // 锚点回算:同一日期内刻度可能变了(缩放),故必须用新刻度重算 scrollLeft,不能沿用旧 scrollLeft
+  // 横向锚点回算:同一日期内刻度可能变了(「适应宽度」/「1:1」),故必须用新刻度重算 scrollLeft
   if (anchor) {
     const left = (anchor.min - axisStartFor(cat, currentDate)) * pxPerMin - (anchor.screenX - newLw);
     grid.scrollLeft = Math.max(0, Math.min(left, grid.scrollWidth - grid.clientWidth));
   }
+  // 纵向锚点回算:必须在挂载后量(行高要实测);放在横向之后 —— scrollBy 改页面滚动、scrollLeft 改容器,
+  // 两者互不干扰,但先定横向再补纵向更贴近「用户看到的那一屏」
+  if (vAnchor) applyRowAnchor(grid, vAnchor);
   lastGridDate = currentDate;
   fitTimeTexts(grid); // 挂载后量测:窄卡时间文本降级,绝不截断
 
@@ -323,8 +364,10 @@ function renderAgenda(): void {
       "inline-flex items-center ml-[6px] border border-line rounded-full bg-card px-[8px] leading-[1.7] text-[11.5px] font-extrabold tabular-nums text-ink-2 whitespace-nowrap cursor-default hover:border-biff hover:text-biff",
       `分 ${sc.total}`
     );
-    pill.title =
-      `行程质量分:必看 ${sc.pri.must}×3 · 备选 ${sc.pri.maybe}×2 · 随缘 ${sc.pri.wild}×1` +
+    // 悬停说明走 tip.ts 的 data-tip(文档级委托,即时无延迟);不用原生 title(有延迟、样式不可控)
+    pill.dataset.tip =
+      `行程质量分 ${sc.total} —— 必看 ×3 · 备选 ×2 · 随缘 ×1 · GV +1 · 紧转场 −1(未分级不计分)\n` +
+      `必看 ${sc.pri.must}×3 · 备选 ${sc.pri.maybe}×2 · 随缘 ${sc.pri.wild}×1` +
       `${sc.unset ? ` · 未分级 ${sc.unset}×0` : ""}` +
       `${sc.gv ? ` · GV +${sc.gv}` : ""}${sc.tight ? ` · 紧转场 −${sc.tight}` : ""} = ${sc.total}`;
     sum.appendChild(pill);
@@ -388,16 +431,16 @@ function bindEvents(): void {
       return;
     }
 
-    // 甘特缩放:− / + 走档位阶梯(视口中心锚定);「1:1」回原始比例 100%;「适应」把整天塞进视口
+    // 甘特缩放:− / + 沿缩放阶梯走(横纵一起缩);「适应」把整天塞进视口(横纵一起缩);「1:1」回基准比例
     const zc = t.closest<HTMLElement>("#zoom-ctl [data-zoom]");
     if (zc) {
       const act = zc.dataset.zoom;
       if (act === "in") applyZoom(stepZoom(zoom, 1));
       else if (act === "out") applyZoom(stepZoom(zoom, -1));
-      else if (act === "reset") applyZoom(1);
+      else if (act === "reset") resetZoom();
       else if (act === "fit") {
         const scroll = document.getElementById("grid-scroll");
-        if (scroll) applyZoom(fitZoom(cat, currentDate, scroll.clientWidth), { fromLeft: true });
+        if (scroll) applyZoom(fitZoomLevel(cat, currentDate, scroll.clientWidth), { fromLeft: true });
       }
       return;
     }
@@ -513,9 +556,9 @@ function bindEvents(): void {
   document.addEventListener("mouseover", (ev) => onHoverLinkMove(ev, true));
   document.addEventListener("mouseout", (ev) => onHoverLinkMove(ev, false));
 
-  // 甘特缩放:Ctrl / ⌘ + 滚轮(macOS 触控板双指捏合同为 ctrl+wheel)→ 以光标下的时刻为锚点走一档。
+  // 甘特缩放:Ctrl / ⌘ + 滚轮(macOS 触控板双指捏合同为 ctrl+wheel)→ 沿缩放阶梯走一档(横纵一起缩)。
   // 必须 passive:false 才能 preventDefault 掉浏览器整页缩放。deltaY 累加到 60 才走一档 ——
-  // 一次捏合会连发几十个 wheel 事件,不累积会瞬间从 100% 跳到 300%。
+  // 一次捏合会连发几十个 wheel 事件,不累积会瞬间从 100% 跳到 120%。
   let wheelAcc = 0;
   document.addEventListener(
     "wheel",
@@ -528,7 +571,7 @@ function bindEvents(): void {
       if (Math.abs(wheelAcc) < 60) return;
       const dir: 1 | -1 = wheelAcc < 0 ? 1 : -1;
       wheelAcc = 0;
-      applyZoom(stepZoom(zoom, dir), { clientX: ev.clientX });
+      applyZoom(stepZoom(zoom, dir));
     },
     { passive: false }
   );
@@ -564,21 +607,24 @@ function jumpToScreening(code: string): void {
     const top = wrap.getBoundingClientRect().top + window.scrollY - 64;
     window.scrollTo({ top: Math.max(top, 0), behavior: "smooth" });
   }
-  // 等两帧布局稳定后:横向滚到卡片 + 闪烁高亮
+  // 等两帧布局稳定后:横向滚到卡片 + 带底色闪烁 3s(1s × 3)
   requestAnimationFrame(() =>
-    requestAnimationFrame(() => {
-      const scroll = document.getElementById("grid-scroll");
-      const card = scroll?.querySelector<HTMLElement>(`[data-code="${code}"]`);
-      if (!scroll || !card) return;
-      const sRect = scroll.getBoundingClientRect();
-      const cRect = card.getBoundingClientRect();
-      const x = cRect.left - sRect.left + scroll.scrollLeft;
-      scroll.scrollTo({
-        left: Math.max(0, x - scroll.clientWidth / 2 + cRect.width / 2),
-        behavior: "smooth",
-      });
-      card.classList.add("flash");
-    })
+  requestAnimationFrame(() => {
+  const scroll = document.getElementById("grid-scroll");
+  const card = scroll?.querySelector<HTMLElement>(`[data-code="${code}"]`);
+  if (!scroll || !card) return;
+  const sRect = scroll.getBoundingClientRect();
+  const cRect = card.getBoundingClientRect();
+  const x = cRect.left - sRect.left + scroll.scrollLeft;
+  scroll.scrollTo({
+    left: Math.max(0, x - scroll.clientWidth / 2 + cRect.width / 2),
+    behavior: "smooth",
+  });
+  // 先摘类 + 强制回流:同一场连点两次时 class 已在,不重排不会重播动画
+  card.classList.remove("flash-locate");
+  void card.offsetWidth;
+  card.classList.add("flash-locate");
+  })
   );
 }
 
@@ -707,7 +753,7 @@ function openSettings(): void {
   group2.append(f3, f4);
 
   // ---- 分组 3:AI 排片 Key(只读状态 + 清除)----
-  //  填写 / 更换的入口收在「影片库 ▸ 智能排片 ▸ AI 排片」:那里有隐私说明与自定义偏好同屏,
+  //  填写 / 更换的入口收在「影片库 ▸ 智能排片」:那里有隐私说明与自定义偏好同屏,
   //  设置里不放输入框 —— 避免误触,也让「Key 只在本机」的说明紧贴使用场景。
   const aiState = el("span", "text-[12.5px] font-semibold");
   const aiClear = el(
@@ -740,7 +786,7 @@ function openSettings(): void {
   aiCtl.append(aiState, aiClear);
   const f5 = settingsField(
     "AI 排片 · 模型 API Key",
-    "只保存在本机浏览器（localStorage），不上传本站服务器、也不进任何本站请求。填写 / 更换请到「影片库 ▸ 智能排片 ▸ AI 排片」。",
+    "只保存在本机浏览器（localStorage），不上传本站服务器、也不进任何本站请求。填写 / 更换请到「影片库 ▸ 智能排片」。",
     aiCtl,
     "",
     "div"
@@ -809,7 +855,8 @@ function openTalkMinModal(code: string): void {
   );
   body.appendChild(f);
 
-  const actions = el("div", "flex gap-[10px] mt-1");
+  // 底部主操作:与设置弹层同一语言 —— 次要操作在左、主按钮贴右下角(全站唯一亮色按钮的落位口径)
+  const actions = el("div", "flex justify-end gap-[10px] mt-1");
   const ok = el(
     "button",
     "border-0 rounded-[6px] px-[14px] py-[6px] text-[13px] font-bold text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05]",
@@ -830,7 +877,7 @@ function openTalkMinModal(code: string): void {
     apply(raw === "" ? null : Math.max(0, Math.round(clampNum(raw, def))));
   });
   follow.addEventListener("click", () => apply(null));
-  actions.append(ok, follow);
+  actions.append(follow, ok);
   body.appendChild(actions);
 
   openModal("映后谈时长", body);
@@ -970,7 +1017,9 @@ async function boot(): Promise<void> {
   loadSettings();
   loadGvTalk();
   loadGvTalkMin();
-  zoom = clampZoom(store.settings.zoom ?? 1); // 缩放倍率随设置恢复(renderAll 里的 renderZoomCtl 同步控件态)
+  // 缩放倍率随设置恢复(renderAll 里的 renderZoomCtl 同步控件态)。
+  // 旧版存的可能是横向倍率(如 3 / 0.5)或旧行高倍率,clampZoom 统一钳进 [0.55, 1.2] —— 无需迁移。
+  zoom = clampZoom(store.settings.zoom ?? 1);
   cat = await loadCatalog();
   currentDate = cat.dates[0] ?? "";
   // 选片记录(唯一数据源)必须在 cat 就绪之后载入:首次迁移要用 filmNodeKey(cat, s)
