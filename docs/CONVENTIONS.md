@@ -96,6 +96,20 @@
   (2025 的 `talk`/`commentary`/`event` 共 10 场曾被吞)。已注册:`gv`/`masterclass`/`premiere`/`open_talk`/`batch`/`talk`/`commentary`/`event`。
   配色分族:档位 `--pri-*`、红绿灯 `--status-*`、观影等级 `--rate-*`、特别节目 `--ev-teal`(#0f766e,实心 → 实线描边 → 虚线描边表权重)。
   新增徽章同步补 `ABBR_LINES`(图例「ⓘ 缩写说明」数据源)。`opening`/`closing` 故意不注册。
+- **★ AI 排片 = 浏览器直连,本站永不经手 Key**(2026-09-10 定案,`src/ai.ts` 文件头有完整契约):
+  「智能排片」弹层顶部分段 `本地引擎 / AI 排片`,**默认本地引擎**(零配置、零联网永远可用)。
+  AI 模式三件套 `baseUrl / model / key` + 用户偏好全部只落 **独立 LS 键 `biff.ai.v1`**
+  (不并入 `biff.settings.v1` —— 「清除 Key」语义干净,也不会被设置序列化顺手带走);
+  请求 = `fetch(用户填的 baseURL + "/chat/completions")`,Key **只放 Authorization header**,
+  不写 URL query / body / console / DOM;UI 只显掩码(`ai.ts::maskKey`)。
+  **`functions/` 里禁止新增任何 LLM 代理 endpoint** —— 一旦有代理,「Key 不上服务器」即为假;
+  `api.ts` 一行不改。主 Prompt 是 `ai.ts::SYSTEM_PROMPT` 常量(硬约束编号 C1–C5),**不进 UI、不可编辑**;
+  用户偏好作**独立 user 消息** + 守卫句注入。
+  打包只送**已定档**影片(与 `openEngineDialog` 过滤口径一致),`end` 走 `fmtEndClock`(跨午夜印「次日 05:35」,
+  绝不把 24+ 制的 `29:35` 丢给模型);超 12 万字符按 `wild → maybe` 截断,**must 不丢**。
+  **返回必须本地复检**(`parseAiResult`):code 白名单 → 同片去重 → 复用 `conflict.ts::computeConflicts`
+  (+`gv.ts::effEndMin`/`talkOnOf`)跑冲突剔除 —— **不信任模型自我约束**,否则方案一进网格就红一片。
+  采纳出口唯一 `state.replaceGroup()`;覆盖确认用**实时** `codesOfGroup(g).length`,不用 `ctx.slots`(开弹层那刻的快照)。
 - **`venue_id` = 按「厅」**(2026-09-10 定案):29 个,`id` = 官方代码小写(`b1`/`c2`/`l10`),`group` = 影院
   (`bcc`/`cgv`/`lotte`/`kofic`/`megabox`/`sohyang`/`bcm`),`region` = 区(`centum`/`nampo`)。**旧「按楼 5 馆」口径已废**
   (`bcc-1`/`bcc-2`/`cgv-centum`/`lotte-centum`/`mega-haeundae`)。`types.ts` 的 `Venue` 有 `region?: string`;

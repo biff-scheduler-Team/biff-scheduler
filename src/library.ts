@@ -8,7 +8,7 @@ import { codeTip } from "./badges";
 import { appendMetaRow, doubanChip } from "./legend";
 import { openModal } from "./modal";
 import { PRI_BG_ON, PRI_LABEL, WISH_ORDER, buildWishSeg, priTag } from "./pick";
-import { removePick, replaceGroup, setCurrentGroup, setWish, store } from "./state";
+import { codesOfGroup, removePick, replaceGroup, setCurrentGroup, setWish, store } from "./state";
 import {
   DROP_LABEL,
   suggestPlans,
@@ -17,6 +17,25 @@ import {
   type EnginePick,
   type EnginePlan,
 } from "./engine";
+import {
+  AI_PRESETS,
+  AI_TIMEOUT_MS,
+  AiError,
+  aiErrorText,
+  aiReady,
+  buildPayload,
+  callLLM,
+  clearAiCfg,
+  defaultAiCfg,
+  loadAiCfg,
+  maskKey,
+  parseAiResult,
+  saveAiCfg,
+  type AiCfg,
+  type AiPlan,
+  type AiPlanDrop,
+  type AiPlanReject,
+} from "./ai";
 
 export interface LibraryCtx {
   cat: Catalog;
@@ -507,13 +526,453 @@ function openEngineDialog(filmList: FilmNode[], ctx: LibraryCtx, onReturn?: () =
   }
   const transitMin = store.settings.transitMin;
   const plans = suggestPlans({ films: wanted, transitMin });
-  box.appendChild(engineRuleBar(wanted.length, transitMin));
+
+  /* 两种模式共用同一弹层:默认「本地引擎」—— 零配置、零联网永远可用;
+     「AI 排片」需用户自填 Key(浏览器直连服务商,见 ai.ts 文件头隐私契约)。
+     两个面板**只建一次**,切换模式只换 DOM 挂载 → AI 结果 / 输入内容不会因来回切而丢。 */
+  const localBody = el("div", "grid gap-3");
+  localBody.appendChild(engineRuleBar(wanted.length, transitMin));
   if (plans.length === 0) {
-    box.appendChild(el("div", "text-[12.5px] text-muted py-[6px] px-[2px]", "没有可排的场次。"));
+    localBody.appendChild(el("div", "text-[12.5px] text-muted py-[6px] px-[2px]", "没有可排的场次。"));
   } else {
-    box.appendChild(enginePlansPanel(plans, ctx));
+    localBody.appendChild(enginePlansPanel(plans, ctx));
   }
+  const aiBody = aiPanel(wanted, ctx, transitMin);
+
+  const seg = el("div", "inline-flex border border-line rounded-full overflow-hidden bg-card justify-self-start");
+  const body = el("div", "");
+  let mode: "local" | "ai" = "local";
+  const render = (): void => {
+    seg.replaceChildren();
+    ENGINE_MODES.forEach(([m, label, tip]) => {
+      const on = m === mode;
+      const b = el(
+        "button",
+        "border-0 px-[14px] py-[4px] text-[12px] font-bold transition-[background,color] duration-[120ms] ease-in-out " +
+          (on ? "bg-biff text-on-brand" : "bg-card text-muted hover:text-ink") +
+          (m === "ai" ? " border-l border-line" : ""),
+        label
+      );
+      b.title = tip;
+      b.dataset.ai = `mode-${m}`;
+      b.addEventListener("click", () => {
+        if (mode === m) return;
+        mode = m;
+        render();
+      });
+      seg.appendChild(b);
+    });
+    body.replaceChildren(mode === "local" ? localBody : aiBody);
+  };
+  box.append(seg, body);
   openModal("智能排片 · 建议行程", box, true, onReturn);
+  render();
+}
+
+/** 弹层顶部模式分段(顺序 = 展示顺序);tip 说明各自的前提与代价 */
+const ENGINE_MODES: ["local" | "ai", string, string][] = [
+  ["local", "本地引擎", "零联网、零 Key、可解释:按已定档位本地求解,立即出结果"],
+  ["ai", "AI 排片", "填入你自己的模型 API Key,由浏览器直连服务商生成建议(需联网;本站不经手 Key)"],
+];
+
+/* ---- 按钮字面量(Tailwind v4 只生成源码里完整出现的类,勿拼) ---- */
+const BTN_PRIMARY =
+  "border-0 rounded-[6px] px-[14px] py-[6px] text-[13px] font-bold text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05] whitespace-nowrap";
+const BTN_ABORT =
+  "border border-line rounded-[6px] px-[14px] py-[6px] text-[13px] font-bold bg-raised text-ink hover:bg-raised-hover whitespace-nowrap";
+const BTN_MINI =
+  "border border-line rounded-[7px] px-[8px] py-[3px] text-[11.5px] font-semibold bg-card text-ink hover:border-line-strong hover:bg-hover whitespace-nowrap";
+
+/** 配置表单的一行(标签 + 控件同行,提示另起一行)—— 与 main.ts::settingsField 同构 */
+function aiField(label: string, hint: string): { box: HTMLElement; row: HTMLElement } {
+  const box = el("label", "grid gap-1");
+  const row = el("div", "flex items-center gap-[10px] flex-wrap");
+  row.appendChild(el("span", "font-semibold text-[12.5px] shrink-0", label));
+  box.append(row, el("div", "text-muted text-[11.5px]", hint));
+  return { box, row };
+}
+
+/** `tag` 落到 `data-ai`,给无头验收脚本做稳定锚点(文案选择器易受改字影响) */
+function aiInput(type: string, value: string, ph: string, tag: string): HTMLInputElement {
+  const i = el("input", "border border-line rounded-[8px] px-2 py-[5px] text-[13px] w-[250px] max-w-full bg-card") as HTMLInputElement;
+  i.type = type;
+  i.value = value;
+  i.placeholder = ph;
+  i.autocomplete = "off";
+  i.spellcheck = false;
+  i.dataset.ai = tag;
+  return i;
+}
+
+/* ---- AI 排片面板 ----
+ * 隐私承诺的落点(见 ai.ts 文件头):
+ *   · 三件套(baseUrl / model / key)与用户偏好只落 `localStorage["biff.ai.v1"]`;
+ *   · 请求由浏览器直连用户填的 baseURL,本站 /api/* 一行不改、不新增任何代理;
+ *   · UI 只显示掩码 key(maskKey),完整 key 不出现在任何 title / 文本节点里。
+ * 弹层内改状态必须**就地重绘**(renderAll 不管 #modal-root,见 CONVENTIONS §二)。 */
+function aiPanel(wanted: EngineFilm[], ctx: LibraryCtx, transitMin: number): HTMLElement {
+  const wrap = el("div", "grid gap-[10px]");
+  let cfg = loadAiCfg();
+  let editing = false; // 「更换」= 已配置也展开表单
+  let running = false;
+  let plan: AiPlan | null = null;
+  let errText = "";
+  let showRaw = false;
+  let adoptedG: Group | null = null;
+  let ctl: AbortController | null = null;
+  let promptTa: HTMLTextAreaElement | null = null;
+
+  // 打包一次(只含已定档影片);超长时按 随缘→备选 截断,必看不丢
+  const payload = buildPayload(wanted, ctx.cat, transitMin, store.settings.gvTalkMin, ctx.cat.dates);
+  const sentKeys = new Set(payload.films.map((f) => f.key));
+  const sentFilms = wanted.filter((f) => sentKeys.has(f.key));
+
+  /* ---- 隐私说明(恒显,配置前后都在) ---- */
+  const privacyBar = (): HTMLElement => {
+    const card = el("div", "rounded-[8px] border border-line-faint bg-hover px-3 py-[10px] grid gap-[5px]");
+    card.appendChild(el("div", "text-[12px] font-bold text-ok", "API Key 只存在本地 · 不上传、不经手服务器"));
+    const ul = el("div", "grid gap-[3px] text-[11.5px] text-ink-2 leading-[1.6]");
+    for (const t of [
+      "Key 只保存在你这台设备的浏览器里,不存在本站服务器,也不会进入任何发往本站的请求",
+      "排片请求由浏览器直连你填写的模型服务商 —— 本站不经手,也无法看到你的 Key",
+      "本站不提供、不转售模型服务:用你自己的额度,本站既不花你的钱也不赚你的钱",
+      "浏览器本地为明文存储:公用电脑请勿保存;随时可点「清除 Key」",
+    ]) {
+      ul.appendChild(el("div", "", `· ${t}`));
+    }
+    card.appendChild(ul);
+    return card;
+  };
+
+  /* ---- 态 A:未配置(或点了「更换」)---- */
+  const cfgForm = (): HTMLElement => {
+    const box = el("div", "grid gap-[10px] border border-line rounded-[10px] p-3");
+    box.appendChild(el("div", "text-[13px] font-bold text-ink", "① 填入你自己的模型 API Key"));
+
+    const f0 = aiField("服务商", "选中只预填 Base URL 与模型名,两项都可改;「自定义」留空自填");
+    const sel = document.createElement("select");
+    sel.className = "border border-line rounded-[8px] px-2 py-[5px] text-[13px] bg-card";
+    for (const p of AI_PRESETS) {
+      const o = document.createElement("option");
+      o.value = p.id;
+      o.textContent = p.label;
+      sel.appendChild(o);
+    }
+    sel.value = AI_PRESETS.find((p) => p.baseUrl === cfg.baseUrl && p.model === cfg.model)?.id ?? "custom";
+    sel.dataset.ai = "preset";
+    f0.row.appendChild(sel);
+    box.appendChild(f0.box);
+
+    const f1 = aiField("Base URL", "OpenAI 兼容接口地址,通常以 /v1 结尾");
+    const urlInp = aiInput("text", cfg.baseUrl, "https://api.deepseek.com/v1", "url");
+    f1.row.appendChild(urlInp);
+    box.appendChild(f1.box);
+
+    const f2 = aiField("模型名", "服务商文档里的模型 ID");
+    const modelInp = aiInput("text", cfg.model, "deepseek-chat", "model");
+    f2.row.appendChild(modelInp);
+    box.appendChild(f2.box);
+
+    const f3 = aiField("API Key", "只写入本机浏览器;不会发往本站服务器,本站也读不到");
+    const keyInp = aiInput("password", cfg.key, "sk-…", "key");
+    const eye = el("button", BTN_MINI, "显示");
+    eye.dataset.ai = "eye";
+    eye.addEventListener("click", () => {
+      const show = keyInp.type === "password";
+      keyInp.type = show ? "text" : "password";
+      eye.textContent = show ? "隐藏" : "显示";
+    });
+    f3.row.append(keyInp, eye);
+    box.appendChild(f3.box);
+
+    sel.addEventListener("change", () => {
+      const p = AI_PRESETS.find((x) => x.id === sel.value);
+      if (p && p.id !== "custom") {
+        urlInp.value = p.baseUrl;
+        modelInp.value = p.model;
+      }
+    });
+
+    const actions = el("div", "flex gap-[10px] items-center flex-wrap");
+    const save = el("button", BTN_PRIMARY, "保存到本机");
+    save.dataset.ai = "save";
+    const hint = el("span", "text-[12px] text-conf", "");
+    save.addEventListener("click", () => {
+      const next: AiCfg = {
+        baseUrl: urlInp.value.trim(),
+        model: modelInp.value.trim(),
+        key: keyInp.value.trim(),
+        userPrompt: cfg.userPrompt,
+      };
+      if (!aiReady(next)) {
+        hint.textContent = "三项都要填:Base URL / 模型名 / API Key";
+        return;
+      }
+      cfg = next;
+      saveAiCfg(cfg);
+      editing = false;
+      paint();
+    });
+    actions.appendChild(save);
+    if (aiReady(cfg)) {
+      const cancel = el("button", BTN_MINI, "取消");
+      cancel.dataset.ai = "cancel";
+      cancel.addEventListener("click", () => {
+        editing = false;
+        paint();
+      });
+      actions.appendChild(cancel);
+    }
+    actions.appendChild(hint);
+    box.appendChild(actions);
+    return box;
+  };
+
+  /* ---- 态 B:已配置 ---- */
+  const readyBar = (): HTMLElement => {
+    const bar = el("div", "flex items-center gap-[8px] flex-wrap rounded-[8px] border border-line-faint bg-hover px-3 py-[9px]");
+    bar.appendChild(el("span", "text-[12.5px] font-bold text-ok", "✓ 已配置"));
+    const preset = AI_PRESETS.find((p) => p.baseUrl === cfg.baseUrl && p.model === cfg.model);
+    bar.appendChild(
+      el("span", "text-[12px] text-ink-2 min-w-0 truncate", `${preset ? preset.label + " · " : ""}${cfg.model} · ${maskKey(cfg.key)}`)
+    );
+    bar.appendChild(el("span", "flex-1"));
+    const edit = el("button", BTN_MINI, "更换");
+    edit.dataset.ai = "edit";
+    edit.title = "改 Base URL / 模型 / Key";
+    edit.addEventListener("click", () => {
+      editing = true;
+      paint();
+    });
+    const clr = el("button", BTN_MINI, "清除 Key");
+    clr.dataset.ai = "clear";
+    clr.title = "删掉本机保存的 API Key(其它设置不受影响)";
+    clr.addEventListener("click", () => {
+      if (!window.confirm("清除本机保存的 API Key?(只删 Key;偏好文字与本次 AI 结果保留,仍可采纳)")) return;
+      clearAiCfg();
+      cfg = { ...defaultAiCfg(), userPrompt: cfg.userPrompt };
+      // 结果与错误**不清**:那是已经花掉的额度换来的会话状态,与凭据无关 ——
+      // 清 Key 之后照样可以「采纳为 A/B 方案」。
+      editing = false;
+      paint();
+    });
+    bar.append(edit, clr);
+    return bar;
+  };
+
+  const promptArea = (): HTMLElement => {
+    const box = el("div", "grid gap-[6px]");
+    const head = el("div", "flex items-baseline gap-[8px] flex-wrap");
+    head.append(
+      el("span", "text-[13px] font-bold text-ink", "② 你的排片偏好(可选)"),
+      el("span", "text-[11.5px] text-muted", "在硬约束内尽量满足 —— 不重叠 / 跨馆转场 / 每片一场 不可违背")
+    );
+    box.appendChild(head);
+    const ta = el(
+      "textarea",
+      "border border-line rounded-[8px] px-2 py-[7px] text-[12.5px] leading-[1.6] w-full min-h-[76px] resize-y bg-card focus:border-biff"
+    ) as HTMLTextAreaElement;
+    ta.value = cfg.userPrompt;
+    ta.maxLength = 500;
+    ta.dataset.ai = "prompt";
+    ta.placeholder =
+      "例:尽量把场次集中在 BCC;上午不看片;不接受午夜场;每部片优先选带 GV(映后谈)的场;每天最多 3 场";
+    promptTa = ta;
+    const count = el("span", "text-[11px] text-meta tabular-nums");
+    const upd = (): void => {
+      count.textContent = `${ta.value.length}/500 字`;
+    };
+    ta.addEventListener("input", upd);
+    upd();
+    const foot = el("div", "flex items-center gap-[8px]");
+    foot.appendChild(el("span", "flex-1"));
+    foot.appendChild(count);
+    const reset = el("button", BTN_MINI, "清空");
+    reset.dataset.ai = "prompt-reset";
+    reset.addEventListener("click", () => {
+      ta.value = "";
+      upd();
+    });
+    foot.appendChild(reset);
+    box.append(ta, foot);
+    return box;
+  };
+
+  const runBar = (): HTMLElement => {
+    const bar = el("div", "flex items-center gap-[10px] flex-wrap");
+    const btn = el("button", running ? BTN_ABORT : BTN_PRIMARY, running ? "生成中… 点击中断" : "③ 开始 AI 排片");
+    btn.dataset.ai = "run";
+    if (running) btn.addEventListener("click", () => ctl?.abort());
+    else btn.addEventListener("click", () => void run());
+    bar.appendChild(btn);
+    const info = el("span", "text-[11.5px] text-muted min-w-0");
+    info.textContent =
+      payload.truncated > 0
+        ? `本次仅送 ${payload.films.length} 部 / ${payload.screenings.length} 场(超出长度上限,已按 随缘→备选 截断 ${payload.truncated} 部,必看未丢)`
+        : `本次送 ${payload.films.length} 部 / ${payload.screenings.length} 场 · 最多等 ${Math.round(AI_TIMEOUT_MS / 1000)} 秒`;
+    bar.appendChild(info);
+    return bar;
+  };
+
+  const errBox = (): HTMLElement => {
+    const box = el("div", "rounded-[8px] border border-biff-line bg-biff-soft px-3 py-[10px] grid gap-[5px]");
+    box.appendChild(el("div", "text-[12px] font-bold text-biff", "AI 排片失败"));
+    box.appendChild(el("div", "text-[12px] text-ink-2 leading-[1.6]", errText));
+    return box;
+  };
+
+  const resultCard = (): HTMLElement => {
+    const p = plan!;
+    const box = el("div", "border border-line-faint rounded-[12px] bg-card overflow-hidden");
+    const head = el("div", "flex items-center gap-[10px] flex-wrap px-3 py-[10px] bg-hover");
+    head.appendChild(
+      el(
+        "div",
+        "text-[12px] text-ink-2 flex-1 min-w-0",
+        `AI 建议 ${p.picks.length} 场 · 未纳入 ${p.drops.length} 部${p.rejected.length ? ` · 已剔除 ${p.rejected.length} 场` : ""}`
+      )
+    );
+    const mkAdopt = (g: Group): HTMLElement => {
+      const done = adoptedG === g;
+      const b = el(
+        "button",
+        "border-0 rounded-[7px] px-[12px] py-[5px] text-[12px] font-bold whitespace-nowrap " +
+          (done
+            ? "text-muted bg-raised cursor-default"
+            : "text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05]"),
+        done ? `✓ 已采纳为 ${g} 方案` : `采纳为 ${g} 方案`
+      );
+      b.dataset.ai = `adopt-${g}`;
+      if (done) b.disabled = true;
+      else
+        b.addEventListener("click", () => {
+          // 用**实时**计数(codesOfGroup),不用 ctx.slots —— 后者是开弹层那一刻的快照
+          const existing = codesOfGroup(g).length;
+          if (existing > 0 && !window.confirm(`将覆盖 ${g} 方案现有 ${existing} 场(AI 建议 ${p.picks.length} 场),继续?`)) return;
+          replaceGroup(
+            g,
+            p.picks.map((x) => ({ key: x.filmKey, code: x.code, priority: x.priority }))
+          );
+          if (store.group !== g) setCurrentGroup(g);
+          adoptedG = g;
+          paint();
+        });
+      return b;
+    };
+    head.append(mkAdopt("A"), mkAdopt("B"));
+    box.appendChild(head);
+
+    if (p.note) box.appendChild(el("div", "px-3 pt-[9px] text-[12px] text-ink-2 leading-[1.6]", `模型说明:${p.note}`));
+
+    const list = el("div", "px-2 py-1 max-h-[320px] overflow-y-auto");
+    if (p.picks.length === 0) {
+      list.appendChild(el("div", "text-[12.5px] text-muted py-[10px] px-2", "AI 未给出可用场次(见下方原因)"));
+    }
+    for (const [date, picks] of groupByDate(p.picks)) {
+      const { label, weekday } = dateInfo(date);
+      list.appendChild(el("div", "text-[11px] font-bold text-meta pt-[9px] pb-[2px] px-2", `${label} ${weekday}`));
+      for (const pk of picks) list.appendChild(enginePickRow(pk, ctx));
+    }
+    box.appendChild(list);
+
+    const rej = aiRejectSection(p.rejected);
+    if (rej) box.appendChild(rej);
+    const dr = aiDropSection(p.drops);
+    if (dr) box.appendChild(dr);
+
+    const rawWrap = el("div", "border-t border-line-faint px-3 py-[8px]");
+    const rawBtn = el("button", BTN_MINI, showRaw ? "收起原始返回" : "查看原始返回");
+    rawBtn.dataset.ai = "raw";
+    rawBtn.title = "模型返回的原文(排查解析失败 / 换模型时用)";
+    rawBtn.addEventListener("click", () => {
+      showRaw = !showRaw;
+      paint();
+    });
+    rawWrap.appendChild(rawBtn);
+    if (showRaw) {
+      const pre = el("pre", "mt-[8px] max-h-[200px] overflow-auto rounded-[8px] bg-hover p-[10px] text-[11px] leading-[1.5] whitespace-pre-wrap break-all text-ink-2 m-0");
+      pre.textContent = p.raw;
+      rawWrap.appendChild(pre);
+    }
+    box.appendChild(rawWrap);
+    return box;
+  };
+
+  const paint = (): void => {
+    const parts: HTMLElement[] = [privacyBar()];
+    if (!aiReady(cfg) || editing) {
+      parts.push(cfgForm());
+    } else {
+      parts.push(readyBar(), promptArea(), runBar());
+    }
+    if (errText) parts.push(errBox());
+    if (plan) parts.push(resultCard());
+    wrap.replaceChildren(...parts);
+  };
+
+  const run = async (): Promise<void> => {
+    if (running) return;
+    if (promptTa) {
+      cfg = { ...cfg, userPrompt: promptTa.value }; // 以输入框现值落盘,不依赖 blur 时序
+      saveAiCfg(cfg);
+    }
+    running = true;
+    errText = "";
+    plan = null;
+    adoptedG = null;
+    showRaw = false;
+    ctl = new AbortController();
+    paint();
+    try {
+      const raw = await callLLM(cfg, payload, ctl.signal);
+      plan = parseAiResult(raw, ctx.cat, sentFilms, transitMin);
+    } catch (e) {
+      if (!(e instanceof AiError && e.kind === "aborted")) errText = aiErrorText(e);
+    } finally {
+      running = false;
+      ctl = null;
+      paint();
+    }
+  };
+
+  paint();
+  return wrap;
+}
+
+/** AI 结果的「本地复检剔除」区 —— 模型给的场次里无效/重复/冲突的部分,必须明示(不静默吞) */
+function aiRejectSection(rej: AiPlanReject[]): HTMLElement | null {
+  if (!rej.length) return null;
+  const wrap = el("div", "border-t border-line-faint px-3 py-[10px] grid gap-[6px]");
+  wrap.appendChild(el("div", "text-[11px] font-bold text-conf", `本地复检剔除 ${rej.length} 场(模型建议不可用)`));
+  const chips = el("div", "flex flex-wrap gap-[6px]");
+  for (const r of rej) {
+    const c = el("span", "inline-flex items-center gap-[5px] min-w-0 rounded-[6px] bg-card border border-line-faint px-[7px] py-[3px]");
+    c.append(
+      el("span", "text-[10.5px] font-bold text-faint tabular-nums shrink-0", r.code),
+      el("span", "text-[11.5px] text-ink-2 truncate", r.why)
+    );
+    c.title = `${r.code} — ${r.why}`;
+    chips.appendChild(c);
+  }
+  wrap.appendChild(chips);
+  return wrap;
+}
+
+/** AI 结果的「未纳入」区 —— 原因来自模型自述 + 本地补齐(「AI 未排入」),故不用 DROP_LABEL 的三分类 */
+function aiDropSection(drops: AiPlanDrop[]): HTMLElement | null {
+  if (!drops.length) return null;
+  const wrap = el("div", "border-t border-line-faint px-3 py-[10px] grid gap-[7px]");
+  wrap.appendChild(el("div", "text-[11px] font-bold text-meta", `未纳入 ${drops.length} 部`));
+  const chips = el("div", "flex flex-wrap gap-[6px]");
+  for (const d of drops) {
+    const c = el("span", "inline-flex items-center gap-[5px] min-w-0 max-w-full rounded-[6px] bg-card border border-line-faint px-[7px] py-[3px]");
+    c.appendChild(el("span", "text-[12px] text-ink shrink-0", d.zh));
+    if (d.why) c.appendChild(el("span", "text-[11px] text-meta truncate", `· ${d.why}`));
+    c.title = d.why ? `${d.zh} — ${d.why}` : d.zh;
+    chips.appendChild(c);
+  }
+  wrap.appendChild(chips);
+  return wrap;
 }
 
 /** 顶部规则区:一行短标签 + `i` 悬停看完整规则(替代原来 12.5px 未分段的整句) */

@@ -36,6 +36,7 @@ import { abbrTooltip } from "./badges";
 import { attachTip } from "./tip";
 import { buildGuideBody } from "./legend";
 import { scorePlanRows, type ScoredRow } from "./engine";
+import { aiReady, clearAiCfg, loadAiCfg, maskKey } from "./ai";
 import { closeAllModals, closeModal, openModal, openPriorityPicker, showCatalogFilmModal, showFilmModal } from "./modal";
 import { openLibrary, openMyPicks } from "./library";
 
@@ -722,6 +723,48 @@ function openSettings(): void {
   const group2 = el("div", "flex flex-col gap-[14px] mt-[16px] pt-[16px] border-t border-line-soft");
   group2.append(f3, f4);
 
+  // ---- 分组 3:AI 排片 Key(只读状态 + 清除)----
+  //  填写 / 更换的入口收在「影片库 ▸ 智能排片 ▸ AI 排片」:那里有隐私说明与自定义偏好同屏,
+  //  设置里不放输入框 —— 避免误触,也让「Key 只在本机」的说明紧贴使用场景。
+  const aiState = el("span", "text-[12.5px] font-semibold");
+  const aiClear = el(
+    "button",
+    "border border-line rounded-[7px] px-[8px] py-[3px] text-[11.5px] font-semibold bg-card text-ink hover:border-line-strong hover:bg-hover whitespace-nowrap",
+    "清除 Key"
+  );
+  aiClear.dataset.ai = "settings-clear";
+  aiState.dataset.ai = "settings-state";
+  const paintAi = (): void => {
+    const c = loadAiCfg();
+    if (aiReady(c)) {
+      aiState.className = "text-[12.5px] font-semibold text-ok";
+      aiState.textContent = `已配置 · ${c.model} · ${maskKey(c.key)}`;
+      aiClear.classList.remove("is-hidden");
+    } else {
+      aiState.className = "text-[12.5px] font-semibold text-muted";
+      aiState.textContent = "未配置";
+      aiClear.classList.add("is-hidden");
+    }
+  };
+  aiClear.addEventListener("click", () => {
+    if (!window.confirm("清除本机保存的 AI 排片 API Key?(其它设置与选片不受影响)")) return;
+    clearAiCfg();
+    paintAi();
+    toast("已清除本机保存的 API Key");
+  });
+  paintAi();
+  const aiCtl = el("div", "flex items-center gap-[8px] flex-wrap");
+  aiCtl.append(aiState, aiClear);
+  const f5 = settingsField(
+    "AI 排片 · 模型 API Key",
+    "只保存在本机浏览器（localStorage），不上传本站服务器、也不进任何本站请求。填写 / 更换请到「影片库 ▸ 智能排片 ▸ AI 排片」。",
+    aiCtl,
+    "",
+    "div"
+  );
+  const group3 = el("div", "flex flex-col gap-[14px] mt-[16px] pt-[16px] border-t border-line-soft");
+  group3.append(f5);
+
   // ---- 底部主操作:全弹层唯一的亮色按钮(右对齐)----
   const apply = el(
     "button",
@@ -759,7 +802,7 @@ function openSettings(): void {
   const dangerZone = el("div", "flex mt-[14px] pt-[12px] border-t border-line-soft");
   dangerZone.appendChild(danger);
 
-  body.append(group1, group2, actions, dangerZone);
+  body.append(group1, group2, group3, actions, dangerZone);
 
   openModal("设置", body);
 }
