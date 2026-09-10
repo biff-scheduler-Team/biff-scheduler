@@ -1,7 +1,7 @@
 // 选片网格 — 自研 CSS 网格:行=影厅,列=当日时间轴;卡片绝对定位。
 // 全量化:网格 / 卡片 / 标签 / 时间标尺 / 转场紧底色提示 / ⓘ / 冲突旗 / 其他旗 全部 Tailwind utility。
 
-import type { Catalog, Group, Mapping, PlanEntry, Priority, Screening } from "./types";
+import type { Catalog, Group, Mapping, Priority, Screening } from "./types";
 import { OK_SLACK, el, fmtMinRange, hmsToMin, minToHms, todayIsoLocal } from "./util";
 import { screeningsByVenue } from "./data";
 import { codeTip, screeningBadgeKeys } from "./badges";
@@ -22,14 +22,15 @@ const CARD_INSET_Y = 2; // 卡片上下留白(满高泳道:6 → 2px,几乎顶�
 /** 冲突 / 紧转场 / 已选 的红绿灯底色:优先级不参与网格染色(见行程行 seg),故无 p-* 类映射。 */
 export interface GridCtx {
   cat: Catalog;
-  plan: Map<string, PlanEntry>;
+  /** 已选场次投影:code → { 影片 key, 方案 }。判「已选 / 在哪个方案」全走它(唯一数据源) */
+  slots: Map<string, { key: string; group: Group }>;
   group: Group;
   mappingOf: (code: string) => Mapping | undefined; // 豆瓣映射(回填中文名)
   conflictCodes: Set<string> | undefined; // 当日、当前方案冲突 code
   transitMin: number; // 跨馆转场缓冲(1a 余量判定)
   /** GV 映后谈是否参加(全局默认 + 单场覆写解析后):决定正片/整场拆分、紧转场按哪段结束算 */
   gvTalkOf: (code: string) => boolean;
-  /** 「我的选片」档位(必看/备选/随缘):undefined = 未打标 —— 与红绿灯底色正交,只画标题行前的档位色点 */
+  /** 该片档位(必看/备选/随缘):undefined = 未打标 —— 与红绿灯底色正交,只画标题行前的档位色点 */
   wishOf?: (s: Screening) => Priority | undefined;
   hourFilter?: number | null; // 点击时间轴整点 → 只看该小时段场次(其余 hour-dim);null = 不过滤
 }
@@ -287,9 +288,9 @@ function markTightPairs(
   talkEls?: Map<string, HTMLElement>
 ): void {
   const picks: Screening[] = [];
-  for (const e of ctx.plan.values()) {
-    if (e.group !== ctx.group) continue;
-    const s = ctx.cat.byCode.get(e.code);
+  for (const [code, slot] of ctx.slots) {
+    if (slot.group !== ctx.group) continue;
+    const s = ctx.cat.byCode.get(code);
     if (s && s.date === date) picks.push(s);
   }
   picks.sort((a, b) => hmsToMin(a.start_time) - hmsToMin(b.start_time));
@@ -358,10 +359,10 @@ function appendCard(
   const end = hmsToMin(s.end_time);
   const talk = gvTalkMin(s); // GV 映后谈分钟(数据推导;0 = 不拆,普通整卡)
   const talkOn = (ctx.gvTalkOf?.(s.code) ?? true) && talk > 0;
-  const entry = ctx.plan.get(s.code);
+  const slot = ctx.slots.get(s.code);
   const isConflict = Boolean(ctx.conflictCodes?.has(s.code));
-  const inCurrent = Boolean(entry && entry.group === ctx.group);
-  const inOther = Boolean(entry && entry.group !== ctx.group);
+  const inCurrent = Boolean(slot && slot.group === ctx.group);
+  const inOther = Boolean(slot && slot.group !== ctx.group);
 
   // 基底 + 选中 / 冲突 / 其他方案 等状态组合在构造时一次算完(JS 后续不需 toggle)
   const parts: string[] = ["group"];
@@ -445,7 +446,7 @@ function appendCard(
       el(
         "span",
         "absolute left-[3px] top-[2px] text-[9px] font-bold text-muted border border-line rounded-[3px] px-[2px]",
-        entry!.group
+        slot!.group
       )
     );
   if (isConflict) card.appendChild(el("span", "absolute right-[22px] top-[2px] text-[11px] text-conf", "⚠"));

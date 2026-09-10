@@ -1,8 +1,16 @@
 // .ics 导出 — 一律 UTC(Z) 绝对时间 + 相对提醒;UID=code@biff-2026。
 
-import type { Catalog, Group, Mapping, PlanEntry, Priority, Screening } from "./types";
+import type { Catalog, Group, Mapping, PickEntry, Priority, Screening } from "./types";
 import { effEndHms, gvTalkMin } from "./gv";
 import { esc } from "./util";
+
+/** 导出用的「一场已选」行:方案 / 场次来自场次级,档位 / 备注来自影片级(唯一数据源的投影) */
+export interface PickRow {
+  code: string;
+  group: Group;
+  priority: Priority | null;
+  note: string;
+}
 
 const KST_OFFSET_MS = 9 * 3600 * 1000; // KST = UTC+9
 
@@ -35,7 +43,7 @@ export function priorityTag(p: Priority | null): string {
 
 export function buildIcs(
   cat: Catalog,
-  entries: PlanEntry[],
+  entries: PickRow[],
   mappings: Map<string, Mapping>,
   alarmMin: number,
   /** 该场是否参加映后谈(调用方 = 全局默认 + 单场覆写解析后);talk=0 的场不受影响 */
@@ -104,16 +112,22 @@ export function downloadIcs(content: string, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-/** 按方案过滤 + 按日期/开始时间排序 */
+/** 从选片记录展开出「某方案(或 A+B)的全部场次」,按日期/开始时间排序。
+ *  一场一行 —— 档位随影片级记录带出,故同一部片的多场档位必然一致。 */
 export function pickEntries(
-  entries: PlanEntry[],
+  picks: Map<string, PickEntry>,
   cat: Catalog,
   which: Group | "ALL"
-): PlanEntry[] {
-  const withTime = entries
-    .filter((e) => (which === "ALL" ? true : e.group === which))
-    .map((e) => ({ e, s: cat.byCode.get(e.code) }))
-    .filter((x): x is { e: PlanEntry; s: Screening } => Boolean(x.s));
-  withTime.sort((a, b) => a.s.date.localeCompare(b.s.date) || a.s.start_time.localeCompare(b.s.start_time));
-  return withTime.map((x) => x.e);
+): PickRow[] {
+  const rows: { r: PickRow; s: Screening }[] = [];
+  for (const e of picks.values()) {
+    for (const p of e.picks) {
+      if (which !== "ALL" && p.group !== which) continue;
+      const s = cat.byCode.get(p.code);
+      if (!s) continue; // 排期换版后已不存在的场次 → 静默跳过
+      rows.push({ r: { code: p.code, group: p.group, priority: e.priority, note: e.note }, s });
+    }
+  }
+  rows.sort((a, b) => a.s.date.localeCompare(b.s.date) || a.s.start_time.localeCompare(b.s.start_time));
+  return rows.map((x) => x.r);
 }

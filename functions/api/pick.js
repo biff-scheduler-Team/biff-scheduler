@@ -1,9 +1,9 @@
-// /api/plan — 我的排片列表
-// Pages Functions: functions/api/plan.js
+// /api/pick — 我的选片列表(一部片一条记录)
+// Pages Functions: functions/api/pick.js
 export async function onRequestGet({ env }) {
   try {
     const { results } = await env.DB.prepare(
-      "SELECT code, group_tag, priority, note, updated_at FROM user_plan WHERE user_id = ? ORDER BY code"
+      "SELECT film_key, priority, note, picks, updated_at FROM user_pick WHERE user_id = ? ORDER BY film_key"
     )
       .bind("me")
       .all();

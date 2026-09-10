@@ -1,7 +1,8 @@
 // 我的行程 — 按日期分组的议程列表:冲突标红、优先级/方案可直接切换。
+// 与「我的选片」同一份数据(store.picks):本视图按场次展开,行内三段 seg 改的是**该片档位**(影片级)。
 // 全量化:行程行 / 优先级三段 / chip / 转场间隔三态 全部 Tailwind utility。
 
-import type { Catalog, Group, Mapping, PlanEntry, Screening } from "./types";
+import type { Catalog, Group, Mapping, PickEntry, Screening } from "./types";
 import { OK_SLACK, dateInfo, el, escapeHtml, hmsToMin } from "./util";
 import { effEndHms, effEndMin, gvTalkMin } from "./gv";
 import { codeTip } from "./badges";
@@ -11,7 +12,10 @@ import type { ConflictResult } from "./conflict";
 
 export interface AgendaCtx {
   cat: Catalog;
-  plan: Map<string, PlanEntry>;
+  /** 已选场次投影:code → { 影片 key, 方案 }(唯一数据源的场次视图) */
+  slots: Map<string, { key: string; group: Group }>;
+  /** 选片记录:影片 key → { 档位, 场次, 备注 }(档位 / 备注来自这里,全片一致) */
+  picks: Map<string, PickEntry>;
   group: Group; // 当前展示方案
   mappings: Map<string, Mapping>;
   transitMin: number;
@@ -25,11 +29,11 @@ export interface AgendaCtx {
 
 export function buildAgenda(ctx: AgendaCtx): HTMLElement {
   const wrap = el("div", "grid gap-[14px]");
-  const entriesOfGroup = [...ctx.plan.values()].filter((e) => e.group === ctx.group);
+  const codesOfGroup = [...ctx.slots.entries()].filter(([, v]) => v.group === ctx.group).map(([c]) => c);
 
-  if (entriesOfGroup.length === 0) {
+  if (codesOfGroup.length === 0) {
     const hint = el("div", "py-[26px] px-3 text-center text-muted", `当前「${ctx.group} 方案」还没有选片 — 在上方网格里点选场次即可加入。`);
-    const otherCount = ctx.plan.size - entriesOfGroup.length;
+    const otherCount = ctx.slots.size - codesOfGroup.length;
     if (otherCount > 0) {
       hint.textContent = `当前「${ctx.group} 方案」未选片,「${ctx.group === "A" ? "B" : "A"} 方案」已有 ${otherCount} 场。`;
     }
@@ -39,8 +43,8 @@ export function buildAgenda(ctx: AgendaCtx): HTMLElement {
 
   // 按日期分组,日期内按开始时间排序
   const days = new Map<string, Screening[]>();
-  for (const e of entriesOfGroup) {
-    const s = ctx.cat.byCode.get(e.code);
+  for (const code of codesOfGroup) {
+    const s = ctx.cat.byCode.get(code);
     if (!s) continue;
     const arr = days.get(s.date) ?? [];
     arr.push(s);
@@ -73,8 +77,8 @@ export function buildAgenda(ctx: AgendaCtx): HTMLElement {
 
     let prev: Screening | null = null;
     for (const s of list) {
-      const entry = ctx.plan.get(s.code)!;
-      section.appendChild(buildRow(ctx, s, entry, prev, conf));
+      const slot = ctx.slots.get(s.code)!;
+      section.appendChild(buildRow(ctx, s, slot.group, ctx.picks.get(slot.key), prev, conf));
       prev = s;
     }
     wrap.appendChild(section);
@@ -85,11 +89,15 @@ export function buildAgenda(ctx: AgendaCtx): HTMLElement {
 function buildRow(
   ctx: AgendaCtx,
   s: Screening,
-  entry: PlanEntry,
+  group: Group,
+  rec: PickEntry | undefined,
   prev: Screening | null,
   conf: ConflictResult | undefined
 ): HTMLElement {
   const entryConf = conf && conf.codeSet.has(s.code);
+  // 档位 = 影片级(唯一一份);同片多场必然同档 —— 改一处全片同步
+  const priority = rec?.priority ?? null;
+  const slotCount = rec?.picks.length ?? 1;
 
   // GV 映后谈:放弃(或 talk=0 不拆)时本行有效区间 = 正片末;参加 = 槽位末。开关在操作列。
   const talk = gvTalkMin(s);
@@ -171,21 +179,25 @@ function buildRow(
   const grpBtn = el(
     "button",
     "border bg-card rounded-full px-[10px] py-[3px] text-[12px] font-semibold hover:border-biff border-[color-mix(in_srgb,var(--color-biff)_40%,var(--color-card))] text-biff",
-    entry.group
+    group
   );
   grpBtn.dataset.act = "grp";
-  grpBtn.title = "切换到另一方案(点击翻转)";
+  grpBtn.title = "切换到另一方案(点击翻转;只动本场归属,不改影片档位)";
   // §14 2c:优先级三段 seg(必看/备选/随缘),当前态实心着色;点击直接定位
-  // 顺序与色类同「我的选片」打标(单一来源 pick.ts),两层档位视觉口径永远一致
-  // priority=null = 未设档位(新加入且影片库未打标)→ 三段全 off,并在左侧明示「未设」,
+  // 档位只有一份且在影片级(与「我的选片」同源,见 pick.ts)→ 点这里 = 改该片档位,同片所有场次同步
+  // priority=null = 未设档位(直接点选场次、影片库未打标)→ 三段全 off,并在左侧明示「未设」,
   // 避免用户误以为「全灰 = 默认备选」。未分级不参与质量分。
-  if (entry.priority == null) {
+  if (priority == null) {
     acts.appendChild(el("span", "text-[11px] text-muted font-semibold whitespace-nowrap", "未设"));
   }
+  const syncHint = slotCount > 1 ? ` · 本片共 ${slotCount} 场,档位为影片级,改一处全片同步` : "";
   const priSeg = el("div", "inline-flex border border-line rounded-full overflow-hidden bg-card");
-  if (entry.priority == null) priSeg.title = "未设档位 · 点选设置 · 未设不参与质量分与抢票顺位";
+  priSeg.title =
+    priority == null
+      ? `未设档位 · 点选设置 · 未设不参与质量分与抢票顺位${syncHint}`
+      : `档位为影片级(「我的选片」同一份数据)${syncHint}`;
   WISH_ORDER.forEach(([p, label], i) => {
-    const on = entry.priority === p;
+    const on = priority === p;
     const stateCls = on
       ? PRI_BG_ON[p]
       : "bg-card text-muted hover:text-ink";
@@ -199,8 +211,8 @@ function buildRow(
     b.dataset.pri = p;
     // 再点当前档 = 取消 → 回到「未设」(与「我的选片」打标 seg 同语义)
     b.title = on
-      ? `取消「${label}」→ 回到未设(不参与质量分)`
-      : `设为「${label}」${p === "must" ? "(冲突高优先级,导出顺位靠前)" : ""}`;
+      ? `取消「${label}」→ 回到未设(不参与质量分)${syncHint}`
+      : `设为「${label}」${p === "must" ? "(冲突高优先级,导出顺位靠前)" : ""}${syncHint}`;
     priSeg.appendChild(b);
   });
   const delBtn = el(
@@ -209,7 +221,9 @@ function buildRow(
     "✕"
   );
   delBtn.dataset.act = "del";
-  delBtn.title = "移出行程";
+  delBtn.title = slotCount > 1
+    ? `移出该场(只删这一场;该片仍在「我的选片」,另外 ${slotCount - 1} 场不受影响)`
+    : "移出该场(该片仍留在「我的选片」,标注「未排场」)";
   if (talkBtn) acts.append(talkBtn);
   acts.append(grpBtn, priSeg, delBtn);
   row.appendChild(acts);

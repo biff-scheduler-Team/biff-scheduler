@@ -1,19 +1,22 @@
 // 影片库 — 全部影片浏览 + 单元筛选 chips + 搜索 → 反向定位 / 详情豆瓣。
 // 全量化:列表 / 行 / 头部 / chip / pill / 场次行 / 智能排片弹层 全部 Tailwind utility。
-// 16-B 单元 chip / 评分章 / wish 三选 / 智能排片结果 同源。
+// 16-B 单元 chip / 评分章 / 选片三选 / 智能排片结果 同源 —— 都读写 store.picks(唯一数据源)。
 
-import type { Catalog, FilmItem, Group, Mapping, PlanEntry, Priority, Screening } from "./types";
+import type { Catalog, FilmItem, Group, Mapping, PickEntry, Priority, Screening } from "./types";
 import { dateInfo, el, filmNodeKey } from "./util";
 import { codeTip } from "./badges";
 import { appendMetaRow, doubanChip } from "./legend";
 import { openModal } from "./modal";
 import { PRI_BG_ON, PRI_LABEL, PRI_TEXT, WISH_ORDER, buildWishSeg } from "./pick";
-import { replaceGroup, setCurrentGroup, setWish, store, wish } from "./state";
-import { suggestPlans, type EnginePick, type EnginePlan } from "./engine";
+import { removePick, replaceGroup, setCurrentGroup, setWish, store } from "./state";
+import { suggestPlans, type EngineFilm, type EnginePick, type EnginePlan } from "./engine";
 
 export interface LibraryCtx {
   cat: Catalog;
-  plan: Map<string, PlanEntry>;
+  /** 唯一数据源:影片 key → 选片记录(档位 / 已选场次 / 备注) */
+  picks: Map<string, PickEntry>;
+  /** 已选场次投影:code → { 影片 key, 方案 }(与「我的行程」同一份数据) */
+  slots: Map<string, { key: string; group: Group }>;
   group: Group;
   mappings: Map<string, Mapping>;
   onLocate: (code: string) => void;
@@ -99,7 +102,7 @@ export interface FilmListData {
   unitChips: UnitChip[];
 }
 
-/** 合并目录与排期为影片节点清单:「影片库」与「我的选片」必须同源,否则 wish 打标对象会漂移 */
+/** 合并目录与排期为影片节点清单:「影片库」与「我的选片」必须同源,否则选片打标对象会漂移 */
 function buildFilmList(ctx: LibraryCtx): FilmListData {
   // ---- 1) 目录索引:中文名精确匹配;其次目录原始片名 == 排期英文名 ----
   const byZh = new Map<string, FilmItem[]>();
@@ -311,7 +314,7 @@ export function openLibrary(ctx: LibraryCtx): void {
       // M2.5:行内想看三选(必看/备选/随缘);再点同档取消 —— 与「我的选片」/详情弹层同源(见 pick.ts)
       ops.appendChild(
         buildWishSeg({
-          cur: wish.get(n.key),
+          cur: ctx.picks.get(n.key)?.priority ?? undefined,
           onPick: (p) => {
             setWish(n.key, p);
             render();
@@ -322,7 +325,7 @@ export function openLibrary(ctx: LibraryCtx): void {
       if (n.shows.length) {
         ops.appendChild(el("span", "text-[11px] font-bold text-ink border border-line bg-card rounded-full px-2 py-px whitespace-nowrap", `${n.shows.length} 场`));
         const pick = n.shows.reduce(
-          (m, s) => m + (ctx.plan.get(s.code)?.group === ctx.group ? 1 : 0),
+          (m, s) => m + (ctx.slots.get(s.code)?.group === ctx.group ? 1 : 0),
           0
         );
         if (pick > 0) ops.appendChild(el("span", "text-[11px] font-bold text-on-brand bg-biff rounded-full px-2 py-px whitespace-nowrap", `${ctx.group} 已选 ${pick}`));
@@ -447,22 +450,26 @@ export function openLibrary(ctx: LibraryCtx): void {
   });
 
   /* ---- M2.5:智能排片 ▸(AI 按钮 → 引擎建议 → 一键采纳) ---- */
-  aiBtn.addEventListener("click", () => openEngineDialog(filmList));
+  aiBtn.addEventListener("click", () => openEngineDialog(filmList, ctx));
 
   render();
 }
 
-/* ---- M2.5:智能排片弹层 —— 「影片库」与「我的选片」共用入口(同源 wish,避免两处各写一份) ---- */
-function openEngineDialog(filmList: FilmNode[]): void {
-  const wanted = filmList
-    .filter((n) => wish.has(n.key))
-    .map((n) => ({
+/* ---- M2.5:智能排片弹层 —— 「影片库」与「我的选片」共用入口(同源 picks,避免两处各写一份) ---- */
+function openEngineDialog(filmList: FilmNode[], ctx: LibraryCtx): void {
+  // 只有「已定档」的片进引擎:未设档位(只点了场次)无法参与质量分,与 SCORE_W 口径一致
+  const wanted: EngineFilm[] = [];
+  for (const n of filmList) {
+    const p = ctx.picks.get(n.key)?.priority;
+    if (!p) continue;
+    wanted.push({
       key: n.key,
       zh: n.zh,
-      priority: wish.get(n.key)!,
+      priority: p,
       rating: n.cats[0]?.rating ?? null,
       shows: n.shows,
-    }));
+    });
+  }
   const box = el("div", "grid gap-3");
   if (wanted.length === 0) {
     box.appendChild(
@@ -485,12 +492,12 @@ function openEngineDialog(filmList: FilmNode[]): void {
     )
   );
   const list = el("div", "grid gap-3");
-  for (const plan of plans) list.appendChild(enginePlanBox(plan));
+  for (const plan of plans) list.appendChild(enginePlanBox(plan, ctx));
   box.appendChild(list);
   openModal("智能排片 · 建议行程", box, true);
 }
 
-function enginePlanBox(plan: EnginePlan): HTMLElement {
+function enginePlanBox(plan: EnginePlan, ctx: LibraryCtx): HTMLElement {
   const s = plan.stats;
   const box = el("div", "border border-line rounded-[10px] px-3 py-[10px] bg-card");
   const head = el("div", "flex items-center gap-[10px] flex-wrap mb-[6px]");
@@ -527,7 +534,7 @@ function enginePlanBox(plan: EnginePlan): HTMLElement {
     "border-0 rounded-[6px] px-[10px] py-1 text-[12px] font-bold text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05]",
     `采纳为 ${plan.name} 方案`
   );
-  adopt.addEventListener("click", () => adoptPlan(plan, adopt));
+  adopt.addEventListener("click", () => adoptPlan(plan, adopt, ctx));
   head.appendChild(adopt);
   box.appendChild(head);
 
@@ -570,30 +577,33 @@ function enginePickRow(p: EnginePick): HTMLElement {
   return row;
 }
 
-function adoptPlan(plan: EnginePlan, btn: HTMLButtonElement): void {
+function adoptPlan(plan: EnginePlan, btn: HTMLButtonElement, ctx: LibraryCtx): void {
   const g = plan.name as Group;
-  const existing = [...store.plan.values()].filter((e) => e.group === g).length;
+  const existing = [...ctx.slots.values()].filter((s) => s.group === g).length;
   if (existing > 0 && !window.confirm(`将覆盖 ${g} 方案现有 ${existing} 场(建议 ${plan.picks.length} 场),继续?`)) return;
-  replaceGroup(g, plan.picks.map((p) => ({ code: p.code, priority: p.priority })));
+  replaceGroup(
+    g,
+    plan.picks.map((p) => ({ key: p.filmKey, code: p.code, priority: p.priority }))
+  );
   if (store.group !== g) setCurrentGroup(g);
   btn.textContent = `✓ 已采纳为 ${g} 方案`;
   btn.disabled = true;
 }
 
-/* ---- 「我的选片」总览:影片库打标清单(must/maybe/wild)一处看全 → 筛选 / 详情 / 定位 / 取消 ---- */
+/* ---- 「我的选片」总览 —— 唯一数据源(store.picks)的**按片视图** ----
+ *  「我的行程」是同一份数据的按场次视图:这里改档位 = 行程行同步(档位是影片级的),
+ *  这里移场次 = 行程少一场但该片仍在清单里(标注「未排场」)。筛选 / 改档 / 逐场定位 / 整片移除。 */
 export function openMyPicks(ctx: LibraryCtx): void {
   const { filmList } = buildFilmList(ctx);
 
-  // 档位顺序优先(must → maybe → wild),档内保持影片库表序(sort 稳定)。
-  // 每次 render 重算(取消打标后就地刷新 → 计数 / chips / 列表 三者始终一致,不做增量维护)
-  const markedNow = (): FilmNode[] =>
+  // 档位顺序优先(必看 → 备选 → 随缘 → 未设),档内保持影片库表序(sort 稳定)。
+  // 每次 render 重算(改档 / 移场后就地刷新 → 计数 / chips / 列表 三者始终一致,不做增量维护)
+  const rankOf = (p: Priority | null | undefined): number =>
+    p ? WISH_ORDER.findIndex(([x]) => x === p) : WISH_ORDER.length;
+  const rowsNow = (): FilmNode[] =>
     filmList
-      .filter((n) => wish.has(n.key))
-      .sort(
-        (a, b) =>
-          WISH_ORDER.findIndex(([p]) => p === wish.get(a.key)) -
-          WISH_ORDER.findIndex(([p]) => p === wish.get(b.key))
-      );
+      .filter((n) => ctx.picks.has(n.key))
+      .sort((a, b) => rankOf(ctx.picks.get(a.key)?.priority) - rankOf(ctx.picks.get(b.key)?.priority));
 
   const body = el("div", "grid gap-[10px]");
 
@@ -605,8 +615,8 @@ export function openMyPicks(ctx: LibraryCtx): void {
     "border rounded-[6px] px-[14px] py-[6px] text-[13px] font-bold bg-card text-ink border-line hover:opacity-90 whitespace-nowrap",
     "智能排片 ▸"
   );
-  aiBtn.title = "按已标「必看/备选/随缘」本地求解生成建议行程(零联网、可解释)";
-  aiBtn.addEventListener("click", () => openEngineDialog(filmList));
+  aiBtn.title = "按已定档「必看/备选/随缘」本地求解生成建议行程(零联网、可解释)";
+  aiBtn.addEventListener("click", () => openEngineDialog(filmList, ctx));
   tool.appendChild(aiBtn);
   body.appendChild(tool);
 
@@ -615,65 +625,90 @@ export function openMyPicks(ctx: LibraryCtx): void {
   const list = el("div", "grid gap-2 max-h-[min(62vh,560px)] overflow-y-auto pt-[2px] px-[2px] pb-1");
   body.appendChild(list);
 
-  let filter: Priority | null = null;
+  /** 档位筛选:null = 全部;UNSET = 未设档位(只点了场次没定档) */
+  const UNSET = "unset";
+  let filter: Priority | typeof UNSET | null = null;
 
   function render(): void {
-    const marked = markedNow();
+    const rows = rowsNow();
     const counts: Record<Priority, number> = { must: 0, maybe: 0, wild: 0 };
-    let shows = 0;
-    for (const n of marked) {
-      counts[wish.get(n.key)!]++;
-      shows += n.shows.length;
+    let unset = 0;
+    let slots = 0;
+    for (const n of rows) {
+      const e = ctx.picks.get(n.key)!;
+      if (e.priority) counts[e.priority]++;
+      else unset++;
+      slots += e.picks.length;
     }
-    stat.textContent = marked.length
-      ? `已打标 ${marked.length} 部 · 必看 ${counts.must} / 备选 ${counts.maybe} / 随缘 ${counts.wild} · 涉及 ${shows} 场`
+    stat.textContent = rows.length
+      ? `选片 ${rows.length} 部 · 必看 ${counts.must} / 备选 ${counts.maybe} / 随缘 ${counts.wild}${
+          unset ? ` / 未设 ${unset}` : ""
+        } · 已排 ${slots} 场`
       : "还没有任何选片";
 
-    // 档位筛选 chips(全部 + 三档,带实时计数)
+    // 档位筛选 chips(全部 + 三档 + 未设,带实时计数)
     chipsBar.innerHTML = "";
-    if (marked.length) {
-      const defs: [Priority | null, string][] = [
-        [null, `全部 ${marked.length}`],
+    if (rows.length) {
+      const defs: [Priority | typeof UNSET | null, string][] = [
+        [null, `全部 ${rows.length}`],
         ...WISH_ORDER.map(([p, label]) => [p, `${label} ${counts[p]}`] as [Priority, string]),
       ];
+      if (unset) defs.push([UNSET, `未设 ${unset}`]);
       for (const [p, label] of defs) {
         const on = filter === p;
         const b = el("button", on ? CHIP_UNIT_ON : CHIP_UNIT_IDLE, label);
         b.dataset.pri = p ?? "";
-        b.title = p ? "只看该档位(再点取消)" : "显示全部档位";
+        b.title = p ? "只看该档位(再点取消)" : "显示全部";
         chipsBar.appendChild(b);
       }
     }
 
     list.innerHTML = "";
-    if (!marked.length) {
+    if (!rows.length) {
       list.appendChild(
         el(
           "div",
           "text-[13px] text-muted leading-[1.8] py-[18px] px-[6px] text-center",
-          "还没有选片 — 去「影片库」在片名行右侧点「必看 / 备选 / 随缘」打标;打标后这里汇总全部选片,甘特图对应场次也会亮起档位色点。"
+          "还没有选片 — 去「影片库」在片名行右侧点「必看 / 备选 / 随缘」定档,或直接在时间轴上点选场次。两种操作写的是同一份数据,这里与「我的行程」永远一致。"
         )
       );
       return;
     }
-    const rows = filter ? marked.filter((n) => wish.get(n.key) === filter) : marked;
-    if (!rows.length) {
+    const shown =
+      filter === null
+        ? rows
+        : rows.filter((n) => {
+            const p = ctx.picks.get(n.key)!.priority;
+            return filter === UNSET ? !p : p === filter;
+          });
+    if (!shown.length) {
       list.appendChild(el("div", "text-muted text-center py-[26px] text-[13px]", "该档位下暂无选片"));
       return;
     }
-    for (const n of rows) list.appendChild(pickRow(n));
+    for (const n of shown) list.appendChild(pickRow(n));
   }
 
   function pickRow(n: FilmNode): HTMLElement {
-    const p = wish.get(n.key)!;
+    const rec = ctx.picks.get(n.key)!;
+    const p = rec.priority;
     const item = el(
       "div",
       "border border-line rounded-[8px] bg-card transition-[border-color,box-shadow] duration-[120ms] hover:border-line-strong hover:shadow-[var(--shadow-hover)]"
     );
     const head = el("div", "flex items-center gap-[10px] px-3 py-[9px]");
-    // 档位章(与影片库三选 on 态同色)
+    // 档位章(与影片库三选 on 态同色);未设 = 中性虚线章(只点了场次没定档)
     head.appendChild(
-      el("span", `text-[11px] font-extrabold rounded-full px-[9px] py-[2px] whitespace-nowrap ${PRI_BG_ON[p]}`, PRI_LABEL[p])
+      p
+        ? el(
+            "span",
+            `text-[11px] font-extrabold rounded-full px-[9px] py-[2px] whitespace-nowrap ${PRI_BG_ON[p]}`,
+            PRI_LABEL[p]
+          )
+        : el(
+            "span",
+            "text-[11px] font-extrabold rounded-full px-[9px] py-[2px] whitespace-nowrap border border-dashed border-line text-muted",
+            "未设"
+          )
     );
 
     const titles = el("div", "flex-1 min-w-0 grid gap-px");
@@ -689,19 +724,28 @@ export function openMyPicks(ctx: LibraryCtx): void {
     head.appendChild(titles);
 
     const ops = el("div", "flex flex-wrap gap-[6px] items-center justify-end row-gap-1");
-    if (n.shows.length) {
-      ops.appendChild(
-        el("span", "text-[11px] font-bold text-ink border border-line bg-card rounded-full px-2 py-px whitespace-nowrap", `${n.shows.length} 场`)
-      );
-      const picked = n.shows.reduce((m, s) => m + (ctx.plan.get(s.code)?.group === ctx.group ? 1 : 0), 0);
-      if (picked > 0)
-        ops.appendChild(
-          el("span", "text-[11px] font-bold text-on-brand bg-biff rounded-full px-2 py-px whitespace-nowrap", `${ctx.group} 已选 ${picked}`)
-        );
-      // 定位下放到场次行(逐场一个按钮):head 不再放"整片级"定位,避免"点了不知道跳哪场"
-    } else {
-      ops.appendChild(el("span", "text-[11px] font-bold text-muted border border-line bg-card rounded-full px-2 py-px whitespace-nowrap", "暂无排期"));
-    }
+    // 已排场次状态(来自唯一数据源的 picks)——「未排场」= 选了片但还没在时间轴上落场
+    ops.appendChild(
+      rec.picks.length
+        ? el(
+            "span",
+            "text-[11px] font-bold text-on-brand bg-biff rounded-full px-2 py-px whitespace-nowrap",
+            `已排 ${rec.picks.length} 场`
+          )
+        : el(
+            "span",
+            "text-[11px] font-bold text-tight border border-dashed border-tight rounded-full px-2 py-px whitespace-nowrap",
+            "未排场"
+          )
+    );
+    ops.appendChild(
+      el(
+        "span",
+        "text-[11px] font-bold text-ink border border-line bg-card rounded-full px-2 py-px whitespace-nowrap",
+        n.shows.length ? `可选 ${n.shows.length} 场` : "暂无排期"
+      )
+    );
+    // 定位下放到场次行(逐场一个按钮):head 不再放"整片级"定位,避免"点了不知道跳哪场"
     const detail = el(
       "button",
       "border rounded-[6px] px-[10px] py-1 text-[12px] font-bold bg-card text-ink border-line hover:opacity-90",
@@ -712,22 +756,26 @@ export function openMyPicks(ctx: LibraryCtx): void {
     const un = el(
       "button",
       "border rounded-[6px] px-[10px] py-1 text-[12px] font-bold bg-card text-muted border-line hover:text-ink hover:opacity-90",
-      "✕ 取消打标"
+      rec.picks.length ? `✕ 整片移除(${rec.picks.length} 场)` : "✕ 取消选片"
     );
-    un.title = "从「我的选片」移除(不改动已排场次)";
+    un.title = rec.picks.length
+      ? `从选片清单移除该片,连同已排的 ${rec.picks.length} 场一起删掉(「我的行程」里也会消失)`
+      : "从「我的选片」移除(该片没有已排场次)";
     un.addEventListener("click", () => {
-      setWish(n.key, null);
+      if (rec.picks.length && !window.confirm(`《${n.zh}》已排 ${rec.picks.length} 场,确定整片移除(含这些场次)?`)) return;
+      removePick(n.key);
       render();
     });
     ops.appendChild(un);
     head.appendChild(ops);
     item.appendChild(head);
 
-    // 场次摘要:全部场次逐行列出(不截断)—— 每场自带「定位 ▸」,第 N 场也能直接跳
-    if (n.shows.length) {
+    // 场次摘要:只列**已排**场次(rec.picks)—— 这是「我的行程」在这部片上的投影。
+    // 还没排场的片在这里给出下一步(去影片库 / 时间轴挑),不再把「可选但没选」的场次混进来。
+    if (rec.picks.length) {
+      const showByCode = new Map(n.shows.map((s) => [s.code, s]));
       const rows = el("div", "border-t border-line-faint");
-      n.shows.forEach((s, idx) => {
-        const { label, weekday } = dateInfo(s.date);
+      rec.picks.forEach((pk, idx) => {
         // 行本身可点(与「影片库」场次行同款交互);按钮点击冒泡到行 → 同一个定位出口
         const row = el(
           "div",
@@ -736,13 +784,27 @@ export function openMyPicks(ctx: LibraryCtx): void {
           }`
         );
         row.dataset.libRow = "1";
-        row.dataset.code = s.code;
+        row.dataset.code = pk.code;
         const left = el("div", "flex items-center gap-[8px] min-w-0");
         left.append(
-          el("span", "font-extrabold text-[10.5px] text-on-brand bg-ink rounded px-1 py-px shrink-0", s.code),
-          el("span", "tabular-nums whitespace-nowrap shrink-0", `${label} ${weekday} ${s.start_time}–${s.end_time}`),
-          el("span", "truncate", s.venue_display)
+          el("span", "font-extrabold text-[10.5px] text-on-brand bg-ink rounded px-1 py-px shrink-0", pk.code),
+          // 方案章:选片总览跨 A/B 展示,标明这场落在哪个方案(行程页只显示当前方案)
+          el(
+            "span",
+            "text-[10.5px] font-extrabold text-biff border border-[color-mix(in_srgb,var(--color-biff)_40%,var(--color-card))] bg-card rounded-full px-[7px] shrink-0",
+            pk.group
+          )
         );
+        const s = showByCode.get(pk.code);
+        if (s) {
+          const { label, weekday } = dateInfo(s.date);
+          left.append(
+            el("span", "tabular-nums whitespace-nowrap shrink-0", `${label} ${weekday} ${s.start_time}–${s.end_time}`),
+            el("span", "truncate", s.venue_display)
+          );
+        } else {
+          left.appendChild(el("span", "text-tight truncate", "该场已不在当前排期里(数据换版)"));
+        }
         const go = el(
           "button",
           "border-0 rounded-[6px] px-[9px] py-[3px] text-[11.5px] font-bold text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05] whitespace-nowrap",
@@ -753,6 +815,14 @@ export function openMyPicks(ctx: LibraryCtx): void {
         rows.appendChild(row);
       });
       item.appendChild(rows);
+    } else if (n.shows.length) {
+      item.appendChild(
+        el(
+          "div",
+          "px-3 py-[7px] text-[11.5px] text-muted border-t border-dashed border-line",
+          `还没排场 — 这部片有 ${n.shows.length} 场可选,去「影片库」或时间轴点选场次,选完这里就会出现(选片意向已保留)`
+        )
+      );
     }
     return item;
   }
@@ -767,11 +837,11 @@ export function openMyPicks(ctx: LibraryCtx): void {
     const b = (ev.target as HTMLElement).closest<HTMLElement>("[data-pri]");
     if (!b) return;
     const k = b.dataset.pri!;
-    const next = k === "" ? null : (k as Priority);
+    const next: Priority | typeof UNSET | null = k === "" ? null : k === UNSET ? UNSET : (k as Priority);
     filter = filter === next ? null : next;
     render();
   });
 
-  openModal("我的选片 · 打标清单", body, true);
+  openModal("我的选片", body, true);
   render();
 }

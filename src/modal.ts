@@ -1,11 +1,11 @@
 // 弹层:通用容器 + 影片详情(含同片场次 / 豆瓣映射管理)。
 // 全量化:overlay / modal / 详情弹层结构 全部 Tailwind utility。
 
-import type { Catalog, Mapping, PlanEntry, Priority, Screening } from "./types";
+import type { Catalog, Group, Mapping, Screening } from "./types";
 import { dateInfo, el, filmNodeKey, fmtMinRange } from "./util";
 import { appendMetaRow, doubanChip } from "./legend";
 import { api } from "./api";
-import { setWish, store, wish } from "./state";
+import { setWish, store } from "./state";
 import { buildWishSeg } from "./pick";
 
 /* ---------- 通用容器 ---------- */
@@ -58,11 +58,12 @@ export function closeModal(): void {
 /* ---------- 影片详情 ---------- */
 interface FilmModalCtx {
   cat: Catalog;
-  plan: Map<string, PlanEntry>;
+  /** 已选场次投影:code → { 影片 key, 方案 } */
+  slots: Map<string, { key: string; group: Group }>;
   group: string;
   mappings: Map<string, Mapping>;
-  /** 加入/移出当前方案;新加入时按影片库打标(wish)继承档位,null = 未设 */
-  toggle: (code: string, initialPriority?: Priority | null) => void;
+  /** 加入/移出当前方案(按影片 key + 场次 code;档位是影片级的,新记录档位未设) */
+  toggle: (key: string, code: string) => void;
 }
 
 /** 同片判定 key:中文/英文名任一同则视为同片 */
@@ -70,16 +71,18 @@ export function filmKey(s: Screening): string {
   return (s.title_zh || s.title_en).toLowerCase().trim();
 }
 
-/** 「我的选片」打标行(详情弹层内直接打标)—— key 走 filmNodeKey 单一口径,与影片库/甘特色点同源 */
+/** 「我的选片」档位行(详情弹层内直接改档位)—— key 走 filmNodeKey 单一口径,与影片库/甘特色点同源。
+ *  档位是影片级的:这里改 = 「我的选片」与「我的行程」里该片所有场次同步。 */
 function buildWishRow(key: string): HTMLElement {
   const row = el("div", "flex items-center gap-[10px] flex-wrap mb-[14px] border-t border-line pt-3");
   row.appendChild(el("span", "text-[13px] font-bold whitespace-nowrap", "我的选片"));
   const slot = el("div", "inline-flex");
+  const hint = el("span", "text-[12px] text-muted");
   const draw = (): void => {
     slot.innerHTML = "";
     slot.appendChild(
       buildWishSeg({
-        cur: wish.get(key),
+        cur: store.picks.get(key)?.priority ?? undefined,
         onPick: (p) => {
           setWish(key, p);
           draw(); // 弹层不在 renderAll 重建范围内 → 就地重画 seg 反映当前档
@@ -88,12 +91,13 @@ function buildWishRow(key: string): HTMLElement {
         tipPrefix: "我的选片 · ",
       })
     );
+    const n = store.picks.get(key)?.picks.length ?? 0;
+    hint.textContent = n
+      ? `已选 ${n} 场 · 档位为影片级,改这里全片同步;场次增删在网格 / 行程`
+      : "打标后可在顶栏「我的选片」总览;甘特图对应场次标题前显示档位色点";
   };
   draw();
-  row.appendChild(slot);
-  row.appendChild(
-    el("span", "text-[12px] text-muted", "打标后可在顶栏「我的选片」总览;甘特图对应场次标题前显示档位色点")
-  );
+  row.append(slot, hint);
   return row;
 }
 
@@ -139,7 +143,7 @@ export function showFilmModal(code: string, ctx: FilmModalCtx): void {
   const list = el("div", "grid gap-[6px] mb-[14px]");
   for (const s of siblings) {
     const { label, weekday } = dateInfo(s.date);
-    const entry = ctx.plan.get(s.code);
+    const entry = ctx.slots.get(s.code);
     const rowCls = s.code === code
       ? "flex items-center justify-between gap-2 border border-biff rounded-[9px] px-[10px] py-2 bg-biff-tint-2"
       : "flex items-center justify-between gap-2 border border-line rounded-[9px] px-[10px] py-2";
@@ -187,9 +191,9 @@ export function showFilmModal(code: string, ctx: FilmModalCtx): void {
   body.querySelectorAll<HTMLElement>("[data-toggle]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const code = btn.dataset.toggle!;
-      // 新加入按影片库打标(wish)继承档位;移除/改入按现有 priority 沿用
       const s = ctx.cat.byCode.get(code);
-      ctx.toggle(code, s ? wish.get(filmNodeKey(ctx.cat, s)) ?? null : null);
+      if (!s) return;
+      ctx.toggle(filmNodeKey(ctx.cat, s), code);
     });
   });
 }

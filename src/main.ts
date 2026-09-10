@@ -1,29 +1,31 @@
 // 入口 — 装配数据/状态/视图,统一事件委托。
 // 全量化:仅维护基础骨架(顶栏/面板/弹层根/Toast/底部),所有内部样式由 markup 端 Tailwind utility 表达。
 
-import type { Catalog, Group, PlanEntry, Priority, Screening } from "./types";
+import type { Catalog, Group, Priority, Screening } from "./types";
 import { OK_SLACK, dateInfo, el, filmNodeKey, hmsToMin, todayIsoLocal } from "./util";
 import { loadCatalog } from "./data";
 import { computeConflicts, conflictGroupFor, type ConflictResult, type Slot } from "./conflict";
-import { buildIcs, downloadIcs, pickEntries } from "./ics";
+import { buildIcs, downloadIcs, pickEntries, priorityTag } from "./ics";
 import { effEndHms, effEndMin, gvTalkMin, resolveTalk } from "./gv";
 import {
-  clearPlan,
+  clearScreeningSlots,
+  codesOfGroup,
   flipGroup,
   gvTalk,
   loadGvTalk,
+  loadPicks,
   loadSettings,
-  loadWish,
-  removeCode,
+  priorityOfCode,
+  removeScreening,
   setCurrentGroup,
   setGvTalk,
-  setPriority,
+  setPriorityOfCode,
   setSettings,
+  slotOf,
   store,
   subscribe,
   syncFromCloud,
-  toggleCode,
-  wish,
+  toggleScreening,
 } from "./state";
 import { buildGrid, fitTimeTexts } from "./grid";
 import { buildAgenda } from "./agenda";
@@ -44,16 +46,24 @@ let hourFilter: number | null = null;
 let lastGridDate = "";
 let lastGridLeft = 0;
 
-/** 影片详情弹层的公共上下文(网格 ⓘ 与影片库共用) */
-function filmModalCtx() {
-  return { cat, plan: store.plan, group: store.group, mappings: store.mappings, toggle: toggleCode };
+/** code → 影片节点 key(全站单一 key 口径:grid / agenda / 影片库 / 详情弹层同源);
+ *  排期里已没有该 code(数据换版)时返回 null。 */
+function filmKeyOfCode(code: string): string | null {
+  const s = cat.byCode.get(code);
+  return s ? filmNodeKey(cat, s) : null;
 }
 
-/** 影片库 / 我的选片 共用上下文 —— 打标对象同源(filmNodeKey 单一口径),两处入口行为一致 */
+/** 影片详情弹层的公共上下文(网格 ⓘ 与影片库共用) */
+function filmModalCtx() {
+  return { cat, slots: store.slotIndex, group: store.group, mappings: store.mappings, toggle: toggleScreening };
+}
+
+/** 影片库 / 我的选片 共用上下文 —— 同一份数据(store.picks)的两个视图,两处入口行为一致 */
 function libraryCtx() {
   return {
     cat,
-    plan: store.plan,
+    picks: store.picks,
+    slots: store.slotIndex,
     group: store.group,
     mappings: store.mappings,
     onLocate: jumpToScreening,
@@ -76,16 +86,15 @@ function gvTalkOf(code: string): boolean {
 
 function computeConflictsForCurrentGroup(): Map<string, ConflictResult> {
   const slots: Slot[] = [];
-  for (const e of store.plan.values()) {
-    if (e.group !== store.group) continue;
-    const s = cat.byCode.get(e.code);
+  for (const code of codesOfGroup(store.group)) {
+    const s = cat.byCode.get(code);
     if (!s) continue;
     // 有效结束:放弃映后谈 → 正片末(该场与后场冲突/需缓冲即刻按单卡重判)
     slots.push({
-      code: e.code,
+      code,
       date: s.date,
       start: hmsToMin(s.start_time),
-      end: effEndMin(s, gvTalkOf(e.code)),
+      end: effEndMin(s, gvTalkOf(code)),
       venue: s.venue_id,
     });
   }
@@ -149,13 +158,13 @@ function renderGrid(): void {
   const grid = buildGrid(
     {
       cat,
-      plan: store.plan,
+      slots: store.slotIndex,
       group: store.group,
       mappingOf: (c) => store.mappings.get(c),
       conflictCodes: conf?.codeSet,
       transitMin: store.settings.transitMin,
       gvTalkOf,
-      wishOf: (s) => wish.get(filmNodeKey(cat, s)),
+      wishOf: (s) => store.picks.get(filmNodeKey(cat, s))?.priority ?? undefined,
       hourFilter,
     },
     currentDate
@@ -171,8 +180,8 @@ function renderGrid(): void {
 
   const { label, weekday } = dateInfo(currentDate);
   const dayShows = cat.schedule.screenings.filter((s) => s.date === currentDate).length;
-  const pickedOnDay = [...store.plan.values()].filter(
-    (e) => e.group === store.group && cat.byCode.get(e.code)?.date === currentDate
+  const pickedOnDay = codesOfGroup(store.group).filter(
+    (c) => cat.byCode.get(c)?.date === currentDate
   ).length;
   document.getElementById("grid-date-title")!.textContent = `${label} ${weekday} · 排片总览`;
   const countEl = document.getElementById("grid-count")!;
@@ -194,7 +203,8 @@ function renderAgenda(): void {
   const host = document.getElementById("agenda")!;
   const agenda = buildAgenda({
     cat,
-    plan: store.plan,
+    slots: store.slotIndex,
+    picks: store.picks,
     group: store.group,
     mappings: store.mappings,
     transitMin: store.settings.transitMin,
@@ -206,15 +216,15 @@ function renderAgenda(): void {
   host.replaceWith(agenda);
   agenda.id = "agenda";
 
-  const picked = [...store.plan.values()].filter((e) => e.group === store.group);
+  const picked = codesOfGroup(store.group);
   const nConf = totalConflictPairs();
   const sum = document.getElementById("agenda-summary")!;
   sum.textContent = `${store.group} 方案 ${picked.length} 场${nConf ? ` · ${nConf} 处冲突` : ""}`;
-  // P0-2:当前方案实时质量分(与引擎同权重;仅展示,不改排序)
+  // P0-2:当前方案实时质量分(与引擎同权重;仅展示,不改排序)。档位来自影片级记录 → 同片多场必然同档。
   const rows: ScoredRow[] = [];
-  for (const e of picked) {
-    const s = cat.byCode.get(e.code);
-    if (s) rows.push({ priority: e.priority, screening: s });
+  for (const code of picked) {
+    const s = cat.byCode.get(code);
+    if (s) rows.push({ priority: priorityOfCode(code) ?? null, screening: s });
   }
   if (rows.length) {
     // 质量分同口径:上一场按有效结束算紧转场(GV 放弃映后谈 → 正片末,实时放宽)
@@ -246,9 +256,9 @@ function renderSync(): void {
   dot.title = store.online ? "D1 云端同步中" : "云端不可用 · 仅本地保存";
 }
 
-/** 顶栏「我的选片」实时计数(打标 / 取消 → setWish 广播 → renderAll → 这里刷新;0 时角标隐藏) */
+/** 顶栏「我的选片」实时计数 = 影片记录数(打标 / 点选场次 → commit 广播 → renderAll → 这里刷新;0 时角标隐藏) */
 function renderPicksBadge(): void {
-  const n = wish.size;
+  const n = store.picks.size;
   const cnt = document.getElementById("my-picks-count");
   if (!cnt) return;
   cnt.textContent = String(n);
@@ -318,24 +328,25 @@ function bindEvents(): void {
     const talkHit = t.closest<HTMLElement>("#grid-scroll [data-talk]");
     if (talkHit) {
       const code = talkHit.dataset.code!;
-      const entry = store.plan.get(code);
-      if (entry && entry.group === store.group) {
+      const hit = slotOf(code);
+      if (hit && hit.group === store.group) {
         // 已在当前方案:翻转含↔弃(覆写落 localStorage,不删场次、不动全局默认)
         setGvTalk(code, !resolveTalk(gvTalk.get(code), store.settings.gvTalkOn));
       } else {
-        // 未在当前方案(含在另一方案):一枪「只要正片」= 加入当前方案 + 覆写放弃映后谈;档位按 wish 继承
-        const s = cat.byCode.get(code);
-        toggleCode(code, s ? wish.get(filmNodeKey(cat, s)) ?? null : null);
+        // 未在当前方案(含在另一方案):一枪「只要正片」= 加入当前方案 + 覆写放弃映后谈;
+        // 档位按该片已有记录继承(从未打标 → null 未设)
+        const key = filmKeyOfCode(code);
+        if (key) toggleScreening(key, code, store.picks.get(key)?.priority ?? null);
         setGvTalk(code, false);
       }
       return;
     }
     const card = t.closest<HTMLElement>("#grid-scroll [data-code]");
     if (card) {
-      // 新加入按影片库打标(wish)继承档位;未打标 → null(未设,不再默认备选)
+      // 新加入按该片已有档位继承(影片库打标 / 详情弹层设过);从未打标 → null(未设,不再默认备选)
       const code = card.dataset.code!;
-      const s = cat.byCode.get(code);
-      toggleCode(code, s ? wish.get(filmNodeKey(cat, s)) ?? null : null);
+      const key = filmKeyOfCode(code);
+      if (key) toggleScreening(key, code, store.picks.get(key)?.priority ?? null);
       return;
     }
 
@@ -346,10 +357,11 @@ function bindEvents(): void {
       if (!code) return;
       if (act.dataset.act === "pri") {
         // 再点当前档 = 取消 → 回到「未设」(与「我的选片」打标 seg 同语义,否则设过档就再也回不到未设)
+        // 档位在影片级 → 改的是该片档位,同片所有场次同步(这正是「一套数据」的核心)
         const p = act.dataset.pri as Priority;
-        setPriority(code, (store.plan.get(code)?.priority ?? null) === p ? null : p);
+        setPriorityOfCode(code, (priorityOfCode(code) ?? null) === p ? null : p);
       } else if (act.dataset.act === "grp") flipGroup(code);
-      else if (act.dataset.act === "del") removeCode(code);
+      else if (act.dataset.act === "del") removeScreening(code);
       else if (act.dataset.act === "gv-talk") setGvTalk(code, !resolveTalk(gvTalk.get(code), store.settings.gvTalkOn));
       return;
     }
@@ -400,7 +412,7 @@ function bindEvents(): void {
 
 function exportIcs(which: "A" | "B" | "ALL"): void {
   document.getElementById("export-menu")!.classList.add("is-hidden");
-  const entries = pickEntries([...store.plan.values()], cat, which);
+  const entries = pickEntries(store.picks, cat, which);
   if (entries.length === 0) {
     toast(which === "ALL" ? "还没有任何选片" : `${which} 方案还没有选片`);
     return;
@@ -511,13 +523,14 @@ function openSettings(): void {
   const danger = el(
     "button",
     "border rounded-[6px] px-[10px] py-1 text-[12px] font-bold bg-biff-soft text-conf border-biff-line",
-    "清空全部选片(A+B)"
+    "清空全部已排场次(A+B)"
   );
+  danger.title = "只清场次 —— 「我的选片」的选片意向(档位)保留,清完仍可一键智能排片";
   danger.addEventListener("click", () => {
-    if (window.confirm("确定清空 A/B 两个方案的全部选片?")) {
-      clearPlan();
+    if (window.confirm("确定清空 A/B 两个方案的**全部已排场次**?选片意向(必看/备选/随缘)会保留。")) {
+      clearScreeningSlots();
       closeModal();
-      toast("已清空全部选片");
+      toast("已清空全部已排场次(选片意向保留)");
     }
   });
   actions.append(apply, danger);
@@ -532,20 +545,18 @@ function clampNum(v: string, fallback: number): number {
 }
 
 /* ---------------- §14 4b:抢票顺位清单(复制) ---------------- */
-const PRI_TAG: Record<Priority, string> = { must: "必看", maybe: "备选", wild: "随缘" };
+/** 顺位排序权重(必看 → 备选 → 随缘);未设档位(null)在清单里排备选位,不参与质量分 */
 const PRI_RANK: Record<Priority, number> = { must: 0, maybe: 1, wild: 2 };
-/** 未设档位(priority=null)在顺位清单里的兜底:标签「未分级」,排序视同备选(rank 1),不参与质量分 */
-const tagOf = (p: Priority | null): string => (p ? PRI_TAG[p] : "未分级");
 const rankOf = (p: Priority | null): number => (p ? PRI_RANK[p] : 1);
 
 function copyPicklist(): void {
   document.getElementById("export-menu")!.classList.add("is-hidden");
   const group = store.group;
-  const rows: { e: PlanEntry; s: Screening }[] = [];
-  for (const e of store.plan.values()) {
-    if (e.group !== group) continue;
-    const s = cat.byCode.get(e.code);
-    if (s) rows.push({ e, s });
+  // 一场一行;档位来自影片级记录(同一部片的多场必然同档 —— 这正是「一套数据」)
+  const rows: { code: string; priority: Priority | null; s: Screening }[] = [];
+  for (const code of codesOfGroup(group)) {
+    const s = cat.byCode.get(code);
+    if (s) rows.push({ code, priority: priorityOfCode(code) ?? null, s });
   }
   if (rows.length === 0) {
     toast(`「${group} 方案」还没有选片,先在网格里点选场次`);
@@ -553,7 +564,7 @@ function copyPicklist(): void {
   }
   rows.sort(
     (a, b) =>
-      rankOf(a.e.priority) - rankOf(b.e.priority) ||
+      rankOf(a.priority) - rankOf(b.priority) ||
       Number(Boolean(b.s.is_gv)) - Number(Boolean(a.s.is_gv)) ||
       a.s.date.localeCompare(b.s.date) ||
       a.s.start_time.localeCompare(b.s.start_time)
@@ -561,8 +572,8 @@ function copyPicklist(): void {
   const cnt: Record<Priority, number> = { must: 0, maybe: 0, wild: 0 };
   let unset = 0;
   rows.forEach((r) => {
-    if (r.e.priority == null) unset++;
-    else cnt[r.e.priority]++;
+    if (r.priority == null) unset++;
+    else cnt[r.priority]++;
   });
 
   const lines: string[] = [];
@@ -573,17 +584,17 @@ function copyPicklist(): void {
       "(同优先级 GV/映后优先,同日按开场时间)"
   );
   lines.push("──");
-  rows.forEach(({ e, s }, i) => {
+  rows.forEach(({ code, priority, s }, i) => {
     const { label, weekday } = dateInfo(s.date);
-    const title = s.title_zh || store.mappings.get(s.code)?.title_cn || s.title_en;
+    const title = s.title_zh || store.mappings.get(code)?.title_cn || s.title_en;
     // 有效结束 + GV 标记:含映后 / 仅正片(放弃)两种标注,转场口径与网格/行程一致
     const talk = gvTalkMin(s);
-    const talkOn = talk > 0 ? gvTalkOf(s.code) : true;
+    const talkOn = talk > 0 ? gvTalkOf(code) : true;
     const endTxt = effEndHms(s, talkOn);
     const gvMark =
       talk > 0 ? (talkOn ? "(GV·含映后)" : "(GV·仅正片)") : s.is_gv ? "(GV)" : "";
     lines.push(
-      `${i + 1}. [${tagOf(e.priority)}] ${s.code} ${title} ${label} ${weekday} ${s.start_time}–${endTxt} ${s.venue_display}${gvMark}`
+      `${i + 1}. [${priorityTag(priority)}] ${s.code} ${title} ${label} ${weekday} ${s.start_time}–${endTxt} ${s.venue_display}${gvMark}`
     );
   });
   void copyText(lines.join("\n")).then((ok) =>
@@ -657,32 +668,14 @@ function toast(msg: string): void {
 }
 
 /* ---------------- boot ---------------- */
-function restoreLocalPlan(): void {
-  try {
-    const raw = localStorage.getItem("biff.plan.v1");
-    if (!raw) return;
-    const arr = JSON.parse(raw) as { code: string; group: string; priority: string; note: string }[];
-    for (const r of arr) {
-      if (!r.code || (r.group !== "A" && r.group !== "B")) continue;
-      store.plan.set(r.code, {
-        code: r.code,
-        group: r.group,
-        priority: r.priority === "must" || r.priority === "maybe" || r.priority === "wild" ? r.priority : null,
-        note: r.note ?? "",
-      });
-    }
-  } catch {
-    /* ignore */
-  }
-}
-
 async function boot(): Promise<void> {
   loadSettings();
   loadGvTalk();
-  loadWish();
-  restoreLocalPlan();
   cat = await loadCatalog();
   currentDate = cat.dates[0] ?? "";
+  // 选片记录(唯一数据源)必须在 cat 就绪之后载入:首次迁移要用 filmNodeKey(cat, s)
+  // 把旧的场次级 plan 归并到影片级记录(旧两套 → 一套)
+  loadPicks(filmKeyOfCode);
 
   subscribe(renderAll);
   bindEvents();

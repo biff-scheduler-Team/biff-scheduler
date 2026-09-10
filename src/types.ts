@@ -74,11 +74,23 @@ export interface FilmsFile {
 export type Group = "A" | "B";
 export type Priority = "must" | "maybe" | "wild";
 
-export interface PlanEntry {
+/** 一条已选场次:选的是哪一场 + 归属哪个方案。
+ *  group 留在场次级(同一部片的两场可以分别放进 A / B 方案),档位则统一在影片级(见 PickEntry)。 */
+export interface PickSlot {
   code: string;
   group: Group;
-  /** null = 用户未给该场设档位(新加入且影片库未打标 / 用户主动清空);不参与质量分 */
+}
+
+/** 选片记录 —— 全站唯一数据源(「我的选片」按片看 / 「我的行程」按场次看,都是它的视图)。
+ *  键 = filmNodeKey(`cat:<目录 id>` | `sched:<片名小写>`),一部片一条记录:
+ *  ① 档位只有一份且在影片级 —— 行程行改档位 = 改该片档位,两个视图永不打架;
+ *  ② 已选场次挂在 picks 里(可空 = 已打标/已选中但未排场);
+ *  ③ 从行程里移除某一场只动 picks,记录保留(选片意向不丢)。 */
+export interface PickEntry {
+  key: string;
+  /** null = 未设档位(直接点选场次、影片库没打标 / 用户主动清空);不参与质量分 */
   priority: Priority | null;
+  picks: PickSlot[];
   note: string;
 }
 
@@ -104,10 +116,3 @@ export interface Catalog {
   byCode: Map<string, Screening>;
   films: FilmItem[]; // 影片目录(可先于排期发布,按 id 与排期 title 关联)
 }
-
-export const GROUP_LABEL: Record<Group, string> = { A: "A", B: "B" };
-export const PRIORITY_LABEL: Record<Priority, string> = {
-  must: "必看",
-  maybe: "备选",
-  wild: "随缘",
-};
