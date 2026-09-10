@@ -527,7 +527,7 @@ function openSettings(): void {
   );
   danger.title = "只清场次 —— 「我的选片」的选片意向(档位)保留,清完仍可一键智能排片";
   danger.addEventListener("click", () => {
-    if (window.confirm("确定清空 A/B 两个方案的**全部已排场次**?选片意向(必看/备选/随缘)会保留。")) {
+    if (window.confirm("确定清空 A/B 两个方案的「全部已排场次」?选片意向(必看/备选/随缘)会保留。")) {
       clearScreeningSlots();
       closeModal();
       toast("已清空全部已排场次(选片意向保留)");
