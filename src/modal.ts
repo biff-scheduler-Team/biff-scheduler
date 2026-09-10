@@ -222,6 +222,25 @@ export function showFilmModal(code: string, ctx: FilmModalCtx): void {
   if (rating != null) meta.appendChild(doubanChip(rating, "mt-2")); // 豆瓣章单一来源(legend.ts)
   body.appendChild(meta);
 
+  // ---- 午夜场联映块:块名不是片名,这里把块内成员片列出来 ----
+  // 联映块 = 「一张票连看 2~3 部」,册子格子里只有块名 + 页码列表;成员片名由解析器
+  // 从单元扉页对照表抽出(midnight_members,见 types.ts)。不给出来的话,弹层就只剩
+  // 一条「Midnight Passion 1」,用户根本不知道买的是哪几部。
+  const members = anchor.midnight_members ?? [];
+  if (members.length) {
+    const box = el("div", "mb-[14px] border border-ev-teal rounded-[9px] bg-ev-teal-soft px-[10px] py-2");
+    box.appendChild(el("div", "text-[12.5px] font-bold text-ev-teal", `午夜联映 · 一块 ${members.length} 部`));
+    box.appendChild(el("div", "text-[13px] font-semibold mt-[3px]", members.join(" / ")));
+    box.appendChild(
+      el(
+        "div",
+        "text-[11.5px] text-muted mt-[3px]",
+        "本场是联映块票:一张票连看完全部影片,不单独售票;成员片的详情里会把本块 CODE 列为自己的一场"
+      )
+    );
+    body.appendChild(box);
+  }
+
   // ---- 我的选片(打标:必看/备选/随缘)----
   const wish = buildWishRow(filmNodeKey(ctx.cat, anchor));
   body.appendChild(wish.row);

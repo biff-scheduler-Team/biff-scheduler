@@ -14,8 +14,8 @@
    "2025-09-25",
    "2025-09-26"
   ],
-  "note": "数据来源:官方 Ticket Catalogue(2025-08-28 付印)第 9–16 页「Screening Schedule」,由 tools/extract_schedule.py 解析;场馆按「厅」建 id(id = 官方影院代码小写,如 b1/c2/l10),共 29 厅 / 7 家影院 / 2 个分区(CENTUM 主场区 23 厅、南浦洞 6 厅)。code 以 X 开头者为原册未印场次编号、由解析器合成兜底(BD / C7 两列);GV 场次的 end_time 已含官方映后谈时长(册子只印到正片结束,解析时 +25min);册子付印后的变更以官网 www.biff.kr 为准。",
-  "generated_at": "2026-09-10T13:20:56+09:00"
+  "note": "数据来源:官方 Ticket Catalogue(2025-08-28 付印)第 9–16 页「Screening Schedule」,由 tools/extract_schedule.py 解析;场馆按「厅」建 id(id = 官方影院代码小写,如 b1/c2/l10),共 29 厅 / 7 家影院 / 2 个分区(CENTUM 主场区 23 厅、南浦洞 6 厅)。code 以 X 开头者为原册未印场次编号、由解析器合成兜底(BD / C7 两列);GV 场次的 end_time 已含官方映后谈时长(册子只印到正片结束,解析时 +25min);午夜场 Midnight Passion 1–4 是「联映块」(一张票连看 2–3 部,共 4 块 / 10 部):格子只印块名,块内成员片名另见单元扉页对照表 → 场次的 midnight_members;成员片的介绍页会把所属块 CODE 列为自己的一场;册子付印后的变更以官网 www.biff.kr 为准。",
+  "generated_at": "2026-09-10T14:09:27+09:00"
  },
  "screenings": [
   {
@@ -1599,22 +1599,29 @@
   },
   {
    "code": "008",
-   "title_en": "163, 165 Midnight Passion 1",
+   "title_en": "Midnight Passion 1",
    "title_kr": "미드나잇 패션 1",
    "title_zh": "",
    "date": "2025-09-18",
    "start_time": "23:59",
-   "end_time": "05:35",
+   "end_time": "29:35",
    "duration_min": 311,
    "venue_id": "bh",
    "venue_display": "Busan Cinema Center Haneulyeon Theatre",
    "is_gv": true,
-   "tags": [],
+   "tags": [
+    "midnight"
+   ],
    "rating": "19",
    "subs": [
     "KE"
    ],
-   "page": 161
+   "page": 161,
+   "midnight_members": [
+    "Exit 8",
+    "Weapons",
+    "Honey Don't!"
+   ]
   },
   {
    "code": "082",
@@ -3422,17 +3429,24 @@
    "title_zh": "",
    "date": "2025-09-19",
    "start_time": "23:59",
-   "end_time": "05:26",
+   "end_time": "29:26",
    "duration_min": 302,
    "venue_id": "bh",
    "venue_display": "Busan Cinema Center Haneulyeon Theatre",
    "is_gv": true,
-   "tags": [],
+   "tags": [
+    "midnight"
+   ],
    "rating": "19",
    "subs": [
     "KE"
    ],
-   "page": 162
+   "page": 162,
+   "midnight_members": [
+    "Protector",
+    "Halabala",
+    "The Furious"
+   ]
   },
   {
    "code": "169",
@@ -5164,22 +5178,29 @@
   },
   {
    "code": "164",
-   "title_en": "115, 160, 163, 164 Midnight Passion 3",
+   "title_en": "Midnight Passion 3",
    "title_kr": "미드나잇 패션 3",
    "title_zh": "",
    "date": "2025-09-20",
    "start_time": "23:59",
-   "end_time": "06:04",
+   "end_time": "30:04",
    "duration_min": 340,
    "venue_id": "bh",
    "venue_display": "Busan Cinema Center Haneulyeon Theatre",
    "is_gv": true,
-   "tags": [],
+   "tags": [
+    "midnight"
+   ],
    "rating": "19",
    "subs": [
     "KE"
    ],
-   "page": null
+   "page": 115,
+   "midnight_members": [
+    "Bride of the Covenant",
+    "My Home",
+    "The Holy Boy"
+   ]
   },
   {
    "code": "240",
@@ -7057,17 +7078,22 @@
    "title_zh": "",
    "date": "2025-09-21",
    "start_time": "23:59",
-   "end_time": "05:54",
+   "end_time": "29:54",
    "duration_min": 330,
    "venue_id": "bh",
    "venue_display": "Busan Cinema Center Haneulyeon Theatre",
    "is_gv": true,
-   "tags": [],
+   "tags": [
+    "midnight"
+   ],
    "rating": "15",
    "subs": [
     "KE"
    ],
-   "page": 161
+   "page": 161,
+   "midnight_members": [
+    "Exterior Night"
+   ]
   },
   {
    "code": "325",

@@ -143,6 +143,15 @@ RE_SUBS = re.compile(r"^(KE|KN|KK|NO)$")
 RE_DUR = re.compile(r"^(\d{1,3})['’]{1,2}$")
 RE_PAGES = re.compile(r"^\d{1,3}(?:\s*,\s*\d{1,3})+$")
 RE_PAGENUM = re.compile(r"^\d{1,3}$")
+# 页码续行(陷阱 19):块格子的「页码」是**块内各片的介绍页页码列表**,排版换行时会自成一行 ——
+# 与 META 行共享 y1、x 偏移 6.2pt,**恰好落进 cell_title_lines 的标题判据 (2,18]**,
+# 于是被当标题拼进 title_en(实测 `008.title_en = "163, 165 Midnight Passion 1"`)。
+# 这类行必须归并进 pages,不能进标题。
+RE_PAGE_LINE = re.compile(r"^\d{1,3}(?:\s*,\s*\d{1,3})*,?$")
+PAGE_NO_RANGE = (40, 230)   # 节目册「影片介绍页」的印刷页范围(2025 版实测 42–206)
+# 午夜场联映块:单元扉页的对照表(见 parse_midnight_blocks)
+MIDNIGHT_BLOCK_NAME = re.compile(r"^Midnight\s+Passion\s+(?P<n>\d+)$")
+RE_BLOCK_ROW = re.compile(r"^(?P<code>\d{3})\s+[A-Za-z]{3}\s+\d{1,2}\s*/\s*\d{1,2}:\d{2}\s*/\s*[A-Z]{1,3}$")
 RE_DAYNUM = re.compile(r"^\d{1,2}$")
 RE_WEEKDAY = re.compile(r"^(MON|TUE|WED|THU|FRI|SAT|SUN)$")
 RE_VENUE_CODE = re.compile(r"^[A-Z]{1,3}\d{0,2}$")
@@ -171,6 +180,9 @@ TITLE_TAGS = [
     (("master class", "masterclass", "마스터클래스"), "masterclass"),
     (("open talk", "오픈토크"), "open_talk"),
     (("world premiere", "월드 프리미어"), "premiere"),
+    # 午夜场联映块:块名印在格子里(块内成员片另见单元扉页对照表 → parse_midnight_blocks)。
+    # 靠标题关键词判定,**不硬编码 008/081/164/244** —— 换年份块号会变。
+    (("midnight passion",), "midnight"),
 ]
 
 
@@ -179,6 +191,37 @@ TITLE_TAGS = [
 
 def _has_hangul(s: str) -> bool:
     return any("\uac00" <= c <= "\ud7a3" for c in s)
+
+
+def pages_only_line(text: str) -> list[int] | None:
+    """该行是不是「纯页码列表」(块格子的页码续行)→ 页码列表;否则 None。
+
+    守卫:数字必须落在节目册影片介绍页的印刷页范围内。这样「片名恰好是数字」的
+    极端情形不会误伤 —— `1917` / `2046` 位数就不匹配,`9` / `42` 被范围挡掉。
+    """
+    if not RE_PAGE_LINE.match(text):
+        return None
+    nums = [int(v) for v in re.findall(r"\d{1,3}", text)]
+    if not nums or any(not (PAGE_NO_RANGE[0] <= n <= PAGE_NO_RANGE[1]) for n in nums):
+        return None
+    return nums
+
+
+def _split_members(text: str) -> list[str]:
+    """`Exit 8 8번 출구 | Weapons 웨폰 | Honey Don't! 허니 돈트!` → ['Exit 8', 'Weapons', "Honey Don't!"]。
+
+    成员行是「英文片名 + 韩文片名」并排,按 `|` 切段后在首个韩文字符处截断。
+    韩文片名可能以数字开头(实测 `8번 출구`)→ 截断后会粘一个数字,需回剥
+    (`'Exit 8 8'` → `'Exit 8'`)。只剥**紧贴韩文**的那一串数字,所以
+    `Blade Runner 2049` 这类「片名以数字结尾」的不会被误伤。
+    """
+    out: list[str] = []
+    for part in re.split(r"\s*[|｜]\s*", text):
+        name = re.split(r"(?=[가-힣])", part)[0]
+        name = re.sub(r"\d*$", "", name).strip().rstrip(",|").strip()
+        if name:
+            out.append(name)
+    return out
 
 
 def _log(kind: str, msg: str) -> None:
@@ -403,6 +446,66 @@ def tags_for(title_en: str, title_kr: str, notes: list[str], flags: list[str]) -
     return tags
 
 
+def _closest(cands: list[dict], y: float) -> dict | None:
+    """y 最接近的一条(平局取先出现的)。"""
+    return min(cands, key=lambda l: abs(l["y0"] - y)) if cands else None
+
+
+def parse_midnight_blocks(doc: pymupdf.Document) -> dict[str, list[str]]:
+    """扫全册找「午夜场联映块」单元扉页的对照表 → {块 code: [成员片名…]}。
+
+    扉页版式(实测 2025 版 PDF p81 = 印刷页 160「Midnight Passion」单元扉页):
+
+        x92.1  y169.2  Midnight Passion 1
+        x92.1  y177.3  미드나잇 패션 1
+        x146.0 y168.5  Exit 8 8번 출구 | Weapons 웨폰 | Honey Don't! 허니 돈트!
+        x146.0 y178.6  008 Sep 18 / 23:59 / BH
+
+    即:块名行 → **同一 x 子栏、块名正下方**的 `code … / … / 场馆` 行 → 该行**正上方**的成员行。
+
+    为什么必须另立一张表:排期格子只印**块名 + 页码列表**,块里到底是哪几部片
+    只有这张表说得清(2025:MP1=3 / MP2=3 / MP3=3 / MP4=1,共 10 部)。
+    纯按页码反查会**过收** —— 一个印刷页放 2 部片,`163` 同时是 Honey Don't! 与
+    The Holy Boy 的介绍页。
+
+    取行一律取「**最近**」而不是「第一个同高」:同一页右侧还有图注 / 正文
+    (实测 MP3 的成员行曾被 `© 2025 ”Exit 8” Film Partners` 以 2.4pt 之差抢走)。
+    再加一道 `|成员行.y − 块名.y| ≤ 6` 的贴合校验兜底。
+    """
+    out: dict[str, list[str]] = {}
+    for pno in range(1, doc.page_count + 1):
+        lines = build_lines(doc[pno - 1])
+        rows = [(l, " ".join(s["t"] for s in l["spans"]).strip()) for l in lines]
+        for ln, head in rows:
+            if not MIDNIGHT_BLOCK_NAME.match(head):
+                continue
+            best: tuple[float, str, list[str]] | None = None
+            for row, rowtxt in rows:
+                # ① code 行:块名右侧、正下方 16pt 内(实测 +9.4pt)
+                if row["x0"] <= ln["x0"] + 20 or not (0 < row["y0"] - ln["y0"] <= 16):
+                    continue
+                m = RE_BLOCK_ROW.match(rowtxt)
+                if not m:
+                    continue
+                # ② 成员行 = code 行正上方、同一 x 子栏的最近一行(实测 +10.1pt)
+                mem = _closest(
+                    [l for l, _t in rows
+                     if abs(l["x0"] - row["x0"]) <= 20 and 0 < row["y0"] - l["y0"] <= 16],
+                    row["y0"],
+                )
+                if mem is None:
+                    continue
+                # ③ 贴合校验:成员行必须与块名同高(排除页面别处的同形行)
+                score = abs(mem["y0"] - ln["y0"])
+                if score > 6:
+                    continue
+                if best is None or score < best[0]:
+                    best = (score, m.group("code"), _split_members(" ".join(s["t"] for s in mem["spans"])))
+            if best and best[2]:
+                out[best[1]] = best[2]
+    return out
+
+
 # ---------------------------------------------------------------- 页面主流程
 
 
@@ -436,8 +539,17 @@ def parse_page(page: pymupdf.Page, page_no: int, args, stats: Counter) -> list[d
             _log("WARN", f"p{page_no} 找不到日标签,跳过 1 场 @x={m['x0']:.0f}")
             continue
 
+        # 标题行里会混进「页码续行」—— 块格子的页码列表换行自成一行,几何上落进标题判据
+        # (陷阱 19)。它不是标题:并入 pages,否则会成为 title_en 的前缀。
         tl = cell_title_lines(lines, m)
-        title_spans = [s for l in tl for s in l["spans"]]
+        title_spans: list[dict] = []
+        for l in tl:
+            pg = pages_only_line(" ".join(s["t"] for s in l["spans"]).strip())
+            if pg:
+                meta["pages"] += pg
+                stats["page_line_absorbed"] += 1
+                continue
+            title_spans += l["spans"]
         title_en, title_kr, notes = split_title(title_spans)
         notes += [t for t in meta["extra"] if t not in notes]
         if not title_en and not title_kr:
@@ -579,6 +691,18 @@ def main() -> int:
         days = sorted({r["_wd"] for r in rows})
         print(f"  p{pno}: {len(rows):3d} 场  days={days}", file=sys.stderr)
 
+    # 午夜场联映块:块场次挂上成员片名(单元扉页对照表;块名本身不含成员信息)
+    blocks = parse_midnight_blocks(doc)
+    for r in all_rows:
+        if r["code"] in blocks:
+            r["midnight_members"] = blocks[r["code"]]
+    hit = [c for c in blocks if c in {r["code"] for r in all_rows}]
+    _log("SANITY", f"联映块成员表: {len(blocks)} 块 / {sum(len(v) for v in blocks.values())} 部片"
+                   f"  已挂到排期: {hit}")
+    miss = [c for c in blocks if c not in hit]
+    if miss:
+        _log("WARN", f"成员表里的块 code 在排期里找不到: {miss}")
+
     # 交叉校验 1:每页的 code 段应基本连续(缺号 = 该时段无排片/取消)
     for pno in pages:
         cs = sorted(int(r["code"]) for r in all_rows
@@ -626,6 +750,20 @@ def main() -> int:
     _log("SANITY", f"每馆场次 top12: {per_venue.most_common(12)}")
     _log("SANITY", f"空 title_en: {sum(1 for r in all_rows if not r['title_en'])}"
                    f"  全空(中英韩皆空): {sum(1 for r in all_rows if not r['title_en'] and not r['title_kr'])}")
+    # 回归哨兵(陷阱 19):title_en 绝不能以「页码列表 + 空格」开头 ——
+    # 那说明块格子的页码续行又漏进标题了(实测曾出现 `163, 165 Midnight Passion 1`)。
+    # 判据复用 pages_only_line 的范围守卫,故「片名本身以数字开头」不会误报
+    # (实测 `5 Centimeters Per Second` —— 单数字 5 不在影片页范围内)。
+    dirty: list[tuple[str, str]] = []
+    for r in all_rows:
+        m = re.match(r"^(?P<lst>\d{1,3}(?:\s*,\s*\d{1,3})*)\s+\S", r["title_en"])
+        if m and pages_only_line(m.group("lst")):
+            dirty.append((r["code"], r["title_en"]))
+    if dirty:
+        _log("WARN", f"title_en 仍带页码前缀 {len(dirty)} 条(页码续行漏网?): {dirty[:6]}")
+    else:
+        _log("SANITY", "title_en 无页码前缀 ✓")
+    _log("SANITY", f"页码续行归并: {stats['page_line_absorbed']} 行")
     _log("SANITY", f"rating 分布: {dict(Counter(r['rating'] for r in all_rows))}")
     # subs 已是列表 → Counter 不能直接吃。按「每个标识各计一次」统计,
     # 另外单报未标注场次与**多值场次**(陷阱 12 的回归哨兵:2025 版应为 4 场 KE KK)。

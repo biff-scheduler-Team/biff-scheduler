@@ -31,6 +31,7 @@ const ABBR_LINES: [string, string][] = [
   ["评论音轨", "Commentary — 实时双向评论音轨场(실시간 양방향 코멘터리 픽쳐 쇼);放映全程叠加人声解说 / 互动"],
   ["Event", "联动活动场 — 官方 연계이벤트(2025 例:907 라이브 드로잉 现场作画)"],
   ["묶", "Batch Screening 连场放映"],
+  ["联映", "Midnight Passion 联映块 — 一张票连看 2~3 部(2025 共 4 块 / 10 部);格子只印块名,成员片名见详情弹层;成员片的介绍页会把该块 CODE 列为自己的一场"],
 ];
 
 /** 图例悬停用的多行说明文本(第 1 行标题,其余为分点) */
@@ -116,6 +117,20 @@ export const BADGE_DEFS: BadgeDef[] = [
       "官方 Community BIFF 的 연계이벤트 — 与放映联动的现场演出 / 活动(2025 例:907 라이브 드로잉 现场作画)",
     // 虚线描边 + 浅底:表达「非正式节目 / 临时活动」;与 batch 的虚线区分在色相
     cls: "px-[3px] py-px text-ev-teal bg-ev-teal-soft border border-ev-teal border-dashed",
+  },
+  // ---- 午夜场联映块(2025 Midnight Passion 单元;解析器 tags 直出 "midnight")----
+  // 实心青绿与 talk 同款:两者都表示「这不是一场普通放映」,但语义不重叠 ——
+  // talk 是主题对谈节目,midnight 是「一块多片」的售票结构;两者都按标题关键词判定,
+  // 同一场不会同时命中,视觉撞色无实际影响,靠 label 文案区分。
+  {
+    key: "midnight",
+    label: "联映",
+    title:
+      "联映 · Midnight Passion 联映块\n" +
+      "官方午夜场单元:一个块 = 一张票连看 2~3 部(2025 共 4 块 / 10 部)\n" +
+      "格子里只印块名(如 Midnight Passion 1),块内成员片名见详情弹层\n" +
+      "注意:成员片的介绍页会把该块 CODE 列为自己的一场 —— 那一条就是这张块票",
+    cls: "px-1 py-px text-on-brand bg-ev-teal",
   },
 ];
 

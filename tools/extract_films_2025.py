@@ -30,6 +30,11 @@
 影片页的片名行位置随版式漂移(首片在栏顶、后续片在栏尾成块),不如排期可靠 ——
 排期的 `title_en` / `title_kr` 是逐场次解析出来的,直接按 `code` 关联即可。
 
+**唯一例外 = 午夜场联映块**:块的场次 title 印的是**块名**(`Midnight Passion N`),
+不是片名。只出现在块里的片(实测 Exterior Night 只挂 `244`)拿不到片名 ——
+此时改从排期的 `midnight_members` 取(由 `extract_schedule.py` 从单元扉页
+对照表解析,是「块里到底是哪几部片」的官方单一真相源)。见 `pick_title()`。
+
 用法
 ----
     python tools/extract_films_2025.py \
@@ -64,11 +69,12 @@ DIR_LINE = re.compile(r"^Director\s+(?P<rest>.+)$")
 CODE_ON_LINE = re.compile(r"([0-9X][0-9X]{2,4})\s+[A-Z][a-z]{2}\s+\d{1,2}\s*/")
 HANGUL = re.compile(r"[가-힣]")
 
-# ★ 午夜场联映块:排期表里 code `008/081/164/244` 的 title 印的是**块名**而不是片名
-# (`163, 165 Midnight Passion 1` —— 前缀是块内影片的印刷页码,是排期解析器的残留)。
-# 这些 code 会同时出现在块内各部片的影片页 code 清单里,若不排除,`en` 取值会命中块名,
+# ★ 午夜场联映块:排期表里 code `008/081/164/244` 的 title 印的是**块名**而不是片名。
+# 块名会同时出现在块内各部片的影片页 code 清单里,若不排除,`en` 取值会命中块名,
 # 把整块影片**合并成一条垃圾目录**(实测曾把 8 部片并成 `163, 165 Midnight Passion 1`)。
 BLOCK_TITLE = re.compile(r"^(?:\d[\d,\s]*)?\s*Midnight\s+Passion\s+\d+\s*$", re.I)
+# 块名 → 成员片名的**权威来源**是排期里的 `midnight_members`
+# (由 extract_schedule.py 从单元扉页对照表解析;排期格子只印块名 + 页码列表)。
 
 # `Director …` 一行里后面还并排着别的职务(实测「Isabelle KALANDAR    Executive
 # Producer Isabelle KALANDAR    Co-producers …    Script …」)→ 遇到这些词就截断。
@@ -157,11 +163,25 @@ def looks_like_bio_name_en(t: str) -> bool:
     return any(w.isupper() and len(w) >= 2 for w in t.split())
 
 
-def pick_title(scr: list[dict], key: str) -> str:
-    """从该片所有场次里取片名:跳过联映块名(BLOCK_TITLE),没有别的才退回块名。"""
+def pick_title(scr: list[dict], key: str, blocks: dict[str, list[str]]) -> str:
+    """从该片所有场次里取片名。
+
+    ① 优先**非块名**的场次片名 —— 联映块的 title 印的是块名,不是片名;
+    ② 若该片**只出现在联映块里**(实测 Exterior Night 只挂 `244`),块名不是片名,
+       改从 `midnight_members`(单元扉页对照表)取 —— **块成员唯一时才认**;
+    ③ 韩文名同理:只剩块名时宁缺勿错(成员表只有英文名),返回空串;
+    ④ 实在拿不到才退回块名 —— 至少比空串有用。
+    """
     vals = [s[key] for s in scr if s[key]]
     good = [v for v in vals if not BLOCK_TITLE.match(v.strip())]
-    return (good or vals or [""])[0]
+    if good:
+        return good[0]
+    if key == "title_en":
+        names = {n for s in scr for n in (blocks.get(s["code"]) or [])}
+        if len(names) == 1:
+            return names.pop()
+        return (vals or [""])[0]
+    return ""
 
 
 def parse_page(page) -> list[dict]:
@@ -233,6 +253,12 @@ def main() -> None:
     doc = pymupdf.open(args.pdf)
     schedule = json.loads(Path(args.schedule).read_text(encoding="utf-8"))
     by_code = {s["code"]: s for s in schedule["screenings"]}
+    # 联映块 code → 成员片名(排期侧从单元扉页对照表解析出来的权威表)
+    blocks: dict[str, list[str]] = {
+        s["code"]: s["midnight_members"]
+        for s in schedule["screenings"]
+        if s.get("midnight_members")
+    }
 
     raw: list[dict] = []
     for idx in range(*PAGE_RANGE):
@@ -268,10 +294,10 @@ def main() -> None:
         if not scr:
             continue  # 无排期场次 → 拿不到权威片名,本轮先不收
         # 片名:优先英文;英文缺失(2025 版 41 场只印韩文)则用韩文。
-        # 同一部片的多个 code 里若混着**联映块 code**(008/081/164/244),它的 title 是块名 ——
-        # 跳过块名再取,否则整块影片会被并成一条(见 BLOCK_TITLE 注释)。
-        en = pick_title(scr, "title_en")
-        kr = pick_title(scr, "title_kr")
+        # 同一部片的多个 code 里若混着**联映块 code**,它的 title 是块名 ——
+        # 跳过块名再取;只出现在块里的片改从成员表取名(见 pick_title)。
+        en = pick_title(scr, "title_en", blocks)
+        kr = pick_title(scr, "title_kr", blocks)
         title = en or kr
         # 字段严格对齐 types.ts::FilmItem —— 不多写前端没声明的键
         # (片长 / 韩文名 / 场次 code 只用于自检日志,不进 JSON)
@@ -311,6 +337,10 @@ def main() -> None:
     no_year = [f["title_orig"] for f in out_films if not f["year"]]
     no_runtime = [f["title_orig"] for f in out_films if not f["_runtime"]]
     kr_only = [f["title_orig"] for f in out_films if not f["_kr"]]
+    # 只出现在联映块里、没有自己场次的影片(片名只能靠成员表取)
+    block_codes = set(blocks)
+    only_block = [f["title_orig"] for f in out_films
+                  if f["codes"] and set(f["codes"]) <= block_codes]
 
     # ---- 编号 + 剥掉内部字段,严格对齐 types.ts::FilmItem -------------------
     for i, f in enumerate(out_films, 1):
@@ -324,6 +354,16 @@ def main() -> None:
     log("SANITY", f"影片页扫描: PDF p{PAGE_RANGE[0]+1}–p{min(PAGE_RANGE[1], doc.page_count)}"
                   f"  抽出原始条目 {len(raw)}  判重丢弃 {dup}  去重后 {len(films_raw)}")
     log("SANITY", f"有场次的影片 {len(out_films)}  无场次(未收) {len(no_code)}")
+    # ---- 联映块自检(2025 午夜场:4 块 / 10 部片)----
+    log("SANITY", f"联映块 {len(blocks)} 块 / {sum(len(v) for v in blocks.values())} 部片"
+                  f"  只出现在块里的影片 {len(only_block)}: {only_block}")
+    # 回归哨兵:目录里绝不能有「块名当片名」的条目
+    # (实测曾把 8 部午夜场并成 4 条 `163, 165 Midnight Passion 1` 之类的垃圾目录)
+    junk = [f["title_orig"] for f in out_films if BLOCK_TITLE.match(f["title_orig"].strip())]
+    if junk:
+        log("WARN", f"⚠ 目录里仍有块名当片名的条目 {len(junk)}: {junk}")
+    else:
+        log("SANITY", "目录无块名当片名 ✓")
     log("SANITY", f"排期 code 覆盖: {len(covered)}/{len(sched_codes)}"
                   f"  未覆盖 {len(sched_codes - covered)}")
     if unknown:

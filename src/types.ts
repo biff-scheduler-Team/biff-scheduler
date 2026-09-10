@@ -31,6 +31,13 @@ export interface Screening {
   subs?: SubsKey[];
   /** 官方 Ticket Catalogue 节目册页码(翻册对表用) */
   page?: number;
+  /**
+   * 午夜场「联映块」成员片名 —— **仅联映块场次有**(2025 版 4 条:008 / 081 / 164 / 244)。
+   * 块场次 = 「一张票连看 2–3 部」,格子只印块名(`Midnight Passion N`),块内成员片名
+   * 另见单元扉页对照表,由 `extract_schedule.py::parse_midnight_blocks()` 抽出。
+   * 成员片的介绍页会把所属块 CODE 列为自己的一场 → 该片场次列表里会出现这条块场次。
+   */
+  midnight_members?: string[];
 }
 
 export interface ScheduleFile {
