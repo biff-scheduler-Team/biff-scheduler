@@ -72,8 +72,15 @@ export interface ScoreBreakdown {
   tight: number; // 紧转场次数(0 ≤ 余量 < OK_SLACK)
 }
 
-/** 对任意一组排片(引擎建议 / 手动行程)算质量分。 */
-export function scorePlanRows(rows: ScoredRow[], transitMin: number, okSlack = OK_SLACK): ScoreBreakdown {
+/** 对任意一组排片(引擎建议 / 手动行程)算质量分。
+ *  endOf(s):该场实际结束分钟(缺省 = end_time)。手动行程侧传「有效结束」(GV 放弃映后谈 → 正片末),
+ *  引擎自动排片不传(保守按含谈算 —— 放弃后只会更宽松,安全)。 */
+export function scorePlanRows(
+  rows: ScoredRow[],
+  transitMin: number,
+  okSlack = OK_SLACK,
+  endOf?: (s: Screening) => number
+): ScoreBreakdown {
   const sorted = [...rows].sort(
     (a, b) => a.screening.date.localeCompare(b.screening.date) || a.screening.start_time.localeCompare(b.screening.start_time)
   );
@@ -89,7 +96,8 @@ export function scorePlanRows(rows: ScoredRow[], transitMin: number, okSlack = O
     const prev = sorted[i - 1].screening;
     const next = sorted[i].screening;
     if (prev.date !== next.date) continue;
-    const gap = hmsToMin(next.start_time) - hmsToMin(prev.end_time);
+    const prevEnd = endOf ? endOf(prev) : hmsToMin(prev.end_time);
+    const gap = hmsToMin(next.start_time) - prevEnd;
     const need = prev.venue_id !== next.venue_id ? transitMin : 0;
     const slack = gap - need;
     if (slack < 0) continue;

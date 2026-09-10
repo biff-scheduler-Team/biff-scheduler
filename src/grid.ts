@@ -1,10 +1,11 @@
 // 选片网格 — 自研 CSS 网格:行=影厅,列=当日时间轴;卡片绝对定位。
 // 全量化:网格 / 卡片 / 标签 / 时间标尺 / 转场紧底色提示 / ⓘ / 冲突旗 / 其他旗 全部 Tailwind utility。
 
-import type { Catalog, Group, Mapping, PlanEntry, Priority, Screening } from "./types";
-import { OK_SLACK, el, fmtMinRange, hmsToMin, todayIsoLocal } from "./util";
+import type { Catalog, Group, Mapping, PlanEntry, Screening } from "./types";
+import { OK_SLACK, el, fmtMinRange, hmsToMin, minToHms, todayIsoLocal } from "./util";
 import { screeningsByVenue } from "./data";
 import { codeTip, screeningBadgeKeys } from "./badges";
+import { effEndMin, filmEndMin, gvTalkMin } from "./gv";
 import { appendMetaRow, durChip, venueTip } from "./legend";
 
 export const ROW_H = 92;
@@ -15,9 +16,7 @@ const PX_PER_MIN = 2.2; // D1:时间刻度固定(每小时 132px)。卡片横向
 const AXIS_FALLBACK = { start: 9 * 60, end: 23 * 60 }; // A1:当日无排片时的时间轴兜底窗口
 const AXIS_LEAD_MIN = 30; // A1:首场开映前保留的呼吸时间(轴起点对齐到整点)
 
-/** 优先级 → --pc 变量类(@utility p-must/maybe/wild 定义于 style.css;须完整字面量,勿动态拼接) */
-const PRI_PC: Record<Priority, string> = { must: "p-must", maybe: "p-maybe", wild: "p-wild" };
-
+/** 冲突 / 紧转场 / 已选 的红绿灯底色:优先级不参与网格染色(见行程行 seg),故无 p-* 类映射。 */
 export interface GridCtx {
   cat: Catalog;
   plan: Map<string, PlanEntry>;
@@ -25,6 +24,8 @@ export interface GridCtx {
   mappingOf: (code: string) => Mapping | undefined; // 豆瓣映射(回填中文名)
   conflictCodes: Set<string> | undefined; // 当日、当前方案冲突 code
   transitMin: number; // 跨馆转场缓冲(1a 余量判定)
+  /** GV 映后谈是否参加(全局默认 + 单场覆写解析后):决定正片/整场拆分、紧转场按哪段结束算 */
+  gvTalkOf: (code: string) => boolean;
   hourFilter?: number | null; // 点击时间轴整点 → 只看该小时段场次(其余 hour-dim);null = 不过滤
 }
 
@@ -83,6 +84,7 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
   min.appendChild(ruler);
 
   const cardEls = new Map<string, HTMLElement>();
+  const talkEls = new Map<string, HTMLElement>(); // GV 映后谈块(与正片卡同 code 关联)
   let venueIdx = 0;
   for (const { venue, list } of rows) {
     const row = el(
@@ -118,8 +120,9 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
     tracks.style.backgroundImage = `repeating-linear-gradient(90deg, transparent 0 ${hourPx - 1}px, ${hourLine} ${hourPx - 1}px ${hourPx}px), repeating-linear-gradient(90deg, transparent 0 ${halfPx - 1}px, ${halfLine} ${halfPx - 1}px ${halfPx}px)`;
 
     for (const s of list) {
-      const card = appendCard(tracks, s, ctx, pxPerMin, axis.start);
+      const { card, talkEl } = appendCard(tracks, s, ctx, pxPerMin, axis.start);
       cardEls.set(s.code, card);
+      if (talkEl) talkEls.set(s.code, talkEl);
     }
     // 「现在」时刻竖线贯穿各行(标尺已画带标签的一段,行内补全高)
     if (nowPx !== null) {
@@ -132,7 +135,7 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
     venueIdx++;
   }
 
-  if (rows.length > 0) markTightPairs(ctx, date, cardEls); // §14 1a:转场紧 → 问题卡淡底色提示
+  if (rows.length > 0) markTightPairs(ctx, date, cardEls, talkEls); // §14 1a:转场紧 → 问题卡淡底色提示
 
   if (rows.length === 0) {
     min.appendChild(el("div", "py-[26px] px-3 text-center text-muted", "当日暂无排片"));
@@ -260,20 +263,24 @@ function attachPan(scroll: HTMLElement): void {
   scroll.addEventListener("pointerdown", down);
 }
 
-/** §14 1a:当前方案同日相邻场次,余量 slack=间隔−跨馆缓冲 <OK_SLACK 时,把「衔接的两场」用整卡淡底色标出来:
- *  琥珀=偏紧(tight)/ 红=扣除缓冲后不足(bad);通过 card.style.background 内联覆盖 in-plan 选中态底色
- *  (冲突等级更高;tight/bad 与同冲突组无重叠 — 冲突已由 conf 视觉独立覆盖)。
+/** §14 1a:当前方案同日相邻场次,余量 slack=间隔−跨馆缓冲 <OK_SLACK 时,把「衔接的两场」整卡淡黄底标出 ——
+ *  时间紧张(不足=扣除缓冲后为负 / 偏紧=0≤余量<15)同一黄色系;红只保留给「完全冲突」(时间重叠,
+ *  由冲突视觉独立覆盖,此函数跳过)。通过 card.style.background 内联覆盖 in-plan 绿底(黄 > 绿)。
  *  整卡面积提示 → 不遮文字、不受间隔宽窄与同馆/跨馆影响;hover 卡片即时浮窗看完整算式(data-tip)。
- *  中间片同时接两对紧转场时取更严重状态(bad 盖 tight),浮窗列出其参与的所有衔接。 */
-const TIGHT_BG = "color-mix(in srgb, var(--color-maybe) 16%, var(--color-card))";
-const BAD_BG = "color-mix(in srgb, var(--color-conf) 13%, var(--color-card))";
+ *  中间片同时接两对紧转场时取更严重状态(不足 盖 偏紧,浮窗文案区分),浮窗列出其参与的所有衔接。 */
+const TIGHT_BG = "color-mix(in srgb, var(--color-tight) 24%, var(--color-card))";
 
 interface TightMark {
   bad: boolean; // 是否已到"缓冲后不足"(bad 覆盖 tight)
   notes: string[]; // 参与衔接的说明行(hover 浮窗)
 }
 
-function markTightPairs(ctx: GridCtx, date: string, cardEls: Map<string, HTMLElement>): void {
+function markTightPairs(
+  ctx: GridCtx,
+  date: string,
+  cardEls: Map<string, HTMLElement>,
+  talkEls?: Map<string, HTMLElement>
+): void {
   const picks: Screening[] = [];
   for (const e of ctx.plan.values()) {
     if (e.group !== ctx.group) continue;
@@ -287,7 +294,8 @@ function markTightPairs(ctx: GridCtx, date: string, cardEls: Map<string, HTMLEle
     const a = picks[i];
     const b = picks[i + 1];
     if (ctx.conflictCodes?.has(a.code) || ctx.conflictCodes?.has(b.code)) continue; // 冲突已由 conf 视觉覆盖
-    const endA = hmsToMin(a.end_time);
+    // GV 放弃映后谈 → 该场按正片末算有效结束,紧转场随之放宽
+    const endA = effEndMin(a, ctx.gvTalkOf?.(a.code) ?? true);
     const startB = hmsToMin(b.start_time);
     const gap = startB - endA;
     if (gap <= 0) continue; // 防御:重叠必已在冲突组
@@ -296,7 +304,8 @@ function markTightPairs(ctx: GridCtx, date: string, cardEls: Map<string, HTMLEle
     if (slack >= OK_SLACK) continue;
 
     const bad = slack < 0;
-    const note = `${a.code} ${a.end_time}结束 → ${b.code} ${b.start_time}开始 · 间隔 ${gap}min${
+    const endATxt = minToHms(endA);
+    const note = `${a.code} ${endATxt}结束${endATxt !== a.end_time ? "(已弃映后)" : ""} → ${b.code} ${b.start_time}开始 · 间隔 ${gap}min${
       need ? ` · 跨馆需缓冲 ${need}min` : ""
     } · 余量 ${slack}min(${bad ? "不足" : "偏紧"})`;
     for (const code of [a.code, b.code]) {
@@ -312,27 +321,42 @@ function markTightPairs(ctx: GridCtx, date: string, cardEls: Map<string, HTMLEle
   for (const [code, m] of marks) {
     const card = cardEls.get(code);
     if (!card) continue;
-    // 同卡若同时为 in-plan,把优先级色(~9%)再叠进 tight/bad 底色 → 红/琥珀/灰 在同色系内仍可区分
-    // (避免整卡底色压过优先级提示;同 in-plan 与紧转场两套交互叠用)
-    const pcCls = [...card.classList].find((c) => c === "p-must" || c === "p-maybe" || c === "p-wild");
-    const pcColor = pcCls === "p-must" ? "must" : pcCls === "p-maybe" ? "maybe" : pcCls === "p-wild" ? "wild" : null;
-    const base = m.bad ? BAD_BG : TIGHT_BG;
-    card.style.background = pcColor
-      ? `color-mix(in srgb, var(--color-${pcColor}) 9%, ${base})`
-      : base;
+    // 黄盖绿(时间紧张的已选卡整卡淡黄底,不叠优先级色 — 网格不再按优先级染色):
+    // in-plan 的 !important 绿底须用同等级 inline !important 才能压过 → setProperty(..., "important")
+    card.style.setProperty("background", TIGHT_BG, "important");
     card.dataset.tip =
-      (m.bad ? "转场不足 · 缓冲后赶不上" : "转场偏紧 · 间隔较紧") + "\n" + m.notes.join("\n");
+      (m.bad ? "时间紧张 · 转场不足(缓冲后赶不上)" : "时间紧张 · 衔接偏紧(余量 <15min)") +
+      "\n" +
+      m.notes.join("\n");
+    // GV 映后谈块:仍在参加谈后(有效结束=槽位末)才镜像同款紧张底色,保证"两张一起选中"的整体感
+    const talkEl = talkEls?.get(code);
+    if (talkEl && (ctx.gvTalkOf?.(code) ?? true)) {
+      talkEl.style.setProperty("background", TIGHT_BG, "important");
+      talkEl.dataset.tip = card.dataset.tip;
+    }
   }
 }
 
-function appendCard(tracks: HTMLElement, s: Screening, ctx: GridCtx, pxPerMin: number, axisStart: number): HTMLElement {
+/** GV 映后谈块上的两行小字时间区(谈段区间,如 15:45–16:10);块窄,字号再降一级 */
+function talkTimeRange(s: Screening): string {
+  return fmtMinRange(minToHms(filmEndMin(s)), s.end_time);
+}
+
+function appendCard(
+  tracks: HTMLElement,
+  s: Screening,
+  ctx: GridCtx,
+  pxPerMin: number,
+  axisStart: number
+): { card: HTMLElement; talkEl: HTMLElement | null } {
   const start = hmsToMin(s.start_time);
   const end = hmsToMin(s.end_time);
+  const talk = gvTalkMin(s); // GV 映后谈分钟(数据推导;0 = 不拆,普通整卡)
+  const talkOn = (ctx.gvTalkOf?.(s.code) ?? true) && talk > 0;
   const entry = ctx.plan.get(s.code);
   const isConflict = Boolean(ctx.conflictCodes?.has(s.code));
   const inCurrent = Boolean(entry && entry.group === ctx.group);
   const inOther = Boolean(entry && entry.group !== ctx.group);
-  const priority = entry?.priority;
 
   // 基底 + 选中 / 冲突 / 其他方案 等状态组合在构造时一次算完(JS 后续不需 toggle)
   const parts: string[] = ["group"];
@@ -340,25 +364,24 @@ function appendCard(tracks: HTMLElement, s: Screening, ctx: GridCtx, pxPerMin: n
     "absolute bg-card rounded-[5px] px-[7px] pb-1 pt-[5px] overflow-hidden cursor-pointer flex flex-col gap-px transition-[box-shadow,border-color] duration-[120ms] ease-in-out hover:shadow-[var(--shadow-hover)] hover:z-[2]"
   );
   if (isConflict) {
-    // 冲突:粗红描边 + 浅红斜纹底色;title 用红色
-    parts.push("border-2 border-conf bg-biff-tint");
-    parts.push(
-      "bg-[repeating-linear-gradient(-45deg,color-mix(in_srgb,var(--color-biff)_7%,transparent)_0_7px,transparent_7px_14px)]"
-    );
+    // 完全冲突(时间重叠,无法同看):红底 in-conf + 2px 红框,红标题 + ⚠;与绿/黄同一整卡底色语法
+    parts.push("border-2 border-conf in-conf");
   } else {
     parts.push("border border-line");
-    if (inCurrent && priority) parts.push(`in-plan ${PRI_PC[priority]}`);
+    if (inCurrent) parts.push("in-plan"); // 已选 = 绿底(优先级不参与网格染色 — 见行程行 seg)
     else if (inOther) parts.push("in-other");
   }
 
   const card = el("div", parts.join(" "));
   card.dataset.code = s.code;
+  // GV 拆分:主卡只画「正片段」(结束=正片末),谈段由右侧紧贴的 talk 块承接 → 视觉两张拼接
+  const cardEnd = talk > 0 ? filmEndMin(s) : end;
   card.style.left = `${(start - axisStart) * pxPerMin + 2}px`;
   card.style.top = "6px";
-  card.style.width = `${(end - start) * pxPerMin - 4}px`;
+  card.style.width = `${(cardEnd - start) * pxPerMin - 4}px`;
   card.style.height = `${ROW_H - 12}px`;
 
-  // 时间筛选:非选中小时段的场次淡化(hour-dim),保留上下文与 hover 可读
+  // 时间筛选:非选中小时段的场次淡化(hour-dim),保留上下文与 hover 可读(槽位整段含谈判定)
   if (ctx.hourFilter != null) {
     const inHour = start < (ctx.hourFilter + 1) * 60 && end > ctx.hourFilter * 60;
     if (!inHour) card.classList.add("hour-dim");
@@ -370,12 +393,10 @@ function appendCard(tracks: HTMLElement, s: Screening, ctx: GridCtx, pxPerMin: n
   const t1 = el("span", "flex items-center gap-[3px] text-[12px] text-muted whitespace-nowrap overflow-hidden pr-[20px]");
   const codeB = el("b", "shrink-0 text-ink text-[12px]", s.code);
   codeB.dataset.tip = codeTip(s.code);
-  const timeSpan = el(
-    "span",
-    "card-time shrink-0 text-[12px] font-semibold text-ink tabular-nums",
-    fmtMinRange(s.start_time, s.end_time)
-  );
-  timeSpan.dataset.full = fmtMinRange(s.start_time, s.end_time);
+  const filmEndTxt = minToHms(filmEndMin(s));
+  const cardRange = talk > 0 ? `${s.start_time}–${filmEndTxt}` : fmtMinRange(s.start_time, s.end_time);
+  const timeSpan = el("span", "card-time shrink-0 text-[12px] font-semibold text-ink tabular-nums", cardRange);
+  timeSpan.dataset.full = cardRange;
   timeSpan.dataset.short = s.start_time; // 降级备选:只显开始时刻
   t1.append(codeB, timeSpan);
   card.appendChild(t1);
@@ -417,7 +438,72 @@ function appendCard(tracks: HTMLElement, s: Screening, ctx: GridCtx, pxPerMin: n
   if (isConflict) card.appendChild(el("span", "absolute right-[22px] top-[2px] text-[11px] text-conf", "⚠"));
 
   tracks.appendChild(card);
-  return card;
+
+  // ---- GV 映后谈块(拼接卡右侧;talk=0 不创建)----
+  if (talk > 0) {
+    const talkEl = el("div");
+    talkEl.dataset.code = s.code; // 双向 hover 联动(与正片卡同高亮);点击经 [data-talk] 分支拦截
+    talkEl.dataset.talk = "1";
+    // 几何:紧贴正片卡右缘(无间隙拼接),右缘与整场槽位右缘对齐
+    const filmW = (filmEndMin(s) - start) * pxPerMin - 4;
+    talkEl.style.left = `${(start - axisStart) * pxPerMin + 2 + filmW}px`;
+    talkEl.style.top = "6px";
+    talkEl.style.width = `${talk * pxPerMin}px`;
+    talkEl.style.height = `${ROW_H - 12}px`;
+
+    // 状态外观:冲突沿用红(整场都在冲突区);已选且参加 → 同 in-plan 绿 = 两张一起选中;
+    // 放弃映后谈 → gv-talk-off 灰虚线淡出(块仍占槽位,只表示"我不参加")
+    const stateTokens: string[] = [];
+    if (isConflict) stateTokens.push("border-2 border-conf in-conf");
+    else if (inCurrent && talkOn) stateTokens.push("border border-line in-plan");
+    else if (inOther && talkOn) stateTokens.push("border border-line in-other");
+    else if (!talkOn) stateTokens.push("border border-dashed border-line gv-talk-off");
+    else stateTokens.push("border border-line");
+    talkEl.className =
+      "absolute overflow-hidden cursor-pointer select-none flex flex-col items-center justify-center gap-[1px] rounded-[5px] " +
+      stateTokens.join(" ");
+
+    // 谈段斜纹底(透明层,不抢父级背景色,优先级染色/紧张底色仍整块生效)
+    const hatch = el("span", "absolute inset-0 pointer-events-none rounded-[5px]");
+    hatch.style.backgroundImage =
+      "repeating-linear-gradient(-45deg, color-mix(in srgb, var(--color-ink) 6%, transparent) 0 5px, transparent 5px 10px)";
+    talkEl.appendChild(hatch);
+
+    const rng = el(
+      "span",
+      "relative text-[8.5px] tabular-nums leading-[1.2] whitespace-nowrap text-ink-2",
+      talkTimeRange(s)
+    );
+    const lab = el(
+      "span",
+      "relative text-[9px] font-bold whitespace-nowrap leading-[1.3] text-ink",
+      talkOn && inCurrent ? `✓ 映后 ${talk}′` : `映后 ${talk}′`
+    );
+    if (!talkOn) lab.classList.add("text-muted", "line-through");
+    talkEl.append(rng, lab);
+
+    talkEl.dataset.tip = talkTip(s, talk, talkOn, inCurrent);
+    // 时间筛选联动:与正片卡同一套 hour-dim(谈段同样淡化,状态语言一致)
+    if (ctx.hourFilter != null) {
+      const inHour = start < (ctx.hourFilter + 1) * 60 && end > ctx.hourFilter * 60;
+      if (!inHour) talkEl.classList.add("hour-dim");
+    }
+    tracks.appendChild(talkEl);
+    return { card, talkEl };
+  }
+
+  return { card, talkEl: null };
+}
+
+/** 映后谈块 hover 说明(按当前状态切换文案) */
+function talkTip(s: Screening, talk: number, talkOn: boolean, inCurrent: boolean): string {
+  const filmEnd = minToHms(filmEndMin(s));
+  const range = `${filmEnd}–${s.end_time} 映后谈 ${talk}min(GV 嘉宾到场)`;
+  if (!inCurrent)
+    return `${range}\n你还没加入本场:点正片 = 连映后谈一起加入;点这里 = 只看正片(放弃映后谈,该场按 ${filmEnd} 结束,转场/冲突即时放宽)`;
+  return talkOn
+    ? `${range}\n已在行程中(默认连映后谈一起选);点这里放弃 → 该场按 ${filmEnd} 结束,后续转场按正片末算`
+    : `${range}\n已放弃(仅正片,${filmEnd} 结束);点这里恢复参加 → 按 ${s.end_time} 结束`;
 }
 
 /**

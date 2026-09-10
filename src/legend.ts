@@ -122,7 +122,7 @@ export function pageChip(page: number): HTMLElement {
 /** 片长徽章:100'(仅供排片网格;行程/弹层已有片长文本) */
 export function durChip(min: number): HTMLElement {
   const node = el("i", `${CHIP_BASE} text-meta bg-transparent border-transparent px-[2px]`, `${min}'`);
-  node.dataset.tip = `片长 ${min} 分钟(正片时长;GV 映后已把 +25min 计入结束时间)`;
+  node.dataset.tip = `片长 ${min} 分钟(正片时长;GV 场另有映后谈,可在卡片/行程里单独放弃)`;
   return node;
 }
 
@@ -278,7 +278,7 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
   sec1.appendChild(demo);
   {
     const { tbl, tbody } = mkTable(["元素", "含义"]);
-    addRow(tbody, ["09:00–10:40", "放映时间(起–止,当地 KST);GV 映后场官方把结束时间已含 +25min"]);
+    addRow(tbody, ["09:00–10:40", "放映时间(起–止,KST)。GV 映后场的结束时间含映后谈(正片 + 映后 N′),该段在卡片上单独可弃:放弃后按正片结束算转场"]);
     addRow(tbody, ["004", "放映 CODE — 本场唯一场次编号;同片多场各异,对表 / 抢票以此为准"]);
     addRow(tbody, ["15", "观影等级 — 未满对应年龄不得入场(下节表)"]);
     addRow(tbody, ["KE", "字幕 / 对白标识(下节表);格内空白 = 未标注(英字 + 韩语对白)"]);
@@ -323,7 +323,7 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     });
     addRow(tbody, ["묶", "Batch Screening — 连场连续放映(官方偶用,显示即以此为义)"]);
     body.appendChild(tbl);
-    body.appendChild(note("GV 徽章为实心黑(默认);本工具里 GV 场次的结束时间已含 +25min 映后时长,冲突判定与 .ics 导出同口径。"));
+    body.appendChild(note("GV 徽章为实心黑(默认)。GV 场在网格里拆成「正片 + 映后谈」两张拼接卡:默认一起选中,点映后块或行程行开关可单独放弃(只选正片);放弃后该场按正片结束算转场/冲突/.ics 导出,该段仍留在时间轴上以虚线灰块示意「物理存在但我不参加」。"));
   }
 
   // ---- 5 影院与代码 ----
@@ -351,15 +351,14 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     body.appendChild(det);
   }
 
-  // ---- 6 网格图例(优先级 / 冲突 / 转场) ----
+  // ---- 6 网格图例(红绿灯底色:已选 / 时间紧张 / 完全冲突) ----
   body.appendChild(guideH("网格与行程图例"));
   {
     const lines: [string, string][] = [
-      ["必看 / 备选 / 随缘", "优先级:红 / 琥珀 / 灰 — 冲突时按序取舍,抢票顺位亦按此排"],
-      ["⚠ 同方案冲突", "同一方案(A 或 B)内两场时间重叠 — 卡片红框斜纹"],
-      ["▌紧转场(琥珀边)", "同方案相邻两场间隔偏紧(余量 <15min),两卡衔接侧描边"],
-      ["▌转场不足(红边)", "扣除跨馆缓冲后赶不上(余量 <0),衔接侧描边 + 行程内「需缓冲」"],
-      ["GV(实心黑标)", "Guest Visit 嘉宾映后(本工具已把结束时间含 +25min)"],
+      ["绿底 · 已选", "已加入当前方案(A/B)的场次 — 整卡淡绿底。优先级不染网格卡,请在下方行程行三段 seg 设置(红/琥珀/灰 = 必看/备选/随缘),冲突取舍与抢票顺位按此排"],
+      ["黄底 · 时间紧张", "同方案相邻两场衔接紧:间隔小于转场缓冲(转场不足)或余量 <15min(偏紧)— 两张卡整卡淡黄底,hover 卡片查看完整算式"],
+      ["红底 · 完全冲突", "同方案(A 或 B)内两场放映时间重叠,无法同时观看 — 整卡红底 + 红框 + ⚠;hover 联动高亮整个冲突组"],
+      ["GV(实心黑标)", "Guest Visit 嘉宾映后 — 默认连映后谈一起选(两张拼接卡同亮);可在映后块/行程单独放弃,放弃后按正片结束算转场"],
       ["豆 x.x", "豆瓣用户评分(满分 10 分,仅影片库 / 详情出现)"],
     ];
     const ul = el("ul", "grid gap-[3px]");

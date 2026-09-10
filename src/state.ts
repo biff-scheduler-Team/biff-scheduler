@@ -7,14 +7,46 @@ import { api } from "./api";
 const LS_PLAN = "biff.plan.v1";
 const LS_SETTINGS = "biff.settings.v1";
 const LS_WISH = "biff.wish.v1";
+const LS_GV_TALK = "biff.gvtalk.v1"; // GV 映后谈单场覆写(code → 是否参加);缺省跟随 Settings.gvTalkOn
 
 export const store = {
   plan: new Map<string, PlanEntry>(),
   mappings: new Map<string, Mapping>(),
   group: "A" as Group,
-  settings: { alarmMin: 45, transitMin: 0 } as Settings,
+  settings: { alarmMin: 45, transitMin: 0, gvTalkOn: true } as Settings,
   online: true,
 };
+
+/** GV 映后谈单场覆写:code → 参加(true)/放弃(false);无条目 = 跟随全局默认 */
+export const gvTalk = new Map<string, boolean>();
+
+export function loadGvTalk(): void {
+  try {
+    const raw = localStorage.getItem(LS_GV_TALK);
+    if (!raw) return;
+    for (const [k, v] of Object.entries(JSON.parse(raw) as Record<string, boolean>)) {
+      if (typeof v === "boolean") gvTalk.set(k, v);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+export function saveGvTalk(): void {
+  try {
+    localStorage.setItem(LS_GV_TALK, JSON.stringify(Object.fromEntries(gvTalk)));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 翻转某场映后谈:true=参加 / false=放弃 / null=清除覆写(回到跟随全局默认) */
+export function setGvTalk(code: string, on: boolean | null): void {
+  if (on === null) gvTalk.delete(code);
+  else gvTalk.set(code, on);
+  saveGvTalk();
+  notify();
+}
 
 /** M2.5「AI 排片」想看打标:影片节点 key(cat:<id> / sched:<片名>)→ 优先级;localStorage 持久 */
 export const wish = new Map<string, Priority>();

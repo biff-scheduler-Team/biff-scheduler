@@ -23,10 +23,11 @@
   --biff-red-tint-3: #fbecec;
   --biff-selection: #ffe1e3;
 
-  /* 状态与优先级 */
+  /* 状态与优先级(红绿灯:绿=已选 / 黄=时间紧张 / 红=冲突;must/maybe/wild 仅行程 seg 与顺位用) */
   --status-danger: var(--biff-red);
   --status-warning: #d97706;
   --status-ok: #2f9e44;
+  --status-tight: #e6a800; /* 紧转场黄(网格「时间紧张」整卡底色源色) */
   --status-wild: #8a8f98;
   --amber-soft: #f5c16a;
 
@@ -130,6 +131,7 @@
   --color-maybe: var(--status-warning);
   --color-wild: var(--status-wild);
   --color-ok: var(--status-ok);
+  --color-tight: var(--status-tight);
   --color-conf: var(--biff-red);
   --color-amber-soft: var(--amber-soft);
   --color-rate-all: var(--rate-all);
@@ -187,17 +189,16 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-biff) 35%, transparent);
 }
 
-/* 优先级变量(网格卡 / 行程 / 引擎共用) */
-@utility p-must  { --pc: var(--color-must); }
-@utility p-maybe { --pc: var(--color-maybe); }
-@utility p-wild  { --pc: var(--color-wild); }
-
-/* 选中态:整卡淡底色染优先级色(must/maybe/wild → 红/琥珀/灰),描边轻染同色;
-   与紧转场(bad/tight)整卡底色同一种交互语言,不再用左侧竖条或外晕标记。
-   !important 覆盖 Tailwind 在 .in-plan 之后生成的 .bg-card(同为类选择器、源序靠后)避免基础白底吃掉底色。 */
+/* 红绿灯整卡底色语言(网格卡,与冲突/紧转场同一套交互;优先级不在网格染色 — 见行程行 seg):
+   绿 = 已选入当前方案;黄 = 时间紧张(相邻衔接不足/偏紧);红 = 完全冲突(时间重叠)。
+   三者均为 @utility + !important 压 .bg-card(同为类选择器、Tailwind 生成的 .bg-card 源序靠后,避免基础白底吃掉底色)。 */
 @utility in-plan {
-  background: color-mix(in srgb, var(--pc, var(--color-card)) 14%, var(--color-card)) !important;
-  border-color: color-mix(in srgb, var(--pc, var(--color-line)) 55%, var(--color-card));
+  background: color-mix(in srgb, var(--color-ok) 14%, var(--color-card)) !important;
+  border-color: color-mix(in srgb, var(--color-ok) 45%, var(--color-card));
+}
+
+@utility in-conf {
+  background: color-mix(in srgb, var(--color-conf) 14%, var(--color-card)) !important;
 }
 
 /* 另一方案的选中(虚线 / 灰) */
@@ -207,6 +208,15 @@
   opacity: 0.9;
   background: var(--color-in-other);
 }
+
+/* 放弃映后谈的 GV 谈块:块仍占槽位(表示该段物理存在),灰虚线已由 grid 端内联类给出,
+   此处整体淡出 + 文字删除线已在块内 label 上处理 —— 语义 = "我在但不参加这段" */
+@utility gv-talk-off {
+  opacity: 0.5;
+}
+
+/* 映后谈块 hover 恢复清晰度(仍在谈与弃谈块同感) */
+#grid-scroll [data-talk]:hover { opacity: 1; }
 
 /* 反向定位:卡片闪烁高亮 */
 @utility flash {

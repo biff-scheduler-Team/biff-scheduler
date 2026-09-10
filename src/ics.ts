@@ -1,6 +1,7 @@
 // .ics 导出 — 一律 UTC(Z) 绝对时间 + 相对提醒;UID=code@biff-2026。
 
 import type { Catalog, Group, Mapping, PlanEntry, Screening } from "./types";
+import { effEndHms, gvTalkMin } from "./gv";
 import { esc } from "./util";
 
 const KST_OFFSET_MS = 9 * 3600 * 1000; // KST = UTC+9
@@ -30,7 +31,9 @@ export function buildIcs(
   cat: Catalog,
   entries: PlanEntry[],
   mappings: Map<string, Mapping>,
-  alarmMin: number
+  alarmMin: number,
+  /** 该场是否参加映后谈(调用方 = 全局默认 + 单场覆写解析后);talk=0 的场不受影响 */
+  talkOf: (code: string) => boolean
 ): string {
   const lines: string[] = [
     "BEGIN:VCALENDAR",
@@ -49,9 +52,15 @@ export function buildIcs(
     const gv = s.is_gv ? " (GV)" : "";
     const summary = `[${e.code}] ${title}${gv}`;
 
+    // 映后谈取舍:参加 → 结束=槽位末(官方 end_time 已含);放弃 → 结束=正片末
+    const talk = gvTalkMin(s);
+    const talkOn = talk > 0 ? talkOf(e.code) : true;
+    const endHms = effEndHms(s, talkOn);
+
     const desc: string[] = [];
     desc.push(`${s.title_en}${s.title_kr ? " / " + s.title_kr : ""}`);
-    desc.push(`时间(KST):${s.start_time}–${s.end_time} · ${s.duration_min}min${s.is_gv ? " · 含GV+25min" : ""}`);
+    const timeNote = talk > 0 ? (talkOn ? ` · 含映后 ${talk}min` : ` · 已放弃映后谈(仅正片)`) : "";
+    desc.push(`时间(KST):${s.start_time}–${endHms} · ${s.duration_min}min${timeNote}`);
     desc.push(`场馆:${s.venue_display}`);
     desc.push(`方案:${e.group} · ${PRIORITY_TAG[e.priority]}`);
     if (map?.douban_url) desc.push(`豆瓣:${map.douban_url}`);
@@ -61,7 +70,7 @@ export function buildIcs(
     lines.push(`UID:${e.code}@biff-2026`);
     lines.push(`DTSTAMP:${toUtcStamp(s.date, "00:00")}`);
     lines.push(`DTSTART:${toUtcStamp(s.date, s.start_time)}`);
-    lines.push(`DTEND:${toUtcStamp(s.date, s.end_time)}`);
+    lines.push(`DTEND:${toUtcStamp(s.date, endHms)}`);
     lines.push(fold(`SUMMARY:${esc(summary)}`));
     lines.push(fold(`LOCATION:${esc(s.venue_display)}`));
     lines.push(fold(`DESCRIPTION:${esc(desc.join("\\n"))}`));

@@ -2,17 +2,21 @@
 // 全量化:仅维护基础骨架(顶栏/面板/弹层根/Toast/底部),所有内部样式由 markup 端 Tailwind utility 表达。
 
 import type { Catalog, Group, PlanEntry, Priority, Screening } from "./types";
-import { dateInfo, el, hmsToMin, todayIsoLocal } from "./util";
+import { OK_SLACK, dateInfo, el, hmsToMin, todayIsoLocal } from "./util";
 import { loadCatalog } from "./data";
 import { computeConflicts, conflictGroupFor, type ConflictResult, type Slot } from "./conflict";
 import { buildIcs, downloadIcs, pickEntries } from "./ics";
+import { effEndHms, effEndMin, gvTalkMin, resolveTalk } from "./gv";
 import {
   clearPlan,
   flipGroup,
+  gvTalk,
+  loadGvTalk,
   loadSettings,
   loadWish,
   removeCode,
   setCurrentGroup,
+  setGvTalk,
   setPriority,
   setSettings,
   store,
@@ -45,17 +49,25 @@ function filmModalCtx() {
 }
 
 /* ---------------- 状态 -> 视图 ---------------- */
+
+/** GV 映后谈是否参加:单场覆写(gvTalk)优先,缺省跟随 Settings.gvTalkOn(默认含)。
+ *  talk=0(非 GV / 数据未含谈后)的场次无拆分无开关,调用方按需守卫。 */
+function gvTalkOf(code: string): boolean {
+  return resolveTalk(gvTalk.get(code), store.settings.gvTalkOn);
+}
+
 function computeConflictsForCurrentGroup(): Map<string, ConflictResult> {
   const slots: Slot[] = [];
   for (const e of store.plan.values()) {
     if (e.group !== store.group) continue;
     const s = cat.byCode.get(e.code);
     if (!s) continue;
+    // 有效结束:放弃映后谈 → 正片末(该场与后场冲突/需缓冲即刻按单卡重判)
     slots.push({
       code: e.code,
       date: s.date,
       start: hmsToMin(s.start_time),
-      end: hmsToMin(s.end_time),
+      end: effEndMin(s, gvTalkOf(e.code)),
       venue: s.venue_id,
     });
   }
@@ -79,7 +91,7 @@ function renderAll(): void {
 }
 
 /** 日期 chip 类名(idle / 选中 — 背景/边框色 走 IDLE/ON 各自完整串,避免同类叠加后写者赢) */
-const CHIP_DATE_BASE = "border rounded-full px-3 py-1 text-[13px] whitespace-nowrap hover:border-biff";
+const CHIP_DATE_BASE = "border rounded-[7px] px-3 py-1 text-[13px] whitespace-nowrap hover:border-biff";
 const CHIP_DATE_IDLE = `${CHIP_DATE_BASE} border-line bg-card text-ink`;
 const CHIP_DATE_ON = `${CHIP_DATE_BASE} border-biff bg-biff text-on-brand font-semibold`;
 
@@ -123,6 +135,7 @@ function renderGrid(): void {
       mappingOf: (c) => store.mappings.get(c),
       conflictCodes: conf?.codeSet,
       transitMin: store.settings.transitMin,
+      gvTalkOf,
       hourFilter,
     },
     currentDate
@@ -165,6 +178,7 @@ function renderAgenda(): void {
     group: store.group,
     mappings: store.mappings,
     transitMin: store.settings.transitMin,
+    gvTalkOf,
     conflicts,
     slotDate: currentDate, // C1:行程行同步网格整点筛选(命中高亮 / 未命中淡化)
     slotHour: hourFilter,
@@ -183,7 +197,8 @@ function renderAgenda(): void {
     if (s) rows.push({ priority: e.priority, screening: s });
   }
   if (rows.length) {
-    const sc = scorePlanRows(rows, store.settings.transitMin);
+    // 质量分同口径:上一场按有效结束算紧转场(GV 放弃映后谈 → 正片末,实时放宽)
+    const sc = scorePlanRows(rows, store.settings.transitMin, OK_SLACK, (s) => effEndMin(s, gvTalkOf(s.code)));
     const pill = el(
       "span",
       "inline-flex items-center ml-[6px] border border-line rounded-full bg-card px-[8px] leading-[1.7] text-[11.5px] font-extrabold tabular-nums text-ink-2 whitespace-nowrap cursor-default hover:border-biff hover:text-biff",
@@ -269,10 +284,25 @@ function bindEvents(): void {
       return;
     }
 
-    // 网格卡片:详情钮优先,其次整卡选中/取消
+    // 网格卡片:详情钮优先;其次 GV 映后谈块(拼接卡右侧,点它 = 只加正片 / 翻转让弃);
+    // 再其次整卡选中/取消
     const info = t.closest<HTMLElement>("[data-info]");
     if (info) {
       showFilmModal(info.dataset.info!, filmModalCtx());
+      return;
+    }
+    const talkHit = t.closest<HTMLElement>("#grid-scroll [data-talk]");
+    if (talkHit) {
+      const code = talkHit.dataset.code!;
+      const entry = store.plan.get(code);
+      if (entry && entry.group === store.group) {
+        // 已在当前方案:翻转含↔弃(覆写落 localStorage,不删场次、不动全局默认)
+        setGvTalk(code, !resolveTalk(gvTalk.get(code), store.settings.gvTalkOn));
+      } else {
+        // 未在当前方案(含在另一方案):一枪「只要正片」= 加入当前方案 + 覆写放弃映后谈
+        toggleCode(code);
+        setGvTalk(code, false);
+      }
       return;
     }
     const card = t.closest<HTMLElement>("#grid-scroll [data-code]");
@@ -281,7 +311,7 @@ function bindEvents(): void {
       return;
     }
 
-    // 行程行操作(§14 2c:优先级走三段 seg 直接定位;grp/del 原样)
+    // 行程行操作(§14 2c:优先级走三段 seg 直接定位;grp/del 原样;gv-talk 翻转本场映后谈)
     const act = t.closest<HTMLElement>("[data-act]");
     if (act) {
       const code = act.closest<HTMLElement>("[data-code]")?.dataset.code;
@@ -289,6 +319,7 @@ function bindEvents(): void {
       if (act.dataset.act === "pri") setPriority(code, act.dataset.pri as Priority);
       else if (act.dataset.act === "grp") flipGroup(code);
       else if (act.dataset.act === "del") removeCode(code);
+      else if (act.dataset.act === "gv-talk") setGvTalk(code, !resolveTalk(gvTalk.get(code), store.settings.gvTalkOn));
       return;
     }
 
@@ -343,7 +374,7 @@ function exportIcs(which: "A" | "B" | "ALL"): void {
     toast(which === "ALL" ? "还没有任何选片" : `${which} 方案还没有选片`);
     return;
   }
-  const ics = buildIcs(cat, entries, store.mappings, store.settings.alarmMin);
+  const ics = buildIcs(cat, entries, store.mappings, store.settings.alarmMin, gvTalkOf);
   downloadIcs(ics, `biff2026-${which.toLowerCase()}.ics`);
   toast(`已导出 ${entries.length} 场(${which === "ALL" ? "A+B" : which}),导入日历后按手机时区显示`);
 }
@@ -413,6 +444,28 @@ function openSettings(): void {
   transit.value = String(store.settings.transitMin);
   f2.row.appendChild(transit);
 
+  const f3 = settingsField(
+    "GV 场默认映后谈",
+    "仅对未单独设置的 GV 场生效:新加入时是否连映后谈一起选。放弃的场按正片结束算转场/冲突(可逐场在网格映后块或行程开关翻转)"
+  );
+  let gvDef = store.settings.gvTalkOn;
+  const segCls = (on: boolean): string =>
+    `border-0 px-[12px] py-[5px] text-[12.5px] font-bold transition-[background,color] duration-[120ms] ${
+      on === gvDef ? "bg-biff text-on-brand" : "bg-card text-muted hover:text-ink"
+    }`;
+  const seg = el("div", "inline-flex border border-line rounded-full overflow-hidden bg-card");
+  const mkGvOpt = (on: boolean, label: string): HTMLElement => {
+    const b = el("button", segCls(on), label);
+    b.addEventListener("click", () => {
+      gvDef = on;
+      seg.querySelectorAll<HTMLElement>("button").forEach((x) => (x.className = segCls(x.dataset.on === "1")));
+    });
+    b.dataset.on = on ? "1" : "0";
+    return b;
+  };
+  seg.append(mkGvOpt(true, "参加(含映后)"), mkGvOpt(false, "不参加(仅正片)"));
+  f3.row.appendChild(seg);
+
   const actions = el("div", "flex gap-[10px] mt-1");
   const apply = el(
     "button",
@@ -420,7 +473,7 @@ function openSettings(): void {
     "保存设置"
   );
   apply.addEventListener("click", () => {
-    setSettings({ alarmMin: clampNum(alarm.value, 45), transitMin: clampNum(transit.value, 0) });
+    setSettings({ alarmMin: clampNum(alarm.value, 45), transitMin: clampNum(transit.value, 0), gvTalkOn: gvDef });
     closeModal();
     toast("设置已保存");
   });
@@ -437,7 +490,7 @@ function openSettings(): void {
     }
   });
   actions.append(apply, danger);
-  body.append(f1.box, f2.box, actions);
+  body.append(f1.box, f2.box, f3.box, actions);
 
   openModal("设置", body);
 }
@@ -481,8 +534,14 @@ function copyPicklist(): void {
   rows.forEach(({ e, s }, i) => {
     const { label, weekday } = dateInfo(s.date);
     const title = s.title_zh || store.mappings.get(s.code)?.title_cn || s.title_en;
+    // 有效结束 + GV 标记:含映后 / 仅正片(放弃)两种标注,转场口径与网格/行程一致
+    const talk = gvTalkMin(s);
+    const talkOn = talk > 0 ? gvTalkOf(s.code) : true;
+    const endTxt = effEndHms(s, talkOn);
+    const gvMark =
+      talk > 0 ? (talkOn ? "(GV·含映后)" : "(GV·仅正片)") : s.is_gv ? "(GV)" : "";
     lines.push(
-      `${i + 1}. [${PRI_TAG[e.priority]}] ${s.code} ${title} ${label} ${weekday} ${s.start_time}–${s.end_time} ${s.venue_display}${s.is_gv ? "(GV)" : ""}`
+      `${i + 1}. [${PRI_TAG[e.priority]}] ${s.code} ${title} ${label} ${weekday} ${s.start_time}–${endTxt} ${s.venue_display}${gvMark}`
     );
   });
   void copyText(lines.join("\n")).then((ok) =>
@@ -577,6 +636,7 @@ function restoreLocalPlan(): void {
 
 async function boot(): Promise<void> {
   loadSettings();
+  loadGvTalk();
   loadWish();
   restoreLocalPlan();
   cat = await loadCatalog();
