@@ -282,7 +282,7 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     addRow(tbody, ["004", "放映 CODE — 本场唯一场次编号;同片多场各异,对表 / 抢票以此为准"]);
     addRow(tbody, ["15", "观影等级 — 未满对应年龄不得入场(下节表)"]);
     addRow(tbody, ["KE", "字幕 / 对白标识(下节表);格内空白 = 未标注(英字 + 韩语对白)"]);
-    addRow(tbody, ["GV", "Guest Visit — 嘉宾到场映后交流;官方提示可能临时变动"]);
+    addRow(tbody, [badgeEl("gv"), "Guest Visit — 嘉宾到场映后交流;官方提示可能临时变动"]);
     addRow(tbody, ["100'", "正片时长(分钟)"]);
     addRow(tbody, ["P.167", "官方节目册 Ticket Catalogue 页码 — 翻册找该场信息 / 票务说明"]);
     addRow(tbody, ["片名", "官方排期表原样:英文片名 + 韩文片名(本工具额外附中文名)"]);
@@ -354,16 +354,22 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
   // ---- 6 网格图例(红绿灯底色:已选 / 时间紧张 / 完全冲突) ----
   body.appendChild(guideH("网格与行程图例"));
   {
-    const lines: [string, string][] = [
+    // 标签位支持真徽章节点:GV 是「场次特性徽章」而非状态色 → 用卡面同款图标呈现,不写成文字
+    const gvKey = el("span", "inline-flex align-[-1px]");
+    gvKey.appendChild(badgeEl("gv"));
+    const lines: [string | HTMLElement, string][] = [
       ["绿底 · 已选", "已加入当前方案(A/B)的场次 — 整卡淡绿底。优先级不染网格卡,请在下方行程行三段 seg 设置(红/琥珀/灰 = 必看/备选/随缘),冲突取舍与抢票顺位按此排"],
       ["黄底 · 时间紧张", "同方案相邻两场衔接紧:间隔小于转场缓冲(转场不足)或余量 <15min(偏紧)— 两张卡整卡淡黄底,hover 卡片查看完整算式"],
       ["红底 · 完全冲突", "同方案(A 或 B)内两场放映时间重叠,无法同时观看 — 整卡红底 + 红框 + ⚠;hover 联动高亮整个冲突组"],
-      ["GV(实心黑标)", "Guest Visit 嘉宾映后 — 默认连映后谈一起选(两张拼接卡同亮);可在映后块/行程单独放弃,放弃后按正片结束算转场"],
+      [gvKey, "GV 映后 — Guest Visit 嘉宾映后;默认连映后谈一起选(两张拼接卡同亮),可在映后块/行程单独放弃,放弃后按正片结束算转场"],
       ["豆 x.x", "豆瓣用户评分(满分 10 分,仅影片库 / 详情出现)"],
     ];
     const ul = el("ul", "grid gap-[3px]");
     lines.forEach(([k, v]) => {
-      ul.appendChild(el("li", "text-[12.5px] leading-[1.6]", `${k} — ${v}`));
+      const li = el("li", "text-[12.5px] leading-[1.6]");
+      if (typeof k === "string") li.textContent = `${k} — ${v}`;
+      else li.append(k, document.createTextNode(` — ${v}`));
+      ul.appendChild(li);
     });
     body.appendChild(ul);
   }
