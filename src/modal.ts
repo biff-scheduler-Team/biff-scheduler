@@ -115,12 +115,15 @@ interface FilmModalCtx {
   toggle: (key: string, code: string) => void;
 }
 
-/** 行内主操作按钮的三态(文案 + 完整类名)—— 初渲与「点击后就地重绘」共用的唯一来源。
+/** 行内主操作按钮的三态(文案 + 完整类名 + 悬停说明)—— 初渲与「点击后就地重绘」共用的唯一来源。
  *  ⚠ 状态必须走 slotOf() 实时查询,不能缓存开弹层那一刻的 Map:commit() 里 rebuildIndex() 是
  *  `store.slotIndex = idx`(整体换新 Map),持有旧引用会读到点选前的快照 → 连重绘都会画错。
- *  三态:未加入 = 红渐变主按钮;已加入当前方案 = 绿(与网格「已选」同一套语言)且 hover 转红
- *  (= 「点了就是移除」的意图预告);已在另一组 = 中性白底,hover 转红。 */
-function actState(code: string, group: string): { label: string; cls: string } {
+ *  三态:未加入 = 红渐变主按钮;已加入当前方案 = `act-on`(浅绿底 + 绿边 + 绿字,与网格「已选」
+ *  同一套绿)且 hover 转红(= 「点了就是移除」的意图预告);已在另一组 = 中性白底,hover 转红。
+ *  ⚠ 文案必须与 toggleScreening() 的真实语义一致:一场只属于一个方案,点「已在 B 组」的按钮
+ *  是**移出**(不是搬运)—— 重绘修好之后按钮会当场翻成「加入 A 方案」,再点一次才是改入,
+ *  所以不能写成「改入 A」(写了两步的事就变成一步的承诺)。 */
+function actState(code: string, group: string): { label: string; cls: string; tip: string } {
   const base =
     "border rounded-[6px] px-[10px] py-1 text-[12px] font-bold whitespace-nowrap " +
     "transition-[background-color,border-color,color,filter] duration-[120ms] active:translate-y-px ";
@@ -128,16 +131,15 @@ function actState(code: string, group: string): { label: string; cls: string } {
   if (hit?.group === group) {
     return {
       label: "已加入 · 点击移除",
-      cls:
-        base +
-        "border-ok bg-[color-mix(in_srgb,var(--color-ok)_12%,var(--color-card))] text-ok " +
-        "hover:border-biff hover:bg-biff-soft hover:text-biff",
+      cls: base + "act-on",
+      tip: `该场已在 ${group} 方案 — 点击移出(影片的选片意向 / 档位不受影响)`,
     };
   }
   if (hit) {
     return {
-      label: `已在 ${hit.group} 组 · 改入 ${group}`,
+      label: `已在 ${hit.group} 组 · 点击移出`,
       cls: base + "border-line bg-card text-ink-2 hover:border-biff hover:text-biff",
+      tip: `该场在 ${hit.group} 方案 — 一场只能属于一个方案:点击先移出,按钮会翻成「加入 ${group} 方案」,再点一次即改入 ${group}`,
     };
   }
   return {
@@ -145,6 +147,7 @@ function actState(code: string, group: string): { label: string; cls: string } {
     cls:
       base +
       "border-0 text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-110",
+    tip: `把该场加入当前 ${group} 方案`,
   };
 }
 
@@ -262,6 +265,7 @@ export function showFilmModal(code: string, ctx: FilmModalCtx): void {
       const st = actState(a.code, ctx.group);
       a.btn.textContent = st.label;
       a.btn.className = st.cls;
+      a.btn.title = st.tip;
     }
   };
   paintRows();

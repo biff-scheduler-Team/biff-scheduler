@@ -35,6 +35,10 @@
   --pri-must: #1d4ed8;
   --pri-maybe: #7e22ce;
   --pri-wild: #64748b;
+  /* 档位 Tag 浅底(统一微圆角标签:浅底 + 同族深字,见 pick.ts 的 PRI_TAG) */
+  --pri-must-soft: #e9eefc;
+  --pri-maybe-soft: #f4eafc;
+  --pri-wild-soft: #eef1f5;
 
   /* 观影等级(2025 Schedule Guide 图例色系:ALL 绿 / 12 橙 / 15 红 / 19 深红) */
   --rate-all: #1e7b34;
@@ -138,6 +142,9 @@
   --color-pri-must: var(--pri-must);
   --color-pri-maybe: var(--pri-maybe);
   --color-pri-wild: var(--pri-wild);
+  --color-pri-must-soft: var(--pri-must-soft);
+  --color-pri-maybe-soft: var(--pri-maybe-soft);
+  --color-pri-wild-soft: var(--pri-wild-soft);
   --color-ok: var(--status-ok);
   --color-tight: var(--status-tight);
   --color-conf: var(--biff-red);
@@ -221,6 +228,20 @@
   border-color: var(--color-line);
   opacity: 0.9;
   background: var(--color-in-other);
+}
+
+/* 详情弹层「场次行主操作按钮」的**已加入当前方案**态(actState() 运行时切换,故走 @utility):
+   浅绿底 + 绿边 + 绿字 —— 与网格「已选」同一套绿(见 in-plan),一眼看出「这场已在方案里」;
+   hover 转红 = 「点了就是移除」的意图预告(否则 hover 只是 opacity 微变,用户以为按钮没反应)。 */
+@utility act-on {
+  border-color: color-mix(in srgb, var(--color-ok) 45%, var(--color-card));
+  background: color-mix(in srgb, var(--color-ok) 12%, var(--color-card));
+  color: var(--color-ok);
+  &:hover {
+    border-color: var(--color-biff);
+    background: var(--color-biff-soft);
+    color: var(--color-biff);
+  }
 }
 
 /* 放弃映后谈的 GV 谈块:块仍占槽位(表示该段物理存在),灰虚线已由 grid 端内联类给出,
