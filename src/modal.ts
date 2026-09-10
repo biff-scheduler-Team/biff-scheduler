@@ -142,25 +142,25 @@ interface FilmModalCtx {
  *  因为那才是「不在你当前方案里」这条信息本身。 */
 export function actState(code: string, group: string): { label: string; cls: string; tip: string } {
   const base =
-    "border rounded-[6px] px-[10px] py-1 text-[12px] font-bold whitespace-nowrap " +
+    "border rounded-[6px] px-[9px] py-[3px] text-[11.5px] font-bold whitespace-nowrap " +
     "transition-[background-color,border-color,color,filter] duration-[120ms] active:translate-y-px ";
   const hit = slotOf(code);
   if (hit?.group === group) {
     return {
-      label: "已加入 · 点击移除",
+      label: "✓ 已加入",
       cls: base + "act-on",
       tip: "该场已在当前方案 — 点击移出(影片的选片意向 / 档位不受影响)",
     };
   }
   if (hit) {
     return {
-      label: `已在 ${hit.group} 方案 · 点击移出`,
+      label: `⇄ 已在 ${hit.group}`,
       cls: base + "border-line bg-card text-ink-2 hover:border-biff hover:text-biff",
-      tip: `该场在 ${hit.group} 方案(不是当前方案)— 一场只能属于一个方案:点击先移出,按钮会翻成「加入」,再点一次即改入当前方案`,
+      tip: `该场在 ${hit.group} 方案(不是当前方案)— 一场只能属于一个方案:点击先移出,按钮会翻成「＋ 加入」,再点一次即改入当前方案`,
     };
   }
   return {
-    label: "加入",
+    label: "＋ 加入",
     cls:
       base +
       "border-0 text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-110",

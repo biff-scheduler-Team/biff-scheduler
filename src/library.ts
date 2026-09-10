@@ -7,7 +7,7 @@ import { dateInfo, el, filmNodeKey, fmtMinRange } from "./util";
 import { codeTip } from "./badges";
 import { appendMetaRow, doubanChip, venueShort, venueTip } from "./legend";
 import { actState, closeModal, openModal } from "./modal";
-import { WISH_ORDER, buildWishSeg, priTag } from "./pick";
+import { WISH_ORDER, priTag, wishBadge } from "./pick";
 import { addGroupPicks, codesOfGroup, removePick, setCurrentGroup, setWish, store } from "./state";
 // 智能排片 = **AI 单通道**(本地确定性求解引擎已于 2026-09-10 整体下线,见 PLAN-20260910143516)。
 // 这里只取「影片 wish + 场次」的入参类型(EngineFilm,名字沿用)与质量分模块无关。
@@ -132,6 +132,11 @@ function chipRow(label: string, chips: HTMLElement): HTMLElement {
   row.appendChild(chips);
   return row;
 }
+
+/** 日期导航栏的「上一天 / 下一天」步进钮(走到头即禁用) */
+const NAV_BTN =
+  "shrink-0 border border-line bg-card rounded-[6px] px-[7px] py-[2px] text-[13px] font-bold text-ink-2 " +
+  "hover:border-line-strong hover:text-ink disabled:opacity-35 disabled:cursor-not-allowed";
 
 /** 场次按日期切段(入参已按 日期 → 开始时间 排好,相邻归并即可)—— 「我的选片」右栏的日期分节用。
  *  ⚠ 与文件后半的 `groupByDate()`(AI 结果卡,吃 `AiPlanPick[]`)同名不同物,故另起名。 */
@@ -307,9 +312,19 @@ export function openFilmPicker(ctx: LibraryCtx): void {
   pickHead.appendChild(el("span", "text-[13px] font-bold whitespace-nowrap", "我的选片"));
   const pickStat = el("div", "text-[12px] text-muted flex-1 min-w-0");
   pickHead.appendChild(pickStat);
-  // 右栏两排筛选:日期(有已排场次的每一天)+ 档位(必看/备选/随缘/未设)
+  // 右栏两排筛选:**日期导航栏**(‹ / › 逐日步进 + 各天 chip)+ 档位(必看/备选/随缘/未设)
   const pickDateChips = el("div", "flex flex-wrap gap-[6px] min-w-0 flex-1");
-  const pickDateRow = chipRow("日期", pickDateChips);
+  const pickDatePrev = el("button", NAV_BTN, "‹");
+  const pickDateNext = el("button", NAV_BTN, "›");
+  const pickDateRow = el("div", "flex items-start gap-[6px]");
+  pickDateRow.append(
+    el("span", "text-[11px] text-faint font-semibold shrink-0 pt-[4px]", "日期"),
+    pickDatePrev,
+    pickDateChips,
+    pickDateNext
+  );
+  /** 日期导航的位置序列([全部] → 各天,升序);paintPick 里刷新,‹ / › 步进用 */
+  let navDates: string[] = [];
   const pickChips = el("div", "flex flex-wrap gap-[6px] min-w-0 flex-1");
   const pickChipsRow = chipRow("档位", pickChips);
   const pickList = el("div", "grid gap-2 content-start max-h-[min(58vh,520px)] overflow-y-auto pt-[2px] px-[2px] pb-1");
@@ -370,17 +385,18 @@ export function openFilmPicker(ctx: LibraryCtx): void {
     head.appendChild(titles);
 
     const ops = el("div", "flex flex-wrap gap-[6px] items-center justify-end row-gap-1");
-    // ① 档位三选(必看/备选/随缘;再点同档取消)—— 两栏同款,「我的选片」不再用只读档位章
+    // ① 档位徽章(**单枚**控件,点击弹 必看/备选/随缘/清除)—— 取代原来的三段平铺,
+    //    一行只剩一个控件(见 pick.ts::wishBadge);两栏同款,右栏因此也只剩「颜色标签 + 移除」
     ops.appendChild(
-      buildWishSeg({
-        cur: rec?.priority ?? undefined,
+      wishBadge({
+        cur: rec?.priority ?? null,
+        anchor: n.key,
         onPick: (p) => {
           setWish(n.key, p);
           // 新打标的片在右栏**默认展开**(与右栏初始态一致:选片就要看到它的已排场次)
           if (p) expPick.add(n.key);
           render();
         },
-        size: "sm",
         tipPrefix: mode === "picks" ? "我的选片 · " : undefined,
       })
     );
@@ -400,15 +416,17 @@ export function openFilmPicker(ctx: LibraryCtx): void {
         el("span", "text-[11px] font-bold text-tight border border-dashed border-tight rounded-full px-2 py-px whitespace-nowrap", "未排场")
       );
     }
-    // ④ 资料 ⓘ(有排期 → 首场 code;纯目录片 → f### 目录片弹层,可先关联豆瓣)
+    // ④ 资料(图标化 —— 长文案按钮挤占行宽,含义由 tooltip 兜住)
     if (n.shows.length || cat0) {
       const detail = el(
         "button",
-        "border rounded-[6px] px-[10px] py-1 text-[12px] font-bold bg-card text-ink border-line hover:opacity-90",
-        "资料 ⓘ"
+        "border rounded-[6px] px-[7px] py-[3px] text-[12px] font-bold bg-card text-ink border-line hover:opacity-90",
+        "ⓘ"
       );
       detail.dataset.libDetail = n.shows[0]?.code ?? cat0!.id;
-      if (!n.shows.length) detail.dataset.tip = "暂无排期 — 可先关联豆瓣(点开查条目/粘贴链接回填)";
+      detail.dataset.tip = n.shows.length
+        ? "影片资料 + 豆瓣条目"
+        : "暂无排期 — 可先关联豆瓣(点开查条目/粘贴链接回填)";
       ops.appendChild(detail);
     }
     // ⑤ 无排期但有豆瓣关联 → 直链
@@ -424,16 +442,16 @@ export function openFilmPicker(ctx: LibraryCtx): void {
         ops.appendChild(a);
       }
     }
-    // ⑥ 整片移除 —— 仅「我的选片」栏(库栏没有「移除」语义)
+    // ⑥ 整片移除 —— 仅「我的选片」栏(库栏没有「移除」语义)。图标化:场次数已由左侧徽章给出
     if (mode === "picks") {
       const un = el(
         "button",
-        "border rounded-[6px] px-[10px] py-1 text-[12px] font-bold bg-card text-muted border-line hover:text-ink hover:opacity-90",
-        picked ? `✕ 移除(${picked} 场)` : "✕ 取消选片"
+        "border rounded-[6px] px-[7px] py-[3px] text-[12px] font-bold bg-card text-muted border-line hover:text-ink hover:opacity-90",
+        "✕"
       );
       un.dataset.pickRemove = n.key;
       un.dataset.tip = picked
-        ? `从选片清单移除该片,连同已排的 ${picked} 场一起删掉(「我的行程」里也会消失)`
+        ? `整片移除 —— 连同已排的 ${picked} 场一起删掉(「我的行程」里也会消失)`
         : "从「我的选片」移除(该片没有已排场次)";
       ops.appendChild(un);
     }
@@ -621,10 +639,16 @@ export function openFilmPicker(ctx: LibraryCtx): void {
         } · 已排 ${slots} 场`
       : "还没有任何选片";
 
-    // 日期筛选 chips(全部 + 有已排场次的每一天)。只有 1 天时不渲染 —— 只有一个选项的筛选没有意义
+    // 日期导航栏(「全部」+ 有已排场次的每一天)。只有 1 天时不渲染 —— 只有一个选项的筛选没有意义
     const dates = [...dateCount.keys()].sort();
     if (dateFilter && !dateCount.has(dateFilter)) dateFilter = null; // 该天的场次被删光了 → 自动回到「全部」
+    navDates = dates;
     pickDateRow.classList.toggle("is-hidden", dates.length <= 1);
+    const navPos = dateFilter === null ? 0 : dates.indexOf(dateFilter) + 1; // 0 = 「全部」那一格
+    pickDatePrev.disabled = navPos <= 0;
+    pickDateNext.disabled = navPos >= dates.length;
+    pickDatePrev.dataset.tip = "上一天";
+    pickDateNext.dataset.tip = "下一天";
     pickDateChips.innerHTML = "";
     if (dates.length > 1) {
       const all = el("button", dateFilter === null ? CHIP_UNIT_ON : CHIP_UNIT_IDLE, `全部 ${dates.length} 天`);
@@ -722,6 +746,17 @@ export function openFilmPicker(ctx: LibraryCtx): void {
     dateFilter = d === "" || dateFilter === d ? null : d; // 再点当前天 / 点「全部」= 取消
     render();
   });
+
+  /** 日期导航步进:位置序列 = [全部, d1, d2, …],走到头不动(按钮同时 disabled) */
+  const stepDate = (delta: number): void => {
+    const pos = dateFilter === null ? 0 : navDates.indexOf(dateFilter) + 1;
+    const next = pos + delta;
+    if (next < 0 || next > navDates.length) return;
+    dateFilter = next === 0 ? null : navDates[next - 1];
+    render();
+  };
+  pickDatePrev.addEventListener("click", () => stepDate(-1));
+  pickDateNext.addEventListener("click", () => stepDate(1));
 
   // 两栏共用**一套**委托(行是同一份 filmRow 构造出来的,锚点属性因此也是同一套)
   body.addEventListener("click", (ev) => {

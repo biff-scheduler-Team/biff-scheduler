@@ -97,3 +97,117 @@ export function buildWishSeg(o: WishSegOpts): HTMLElement {
   });
   return seg;
 }
+
+/* ---------- 档位徽章(单枚控件 + 点击弹出小菜单) ----------
+ * 2026-09-10 加(见 PLAN-20260910171800):「必看/备选/随缘」三段平铺在**一行里出现两次**
+ * (左栏影片行 + 右栏选片行),视觉上是一整排重复按钮。改成**一枚徽章**:常态只显示当前档位
+ * (就是用户要的「颜色标签」),点击才弹出三档 + 清除。
+ * ⚠ 菜单必须 `position: fixed`:两个列表容器都是 `overflow-y-auto`,绝对定位的弹层会被裁掉。
+ * ⚠ 菜单挂在 `document.body`(不在 `#modal-root` 内),故必须自己处理「点外面 / 滚动 → 关」。 */
+
+let wishMenuEl: HTMLElement | null = null;
+let wishMenuBound = false;
+
+function closeWishMenu(): void {
+  wishMenuEl?.remove();
+  wishMenuEl = null;
+}
+
+/** 文档级一次性监听:点菜单外 / 任意滚动 → 收起。
+ *  故意**不**接 Esc —— modal.ts 的 Esc 是模块级单监听且注册更早,这里抢不到,接了反而会连弹层一起关。 */
+function bindWishMenuOnce(): void {
+  if (wishMenuBound) return;
+  wishMenuBound = true;
+  document.addEventListener(
+    "pointerdown",
+    (ev) => {
+      if (!wishMenuEl) return;
+      if ((ev.target as HTMLElement | null)?.closest?.("[data-wish-menu]")) return;
+      closeWishMenu();
+    },
+    true
+  );
+  document.addEventListener("scroll", closeWishMenu, true);
+}
+
+function openWishMenu(anchor: HTMLElement, cur: Priority | null, onPick: (p: Priority | null) => void): void {
+  bindWishMenuOnce();
+  if (wishMenuEl) {
+    const same = wishMenuEl.dataset.wishMenu === anchor.dataset.wishAnchor;
+    closeWishMenu();
+    if (same) return; // 再点同一枚徽章 = 收起
+  }
+  const menu = el(
+    "div",
+    "fixed z-[250] bg-card border border-line rounded-[9px] shadow-[var(--shadow-modal)] p-[4px] min-w-[112px] grid gap-px"
+  );
+  menu.dataset.wishMenu = anchor.dataset.wishAnchor ?? "";
+  const opts: [Priority | null, string][] = [
+    ...WISH_ORDER.map(([p, label]) => [p, label] as [Priority | null, string]),
+    [null, "清除档位"],
+  ];
+  for (const [p, label] of opts) {
+    const on = cur === p;
+    const b = el(
+      "button",
+      `w-full text-left border-0 rounded-[6px] px-[9px] py-[5px] text-[12px] font-semibold whitespace-nowrap ${
+        on ? "bg-raised text-ink" : "bg-transparent text-ink-2 hover:bg-[var(--bg-hover-soft)]"
+      }`,
+      `${on ? "✓ " : ""}${label}`
+    );
+    b.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      closeWishMenu();
+      onPick(p);
+    });
+    menu.appendChild(b);
+  }
+  document.body.appendChild(menu);
+
+  // 定位:默认贴徽章下方右对齐;下方放不下翻到上方;两侧各留 8px
+  const r = anchor.getBoundingClientRect();
+  const w = menu.offsetWidth;
+  const h = menu.offsetHeight;
+  const left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8));
+  let top = r.bottom + 6;
+  if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  wishMenuEl = menu;
+}
+
+export interface WishBadgeOpts {
+  /** 当前档位;null / undefined = 未设 */
+  cur: Priority | null | undefined;
+  /** 选中某档 / 清除档位(null) */
+  onPick: (next: Priority | null) => void;
+  /** title 前缀(如「我的选片 · 」) */
+  tipPrefix?: string;
+  /** 稳定锚点(菜单回关判定用),一般传影片 key */
+  anchor?: string;
+  extraCls?: string;
+}
+
+/** 档位徽章 —— 常态只显示**当前档位**(= 用户要的那枚「颜色标签」),点击弹 必看/备选/随缘/清除。
+ *  一行一个控件,取代原来的三段平铺。 */
+export function wishBadge(o: WishBadgeOpts): HTMLElement {
+  const cur = o.cur ?? null;
+  const b = el(
+    "button",
+    "inline-flex items-center gap-[5px] shrink-0 border rounded-[6px] px-[8px] py-px text-[10.5px] font-bold leading-[1.7] whitespace-nowrap transition-[border-color,background-color,color] duration-[120ms] " +
+      (cur
+        ? `border-line ${PRI_TAG[cur]}`
+        : "border-dashed border-line bg-card text-muted hover:border-line-strong hover:text-ink") +
+      (o.extraCls ? " " + o.extraCls : "")
+  );
+  b.dataset.wishAnchor = o.anchor ?? o.tipPrefix ?? "wish";
+  if (cur) b.appendChild(el("span", `w-[6px] h-[6px] rounded-full shrink-0 ${PRI_DOT_BG[cur]}`, ""));
+  b.appendChild(el("span", "", cur ? PRI_LABEL[cur] : "+ 标记"));
+  b.appendChild(el("span", "text-[8px] opacity-70", "▾"));
+  b.dataset.tip = `${o.tipPrefix ?? ""}档位「${cur ? PRI_LABEL[cur] : "未设"}」— 点击选 必看 / 备选 / 随缘,或清除档位`;
+  b.addEventListener("click", (ev) => {
+    ev.stopPropagation(); // 常嵌在可点容器内(影片行头),避免顺带展开 / 折叠
+    openWishMenu(b, cur, o.onPick);
+  });
+  return b;
+}
