@@ -2,11 +2,12 @@
 // 全量化:overlay / modal / 详情弹层结构 全部 Tailwind utility。
 
 import type { Catalog, Mapping, PlanEntry, Screening } from "./types";
-import { dateInfo, el, fmtMinRange } from "./util";
+import { dateInfo, el, filmNodeKey, fmtMinRange } from "./util";
 import { DOUBAN_CHIP_TITLE } from "./badges";
 import { appendMetaRow } from "./legend";
 import { api } from "./api";
-import { store } from "./state";
+import { setWish, store, wish } from "./state";
+import { buildWishSeg } from "./pick";
 
 /* ---------- 通用容器 ---------- */
 let dismissCurrent: (() => void) | undefined;
@@ -69,6 +70,33 @@ export function filmKey(s: Screening): string {
   return (s.title_zh || s.title_en).toLowerCase().trim();
 }
 
+/** 「我的选片」打标行(详情弹层内直接打标)—— key 走 filmNodeKey 单一口径,与影片库/甘特色点同源 */
+function buildWishRow(key: string): HTMLElement {
+  const row = el("div", "flex items-center gap-[10px] flex-wrap mb-[14px] border-t border-line pt-3");
+  row.appendChild(el("span", "text-[13px] font-bold whitespace-nowrap", "我的选片"));
+  const slot = el("div", "inline-flex");
+  const draw = (): void => {
+    slot.innerHTML = "";
+    slot.appendChild(
+      buildWishSeg({
+        cur: wish.get(key),
+        onPick: (p) => {
+          setWish(key, p);
+          draw(); // 弹层不在 renderAll 重建范围内 → 就地重画 seg 反映当前档
+        },
+        size: "md",
+        tipPrefix: "我的选片 · ",
+      })
+    );
+  };
+  draw();
+  row.appendChild(slot);
+  row.appendChild(
+    el("span", "text-[12px] text-muted", "打标后可在顶栏「我的选片」总览;甘特图对应场次标题前显示档位色点")
+  );
+  return row;
+}
+
 /** 该片全部场次(跨日期/跨影院),按日期时间排序 */
 export function siblingCodes(cat: Catalog, code: string): Screening[] {
   const anchor = cat.byCode.get(code);
@@ -111,6 +139,9 @@ export function showFilmModal(code: string, ctx: FilmModalCtx): void {
     meta.appendChild(rc);
   }
   body.appendChild(meta);
+
+  // ---- 我的选片(打标:必看/备选/随缘)----
+  body.appendChild(buildWishRow(filmNodeKey(ctx.cat, anchor)));
 
   // ---- 同片全部场次 ----
   const list = el("div", "grid gap-[6px] mb-[14px]");
@@ -204,6 +235,9 @@ export function showCatalogFilmModal(
     meta.appendChild(rc);
   }
   body.appendChild(meta);
+
+  // ---- 我的选片(目录片 key = cat:<id>,与排期后同片打标同源)----
+  body.appendChild(buildWishRow(`cat:${film.id}`));
 
   body.appendChild(
     el(

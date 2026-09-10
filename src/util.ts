@@ -1,5 +1,7 @@
 // 通用工具:DOM 辅助 / 时间换算 / 格式化
 
+import type { Catalog, Screening } from "./types";
+
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   cls?: string,
@@ -61,4 +63,17 @@ export function esc(s: string): string {
 
 export function escapeHtml(s: string): string {
   return esc(s);
+}
+
+/** 影片节点 key —— 全站单一来源(影片库节点合并 / 智能排片 / 选片总览 / 甘特打标共用)。
+ *  口径与影片库 catFor 完全一致:①目录中文名(无中文名则原始片名)精确命中 → `cat:<目录 id>`;
+ *  ②原始片名 == 排期英文名 → `cat:<id>`;③都不命中(纯排期片)→ `sched:<中文名|英文名 小写>`。
+ *  守卫:title_zh 缺失时不做空值相等匹配(否则会与「两个片名都为空」的目录条目假命中);两片名皆缺则退回 code。 */
+export function filmNodeKey(cat: Catalog, s: Screening): string {
+  const zh = s.title_zh;
+  const hit =
+    (zh ? cat.films.find((f) => (f.title_zh || f.title_orig) === zh) : undefined) ??
+    (s.title_en ? cat.films.find((f) => f.title_orig === s.title_en) : undefined);
+  if (hit) return `cat:${hit.id}`;
+  return `sched:${(s.title_zh || s.title_en || s.code).toLowerCase().trim()}`;
 }

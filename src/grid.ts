@@ -1,12 +1,13 @@
 // 选片网格 — 自研 CSS 网格:行=影厅,列=当日时间轴;卡片绝对定位。
 // 全量化:网格 / 卡片 / 标签 / 时间标尺 / 转场紧底色提示 / ⓘ / 冲突旗 / 其他旗 全部 Tailwind utility。
 
-import type { Catalog, Group, Mapping, PlanEntry, Screening } from "./types";
+import type { Catalog, Group, Mapping, PlanEntry, Priority, Screening } from "./types";
 import { OK_SLACK, el, fmtMinRange, hmsToMin, minToHms, todayIsoLocal } from "./util";
 import { screeningsByVenue } from "./data";
 import { codeTip, screeningBadgeKeys } from "./badges";
 import { effEndMin, filmEndMin, gvTalkMin } from "./gv";
 import { appendMetaRow, durChip, venueTip } from "./legend";
+import { PRI_DOT_BG, PRI_LABEL } from "./pick";
 
 export const ROW_H = 92;
 const LABEL_W = 148; // 粘性影厅列宽(沿用旧值,不动)
@@ -27,6 +28,8 @@ export interface GridCtx {
   transitMin: number; // 跨馆转场缓冲(1a 余量判定)
   /** GV 映后谈是否参加(全局默认 + 单场覆写解析后):决定正片/整场拆分、紧转场按哪段结束算 */
   gvTalkOf: (code: string) => boolean;
+  /** 「我的选片」档位(必看/备选/随缘):undefined = 未打标 —— 与红绿灯底色正交,只画标题行前的档位色点 */
+  wishOf?: (s: Screening) => Priority | undefined;
   hourFilter?: number | null; // 点击时间轴整点 → 只看该小时段场次(其余 hour-dim);null = 不过滤
 }
 
@@ -406,10 +409,18 @@ function appendCard(
   // 徽章流不再横插在时间与片名之间 —— 宽卡下单行放下,不再 wrap 挤压标题区;
   // mt-auto 把徽章贴到卡底,与标题区形成天然分组。信息零删除,各徽章 data-tip 悬停即示义。
   const zh = titleFor(s, ctx.mappingOf(s.code));
-  const ttlCls = `text-[13px] font-bold truncate${isConflict ? " text-conf" : ""}`;
-  const ttl = el("span", ttlCls, zh);
+  const ttlCls = `text-[13px] font-bold truncate flex-1 min-w-0${isConflict ? " text-conf" : ""}`;
+  // 「我的选片」档位色点(7px):标题行最前 —— 与红绿灯整卡底色正交,一眼看出"这是我标的必看/随缘"
+  const wishP = ctx.wishOf?.(s);
+  const ttlRow = el("span", "flex items-center gap-[4px] min-w-0");
+  if (wishP) {
+    const dot = el("span", `shrink-0 w-[7px] h-[7px] rounded-full ${PRI_DOT_BG[wishP]}`);
+    dot.dataset.tip = `我的选片 · ${PRI_LABEL[wishP]}(在「我的选片」可总览/取消)`;
+    ttlRow.appendChild(dot);
+  }
+  ttlRow.appendChild(el("span", ttlCls, zh));
   const sub = el("span", "text-[11px] text-muted truncate", s.title_en !== zh ? s.title_en : `${s.duration_min}min`);
-  card.append(ttl, sub);
+  card.append(ttlRow, sub);
 
   // 徽章行:等级 → 字幕 → 特性(GV/首映…) → 页码 → 片长。无任何徽章(理论仅 mock 缺字段)时不创建,避免空行。
   if (s.rating || s.subs || typeof s.page === "number" || screeningBadgeKeys(s).length) {

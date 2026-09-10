@@ -2,7 +2,7 @@
 // 全量化:仅维护基础骨架(顶栏/面板/弹层根/Toast/底部),所有内部样式由 markup 端 Tailwind utility 表达。
 
 import type { Catalog, Group, PlanEntry, Priority, Screening } from "./types";
-import { OK_SLACK, dateInfo, el, hmsToMin, todayIsoLocal } from "./util";
+import { OK_SLACK, dateInfo, el, filmNodeKey, hmsToMin, todayIsoLocal } from "./util";
 import { loadCatalog } from "./data";
 import { computeConflicts, conflictGroupFor, type ConflictResult, type Slot } from "./conflict";
 import { buildIcs, downloadIcs, pickEntries } from "./ics";
@@ -23,6 +23,7 @@ import {
   subscribe,
   syncFromCloud,
   toggleCode,
+  wish,
 } from "./state";
 import { buildGrid, fitTimeTexts } from "./grid";
 import { buildAgenda } from "./agenda";
@@ -31,7 +32,7 @@ import { attachTip } from "./tip";
 import { buildGuideBody } from "./legend";
 import { scorePlanRows, type ScoredRow } from "./engine";
 import { closeModal, openModal, showCatalogFilmModal, showFilmModal } from "./modal";
-import { openLibrary } from "./library";
+import { openLibrary, openMyPicks } from "./library";
 
 let cat: Catalog;
 let currentDate = "";
@@ -46,6 +47,23 @@ let lastGridLeft = 0;
 /** 影片详情弹层的公共上下文(网格 ⓘ 与影片库共用) */
 function filmModalCtx() {
   return { cat, plan: store.plan, group: store.group, mappings: store.mappings, toggle: toggleCode };
+}
+
+/** 影片库 / 我的选片 共用上下文 —— 打标对象同源(filmNodeKey 单一口径),两处入口行为一致 */
+function libraryCtx() {
+  return {
+    cat,
+    plan: store.plan,
+    group: store.group,
+    mappings: store.mappings,
+    onLocate: jumpToScreening,
+    onFilm: (code: string) => {
+      closeModal();
+      // f### = 目录片 id(暂无排期):走目录片弹层,可先关联豆瓣
+      if (/^f\d{3}$/.test(code)) showCatalogFilmModal(code, filmModalCtx());
+      else showFilmModal(code, filmModalCtx());
+    },
+  };
 }
 
 /* ---------------- 状态 -> 视图 ---------------- */
@@ -88,6 +106,7 @@ function renderAll(): void {
   renderAgenda();
   renderBadge();
   renderSync();
+  renderPicksBadge();
 }
 
 /** 日期 chip 类名(idle / 选中 — 背景/边框色 走 IDLE/ON 各自完整串,避免同类叠加后写者赢) */
@@ -136,6 +155,7 @@ function renderGrid(): void {
       conflictCodes: conf?.codeSet,
       transitMin: store.settings.transitMin,
       gvTalkOf,
+      wishOf: (s) => wish.get(filmNodeKey(cat, s)),
       hourFilter,
     },
     currentDate
@@ -225,6 +245,15 @@ function renderSync(): void {
   dot.title = store.online ? "D1 云端同步中" : "云端不可用 · 仅本地保存";
 }
 
+/** 顶栏「我的选片」实时计数(打标 / 取消 → setWish 广播 → renderAll → 这里刷新;0 时角标隐藏) */
+function renderPicksBadge(): void {
+  const n = wish.size;
+  const cnt = document.getElementById("my-picks-count");
+  if (!cnt) return;
+  cnt.textContent = String(n);
+  cnt.classList.toggle("is-hidden", n === 0);
+}
+
 /* ---------------- 事件绑定 ---------------- */
 function bindEvents(): void {
   document.addEventListener("click", (ev) => {
@@ -268,19 +297,13 @@ function bindEvents(): void {
 
     // 影片库:浏览全部影片 / 搜索 → 定位或详情
     if (t.closest("#library-btn")) {
-      openLibrary({
-        cat,
-        plan: store.plan,
-        group: store.group,
-        mappings: store.mappings,
-        onLocate: jumpToScreening,
-        onFilm: (code) => {
-          closeModal();
-          // f### = 目录片 id(暂无排期):走目录片弹层,可先关联豆瓣
-          if (/^f\d{3}$/.test(code)) showCatalogFilmModal(code, filmModalCtx());
-          else showFilmModal(code, filmModalCtx());
-        },
-      });
+      openLibrary(libraryCtx());
+      return;
+    }
+
+    // 我的选片:影片库打标清单总览(筛选 / 详情 / 定位 / 取消打标)
+    if (t.closest("#my-picks-btn")) {
+      openMyPicks(libraryCtx());
       return;
     }
 

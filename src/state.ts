@@ -71,6 +71,7 @@ export function setWish(key: string, priority: Priority | null): void {
   } catch {
     /* ignore */
   }
+  notify(); // 打标变化广播:顶栏「我的选片」计数 / 甘特卡色点 / 详情弹层按钮态 即时同步
 }
 
 export type Listener = () => void;
