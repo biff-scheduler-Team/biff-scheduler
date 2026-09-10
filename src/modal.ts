@@ -1,6 +1,6 @@
 // 弹层:通用容器 + 影片资料(片名 / 元信息 / 豆瓣映射管理)。
 // 2026-09-10:弹层不再列「同片全部场次」—— 唯一场次列表收敛到「影片库」行内展开
-// (library.ts,那里同时给「定位 ▸」与三态「加入方案」),避免同一部片出现两份排片列表。
+// (library.ts,那里同时给「定位 ▸」与三态「加入」),避免同一部片出现两份排片列表。
 // 全量化:overlay / modal / 资料弹层结构 全部 Tailwind utility。
 
 import type { Catalog, Mapping } from "./types";
@@ -133,10 +133,13 @@ interface FilmModalCtx {
  *  ⚠ 状态必须走 slotOf() 实时查询,不能缓存开弹层那一刻的 Map:commit() 里 rebuildIndex() 是
  *  `store.slotIndex = idx`(整体换新 Map),持有旧引用会读到点选前的快照 → 连重绘都会画错。
  *  三态:未加入 = 红渐变主按钮;已加入当前方案 = `act-on`(浅绿底 + 绿边 + 绿字,与网格「已选」
- *  同一套绿)且 hover 转红(= 「点了就是移除」的意图预告);已在另一组 = 中性白底,hover 转红。
- *  ⚠ 文案必须与 toggleScreening() 的真实语义一致:一场只属于一个方案,点「已在 B 组」的按钮
- *  是**移出**(不是搬运)—— 重绘修好之后按钮会当场翻成「加入 A 方案」,再点一次才是改入,
- *  所以不能写成「改入 A」(写了两步的事就变成一步的承诺)。 */
+ *  同一套绿)且 hover 转红(= 「点了就是移除」的意图预告);已在另一方案 = 中性白底,hover 转红。
+ *  ⚠ 文案必须与 toggleScreening() 的真实语义一致:一场只属于一个方案,点「已在 B 方案」的按钮
+ *  是**移出**(不是搬运)—— 重绘修好之后按钮会当场翻成「加入」,再点一次才是改入,
+ *  所以不能写成「改入 B」(写了两步的事就变成一步的承诺)。
+ *  ⚠ **「加入」不写方案名**(2026-09-10):列表 / 网格整个就是当前方案(A/B 由顶栏切换),
+ *  「加入 A 方案」把「你正在看的那一个」重复了一遍 —— 只在**跨方案**那态才点名(「已在 B 方案」),
+ *  因为那才是「不在你当前方案里」这条信息本身。 */
 export function actState(code: string, group: string): { label: string; cls: string; tip: string } {
   const base =
     "border rounded-[6px] px-[10px] py-1 text-[12px] font-bold whitespace-nowrap " +
@@ -146,22 +149,22 @@ export function actState(code: string, group: string): { label: string; cls: str
     return {
       label: "已加入 · 点击移除",
       cls: base + "act-on",
-      tip: `该场已在 ${group} 方案 — 点击移出(影片的选片意向 / 档位不受影响)`,
+      tip: "该场已在当前方案 — 点击移出(影片的选片意向 / 档位不受影响)",
     };
   }
   if (hit) {
     return {
-      label: `已在 ${hit.group} 组 · 点击移出`,
+      label: `已在 ${hit.group} 方案 · 点击移出`,
       cls: base + "border-line bg-card text-ink-2 hover:border-biff hover:text-biff",
-      tip: `该场在 ${hit.group} 方案 — 一场只能属于一个方案:点击先移出,按钮会翻成「加入 ${group} 方案」,再点一次即改入 ${group}`,
+      tip: `该场在 ${hit.group} 方案(不是当前方案)— 一场只能属于一个方案:点击先移出,按钮会翻成「加入」,再点一次即改入当前方案`,
     };
   }
   return {
-    label: `加入 ${group} 方案`,
+    label: "加入",
     cls:
       base +
       "border-0 text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-110",
-    tip: `把该场加入当前 ${group} 方案`,
+    tip: "把该场加入当前方案",
   };
 }
 
