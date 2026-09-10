@@ -1,0 +1,610 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""extract_schedule.py — BIFF Ticket Catalogue PDF → schedule.json / venues.json
+
+用法
+----
+    python tools/extract_schedule.py \
+        --pdf ~/Downloads/2025_BIFF_Ticket_Catalogue_web.pdf \
+        --year 2025 --month 9 \
+        --out /tmp/schedule.json --venues-out /tmp/venues.json
+
+    # 只看某页解析结果(排查用)
+    python tools/extract_schedule.py --pdf ... --year 2025 --dump-page 9
+
+为什么用 PyMuPDF(fitz)而不是 pdfplumber / Camelot
+--------------------------------------------------
+* 文本层完整:InDesign 导出的 PDF,字体内嵌且带 unicode 映射,无需 OCR。
+* 必须拿到 **line / span 级 bbox**:排期表其实是「旋转 90° 的表格」,
+  一个单元格里每个字段(时间/编号/分级/字幕/GV/片长/页码)都是**独立的一行**,
+  不拿到逐 span 坐标就无法还原。
+* Camelot 依赖可见表格线;本 PDF 单元格靠灰底色块分隔、没有线 → 用不了。
+
+版面陷阱(踩过的坑,别再踩)
+----------------------------
+1. **坐标已是显示坐标系**。排期页 /Rotate 有的 90、有的 0,但 PyMuPDF
+   `get_text("dict")` 返回的 bbox 已经落在 `page.rect` 所在的坐标系里,
+   **不要再乘 rotation_matrix**,否则整页转错、行列互换。
+2. **单元格的文字是旋转 90° 的**(line 的 `dir == (0, -1)`),所以
+   阅读顺序 = **y 递减**(时间在最大 y,页码在最小 y);同一 line 内
+   不要按 x 排序。
+3. **line 会把整个单元格粘成一行**。例如
+   `'23:59~05:01 081 19 KE GV 302' 162, 164'` 是一个 line 对象,bbox 高约 92pt。
+   所以必须下沉到 **span** 级。
+4. **网格**:行 = 时间档 1..5(1 早 / 2 日 / 3 下午 / 4 晚 / 5 午夜),
+   档位数字在最左侧竖排;列 = 场馆,场馆代码竖排在页面**底部**表头条
+   (y≈556-580)。
+5. **双日页**(p9 = 17+18,p16 = 25+26):底部表头里出现两个「日标签」
+   (`'17 WED'` / `'18 THU'`),日标签的 x 位置即该日区域的**起点**。
+   单日页只有一个日标签。→ 判天规则:`day = 最后一个 x <= 场次 x 的日标签`。
+6. **场次编号按页连续递增**(p9:001-076,p10:077-159,…),是极好的交叉校验。
+   注意 001 / 002 是**预留号**:001 = 开幕场(9/17),002 = 闭幕场(9/26),
+   它们不在自己的页号段里。
+7. **★ 单元格归属靠 line 的 y1,不靠 y 窗口**(v7 的关键修正)。
+   单元格的 META line 与它的标题 line **共享同一个 line-bbox 下边缘 y1**
+   (实测完全相等),且标题 line 的 x0 比 META line 的 x0 大 6~12pt
+   (英文标题 +6.2、韩文标题 +11.4、备注如 `(개막식+개막작)` +11.4)。
+   早期版本用「anchor.y0 - 78 .. anchor.y0 + 4」这种 y 窗口切单元格,
+   会**漏掉标题**——因为标题在旋转文本流里排在时间**之前**,它的 y
+   比时间 span 的 y **更大**(即更靠页面下方),落在窗口之外。
+   症状:206 场 title_en 为空。改用「同 y1 + x 近邻」后归零。
+   注意:标题 line 与 META line 的 x 间距必须卡在 (2, 18] 之间——
+   下一列的 META 在 +21.5,下一列的标题在 +27.9,都被排除。
+8. **同一个数字会被 PDF 拆成多个 span**,且**只能对末尾页码回拼**。
+   实例:页码 191 在 p9 的 017 单元格里是两个 span
+   `'1'`(y=445.0) + `'91'`(y=439.8)。正常 token 的 y 间距 ≥7.3pt,
+   拆开的 ≤5.2pt。**不要写通用的「纯数字 + 纯数字」合并器**:实测
+   code 与 rating 的间距在某些单元格只有 6pt 上下,一合就把
+   `'101'`+`'32'` 粘成 `'10132'` —— code 全局重复 10 个、rating 掉到
+   68 个 None。所以合并只发生在 `parse_meta` 里已识别出 `dur` 之后
+   的**尾随页码字段**,用 `prev_page_y` 记录上一段的 y0 作判据。
+   (`'116’'` 与后面 `'1'` 的间距只有 3.8pt,若做通用合并会成 `'116’1'`。)
+9. **BD / C7 两列在 p9-p14 上不印场次编号**(原 PDF 就没有,不是解析丢了;
+   用 `page.get_text("text")` 原始文本核对过)。这些场次用
+   `X<页号2位><序号2位>`(如 `X0901`)兜底,保证 `code` 唯一
+   (前端 `byCode` / `slots` / `cardEls` 都以 code 为键,空值会互相覆盖)。
+10. **场次特性 token 不止 GV**。实测 META 里出现:`GV`(347)、`Talk`(6)、
+   `Commentary`(3)、`Event`(1)。`GV` 走 `is_gv`;其余按原义小写进
+   `tags`(`talk` / `commentary` / `event`)。前端 `badges.ts` 只渲染已注册
+   的键(gv / masterclass / premiere / open_talk / batch),未注册键**安全忽略**,
+   想让它显示只需在 `BADGE_DEFS` 里加一条。
+11. **少数特别场册子里不印片长**。已知:002(闭幕式+获奖作联映)、
+   BAFA 毕展。若把 `duration_min` 留 0,前端 `gvTalkMin()` =
+   `(end - start) - duration_min` 会把整段时长当成「映后谈」,002 会凭空
+   多出 240 分钟映后谈。→ 缺片长时回退成「印出来的整段时长」,
+   映后谈自然归 0。(见 `stats['dur_missing']`,2025 版 = 1。)
+
+输出对齐 src/types.ts 的 Screening / Venue。
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from collections import Counter
+from datetime import date, datetime
+from pathlib import Path
+
+import pymupdf
+
+# ---------------------------------------------------------------- 常量
+
+SCHEDULE_PAGES_DEFAULT = "9-16"
+
+# 官方场馆代码 → (英文名, 韩文名, 分组, 所在区)
+# 来源:2025 官方 Ticket Catalogue p8 图例(29 个场馆代码)
+VENUE_NAME: dict[str, tuple[str, str, str, str]] = {
+    "BT": ("Busan Cinema Center BIFF Theatre", "영화의전당 야외극장", "bcc", "centum"),
+    "BH": ("Busan Cinema Center Haneulyeon Theatre", "영화의전당 하늘연극장", "bcc", "centum"),
+    "B1": ("Busan Cinema Center Cinema 1", "영화의전당 중극장", "bcc", "centum"),
+    "B2": ("Busan Cinema Center Cinema 2", "영화의전당 소극장", "bcc", "centum"),
+    "B3": ("Busan Cinema Center Cinematheque", "영화의전당 시네마테크", "bcc", "centum"),
+    "BD": ("Busan Cinema Center Indieplus", "영화의전당 인디플러스", "bcc", "centum"),
+    "C1": ("CGV Centum City 1", "CGV센텀시티 1관", "cgv", "centum"),
+    "C2": ("CGV Centum City 2", "CGV센텀시티 2관", "cgv", "centum"),
+    "C3": ("CGV Centum City 3", "CGV센텀시티 3관", "cgv", "centum"),
+    "C4": ("CGV Centum City 4", "CGV센텀시티 4관", "cgv", "centum"),
+    "C5": ("CGV Centum City 5", "CGV센텀시티 5관", "cgv", "centum"),
+    "C6": ("CGV Centum City 6", "CGV센텀시티 6관", "cgv", "centum"),
+    "C7": ("CGV Centum City 7", "CGV센텀시티 7관", "cgv", "centum"),
+    "CX": ("CGV Centum City IMAX", "CGV센텀시티 IMAX관", "cgv", "centum"),
+    "L2": ("LOTTE CINEMA Centum City 2", "롯데시네마 센텀시티 2관", "lotte", "centum"),
+    "L3": ("LOTTE CINEMA Centum City 3", "롯데시네마 센텀시티 3관", "lotte", "centum"),
+    "L4": ("LOTTE CINEMA Centum City 4", "롯데시네마 센텀시티 4관", "lotte", "centum"),
+    "L5": ("LOTTE CINEMA Centum City 5", "롯데시네마 센텀시티 5관", "lotte", "centum"),
+    "L6": ("LOTTE CINEMA Centum City 6", "롯데시네마 센텀시티 6관", "lotte", "centum"),
+    "L7": ("LOTTE CINEMA Centum City 7", "롯데시네마 센텀시티 7관", "lotte", "centum"),
+    "L9": ("LOTTE CINEMA Centum City 9", "롯데시네마 센텀시티 9관", "lotte", "centum"),
+    "L10": ("LOTTE CINEMA Centum City 10", "롯데시네마 센텀시티 10관", "lotte", "centum"),
+    "KT": ("KOFIC Theater", "영화진흥위원회 표준시사실", "kofic", "centum"),
+    "SH": ("Dongseo University Sohyang Theatre ShinhanCard Hall", "동서대학교 소향씨어터 신한카드홀", "sohyang", "nampo"),
+    "BCM": ("Busan Community Media Center Open Hall", "부산시청자미디어센터 공개홀", "bcm", "nampo"),
+    "M1": ("MEGABOX Busan Theater 1", "메가박스 부산극장 1관", "megabox", "nampo"),
+    "M2": ("MEGABOX Busan Theater 2", "메가박스 부산극장 2관", "megabox", "nampo"),
+    "M3": ("MEGABOX Busan Theater 3", "메가박스 부산극장 3관", "megabox", "nampo"),
+    "M4": ("MEGABOX Busan Theater 4", "메가박스 부산극장 4관", "megabox", "nampo"),
+}
+
+# META 语法:HH:MM~HH:MM CODE RATING [SUBS] [FLAG] DUR' PAGES
+RE_TIME = re.compile(r"^(\d{1,2}):(\d{2})~(\d{1,2}):(\d{2})$")
+RE_CODE = re.compile(r"^\d{3}$")
+RE_RATING = re.compile(r"^(All|ALL|12|15|19)$")
+RE_SUBS = re.compile(r"^(KE|KN|KK|NO)$")
+RE_DUR = re.compile(r"^(\d{1,3})['’]{1,2}$")
+RE_PAGES = re.compile(r"^\d{1,3}(?:\s*,\s*\d{1,3})+$")
+RE_PAGENUM = re.compile(r"^\d{1,3}$")
+RE_DAYNUM = re.compile(r"^\d{1,2}$")
+RE_WEEKDAY = re.compile(r"^(MON|TUE|WED|THU|FRI|SAT|SUN)$")
+RE_VENUE_CODE = re.compile(r"^[A-Z]{1,3}\d{0,2}$")
+
+# 版面几何(单位 pt,基于 2025 版实测;2026 若版面微调改这里)
+LINE_Y1_TOL = 2.5          # META line 与其标题 line 的 y1 容差(实测相等)
+LINE_X_GAP_LO = 2.0        # 标题 line 相对 META line 的最小 x 间距
+LINE_X_GAP_HI = 18.0       # 最大 x 间距(下一列 META 在 +21.5,故 18 安全)
+TOKEN_MERGE_GAP = 6.5      # 拆开的同一数字间距 ≤5.2;正常 token 间距 ≥7.3
+HEADER_Y = (556.0, 580.0)  # 底部表头条(场馆代码所在 y 带)
+DAY_Y = (540.0, 585.0)     # 日标签 y 带
+BODY_Y_MAX = 535.0         # 排期正文的 y 上限(其下是表头)
+
+# META 里的「特性 token」→ tags 键(GV 单独走 is_gv,不在此表)
+META_FLAG_TAGS = {
+    "EVENT": "event",
+    "TALK": "talk",
+    "COMMENTARY": "commentary",
+    "BATCH": "batch",
+}
+
+# 标题 / 备注里的关键词 → tags 键(键名尽量对齐 src/badges.ts 的注册表)
+TITLE_TAGS = [
+    (("개막", "opening ceremony", "opening night"), "opening"),
+    (("폐막", "closing ceremony"), "closing"),
+    (("master class", "masterclass", "마스터클래스"), "masterclass"),
+    (("open talk", "오픈토크"), "open_talk"),
+    (("world premiere", "월드 프리미어"), "premiere"),
+]
+
+
+# ---------------------------------------------------------------- 基础工具
+
+
+def _has_hangul(s: str) -> bool:
+    return any("\uac00" <= c <= "\ud7a3" for c in s)
+
+
+def _log(kind: str, msg: str) -> None:
+    print(f"[{kind}] {msg}", file=sys.stderr)
+
+
+def build_lines(page: pymupdf.Page) -> list[dict]:
+    """把页面拆成 line 级结构(已按显示坐标系,见 docstring 陷阱 1)。
+
+    每个 line:{x0, y0, x1, y1, spans, is_meta}
+    * `y1` = line bbox 的下边缘 —— **单元格归属的关键**(陷阱 7)
+    * `is_meta` = 该 line 内是否含 `HH:MM~HH:MM` 时间 span
+    """
+    out: list[dict] = []
+    for blk in page.get_text("dict")["blocks"]:
+        if blk.get("type") != 0:
+            continue
+        for ln in blk.get("lines", []):
+            spans: list[dict] = []
+            for sp in ln["spans"]:
+                t = sp["text"].strip()
+                if not t:
+                    continue
+                x0, y0, x1, y1 = sp["bbox"]
+                spans.append({"x0": x0, "y0": y0, "x1": x1, "y1": y1, "t": t})
+            if not spans:
+                continue
+            bb = ln["bbox"]
+            out.append({
+                "x0": bb[0], "y0": bb[1], "x1": bb[2], "y1": bb[3],
+                "spans": spans,
+                "is_meta": any(RE_TIME.match(s["t"]) for s in spans),
+            })
+    return out
+
+
+# ---------------------------------------------------------------- 版面识别
+
+
+def find_day_labels(spans: list[dict]) -> list[dict]:
+    """底部表头的日标签 → [{'day': 17, 'wd': 'WED', 'x': 29.5}, ...] 按 x 升序。
+
+    版面上「星期」在上、「日号」在下,同 x 相邻(如 WED@(31.9,553.9) / 17@(29.5,567.3))。
+    """
+    wds = [s for s in spans if RE_WEEKDAY.match(s["t"]) and DAY_Y[0] <= s["y0"] <= DAY_Y[1]]
+    nums = [s for s in spans if RE_DAYNUM.match(s["t"]) and DAY_Y[0] <= s["y0"] <= DAY_Y[1]]
+    labels: list[dict] = []
+    for w in wds:
+        cand = [n for n in nums if abs(n["x0"] - w["x0"]) <= 12 and abs(n["y0"] - w["y0"]) <= 25]
+        if not cand:
+            continue
+        n = min(cand, key=lambda n: abs(n["x0"] - w["x0"]))
+        labels.append({"day": int(n["t"]), "wd": w["t"], "x": min(n["x0"], w["x0"])})
+    labels.sort(key=lambda d: d["x"])
+    return labels
+
+
+def find_venue_codes(spans: list[dict]) -> list[dict]:
+    """底部表头的场馆代码 → [{'code': 'BT', 'x': 47.2}, ...] 按 x 升序。"""
+    out: list[dict] = []
+    seen: set[tuple[str, int]] = set()
+    for s in spans:
+        if not (HEADER_Y[0] <= s["y0"] <= HEADER_Y[1]):
+            continue
+        t = s["t"]
+        if not RE_VENUE_CODE.match(t) or t not in VENUE_NAME:
+            continue
+        k = (t, round(s["x0"] / 4))
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append({"code": t, "x": s["x0"]})
+    out.sort(key=lambda v: v["x"])
+    return out
+
+
+def nearest_venue(venue_codes: list[dict], x: float) -> str | None:
+    if not venue_codes:
+        return None
+    return min(venue_codes, key=lambda v: abs(v["x"] - x))["code"]
+
+
+def day_for_x(labels: list[dict], x: float) -> dict | None:
+    """场次 x 落在哪个日标签区域:取最后一个 x_label <= x 的标签。"""
+    if not labels:
+        return None
+    hit = [d for d in labels if d["x"] <= x + 6]
+    return (hit[-1] if hit else labels[0])
+
+
+def cell_title_lines(lines: list[dict], meta_line: dict) -> list[dict]:
+    """单元格的标题/备注行 = 与 META line **共享 y1** 且 x 近邻的那些 line。
+
+    见 docstring 陷阱 7。x 间距卡在 (LINE_X_GAP_LO, LINE_X_GAP_HI]:
+    下一列的 META line 在 +21.5、下一列的标题在 +27.9,都被排除;
+    本列的英文标题 +6.2 / 韩文标题 +11.4 / 备注 +11.4,都被收进来。
+    """
+    out: list[dict] = []
+    for l in lines:
+        if l["is_meta"]:
+            continue
+        if abs(l["y1"] - meta_line["y1"]) > LINE_Y1_TOL:
+            continue
+        gap = l["x0"] - meta_line["x0"]
+        if not (LINE_X_GAP_LO < gap <= LINE_X_GAP_HI):
+            continue
+        out.append(l)
+    out.sort(key=lambda l: l["x0"])
+    return out
+
+
+# ---------------------------------------------------------------- 单元格解析
+
+
+def parse_meta(meta_spans: list[dict]) -> dict | None:
+    """META 阅读顺序 = y 递减(陷阱 2)。
+
+    只对**末尾的页码**做「拆号回拼」(陷阱 8):同一个数字被 PDF 拆成
+    多个 span 时,相邻两段的 y 间距(≤5.2)明显小于正常 token 间距(≥7.3)。
+    不能对整行做通用合并 —— 实测 code 与 rating 的间距在某些单元格
+    只有 6pt 上下,一合就把 `'101'`+`'32'` 粘成 `'10132'`,code 与 rating 全废。
+    """
+    items = sorted(meta_spans, key=lambda s: -s["y0"])
+    if not items:
+        return None
+    m = RE_TIME.match(items[0]["t"])
+    if not m:
+        return None
+    h1, m1, h2, m2 = (int(v) for v in m.groups())
+    start = h1 * 60 + m1
+    end = h2 * 60 + m2
+    if end <= start:
+        end += 24 * 60  # 跨午夜(如 23:59~05:10)
+    out = {
+        "start": f"{h1:02d}:{m1:02d}",
+        "end": f"{h2:02d}:{m2:02d}",
+        "start_min": start,
+        "end_min": end,
+        "code": None,
+        "rating": None,
+        "subs": None,
+        "gv": False,
+        "flags": [],
+        "dur": None,
+        "pages": [],
+        "extra": [],
+    }
+    prev_page_y: float | None = None
+    for sp in items[1:]:
+        t = sp["t"].strip().strip(",，、")
+        if not t:
+            continue
+        if out["code"] is None and RE_CODE.match(t):
+            out["code"] = t
+            continue
+        if out["rating"] is None and RE_RATING.match(t):
+            out["rating"] = "ALL" if t.upper() == "ALL" else t
+            continue
+        if out["subs"] is None and RE_SUBS.match(t):
+            out["subs"] = t
+            continue
+        if t.upper() == "GV":
+            out["gv"] = True
+            continue
+        flag = META_FLAG_TAGS.get(t.upper())
+        if flag:
+            if flag not in out["flags"]:
+                out["flags"].append(flag)
+            continue
+        d = RE_DUR.match(t)
+        if d and out["dur"] is None:
+            out["dur"] = int(d.group(1))
+            continue
+        if RE_PAGES.match(t):
+            out["pages"] += [int(v) for v in re.findall(r"\d{1,3}", t)]
+            prev_page_y = sp["y0"]
+            continue
+        if RE_PAGENUM.match(t) and out["dur"] is not None:
+            # 陷阱 8:被拆开的同一个页码(如 '1'+'91' = 191)按 y 间距回拼
+            if prev_page_y is not None and (prev_page_y - sp["y0"]) < TOKEN_MERGE_GAP:
+                out["pages"][-1] = int(f"{out['pages'][-1]}{t}")
+            else:
+                out["pages"].append(int(t))
+            prev_page_y = sp["y0"]
+            continue
+        prev_page_y = None
+        out["extra"].append(t)
+    return out
+
+
+def split_title(title_spans: list[dict]) -> tuple[str, str, list[str]]:
+    """返回 (title_en, title_kr, notes)。同语言多 span 按 y 递减拼接。"""
+    en, kr, notes = [], [], []
+    for s in sorted(title_spans, key=lambda s: -s["y0"]):
+        t = s["t"].strip()
+        if not t:
+            continue
+        if t[0] in "(（[※·":
+            notes.append(t)
+        elif _has_hangul(t):
+            kr.append(t)
+        else:
+            en.append(t)
+    return " ".join(en).strip(), " ".join(kr).strip(), notes
+
+
+def tags_for(title_en: str, title_kr: str, notes: list[str], flags: list[str]) -> list[str]:
+    """汇总场次特性键:标题/备注关键词 + META 特性 token。"""
+    blob = " ".join([title_en, title_kr, *notes]).lower()
+    tags: list[str] = []
+    for needles, tag in TITLE_TAGS:
+        if any(n in blob for n in needles) and tag not in tags:
+            tags.append(tag)
+    for f in flags:
+        if f not in tags:
+            tags.append(f)
+    return tags
+
+
+# ---------------------------------------------------------------- 页面主流程
+
+
+def parse_page(page: pymupdf.Page, page_no: int, args, stats: Counter) -> list[dict]:
+    lines = build_lines(page)
+    spans = [s for l in lines for s in l["spans"]]
+    labels = find_day_labels(spans)
+    venue_codes = find_venue_codes(spans)
+
+    if labels:
+        stats["pages_with_day_label"] += 1
+    else:
+        stats["pages_without_day_label"] += 1
+
+    meta_lines = [l for l in lines if l["is_meta"] and l["y0"] < BODY_Y_MAX]
+    meta_lines.sort(key=lambda l: (l["x0"], -l["y1"]))
+
+    rows: list[dict] = []
+    no_code_seq = 0
+    for m in meta_lines:
+        meta = parse_meta(m["spans"])
+        if not meta:
+            stats["meta_unparsed"] += 1
+            _log("WARN", f"p{page_no} meta 解析失败 @x={m['x0']:.0f},y={m['y1']:.0f}: "
+                         f"{[s['t'] for s in m['spans']]}")
+            continue
+
+        dl = day_for_x(labels, m["x0"])
+        if dl is None:
+            stats["no_day_anchor"] += 1
+            _log("WARN", f"p{page_no} 找不到日标签,跳过 1 场 @x={m['x0']:.0f}")
+            continue
+
+        tl = cell_title_lines(lines, m)
+        title_spans = [s for l in tl for s in l["spans"]]
+        title_en, title_kr, notes = split_title(title_spans)
+        notes += [t for t in meta["extra"] if t not in notes]
+        if not title_en and not title_kr:
+            stats["empty_title"] += 1
+            _log("WARN", f"p{page_no} 空标题 code={meta['code']} @x={m['x0']:.0f}")
+        if not title_en:
+            stats["no_title_en"] += 1
+
+        if meta["code"]:
+            code = meta["code"]
+        else:
+            # 陷阱 9:BD / C7 列在 2025 版上不印编号 → 兜底保证 code 唯一
+            no_code_seq += 1
+            code = f"X{page_no:02d}{no_code_seq:02d}"
+            stats["code_synthesized"] += 1
+
+        vcode = nearest_venue(venue_codes, m["x0"])
+
+        # end_time:官方印的 end 一般 = start + 片长;GV 场次再补一段映后占用。
+        # 陷阱 11:少数「特别场」(如 002 闭幕式+获奖作联映、BAFA 毕展)册子里
+        # **不印片长**。此时不能留 0 —— 前端 gvTalkMin = (end-start) - duration_min
+        # 会把整段时长算成「映后谈 240 分钟」。回退成印出来的整段时长,
+        # 语义 = 「这一段占用的总时长」,且映后谈自然为 0。
+        end_min = meta["end_min"]
+        printed_span = end_min - meta["start_min"]
+        dur = meta["dur"] if meta["dur"] is not None else printed_span
+        if meta["dur"] is None:
+            stats["dur_missing"] += 1
+        if meta["gv"] and meta["dur"] and printed_span == meta["dur"]:
+            end_min += args.gv_add_min
+            stats["gv_end_adjusted"] += 1
+        elif meta["dur"] and abs(printed_span - meta["dur"]) > 2:
+            stats["end_ne_dur"] += 1
+
+        rows.append({
+            "code": code,
+            "title_en": title_en,
+            "title_kr": title_kr,
+            "title_zh": "",
+            "date": date(args.year, args.month, dl["day"]).isoformat(),
+            "start_time": meta["start"],
+            "end_time": f"{(end_min // 60) % 24:02d}:{end_min % 60:02d}",
+            "duration_min": dur,
+            "venue_id": (vcode or "unknown").lower(),
+            "venue_display": VENUE_NAME.get(vcode, ("", "", "", ""))[0] if vcode else "",
+            "is_gv": meta["gv"],
+            "tags": tags_for(title_en, title_kr, notes, meta["flags"]),
+            "rating": meta["rating"],
+            "subs": meta["subs"],
+            "page": meta["pages"][0] if meta["pages"] else None,
+            "_page": page_no,
+            "_wd": dl["wd"],
+            "_extra": meta["extra"],
+        })
+        if meta["extra"]:
+            stats["cells_with_extra"] += 1
+        stats[f"day_{dl['day']}"] += 1
+
+    return rows
+
+
+def build_venues(codes: set[str]) -> list[dict]:
+    out = []
+    for c in sorted(codes, key=lambda c: (VENUE_NAME.get(c, ("",))[0], c)):
+        en, kr, grp, region = VENUE_NAME.get(c, (c, c, "unknown", "unknown"))
+        out.append({
+            "id": c.lower(),
+            "name": en,
+            "name_kr": kr,
+            "group": grp,
+            "region": region,
+            "code": c,
+            "lat": None,
+            "lng": None,
+        })
+    return out
+
+
+# ---------------------------------------------------------------- CLI
+
+
+def parse_pages_arg(s: str) -> list[int]:
+    pages: list[int] = []
+    for part in s.split(","):
+        part = part.strip()
+        if "-" in part:
+            a, b = part.split("-", 1)
+            pages += list(range(int(a), int(b) + 1))
+        elif part:
+            pages.append(int(part))
+    return pages
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="BIFF Ticket Catalogue PDF → schedule.json")
+    ap.add_argument("--pdf", required=True)
+    ap.add_argument("--year", type=int, required=True)
+    ap.add_argument("--month", type=int, default=9)
+    ap.add_argument("--schedule-pages", default=SCHEDULE_PAGES_DEFAULT)
+    ap.add_argument("--out", default="schedule.json")
+    ap.add_argument("--venues-out", default=None)
+    ap.add_argument("--gv-add-min", type=int, default=25)
+    ap.add_argument("--dump-page", type=int, default=None, help="只打印该页解析结果,不写文件")
+    ap.add_argument("--festival-name", default=None)
+    args = ap.parse_args()
+
+    doc = pymupdf.open(args.pdf)
+    pages = parse_pages_arg(args.schedule_pages)
+    stats: Counter = Counter()
+
+    if args.dump_page:
+        rows = parse_page(doc[args.dump_page - 1], args.dump_page, args, stats)
+        for r in sorted(rows, key=lambda r: (r["_page"], r["venue_id"], r["start_time"])):
+            print(json.dumps({k: v for k, v in r.items() if not k.startswith("_")},
+                             ensure_ascii=False))
+        _log("INFO", f"dump p{args.dump_page}: {len(rows)} 场; stats={dict(stats)}")
+        return 0
+
+    _log("INFO", f"{Path(args.pdf).name}: {doc.page_count} 页,扫描 p{pages[0]}-p{pages[-1]}")
+    all_rows: list[dict] = []
+    for pno in pages:
+        rows = parse_page(doc[pno - 1], pno, args, stats)
+        all_rows += rows
+        days = sorted({r["_wd"] for r in rows})
+        print(f"  p{pno}: {len(rows):3d} 场  days={days}", file=sys.stderr)
+
+    # 交叉校验 1:每页的 code 段应基本连续(缺号 = 该时段无排片/取消)
+    for pno in pages:
+        cs = sorted(int(r["code"]) for r in all_rows
+                    if r["_page"] == pno and r["code"].isdigit())
+        if cs:
+            gaps = [(a, b) for a, b in zip(cs, cs[1:]) if b - a > 1]
+            if gaps:
+                _log("SANITY", f"p{pno} code 不连续: {gaps[:6]}")
+
+    # 交叉校验 2:code 必须全局唯一(前端 byCode / slots 以它为键)
+    dup = [c for c, n in Counter(r["code"] for r in all_rows).items() if n > 1]
+    if dup:
+        _log("SANITY", f"⚠ code 重复 {len(dup)} 个: {dup[:10]}")
+    else:
+        _log("SANITY", "code 全局唯一 ✓")
+
+    used_codes = {r["venue_id"].upper() for r in all_rows if r["venue_id"] != "unknown"}
+    schedule = {
+        "festival": {
+            "name": args.festival_name or f"{args.year} Busan International Film Festival",
+            "year": args.year,
+            "dates": sorted({r["date"] for r in all_rows}),
+            "note": ("由 tools/extract_schedule.py 从官方 Ticket Catalogue PDF 解析;"
+                     "venue_id = 官方影院代码小写(如 b1/c2/l10),lat/lng 需另行补全;"
+                     "code 以 X 开头者为原 PDF 未印编号的场次(合成兜底)"),
+            "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        },
+        "screenings": [
+            {k: v for k, v in r.items() if not k.startswith("_")}
+            for r in sorted(all_rows, key=lambda r: (r["date"], r["start_time"], r["code"]))
+        ],
+    }
+    Path(args.out).write_text(json.dumps(schedule, ensure_ascii=False, indent=1), encoding="utf-8")
+    _log("OK", f"写出 {args.out}:{len(schedule['screenings'])} 场")
+
+    if args.venues_out:
+        venues = build_venues(used_codes)
+        Path(args.venues_out).write_text(
+            json.dumps({"venues": venues}, ensure_ascii=False, indent=1), encoding="utf-8")
+        _log("OK", f"写出 {args.venues_out}:{len(venues)} 场馆")
+
+    per_day = Counter(r["date"] for r in all_rows)
+    per_venue = Counter(r["venue_id"] for r in all_rows)
+    _log("SANITY", f"每日场次: {dict(sorted(per_day.items()))}")
+    _log("SANITY", f"每馆场次 top12: {per_venue.most_common(12)}")
+    _log("SANITY", f"空 title_en: {sum(1 for r in all_rows if not r['title_en'])}"
+                   f"  全空(中英韩皆空): {sum(1 for r in all_rows if not r['title_en'] and not r['title_kr'])}")
+    _log("SANITY", f"rating 分布: {dict(Counter(r['rating'] for r in all_rows))}")
+    _log("SANITY", f"subs 分布: {dict(Counter(r['subs'] for r in all_rows))}")
+    _log("SANITY", f"GV 场次: {sum(1 for r in all_rows if r['is_gv'])} / {len(all_rows)}")
+    _log("SANITY", f"tags 分布: {dict(Counter(t for r in all_rows for t in r['tags']))}")
+    _log("SANITY", f"统计: {dict(stats)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
