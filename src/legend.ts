@@ -210,10 +210,17 @@ export function appendMetaRow(host: HTMLElement, s: Screening): void {
 }
 
 /* ---------------- 影院代码 / 分区 ---------------- */
+/** 影院 → 分区说明。key 必须与 venues.json 的 `group` 值一致(2025 真实数据:
+ *  bcc/cgv/lotte/kofic 在 CENTUM 主场区,megabox/sohyang/bcm 在南浦洞),
+ *  否则图例「分区」列整列显示 `—`。 */
 const GROUP_AREA: Record<string, string> = {
-  bcc: "CENTUM 主场 · 电影殿堂(Busan Cinema Center)",
-  centum: "CENTUM 主场区(电影殿堂 / CGV / LOTTE / KOFIC / Sohyang / Community Media Center)",
-  haeundae: "海云台区 — 非本届官方 8 馆名单(仅 mock 跨馆演示)",
+  bcc: "CENTUM 主场区 · 电影殿堂(Busan Cinema Center)",
+  cgv: "CENTUM 主场区 · CGV Centum City",
+  lotte: "CENTUM 主场区 · LOTTE CINEMA Centum City",
+  kofic: "CENTUM 主场区 · KOFIC Theater(电影振兴委员会)",
+  megabox: "南浦洞 · MEGABOX Busan Theater",
+  sohyang: "南浦洞 · 东西大学 Sohyang Theatre",
+  bcm: "南浦洞 · 釜山市民媒体中心",
 };
 
 /** 场馆行悬停说明(全名 + 韩文名作标题;分区 / 官方代码分点) */
@@ -221,7 +228,7 @@ export function venueTip(v: Venue): string {
   const lines = [v.name_kr ? `${v.name} · ${v.name_kr}` : v.name];
   lines.push(`分区 — ${GROUP_AREA[v.group] ?? "—"}`);
   if (v.code) {
-    lines.push(`官方影院代码 ${v.code} — 按此与官方 Catalogue 对表(mock 演示,2026 以官网为准)`);
+    lines.push(`官方影院代码 ${v.code} — 与官方 Ticket Catalogue 对表用`);
   }
   return lines.join("\n");
 }
@@ -230,7 +237,8 @@ export function venueTip(v: Venue): string {
  * 「ⓘ 日程表说明」总览弹层内容
  * ================================================================ */
 
-/** 2025 官方代码总表(参考口径;2026 以 9/11 官网为准) */
+/** 官方影院代码总表(按影院汇总;与上一张逐厅表互补 —— 这张按「影院」归并,
+ *  便于与册子封底的影院代码页对表) */
 const VENUE_CODES_2025: { group: string; list: [string, string][] }[] = [
   {
     group: "电影殿堂 Busan Cinema Center",

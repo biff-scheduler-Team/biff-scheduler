@@ -45,13 +45,17 @@ export interface ScheduleFile {
 }
 
 export interface Venue {
+  /** 按「厅」建 id = 官方影院代码小写(如 b1 / c2 / l10);一处放映厅一个 id */
   id: string;
   name: string;
   name_kr: string;
+  /** 影院(bcc / cgv / lotte / kofic / megabox / sohyang / bcm)—— 图例「分区」列按它聚合 */
   group: string;
+  /** 分区:centum(CENTUM 主场区)/ nampo(南浦洞)。跨区连场需留足转场缓冲 */
+  region?: string;
   lat?: number;
   lng?: number;
-  /** 官方日程表影院代码(如 B1 / C1 / L2);2025 口径演示,2026 以官网为准 */
+  /** 官方日程表影院代码(如 B1 / C1 / L2)—— 与官方 Catalogue 对表用 */
   code?: string;
 }
 

@@ -1,10 +1,294 @@
 {
-  "note": "MOCK 场馆 — 依据 2026 官方口径:常规放映 + Community BIFF 共 8 剧场 31 屏,分三区:CENTUM 主场区(Busan Cinema Center / CGV Centum City / LOTTE CINEMA Centum City / KOFIC Theater / Sohyang Theatre / Busan Community Media Center)、南浦洞(BIFF Square / MEGABOX Busan Theater / Catholic Center Space 101.1,Community BIFF 10/8-11)、分散(BIFF Everywhere 10/3-15 共 17 处含机场/首尔);Centum↔南浦跨区连场至少预留约 60min 门到门,同区连场也需散场/找厅/验票缓冲。mega-haeundae 为真实影院但不在本届官方 8 馆名单(保留仅供 mock 跨馆演示,真数据接入时随官方场馆表替换);venue.code 为「官方日程表影院代码」演示字段(2025 届同馆口径,如 bcc-1→B1;2026 以 9/11 官网代码为准,导入管线覆盖);M3 转场计算时补 lat/lng 与 pair 经验值",
-  "venues": [
-    { "id": "bcc-1", "name": "Busan Cinema Center Cinema 1", "name_kr": "영화의전당 1관", "group": "bcc", "code": "B1", "lat": 35.1689, "lng": 129.1296 },
-    { "id": "bcc-2", "name": "Busan Cinema Center Cinema 2", "name_kr": "영화의전당 2관", "group": "bcc", "code": "B2", "lat": 35.1689, "lng": 129.1296 },
-    { "id": "cgv-centum", "name": "CGV Centum City", "name_kr": "CGV 센텀시티", "group": "centum", "code": "C1", "lat": 35.1683, "lng": 129.1321 },
-    { "id": "lotte-centum", "name": "Lotte Cinema Centum City", "name_kr": "롯데시네마 센텀시티", "group": "centum", "code": "L2", "lat": 35.1701, "lng": 129.1309 },
-    { "id": "mega-haeundae", "name": "Megabox Haeundae", "name_kr": "메가박스 해운대", "group": "haeundae", "code": "M1", "lat": 35.1591, "lng": 129.1637 }
-  ]
+ "venues": [
+  {
+   "id": "b1",
+   "name": "Busan Cinema Center Cinema 1",
+   "name_kr": "영화의전당 중극장",
+   "group": "bcc",
+   "region": "centum",
+   "code": "B1",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "b2",
+   "name": "Busan Cinema Center Cinema 2",
+   "name_kr": "영화의전당 소극장",
+   "group": "bcc",
+   "region": "centum",
+   "code": "B2",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "b3",
+   "name": "Busan Cinema Center Cinematheque",
+   "name_kr": "영화의전당 시네마테크",
+   "group": "bcc",
+   "region": "centum",
+   "code": "B3",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "bd",
+   "name": "Busan Cinema Center Indieplus",
+   "name_kr": "영화의전당 인디플러스",
+   "group": "bcc",
+   "region": "centum",
+   "code": "BD",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "bh",
+   "name": "Busan Cinema Center Haneulyeon Theatre",
+   "name_kr": "영화의전당 하늘연극장",
+   "group": "bcc",
+   "region": "centum",
+   "code": "BH",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "bt",
+   "name": "Busan Cinema Center BIFF Theatre",
+   "name_kr": "영화의전당 야외극장",
+   "group": "bcc",
+   "region": "centum",
+   "code": "BT",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "c1",
+   "name": "CGV Centum City 1",
+   "name_kr": "CGV센텀시티 1관",
+   "group": "cgv",
+   "region": "centum",
+   "code": "C1",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "c2",
+   "name": "CGV Centum City 2",
+   "name_kr": "CGV센텀시티 2관",
+   "group": "cgv",
+   "region": "centum",
+   "code": "C2",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "c3",
+   "name": "CGV Centum City 3",
+   "name_kr": "CGV센텀시티 3관",
+   "group": "cgv",
+   "region": "centum",
+   "code": "C3",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "c4",
+   "name": "CGV Centum City 4",
+   "name_kr": "CGV센텀시티 4관",
+   "group": "cgv",
+   "region": "centum",
+   "code": "C4",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "c5",
+   "name": "CGV Centum City 5",
+   "name_kr": "CGV센텀시티 5관",
+   "group": "cgv",
+   "region": "centum",
+   "code": "C5",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "c6",
+   "name": "CGV Centum City 6",
+   "name_kr": "CGV센텀시티 6관",
+   "group": "cgv",
+   "region": "centum",
+   "code": "C6",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "c7",
+   "name": "CGV Centum City 7",
+   "name_kr": "CGV센텀시티 7관",
+   "group": "cgv",
+   "region": "centum",
+   "code": "C7",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "cx",
+   "name": "CGV Centum City IMAX",
+   "name_kr": "CGV센텀시티 IMAX관",
+   "group": "cgv",
+   "region": "centum",
+   "code": "CX",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "l2",
+   "name": "LOTTE CINEMA Centum City 2",
+   "name_kr": "롯데시네마 센텀시티 2관",
+   "group": "lotte",
+   "region": "centum",
+   "code": "L2",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "l3",
+   "name": "LOTTE CINEMA Centum City 3",
+   "name_kr": "롯데시네마 센텀시티 3관",
+   "group": "lotte",
+   "region": "centum",
+   "code": "L3",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "l4",
+   "name": "LOTTE CINEMA Centum City 4",
+   "name_kr": "롯데시네마 센텀시티 4관",
+   "group": "lotte",
+   "region": "centum",
+   "code": "L4",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "l5",
+   "name": "LOTTE CINEMA Centum City 5",
+   "name_kr": "롯데시네마 센텀시티 5관",
+   "group": "lotte",
+   "region": "centum",
+   "code": "L5",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "l6",
+   "name": "LOTTE CINEMA Centum City 6",
+   "name_kr": "롯데시네마 센텀시티 6관",
+   "group": "lotte",
+   "region": "centum",
+   "code": "L6",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "l7",
+   "name": "LOTTE CINEMA Centum City 7",
+   "name_kr": "롯데시네마 센텀시티 7관",
+   "group": "lotte",
+   "region": "centum",
+   "code": "L7",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "l9",
+   "name": "LOTTE CINEMA Centum City 9",
+   "name_kr": "롯데시네마 센텀시티 9관",
+   "group": "lotte",
+   "region": "centum",
+   "code": "L9",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "l10",
+   "name": "LOTTE CINEMA Centum City 10",
+   "name_kr": "롯데시네마 센텀시티 10관",
+   "group": "lotte",
+   "region": "centum",
+   "code": "L10",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "kt",
+   "name": "KOFIC Theater",
+   "name_kr": "영화진흥위원회 표준시사실",
+   "group": "kofic",
+   "region": "centum",
+   "code": "KT",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "m1",
+   "name": "MEGABOX Busan Theater 1",
+   "name_kr": "메가박스 부산극장 1관",
+   "group": "megabox",
+   "region": "nampo",
+   "code": "M1",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "m2",
+   "name": "MEGABOX Busan Theater 2",
+   "name_kr": "메가박스 부산극장 2관",
+   "group": "megabox",
+   "region": "nampo",
+   "code": "M2",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "m3",
+   "name": "MEGABOX Busan Theater 3",
+   "name_kr": "메가박스 부산극장 3관",
+   "group": "megabox",
+   "region": "nampo",
+   "code": "M3",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "m4",
+   "name": "MEGABOX Busan Theater 4",
+   "name_kr": "메가박스 부산극장 4관",
+   "group": "megabox",
+   "region": "nampo",
+   "code": "M4",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "sh",
+   "name": "Dongseo University Sohyang Theatre ShinhanCard Hall",
+   "name_kr": "동서대학교 소향씨어터 신한카드홀",
+   "group": "sohyang",
+   "region": "nampo",
+   "code": "SH",
+   "lat": null,
+   "lng": null
+  },
+  {
+   "id": "bcm",
+   "name": "Busan Community Media Center Open Hall",
+   "name_kr": "부산시청자미디어센터 공개홀",
+   "group": "bcm",
+   "region": "nampo",
+   "code": "BCM",
+   "lat": null,
+   "lng": null
+  }
+ ]
 }

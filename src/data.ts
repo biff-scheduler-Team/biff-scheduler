@@ -32,6 +32,13 @@ export async function loadCatalog(): Promise<Catalog> {
     if (en <= st) s.end_time = minToHms(en + 24 * 60);
   }
 
+  // 原册有一部分场次**只印韩文片名**(2025 版 M1–M4 南浦洞共 41 场),title_en 为空 →
+  // 卡片 / 列表标题(displayTitle 最后一级就是 title_en)会整条空白。原地用 title_kr 兜底,
+  // 单一入口,不动 util / library 各自的取值链(它们读的是同一批对象)。
+  for (const s of schedule.screenings) {
+    if (!s.title_en) s.title_en = s.title_kr;
+  }
+
   const byCode = new Map<string, Screening>();
   for (const s of schedule.screenings) byCode.set(s.code, s);
 
