@@ -710,14 +710,7 @@ export function openMyPicks(ctx: LibraryCtx): void {
         ops.appendChild(
           el("span", "text-[11px] font-bold text-on-brand bg-biff rounded-full px-2 py-px whitespace-nowrap", `${ctx.group} 已选 ${picked}`)
         );
-      const go = el(
-        "button",
-        "border rounded-[6px] px-[10px] py-1 text-[12px] font-bold text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05]",
-        "定位 ▸"
-      );
-      go.title = "跳到该片首场在时间轴上的位置";
-      go.addEventListener("click", () => ctx.onLocate(n.shows[0].code));
-      ops.appendChild(go);
+      // 定位下放到场次行(逐场一个按钮):head 不再放"整片级"定位,避免"点了不知道跳哪场"
     } else {
       ops.appendChild(el("span", "text-[11px] font-bold text-muted border border-line bg-card rounded-full px-2 py-px whitespace-nowrap", "暂无排期"));
     }
@@ -742,25 +735,45 @@ export function openMyPicks(ctx: LibraryCtx): void {
     head.appendChild(ops);
     item.appendChild(head);
 
-    // 场次摘要(最多 3 场):选中后不必回影片库即可确认时间地点
+    // 场次摘要:全部场次逐行列出(不截断)—— 每场自带「定位 ▸」,第 N 场也能直接跳
     if (n.shows.length) {
       const rows = el("div", "border-t border-line-faint");
-      for (const s of n.shows.slice(0, 3)) {
+      n.shows.forEach((s, idx) => {
         const { label, weekday } = dateInfo(s.date);
-        const row = el("div", "flex items-center gap-[8px] px-3 py-[6px] text-[12px] text-muted");
-        row.append(
-          el("span", "font-extrabold text-[10.5px] text-on-brand bg-ink rounded px-1 py-px", s.code),
-          el("span", "tabular-nums whitespace-nowrap", `${label} ${weekday} ${s.start_time}–${s.end_time}`),
+        // 行本身可点(与「影片库」场次行同款交互);按钮点击冒泡到行 → 同一个定位出口
+        const row = el(
+          "div",
+          `grid grid-cols-[minmax(0,1fr)_auto] gap-[8px] items-center px-3 py-[6px] text-[12px] text-muted cursor-pointer hover:bg-hover${
+            idx > 0 ? " border-t border-line-faint" : ""
+          }`
+        );
+        row.dataset.libRow = "1";
+        row.dataset.code = s.code;
+        const left = el("div", "flex items-center gap-[8px] min-w-0");
+        left.append(
+          el("span", "font-extrabold text-[10.5px] text-on-brand bg-ink rounded px-1 py-px shrink-0", s.code),
+          el("span", "tabular-nums whitespace-nowrap shrink-0", `${label} ${weekday} ${s.start_time}–${s.end_time}`),
           el("span", "truncate", s.venue_display)
         );
+        const go = el(
+          "button",
+          "border-0 rounded-[6px] px-[9px] py-[3px] text-[11.5px] font-bold text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05] whitespace-nowrap",
+          "定位 ▸"
+        );
+        go.dataset.tip = "跳到该场在时间轴上的位置";
+        row.append(left, go);
         rows.appendChild(row);
-      }
-      if (n.shows.length > 3)
-        rows.appendChild(el("div", "px-3 pb-[7px] text-[11px] text-meta", `… 另有 ${n.shows.length - 3} 场,点「详情 ⓘ」看全部`));
+      });
       item.appendChild(rows);
     }
     return item;
   }
+
+  // 场次行定位(逐场):委托在 list 上挂一次,render() 重建行无需重绑
+  list.addEventListener("click", (ev) => {
+    const row = (ev.target as HTMLElement).closest<HTMLElement>("[data-lib-row]");
+    if (row?.dataset.code) ctx.onLocate(row.dataset.code);
+  });
 
   chipsBar.addEventListener("click", (ev) => {
     const b = (ev.target as HTMLElement).closest<HTMLElement>("[data-pri]");
