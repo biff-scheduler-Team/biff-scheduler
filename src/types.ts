@@ -125,6 +125,9 @@ export interface Settings {
   transitMin: number; // 跨影院转场缓冲（默认 0，M3 按场馆对覆盖）
   /** GV 映后谈全局默认是否参加(true=含,false=放弃);仅对未单场覆写的场生效。默认 true。 */
   gvTalkOn: boolean;
+  /** GV 映后谈默认时长(分钟)。**单场覆写 `store.gvTalkMinOv[code]` 优先**,缺省用本值;默认 25。
+   *  仅 `is_gv` 场次生效;0 = 不拆映后段。口径见 `gv.ts` 文件头(时长可配置,不再从数据推导)。 */
+  gvTalkMin: number;
 }
 
 export interface Catalog {

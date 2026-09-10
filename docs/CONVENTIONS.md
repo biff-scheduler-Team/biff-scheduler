@@ -73,6 +73,19 @@
 - **`subs` = `SubsKey[]`(多值)**:册子 META 会同时印多个(实测 `KE KK` 4 场,语义叠加)。契约 `Screening.subs?: SubsKey[]`,
   未标注 = `null`(**不用空数组**)。**渲染必须走 `legend.ts` 的 `subsKeys()` 归一化** —— 数据源可能仍是标量 `subs`,
   不归一化会 `SUBS_DEFS[array]` → undefined → 字幕章全丢。判空用 `s.subs?.length`。解析器侧逐个 `append` 去重,「未认领 token」非空即 WARN。
+- **GV 映后谈时长 = 可配置(2026-09-10 改)**:时长 = 单场覆写 `store.gvTalkMinOv[code]` ?? 全局默认
+  `Settings.gvTalkMin`(默认 **25**);**不再从 `end_time` 推导** —— 旧口径 `end_time − start − duration`
+  (2025 版 347 场 GV 中 345 场 = 25min)只作默认值 25 的来源。仅 `is_gv` 场次生效,0 = 不拆谈段。
+  解析收口 **`gv.ts::gvTalkMin`(多久)+ `gv.ts::talkOnOf`(去不去)** —— 后者是原 main.ts 私有 `gvTalkOf` 的下沉,
+  网格 / 行程 / 智能排片引擎 / `.ics` 全部走这两处,别再各写一份 `resolveTalk(gvTalk.get(…))`。
+  **有效结束口径**:有谈段 → `filmEndMin(s) + (参加 ? 时长 : 0)`(不再取官方 `end_time`,否则改配置不改结束时间,
+  配置就是假的);无谈段(非 GV / 时长 0)→ **仍取官方 `end_time`**(保护性分支:2025 有 6 场非 GV 片长 ≠ 槽位
+  −2/+1/+15/+90min,一律改走 `start + duration` 会静默改变这 6 场的冲突判定)。配套:`grid.ts::axisRangeFor`
+  轴末取 `max(end_time, filmEnd + 时长)`(配置调大后谈块会画到官方槽位外,不外扩就被裁);`markTightPairs` 的
+  「已弃映后」判定改为 `gvTalkMin > 0 && !talkOn`(不能拿有效结束与 `end_time` 裸比 —— 配置 ≠ 官方槽位余量时会误判);
+  `engine.ts::blocks` 的互斥判定也改走 `effEndMin`(否则引擎按官方槽位排,方案一进网格就显示冲突)。
+  入口:设置弹层「GV 映后谈默认时长(分钟)」+ 行程行 `⏱ N′` 胶囊(小弹层,留空 = 跟随默认;
+  **`is_gv` 恒显示** —— 否则全局设 0 后该场再也回不到「有谈段」)。持久化 `biff.gvtalkmin.v1`(与 `biff.gvtalk.v1` 正交)。
 - **场次徽章 = `badges.ts` 白名单 + 按族分配 token**:`screeningBadgeKeys()` 对未注册键**静默忽略**
   (2025 的 `talk`/`commentary`/`event` 共 10 场曾被吞)。已注册:`gv`/`masterclass`/`premiere`/`open_talk`/`batch`/`talk`/`commentary`/`event`。
   配色分族:档位 `--pri-*`、红绿灯 `--status-*`、观影等级 `--rate-*`、特别节目 `--ev-teal`(#0f766e,实心 → 实线描边 → 虚线描边表权重)。

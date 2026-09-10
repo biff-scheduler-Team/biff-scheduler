@@ -11,6 +11,7 @@ import { api } from "./api";
 const LS_PICKS = "biff.picks.v2";
 const LS_SETTINGS = "biff.settings.v1";
 const LS_GV_TALK = "biff.gvtalk.v1"; // GV 映后谈单场覆写(code → 是否参加);缺省跟随 Settings.gvTalkOn
+const LS_GV_TALK_MIN = "biff.gvtalkmin.v1"; // GV 映后谈单场时长覆写(code → 分钟);缺省跟随 Settings.gvTalkMin
 /** 旧版两套数据的 localStorage key —— 仅作一次性迁移源(迁移后不删,留作回退) */
 const LS_PLAN_LEGACY = "biff.plan.v1";
 const LS_WISH_LEGACY = "biff.wish.v1";
@@ -22,7 +23,7 @@ export const store = {
   slotIndex: new Map<string, { key: string; group: Group }>(),
   mappings: new Map<string, Mapping>(),
   group: "A" as Group,
-  settings: { alarmMin: 45, transitMin: 0, gvTalkOn: true } as Settings,
+  settings: { alarmMin: 45, transitMin: 0, gvTalkOn: true, gvTalkMin: 25 } as Settings,
   online: true,
 };
 
@@ -94,6 +95,38 @@ export function setGvTalk(code: string, on: boolean | null): void {
   if (on === null) gvTalk.delete(code);
   else gvTalk.set(code, on);
   saveGvTalk();
+  notify();
+}
+
+/** GV 映后谈单场时长覆写:code → 分钟数;无条目 = 跟随全局默认 Settings.gvTalkMin。
+ *  与 gvTalk(参加/放弃)正交:一个管「去不去」,一个管「多久」。 */
+export const gvTalkMinOv = new Map<string, number>();
+
+export function loadGvTalkMin(): void {
+  try {
+    const raw = localStorage.getItem(LS_GV_TALK_MIN);
+    if (!raw) return;
+    for (const [k, v] of Object.entries(JSON.parse(raw) as Record<string, unknown>)) {
+      if (typeof v === "number" && Number.isFinite(v)) gvTalkMinOv.set(k, v);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+export function saveGvTalkMin(): void {
+  try {
+    localStorage.setItem(LS_GV_TALK_MIN, JSON.stringify(Object.fromEntries(gvTalkMinOv)));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 设/清某场映后谈时长:number = 覆写本场;null = 清除覆写(回到跟随全局默认) */
+export function setGvTalkMin(code: string, min: number | null): void {
+  if (min === null) gvTalkMinOv.delete(code);
+  else gvTalkMinOv.set(code, min);
+  saveGvTalkMin();
   notify();
 }
 

@@ -45,7 +45,9 @@ function axisRangeFor(cat: Catalog, date: string): { start: number; end: number 
   for (const s of cat.schedule.screenings) {
     if (s.date !== date) continue;
     const st = hmsToMin(s.start_time);
-    const en = hmsToMin(s.end_time);
+    // 轴末取「官方槽位末」与「GV 含映后结束」的较大者 —— 映后时长可配置(gv.ts::gvTalkMin),
+    // 调大后谈块会画到官方槽位之外,轴末不跟着外扩就会被右缘裁掉。
+    const en = Math.max(hmsToMin(s.end_time), filmEndMin(s) + gvTalkMin(s));
     if (st < first) first = st;
     if (en > last) last = en;
   }
@@ -317,7 +319,8 @@ function markTightPairs(
     const b = picks[i + 1];
     if (ctx.conflictCodes?.has(a.code) || ctx.conflictCodes?.has(b.code)) continue; // 冲突已由 conf 视觉覆盖
     // GV 放弃映后谈 → 该场按正片末算有效结束,紧转场随之放宽
-    const endA = effEndMin(a, ctx.gvTalkOf?.(a.code) ?? true);
+    const aTalkOn = ctx.gvTalkOf?.(a.code) ?? true;
+    const endA = effEndMin(a, aTalkOn);
     const startB = hmsToMin(b.start_time);
     const gap = startB - endA;
     if (gap <= 0) continue; // 防御:重叠必已在冲突组
@@ -327,8 +330,9 @@ function markTightPairs(
 
     const bad = slack < 0;
     const endATxt = fmtEndClock(endA);
-    // 「已弃映后」判定走分钟比较 —— 显示文本可能带「次日」前缀,不能再与 end_time 裸串比
-    const endADropped = endA !== hmsToMin(a.end_time);
+    // 「已弃映后」= 有谈段且本场选了放弃 —— **不能**拿 endA 与官方 end_time 裸比:
+    // 映后时长可配置,配置值 ≠ 官方槽位余量时会把「参加」误判成「已弃」(见 gv.ts 文件头)
+    const endADropped = gvTalkMin(a) > 0 && !aTalkOn;
     const note = `${a.code} ${endATxt}结束${endADropped ? "(已弃映后)" : ""} → ${b.code} ${b.start_time}开始 · 间隔 ${gap}min${
       need ? ` · 跨馆需缓冲 ${need}min` : ""
     } · 余量 ${slack}min(${bad ? "不足" : "偏紧"})`;
@@ -364,7 +368,7 @@ function markTightPairs(
 /** GV 映后谈块上的两行小字时间区(谈段区间,如 15:45–16:10);块窄,字号再降一级。
  *  跨午夜时两端都折回 24h 内并带「次日」标记(如「次日 01:30–次日 02:00」)。 */
 function talkTimeRange(s: Screening): string {
-  return fmtMinRangeMin(filmEndMin(s), hmsToMin(s.end_time));
+  return fmtMinRangeMin(filmEndMin(s), filmEndMin(s) + gvTalkMin(s));
 }
 
 function appendCard(
@@ -376,7 +380,7 @@ function appendCard(
 ): { card: HTMLElement; talkEl: HTMLElement | null } {
   const start = hmsToMin(s.start_time);
   const end = hmsToMin(s.end_time);
-  const talk = gvTalkMin(s); // GV 映后谈分钟(数据推导;0 = 不拆,普通整卡)
+  const talk = gvTalkMin(s); // GV 映后谈分钟(全局默认 + 单场覆写;0 = 不拆,普通整卡)
   const talkOn = (ctx.gvTalkOf?.(s.code) ?? true) && talk > 0;
   const slot = ctx.slots.get(s.code);
   const isConflict = Boolean(ctx.conflictCodes?.has(s.code));
@@ -541,22 +545,30 @@ function appendCard(
 
 /** 映后谈块 hover 说明(按当前状态切换文案;第 1 行标题 = 谈段区间,其余分点) */
 function talkTip(s: Screening, talk: number, talkOn: boolean, inCurrent: boolean): string {
-  const endMin = hmsToMin(s.end_time);
+  const endMin = filmEndMin(s) + talk; // 谈段末 = 正片末 + 配置时长(时长可全局改 / 逐场覆写)
   const filmEnd = fmtEndClock(filmEndMin(s));
   const range = `${fmtMinRangeMin(filmEndMin(s), endMin)} 映后谈 ${talk}min(GV 嘉宾到场)`;
+  const howTo = "映后时长可在设置里改默认值,或在行程行点 ⏱ 逐场覆写";
   if (!inCurrent)
     return [
       range,
       "你还没加入本场 — 点正片 = 连映后谈一起加入",
       `点这里 = 只看正片(放弃映后谈,该场按 ${filmEnd} 结束,转场 / 冲突即时放宽)`,
+      howTo,
     ].join("\n");
   return talkOn
     ? [
         range,
         "已在行程中 — 默认连映后谈一起选",
         `点这里放弃 → 该场按 ${filmEnd} 结束,后续转场按正片末算`,
+        howTo,
       ].join("\n")
-    : [range, `已放弃 — 仅正片,${filmEnd} 结束`, `点这里恢复参加 → 按 ${fmtEndClock(endMin)} 结束`].join("\n");
+    : [
+        range,
+        `已放弃 — 仅正片,${filmEnd} 结束`,
+        `点这里恢复参加 → 按 ${fmtEndClock(endMin)} 结束`,
+        howTo,
+      ].join("\n");
 }
 
 /**

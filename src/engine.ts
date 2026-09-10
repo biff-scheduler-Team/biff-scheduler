@@ -6,6 +6,7 @@
 
 import type { Priority, Screening } from "./types";
 import { OK_SLACK, hmsToMin } from "./util";
+import { effEndMin, talkOnOf } from "./gv";
 
 export interface EngineFilm {
   key: string; // 影片节点 key(cat:<id> / sched:<片名>)
@@ -154,12 +155,15 @@ interface Placed {
   show: Screening;
 }
 
-/** 两场是否互斥(同一天 + 时段重叠;跨馆则先结束场次追加转场缓冲再判) */
+/** 两场是否互斥(同一天 + 时段重叠;跨馆则先结束场次追加转场缓冲再判)。
+ *  结束一律取**有效结束**(`effEndMin` = 正片末 + 映后时长;放弃映后谈则 = 正片末)——
+ *  与网格 / 行程 / 冲突同口径。否则映后时长调大后,引擎仍按官方槽位排,
+ *  排出来的方案一进网格就显示冲突(见 gv.ts 文件头)。 */
 function blocks(a: Screening, b: Screening, transitMin: number): boolean {
   if (a.date !== b.date) return false;
   const [x, y] = a.start_time <= b.start_time ? [a, b] : [b, a];
   const transit = x.venue_id !== y.venue_id ? transitMin : 0;
-  return hmsToMin(x.end_time) + transit > hmsToMin(y.start_time);
+  return effEndMin(x, talkOnOf(x.code)) + transit > hmsToMin(y.start_time);
 }
 
 function fits(cand: Screening, chosen: Placed[], transitMin: number): boolean {
@@ -215,7 +219,7 @@ function mustSolutions(musts: EngineFilm[], transitMin: number): Placed[][] {
     if (i === order.length) {
       sols.push({
         chosen,
-        sumEnd: chosen.reduce((s, p) => s + hmsToMin(p.show.end_time), 0),
+        sumEnd: chosen.reduce((s, p) => s + effEndMin(p.show, talkOnOf(p.show.code)), 0),
         key: chosen.map((p) => p.show.code).sort().join(","),
       });
       return;

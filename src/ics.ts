@@ -69,7 +69,7 @@ export function buildIcs(
     const gv = s.is_gv ? " (GV)" : "";
     const summary = `[${e.code}] ${title}${gv}`;
 
-    // 映后谈取舍:参加 → 结束=槽位末(官方 end_time 已含);放弃 → 结束=正片末
+    // 映后谈取舍:参加 → 结束 = 正片末 + 映后时长(时长可配置:全局默认 + 单场覆写);放弃 → 结束 = 正片末
     const talk = gvTalkMin(s);
     const talkOn = talk > 0 ? talkOf(e.code) : true;
     const endHms = effEndHms(s, talkOn);

@@ -6,19 +6,21 @@ import { OK_SLACK, dateInfo, el, filmNodeKey, fmtMinRangeMin, hmsToMin, todayIso
 import { loadCatalog } from "./data";
 import { computeConflicts, conflictGroupFor, type ConflictResult, type Slot } from "./conflict";
 import { buildIcs, downloadIcs, pickEntries, priorityTag } from "./ics";
-import { effEndMin, gvTalkMin, resolveTalk } from "./gv";
+import { effEndMin, gvTalkMin, talkOnOf } from "./gv";
 import {
   clearScreeningSlots,
   codesOfGroup,
   flipGroup,
-  gvTalk,
+  gvTalkMinOv,
   loadGvTalk,
+  loadGvTalkMin,
   loadPicks,
   loadSettings,
   priorityOfCode,
   removeScreening,
   setCurrentGroup,
   setGvTalk,
+  setGvTalkMin,
   setPriorityOfCode,
   setSettings,
   slotOf,
@@ -80,9 +82,10 @@ function libraryCtx() {
 /* ---------------- 状态 -> 视图 ---------------- */
 
 /** GV 映后谈是否参加:单场覆写(gvTalk)优先,缺省跟随 Settings.gvTalkOn(默认含)。
- *  talk=0(非 GV / 数据未含谈后)的场次无拆分无开关,调用方按需守卫。 */
+ *  解析收口在 gv.ts::talkOnOf(引擎 / 导出也要用同一口径);talk=0(非 GV / 映后时长配成 0)
+ *  的场次无拆分无开关,调用方按需守卫。 */
 function gvTalkOf(code: string): boolean {
-  return resolveTalk(gvTalk.get(code), store.settings.gvTalkOn);
+  return talkOnOf(code);
 }
 
 function computeConflictsForCurrentGroup(): Map<string, ConflictResult> {
@@ -332,7 +335,7 @@ function bindEvents(): void {
       const hit = slotOf(code);
       if (hit && hit.group === store.group) {
         // 已在当前方案:翻转含↔弃(覆写落 localStorage,不删场次、不动全局默认)
-        setGvTalk(code, !resolveTalk(gvTalk.get(code), store.settings.gvTalkOn));
+        setGvTalk(code, !talkOnOf(code));
       } else {
         // 未在当前方案(含在另一方案):一枪「只要正片」= 加入当前方案 + 覆写放弃映后谈;
         // 档位按该片已有记录继承(从未打标 → null 未设)
@@ -363,7 +366,8 @@ function bindEvents(): void {
         setPriorityOfCode(code, (priorityOfCode(code) ?? null) === p ? null : p);
       } else if (act.dataset.act === "grp") flipGroup(code);
       else if (act.dataset.act === "del") removeScreening(code);
-      else if (act.dataset.act === "gv-talk") setGvTalk(code, !resolveTalk(gvTalk.get(code), store.settings.gvTalkOn));
+      else if (act.dataset.act === "gv-talk") setGvTalk(code, !talkOnOf(code));
+      else if (act.dataset.act === "gv-talk-min") openTalkMinModal(code); // 本场映后时长覆写(小弹层)
       return;
     }
 
@@ -510,6 +514,18 @@ function openSettings(): void {
   seg.append(mkGvOpt(true, "参加(含映后)"), mkGvOpt(false, "不参加(仅正片)"));
   f3.row.appendChild(seg);
 
+  // f4:GV 映后谈时长(全局默认)—— 改这里 = 谈段长度 / 有效结束 / 转场 / 冲突 / .ics 全链路跟着变
+  const f4 = settingsField(
+    "GV 映后谈默认时长(分钟)",
+    "所有 GV 场次按「正片 + 映后谈 N′」拆两段(时长变了,有效结束 / 转场 / 冲突 / 导出同步变)。逐场可在行程行点 ⏱ 覆写;设 0 = 该批场次不拆映后段。官方排期里 GV 场次已含 25min,故默认 25"
+  );
+  const talkMin = el("input", "w-[90px] border border-line rounded-[8px] px-2 py-[5px] text-[13px]") as HTMLInputElement;
+  talkMin.type = "number";
+  talkMin.min = "0";
+  talkMin.max = "240";
+  talkMin.value = String(store.settings.gvTalkMin);
+  f4.row.appendChild(talkMin);
+
   const actions = el("div", "flex gap-[10px] mt-1");
   const apply = el(
     "button",
@@ -517,7 +533,12 @@ function openSettings(): void {
     "保存设置"
   );
   apply.addEventListener("click", () => {
-    setSettings({ alarmMin: clampNum(alarm.value, 45), transitMin: clampNum(transit.value, 0), gvTalkOn: gvDef });
+    setSettings({
+      alarmMin: clampNum(alarm.value, 45),
+      transitMin: clampNum(transit.value, 0),
+      gvTalkOn: gvDef,
+      gvTalkMin: Math.max(0, Math.round(clampNum(talkMin.value, 25))),
+    });
     closeModal();
     toast("设置已保存");
   });
@@ -535,9 +556,58 @@ function openSettings(): void {
     }
   });
   actions.append(apply, danger);
-  body.append(f1.box, f2.box, f3.box, actions);
+  body.append(f1.box, f2.box, f3.box, f4.box, actions);
 
   openModal("设置", body);
+}
+
+/** GV 映后谈单场时长覆写小弹层:留空 / 点「跟随默认」= 清除覆写(回到跟随全局默认)。
+ *  只有 is_gv 场次有入口(非 GV 无谈段);改完走 state 的 notify → renderAll 重绘网格 / 行程。 */
+function openTalkMinModal(code: string): void {
+  const s = cat.byCode.get(code);
+  if (!s) return;
+  const def = store.settings.gvTalkMin;
+  const cur = gvTalkMinOv.get(code);
+  const body = el("div", "grid gap-3");
+
+  const f = settingsField(
+    `本场映后谈时长(分钟) · ${code}`,
+    `留空 = 跟随全局默认 ${def}′。仅本场生效(其它 GV 场不动);设 0 = 本场不拆映后段`
+  );
+  const inp = el("input", "w-[90px] border border-line rounded-[8px] px-2 py-[5px] text-[13px]") as HTMLInputElement;
+  inp.type = "number";
+  inp.min = "0";
+  inp.max = "240";
+  inp.placeholder = String(def);
+  inp.value = cur == null ? "" : String(cur);
+  f.row.appendChild(inp);
+  body.appendChild(f.box);
+
+  const actions = el("div", "flex gap-[10px] mt-1");
+  const ok = el(
+    "button",
+    "border-0 rounded-[6px] px-[14px] py-[6px] text-[13px] font-bold text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05]",
+    "保存"
+  );
+  const follow = el(
+    "button",
+    "border border-line rounded-[6px] px-[12px] py-[6px] text-[13px] font-bold bg-card text-ink hover:border-biff",
+    `跟随默认(${def}′)`
+  );
+  const apply = (min: number | null): void => {
+    setGvTalkMin(code, min);
+    closeModal();
+    toast(min == null ? `已恢复跟随全局默认(${def}′)` : `本场映后谈已设为 ${min}′`);
+  };
+  ok.addEventListener("click", () => {
+    const raw = inp.value.trim();
+    apply(raw === "" ? null : Math.max(0, Math.round(clampNum(raw, def))));
+  });
+  follow.addEventListener("click", () => apply(null));
+  actions.append(ok, follow);
+  body.appendChild(actions);
+
+  openModal("映后谈时长", body);
 }
 
 function clampNum(v: string, fallback: number): number {
@@ -673,6 +743,7 @@ function toast(msg: string): void {
 async function boot(): Promise<void> {
   loadSettings();
   loadGvTalk();
+  loadGvTalkMin();
   cat = await loadCatalog();
   currentDate = cat.dates[0] ?? "";
   // 选片记录(唯一数据源)必须在 cat 就绪之后载入:首次迁移要用 filmNodeKey(cat, s)

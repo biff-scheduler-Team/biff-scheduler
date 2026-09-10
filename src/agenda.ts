@@ -5,6 +5,7 @@
 import type { Catalog, Group, Mapping, PickEntry, Screening } from "./types";
 import { OK_SLACK, dateInfo, el, escapeHtml, fmtEndClock, hmsToMin } from "./util";
 import { effEndMin, filmEndMin, gvTalkMin } from "./gv";
+import { gvTalkMinOv, store } from "./state";
 import { codeTip } from "./badges";
 import { appendMetaRow } from "./legend";
 import { PRI_BG_ON, WISH_ORDER } from "./pick";
@@ -162,7 +163,25 @@ function buildRow(
 
   // 操作列
   const acts = el("div", "flex gap-[6px] items-center max-[720px]:col-span-full max-[720px]:justify-end");
-  // GV 行加一枚映后谈开关胶囊:✓含映后 / ✕弃映后;翻转仅覆写本场(不动全局默认)
+  // GV 行两枚胶囊:① ⏱ 时长(覆写本场映后时长;**is_gv 恒显示**,即使当前 0 —— 否则全局默认设成 0
+  //   后该场再也回不到「有谈段」);② 参加 / 放弃开关(仅在有谈段时有意义)。两者正交。
+  if (s.is_gv) {
+    const ov = gvTalkMinOv.get(s.code);
+    const talkMinBtn = el(
+      "button",
+      `rounded-full border px-[9px] py-[3px] text-[12px] font-semibold whitespace-nowrap transition-colors hover:border-biff hover:text-biff ${
+        ov == null ? "border-line bg-card text-muted" : "border-biff-line bg-biff-soft text-biff"
+      }`,
+      `⏱ ${talk}′`
+    );
+    talkMinBtn.dataset.act = "gv-talk-min";
+    talkMinBtn.title =
+      ov == null
+        ? `本场映后谈 ${talk} 分钟(跟随全局默认)。点击可单独设本场时长`
+        : `本场映后谈 ${talk} 分钟(已单独设置,不跟随全局默认 ${store.settings.gvTalkMin}′)。点击可改 / 清除`;
+    acts.append(talkMinBtn);
+  }
+  // 映后谈开关胶囊:✓含映后 / ✕弃映后;翻转仅覆写本场(不动全局默认)
   let talkBtn: HTMLElement | null = null;
   if (talk > 0) {
     const offCls = "border border-line bg-card text-muted line-through";
@@ -170,12 +189,13 @@ function buildRow(
     talkBtn = el(
       "button",
       `rounded-full px-[9px] py-[3px] text-[12px] font-semibold whitespace-nowrap transition-colors hover:border-biff hover:text-biff ${talkOn ? onCls : offCls}`,
-      talkOn ? `✓ 含映后 ${talk}′` : `✕ 弃映后 · 至 ${fmtEndClock(filmEndMin(s))}`
+      talkOn ? "✓ 含映后" : "✕ 弃映后"
     );
     talkBtn.dataset.act = "gv-talk";
+    const talkEnd = fmtEndClock(filmEndMin(s) + talk); // 谈段末 = 正片末 + 配置时长
     talkBtn.title = talkOn
-      ? `当前连映后谈一起参加(到 ${fmtEndClock(hmsToMin(s.end_time))} 结束)。点击放弃 → 只看正片,本场按 ${fmtEndClock(filmEndMin(s))} 结束,与后场的转场/冲突即时按正片末放宽`
-      : `已放弃映后谈(正片至 ${fmtEndClock(filmEndMin(s))} 结束)。点击恢复 → 连映后谈一起参加,按 ${fmtEndClock(hmsToMin(s.end_time))} 结束`;
+      ? `当前连映后谈一起参加(到 ${talkEnd} 结束)。点击放弃 → 只看正片,本场按 ${fmtEndClock(filmEndMin(s))} 结束,与后场的转场/冲突即时按正片末放宽`
+      : `已放弃映后谈(正片至 ${fmtEndClock(filmEndMin(s))} 结束)。点击恢复 → 连映后谈一起参加,按 ${talkEnd} 结束`;
   }
   const grpBtn = el(
     "button",
