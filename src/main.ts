@@ -38,7 +38,7 @@ import { buildGuideBody } from "./legend";
 import { scorePlanRows, type ScoredRow } from "./engine";
 import { aiReady, clearAiCfg, loadAiCfg, maskKey } from "./ai";
 import { closeAllModals, closeModal, openModal, showCatalogFilmModal, showFilmModal } from "./modal";
-import { openLibrary, openMyPicks } from "./library";
+import { openFilmPicker } from "./library";
 
 let cat: Catalog;
 let currentDate = "";
@@ -452,15 +452,9 @@ function bindEvents(): void {
       return;
     }
 
-    // 影片库:浏览全部影片 / 搜索 → 定位或详情
-    if (t.closest("#library-btn")) {
-      openLibrary(libraryCtx());
-      return;
-    }
-
-    // 我的选片:影片库打标清单总览(筛选 / 详情 / 定位 / 取消打标)
-    if (t.closest("#my-picks-btn")) {
-      openMyPicks(libraryCtx());
+    // 影片库 / 我的选片:同一个左右双栏弹窗(左 = 全部影片可搜可筛,右 = 选片总览)
+    if (t.closest("#library-btn") || t.closest("#my-picks-btn")) {
+      openFilmPicker(libraryCtx());
       return;
     }
 

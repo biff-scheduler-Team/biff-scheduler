@@ -36,7 +36,23 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") topModal()?.dismiss();
 });
 
-export function openModal(title: string, body: HTMLElement, wide = false, onReturn?: () => void): void {
+/** 弹层宽度档:`md` 520 / `lg` 640 / `xl` 1280(左右双栏用 —— 左栏 flex-1 ≥ 536,右栏固定 480,
+ *  两栏都放得下「场次行」那套完整徽章行;窄于 1100px 时两栏上下堆叠,见 library.ts)。
+ *  兼容旧的布尔第三参 —— `true → lg`、`false / 省略 → md`(存量调用点不必改)。 */
+export type ModalSize = "md" | "lg" | "xl";
+
+const MODAL_WIDTH: Record<ModalSize, string> = {
+  md: "w-[520px]",
+  lg: "w-[640px]",
+  xl: "w-[1280px]",
+};
+
+export function openModal(
+  title: string,
+  body: HTMLElement,
+  size: ModalSize | boolean = "md",
+  onReturn?: () => void
+): void {
   const root = document.getElementById("modal-root");
   if (!root) return;
   const depth = modalStack.length; // 0 = 栈底(没有上一层可回)
@@ -47,9 +63,8 @@ export function openModal(title: string, body: HTMLElement, wide = false, onRetu
     "div",
     "fixed inset-0 z-[100] bg-[var(--overlay-bg)] flex items-start justify-center px-4 py-12 overflow-y-auto"
   );
-  const boxCls = wide
-    ? "bg-card rounded-[12px] shadow-[var(--shadow-modal)] w-[640px] max-w-full p-[18px]"
-    : "bg-card rounded-[12px] shadow-[var(--shadow-modal)] w-[520px] max-w-full p-[18px]";
+  const sz: ModalSize = size === true ? "lg" : size === false ? "md" : size;
+  const boxCls = `bg-card rounded-[12px] shadow-[var(--shadow-modal)] ${MODAL_WIDTH[sz]} max-w-full p-[18px]`;
   const box = el("div", boxCls);
   const head = el("div", "flex items-center gap-2 mb-3");
   head.appendChild(el("h3", "m-0 text-[16px] flex-1 min-w-0", title));
