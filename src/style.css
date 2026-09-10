@@ -178,15 +178,19 @@
   & * { pointer-events: none; }
 }
 
-/* 网格 ↔ 行程 双向 hover 联动:网格卡 → 红圈外晕,行程行 → 红圈外晕(无内嵌竖条,与 in-plan 底色化语言一致) */
+/* 网格 ↔ 行程 双向 hover 联动:网格卡 → 红圈外晕,行程行 → 红圈外晕(无内嵌竖条,与 in-plan 底色化语言一致)
+   ⚠ 三处必须 !important:卡片/行自身带 Tailwind `hover:shadow-[var(--shadow-hover)]`(权重 (0,2,0))与
+   `hover:z-[2]`,而 @utility 只生成单类选择器(0,1,0)——不提升权重时,被 hover 的那一张会用自己的
+   hover 阴影吃掉本类的外晕(只剩 border-color 生效),表现为「联动单向亮」:hover 映后块两张都亮、
+   hover 正片卡/行程行只有对面亮。border-color 原本就有 !important,外晕与 z-index 补齐同一口径。 */
 @utility hl-card {
   border-color: var(--color-biff) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-biff) 38%, transparent);
-  z-index: 6;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-biff) 38%, transparent) !important;
+  z-index: 6 !important;
 }
 @utility hl-row {
   border-color: var(--color-biff) !important;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-biff) 35%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-biff) 35%, transparent) !important;
 }
 
 /* 红绿灯整卡底色语言(网格卡,与冲突/紧转场同一套交互;优先级不在网格染色 — 见行程行 seg):
