@@ -492,7 +492,7 @@ export function openFilmPicker(ctx: LibraryCtx): void {
             ? n.shows.length
               ? `还没排场 — 这部片有 ${n.shows.length} 场可选,去左栏或时间轴点选场次,选完这里就会出现(选片意向已保留)`
               : "该片暂无已发布排期"
-            : "官方排期未发布 — 可先用行右侧「资料 ⓘ」关联豆瓣条目;Catalogue 排期公布并引入后,这里会自动出现可定位的场次"
+            : "官方排期未发布 — 可先用行右侧「ⓘ」关联豆瓣条目;Catalogue 排期公布并引入后,这里会自动出现可定位的场次"
         )
       );
     }
@@ -686,7 +686,7 @@ export function openFilmPicker(ctx: LibraryCtx): void {
         el(
           "div",
           "text-[13px] text-muted leading-[1.8] py-[18px] px-[6px] text-center",
-          "还没有选片 — 在左栏「影片库」片名行右侧点「必看 / 备选 / 随缘」定档,或直接在时间轴上点选场次。两种操作写的是同一份数据,这里与「我的行程」永远一致。"
+          "还没有选片 — 在左栏「影片库」片名行右侧点档位徽章(「+ 标记」)选「必看 / 备选 / 随缘」,或直接在时间轴上点选场次。两种操作写的是同一份数据,这里与「我的行程」永远一致。"
         )
       );
       return;
