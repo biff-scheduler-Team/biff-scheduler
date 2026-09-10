@@ -67,6 +67,13 @@ export const BADGE_DEFS: BadgeDef[] = [
     title: "Open Talk · 映后公开对谈",
     cls: "px-[3px] py-px text-ink bg-card border border-ink",
   },
+  {
+    key: "batch",
+    label: "묶",
+    title: "Batch Screening · 连场连续放映(官方偶用;显示即以此为义)",
+    // 虚线描边 = 「成组/连场」;与 premiere/open_talk 的实线描边区分,不与 KN 的虚线撞(那是等级色虚线)
+    cls: "px-[3px] py-px text-ink-2 bg-card border border-line-strong border-dashed",
+  },
 ];
 
 /** 徽章基础字阶 / 排版(所有变体共享) */

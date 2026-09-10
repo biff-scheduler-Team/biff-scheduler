@@ -5,7 +5,7 @@
 import type { Catalog, FilmItem, Group, Mapping, PlanEntry, Priority, Screening } from "./types";
 import { dateInfo, el, filmNodeKey } from "./util";
 import { codeTip } from "./badges";
-import { appendMetaRow } from "./legend";
+import { appendMetaRow, doubanChip } from "./legend";
 import { openModal } from "./modal";
 import { PRI_BG_ON, PRI_LABEL, PRI_TEXT, WISH_ORDER, buildWishSeg } from "./pick";
 import { replaceGroup, setCurrentGroup, setWish, store, wish } from "./state";
@@ -300,13 +300,7 @@ export function openLibrary(ctx: LibraryCtx): void {
       zhTop.appendChild(el("div", "text-[14px] font-bold truncate flex-1", n.zh));
       const cat0 = n.cats[0];
       if (cat0?.rating != null) {
-        const rc = el(
-          "span",
-          "inline-block text-[11px] font-bold text-muted border border-line bg-card rounded px-[6px] leading-[1.7] select-none whitespace-nowrap",
-          `豆 ${cat0.rating}`
-        );
-        rc.dataset.tip = "豆瓣用户评分(满分 10 分)"; // 缩写说明:豆 = 豆瓣评分
-        zhTop.appendChild(rc);
+        zhTop.appendChild(doubanChip(cat0.rating)); // 豆瓣章单一来源(legend.ts;豆 = 豆瓣评分)
       }
       titles.appendChild(zhTop);
       if (n.names.length) titles.appendChild(el("div", "text-[11.5px] text-muted truncate", n.names.join(" · ")));
@@ -687,13 +681,7 @@ export function openMyPicks(ctx: LibraryCtx): void {
     zhTop.appendChild(el("div", "text-[14px] font-bold truncate flex-1", n.zh));
     const cat0 = n.cats[0];
     if (cat0?.rating != null) {
-      const rc = el(
-        "span",
-        "inline-block text-[11px] font-bold text-muted border border-line bg-card rounded px-[6px] leading-[1.7] select-none whitespace-nowrap",
-        `豆 ${cat0.rating}`
-      );
-      rc.dataset.tip = "豆瓣用户评分(满分 10 分)";
-      zhTop.appendChild(rc);
+      zhTop.appendChild(doubanChip(cat0.rating)); // 豆瓣章单一来源(legend.ts)
     }
     titles.appendChild(zhTop);
     if (n.names.length) titles.appendChild(el("div", "text-[11.5px] text-muted truncate", n.names.join(" · ")));

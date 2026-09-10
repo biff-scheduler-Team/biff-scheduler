@@ -3,8 +3,7 @@
 
 import type { Catalog, Mapping, PlanEntry, Priority, Screening } from "./types";
 import { dateInfo, el, filmNodeKey, fmtMinRange } from "./util";
-import { DOUBAN_CHIP_TITLE } from "./badges";
-import { appendMetaRow } from "./legend";
+import { appendMetaRow, doubanChip } from "./legend";
 import { api } from "./api";
 import { setWish, store, wish } from "./state";
 import { buildWishSeg } from "./pick";
@@ -130,15 +129,7 @@ export function showFilmModal(code: string, ctx: FilmModalCtx): void {
   if (anchor.title_en !== zh) meta.appendChild(enLine);
   if (anchor.title_kr) meta.appendChild(el("div", "text-muted text-[12.5px]", anchor.title_kr));
   const rating = ratingOf(ctx.cat, code);
-  if (rating != null) {
-    const rc = el(
-      "span",
-      "inline-block text-[11px] font-bold text-muted border border-line bg-card rounded px-[6px] leading-[1.7] select-none whitespace-nowrap mt-2",
-      `豆 ${rating}`
-    );
-    rc.dataset.tip = DOUBAN_CHIP_TITLE; // 缩写说明:豆 = 豆瓣评分
-    meta.appendChild(rc);
-  }
+  if (rating != null) meta.appendChild(doubanChip(rating, "mt-2")); // 豆瓣章单一来源(legend.ts)
   body.appendChild(meta);
 
   // ---- 我的选片(打标:必看/备选/随缘)----
@@ -229,15 +220,7 @@ export function showCatalogFilmModal(
   if (infoBits.length) {
     meta.appendChild(el("div", "text-muted text-[12.5px]", infoBits.join(" · ")));
   }
-  if (film.rating != null) {
-    const rc = el(
-      "span",
-      "inline-block text-[11px] font-bold text-muted border border-line bg-card rounded px-[6px] leading-[1.7] select-none whitespace-nowrap mt-2",
-      `豆 ${film.rating}`
-    );
-    rc.dataset.tip = DOUBAN_CHIP_TITLE; // 缩写说明:豆 = 豆瓣评分
-    meta.appendChild(rc);
-  }
+  if (film.rating != null) meta.appendChild(doubanChip(film.rating, "mt-2")); // 豆瓣章单一来源(legend.ts)
   body.appendChild(meta);
 
   // ---- 我的选片(目录片 key = cat:<id>,与排期后同片打标同源)----
