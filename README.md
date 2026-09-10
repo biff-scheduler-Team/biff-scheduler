@@ -150,7 +150,7 @@ npm run preview      # 构建后用 wrangler 起本地 Pages + Functions + D1 �
 | 后端 | **Cloudflare Pages Functions** | `functions/api/**` 动态路由（Workers runtime），提供选片 / 映射读写 |
 | 数据库 | **Cloudflare D1**（SQLite） | 存用户选片与豆瓣映射；`user_id` 字段预留多人 |
 | 运维 | **Wrangler 4** | 本地预览、D1 迁移、Pages 部署 |
-| 离线管线 | **Python**（pdfplumber / Camelot 兜底）+ Node 脚本 | 从官方 Ticket Catalogue PDF / xlsx 解析出 `schedule.json` / `venues.json` / `films.json`，产物检入仓库 |
+| 离线管线 | **Python**（PyMuPDF / openpyxl）+ Node 脚本 | 从官方 Ticket Catalogue PDF 与影片信息 xlsx 解析出 `schedule.json` / `venues.json` / `films.json`；产物检入仓库，**仅在更新数据时需要**，部署链路不依赖它 |
 
 **为什么这么选**：单用户自用工具，追求零成本与零重依赖。网格对交互定制要求高（冲突联动、跨午夜 24+ 时制、缩放锚点），现成组件库要么付费、要么样式难融、要么体积过大 —— 自研反而更小更可控。
 
@@ -246,7 +246,55 @@ npm run deploy              # 构建 + wrangler pages deploy dist（production �
 
 ---
 
-## 八、数据说明与许可
+## 八、数据从哪来（部署时**不需要**解析 PDF）
+
+**一句话**：部署链路与 PDF 无关。运行时数据就是仓库里的三个静态 JSON，它们**已经检入 git**，`npm run build` 时被 Vite 原样拷进 `dist/`，前端 `data.ts` 用 `fetch("schedule.json")` 加载。
+
+| 文件 | 内容 | 由谁产出 |
+|---|---|---|
+| `public/schedule.json` | 全部场次（时间 / 影院 / GV / 分级 / 字幕 / 页码…） | `tools/extract_schedule.py`（解析官方 Catalogue **PDF** 的排期页） |
+| `public/venues.json` | 影厅清单（厅 id / 影院 / 分区 / 代码） | 同上 |
+| `public/films.json` | 影片目录（片名 / 单元 / 年份 / 国家 / 导演 / 豆瓣分） | `tools/build_films.py`（官方影片信息 **xlsx**）或 `tools/extract_films_2025.py`（PDF 影片介绍页） |
+
+所以：**clone 下来直接 `npm run build` + `npm run deploy` 就有完整数据**，不需要 Python、不需要 PDF、不需要任何解析步骤。
+
+### 什么时候才需要 PDF
+
+只有当你要**换一届 / 更新数据**时。官方 Catalogue PDF **不在仓库里**（体积 + 版权），需自行从 [biff.kr](https://www.biff.kr/) 下载。管线是**本地一次性**跑的，产物检入仓库，不入部署：
+
+```bash
+# 0) 依赖（本机 Python 3）
+pip install pymupdf openpyxl
+
+# 1) 排期：Catalogue PDF 的排期表页 → schedule.json / venues.json
+python tools/extract_schedule.py \
+    --pdf <Catalogue.pdf> --year 2025 --month 9 \
+    --out /tmp/schedule.json --venues-out /tmp/venues.json
+
+# 2) 收尾：泳道按「分区 → 影院 → 厅号」重排 + festival 元信息 → public/
+python tools/import_schedule_2025.py \
+    --schedule /tmp/schedule.json --venues /tmp/venues.json --dest public
+
+# 3) 影片目录（二选一）
+python tools/build_films.py --xlsx <影片信息.xlsx> --out public/films.json        # 有官方 xlsx 时优先
+python tools/extract_films_2025.py --pdf <Catalogue.pdf> --out public/films.json  # 否则抽 PDF 介绍页
+
+# 4)（可选）豆瓣评分慢速回填
+python tools/enrich_douban.py
+```
+
+### 不想跑 Python 也行
+
+`public/*.json` 就是普通 JSON，按 `src/types.ts` 里的契约手改或自己造即可 —— `data.ts` 还会做兜底归一（跨午夜时间补 24h、韩文片名兜底等），旧版 JSON 也能自愈。
+
+### 现有数据的届次
+
+- **2025（第 30 届）**：Catalogue PDF —— 排期页 p9–p16、影片介绍页 p22–p97；699 场 / 29 厅 / 10 天（当前仓库内置）
+- **2026（第 31 届）**：影片目录已暂存 `data/films-2026.json`；官方排期发布后用同一套管线解析即可切换，**前端代码零改动**
+
+---
+
+## 九、数据说明与许可
 
 - 排期 / 场次信息来源于 biff.kr 公开页面，**仅作个人非商用排片参考**，不收费、不对外分发；页脚已保留出处归属。
 - `public/brand/` 下的 BIFF 官方 logo 素材（favicon / 字标 / ft_logo）版权归 BIFF 组委会所有，**如转为商业或公开大规模用途，需移除并替换为自有设计**（详见 `PLAN.md` §8）。
