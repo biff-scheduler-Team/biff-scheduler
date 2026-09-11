@@ -2,7 +2,7 @@
 // 全量化:列表 / 行 / 头部 / chip / pill / 场次行 全部 Tailwind utility。
 // 16-B 单元 chip / 评分章 / 选片三选 同源 —— 都读写 store.picks(唯一数据源)。
 
-import type { Catalog, FilmItem, Mapping, PickEntry, Screening, Venue } from "./types";
+import type { Catalog, ExtraProgram, FilmItem, Mapping, PickEntry, Screening, Venue } from "./types";
 import { bilingualTitle, catMetaLine, dateInfo, el, filmEnName, filmInfoOf, filmNodeKey, groupByDate, normText, unitLabel } from "./util";
 import { doubanChip } from "./legend";
 import { cardHead, SHOW_ROW_CLS, screeningRow } from "./row";
@@ -17,7 +17,7 @@ import {
   renderFilterBar,
   saveFilters,
 } from "./filters";
-import { KIND_LABEL, programOf } from "./extras";
+import { extras, KIND_LABEL, programOf } from "./extras";
 import { BTN_GO_SM, ICON_BTN, NAV_BTN, TAB_OFF, TAB_ON } from "./ui";
 import { addPickFilm, allCodes, removePick, subscribe } from "./state";
 import { toast } from "./toast";
@@ -84,19 +84,40 @@ export function unitKey(raw: string | undefined | null): string {
 
 interface UnitChip {
   key: string;
-  count: number; // 目录片计数(静态,不随搜索变化)
+  count: number; // 目录片计数(静态,不随搜索变化);活动单元 = 该形式的场次数
 }
 
-/** chips:全部 + 各归并单元,按片数降序 */
+/** 活动形式单元的 key 前缀 —— 与目录单元的 `unitKey()` 值域天然不冲突(目录单元不会以 `act:` 开头),
+ *  故两者共用同一条 `unit` 状态与 `inUnit` 判定(见该函数)。 */
+const ACT_UNIT_PREFIX = "act:";
+
+/** 活动形式在下拉里的固定先后;`Special Talk` 放最后 —— 它多数是**映后谈**,
+ *  挂在普通放映场次上,作为「单元」看更像附属信息(见 `inUnit` 注释)。 */
+const ACT_KINDS: ExtraProgram["kind"][] = ["actors_house", "master_class", "cine_class", "special_talk"];
+
+/** chips:全部 + 各归并单元(按片数降序)+ 活动形式单元(固定顺序,追加在末尾)。
+ *  ⚠ 活动单元**不参与目录单元的排序** —— 两者的「片数」口径不同(目录片数 vs 活动场次数),
+ *    混排会让下拉的「按片数降序」读起来自相矛盾;固定摆在末尾,找活动时一眼可见。 */
 function buildUnitChips(films: FilmItem[]): UnitChip[] {
   const m = new Map<string, number>();
   for (const f of films) {
     const k = unitKey(f.unit);
     m.set(k, (m.get(k) ?? 0) + 1);
   }
-  return [...m.entries()]
+  const dirChips = [...m.entries()]
     .map(([key, count]) => ({ key, count }))
     .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key, "zh"));
+  return [...dirChips, ...actUnitChips()];
+}
+
+/** 活动形式单元(数据源 = `festival-extras.json` 的 programs)—— 排期页不印活动形式,故不来自目录。
+ *  count = 该形式的**场次数**(每个活动场次是独立影片节点,故与节点数相同)。
+ *  extras 未加载(缺文件 / 旧部署)→ 返回空数组,下拉里这一组整体消失(静默降级)。 */
+function actUnitChips(): UnitChip[] {
+  const progs = extras()?.programs ?? [];
+  const m = new Map<string, number>();
+  for (const p of progs) m.set(p.kind, (m.get(p.kind) ?? 0) + 1);
+  return ACT_KINDS.filter((k) => m.has(k)).map((k) => ({ key: `${ACT_UNIT_PREFIX}${k}`, count: m.get(k) ?? 0 }));
 }
 
 /** 节点命中搜索:code / 片名(英文名 · 中文名)/ 其余片名 / 单元·国家·导演 /
@@ -123,9 +144,29 @@ function matchProgram(code: string, kw: string): boolean {
   return normText(p.guest ?? "").includes(kw) || normText(p.guestZh ?? "").includes(kw);
 }
 
-/** 节点是否属于某归并单元(纯排期片无目录,只在「全部」下出现) */
+/** 节点是否属于某单元。两类:
+ *  · **目录单元** = 目录条目的归并单元(`unitKey`);纯排期片无目录,只在「全部」下出现。
+ *  · **活动单元**(`act:<kind>`,见 `ACT_UNIT_PREFIX`)= 该片的场次里有对应活动形式的场。
+ *    ⚠ 与「纯排期片只在全部下出现」不矛盾:活动场本就是纯排期片(无目录条目),
+ *      但 extras 按 code 给了它形式,于是能单独归组 —— 这正是「活动也能筛」的由来。
+ *    ⚠ `special_talk` 含**映后谈**:如 021《Mother Mary》的场次本身是普通放映,
+ *      只因附带映后谈而被归进本单元(搜索口径同此,见 `matchProgram`)。 */
 function inUnit(n: FilmNode, unit: string): boolean {
+  if (unit.startsWith(ACT_UNIT_PREFIX)) {
+    const kind = unit.slice(ACT_UNIT_PREFIX.length);
+    return n.shows.some((s) => programOf(s.code)?.kind === kind);
+  }
   return n.cats.some((c) => unitKey(c.unit) === unit);
+}
+
+/** 单元名(下拉选项 / 命中统计的**唯一**取用口):目录单元走 `unitLabel`(「英文 · 中文」),
+ *  活动单元走 `KIND_LABEL`(「Actors' House · 演员之家」)—— 两者同为「英文 · 中文」排版。
+ *  key 不在已知值域时原样返回,绝不产出空串。 */
+function unitChipLabel(key: string): string {
+  if (key.startsWith(ACT_UNIT_PREFIX)) {
+    return KIND_LABEL[key.slice(ACT_UNIT_PREFIX.length) as ExtraProgram["kind"]] ?? key;
+  }
+  return unitLabel(key);
 }
 
 /** 单元下拉的一个 `<option>`(标签 = 「英文 · 中文 · N 部」,见 `util.ts::unitLabel`) */
@@ -963,18 +1004,18 @@ export function openFilmPicker(ctx: LibraryCtx, tab?: "lib" | "pick" | "agenda")
     const matched = hasActiveFilter(libFilters) ? bySearch.filter((n) => showsUnderFilter(n).length > 0) : bySearch;
 
     const filtered = Boolean(q) || unit !== null || hasActiveFilter(libFilters);
-    const prefix = unit ? `${unitLabel(unit)} · ` : "";
+    const prefix = unit ? `${unitChipLabel(unit)} · ` : "";
     libStat.textContent = filtered
       ? `${prefix}匹配 ${matched.length}/${filmList.length} 部影片${
           hasActiveFilter(libFilters) ? ` · 符合筛选的场次 ${matched.reduce((n, x) => n + showsUnderFilter(x).length, 0)} 场` : ""
         }`
       : `目录共 ${filmList.length} 部(其中 ${totalShows ? `${filmList.length - noSchedule} 部已发布排期` : "排期尚未发布"}) · ${totalShows} 场`;
 
-    // 单元下拉(全部 + 各归并单元,按片数降序)—— 选项标签走「英文 · 中文」(与片名同排版)。
-    // 每次 paint 全量重建 options:单元集合由目录唯一决定,一次就是一份完整快照,不做 diff。
+    // 单元下拉(全部 + 各归并单元 + 活动形式单元)—— 选项标签走「英文 · 中文」(与片名同排版)。
+    // 每次 paint 全量重建 options:单元集合由目录 + extras 唯一决定,一次就是一份完整快照,不做 diff。
     unitSel.replaceChildren(
       unitOption("", `全部单元 · ${ctx.cat.films.length} 部`),
-      ...unitChips.map((c) => unitOption(c.key, `${unitLabel(c.key)} · ${c.count} 部`))
+      ...unitChips.map((c) => unitOption(c.key, `${unitChipLabel(c.key)} · ${c.count} 部`))
     );
     // 选中项回填:单元集合换版后旧 key 可能已不存在 → 落不到任何 option 时归「全部」
     unitSel.value = unit && unitChips.some((c) => c.key === unit) ? unit : "";
