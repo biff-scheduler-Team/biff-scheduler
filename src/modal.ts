@@ -6,6 +6,7 @@
 import type { Catalog, FilmItem, Mapping } from "./types";
 import { bilingualTitle, displayTitle, el, filmEnName, filmInfoOf } from "./util";
 import { doubanChip } from "./legend";
+import { KIND_LABEL, formatKrw, programOf } from "./extras";
 import { slotOf, store } from "./state";
 import { hideTip } from "./tip";
 
@@ -299,10 +300,32 @@ export function showFilmModal(code: string, ctx: FilmModalCtx): void {
     body.appendChild(box);
   }
 
+  // ---- 活动节目区(仅 Master Class / Actors' House / Cine Class / Special Talk)----
+  //  排期页只印「时间 + 厅 + 片名」,嘉宾 / 简介 / 票价只在官网活动页上 —— 见 tools/scrape_biff_extras.py。
+  const prog = programOf(code);
+  if (prog) body.appendChild(buildProgramBlock(prog));
+
   // ---- 豆瓣区 ----
   body.appendChild(buildDoubanBlock(code, anchor.title_zh || "", anchor.title_en));
 
   openModal(`资料 · ${title}`, body, "lg");
+}
+
+/** 活动节目块:形式 + 嘉宾 + 语言 + 票价 + 简介(排期页不印的都在这里)。 */
+function buildProgramBlock(prog: NonNullable<ReturnType<typeof programOf>>): HTMLElement {
+  const box = el(
+    "div",
+    "mb-[14px] border border-biff-line rounded-9 bg-biff-soft px-[10px] py-2 grid gap-[3px]"
+  );
+  box.appendChild(el("div", "text-13 font-bold text-biff-ink", KIND_LABEL[prog.kind]));
+  const bits: string[] = [];
+  if (prog.guest) bits.push(prog.guestZh ? `${prog.guestZh} ${prog.guest}` : prog.guest);
+  if (prog.language) bits.push(prog.language);
+  if (prog.priceKrw) bits.push(formatKrw(prog.priceKrw));
+  if (bits.length) box.appendChild(el("div", "text-13 font-semibold text-ink", bits.join(" · ")));
+  if (prog.bio) box.appendChild(el("div", "text-12 text-ink-2 leading-[1.6]", prog.bio));
+  if (prog.dateText) box.appendChild(el("div", "text-11 text-muted", `官网原文 · ${prog.dateText}`));
+  return box;
 }
 
 /** 目录片资料(暂无排期):元信息 + 评分 + 豆瓣区(先关联,Catalogue 排期接入后同片自动带出) */

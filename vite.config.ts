@@ -29,7 +29,7 @@ export default defineConfig({
   },
   plugins: [
     // PWA(2026-09-11,PLAN-20260911000705):电影节现场(Centum / 南浦洞)网络不稳 ——
-    // 预缓存产物与三个只读 JSON → 离线可用;manifest → 可加到主屏(从「网页」变「App」)。
+    // 预缓存产物与只读 JSON → 离线可用;manifest → 可加到主屏(从「网页」变「App」)。
     // 构建期依赖,主包 +0 字节。
     VitePWA({
       registerType: "autoUpdate", // 有新版自动接管,自用工具不需要用户确认弹窗
@@ -56,7 +56,8 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // 预缓存:产物资源 + 三个只读 JSON —— 没排期数据离线打开等于空表,必须进缓存
+        // 预缓存:产物资源 + 只读 JSON(schedule / venues / films / douban / festival-extras)——
+        // 没排期数据离线打开等于空表,必须进缓存
         globPatterns: ["**/*.{js,css,html,ico,png,json}"],
         navigateFallback: "index.html",
         cleanupOutdatedCaches: true,

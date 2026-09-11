@@ -1,0 +1,397 @@
+{
+  "source": "https://www.biff.kr/eng/",
+  "generated_at": "2026-09-11T23:33:04+0800",
+  "ticketing": {
+    "batches": [
+      {
+        "includes": "Opening & Closing Ceremony / Open Cinema / Midnight Passion / Actors’ House / Community BIFF screenings",
+        "openText": "Sep 17(Thu) 14:00 (KST)"
+      },
+      {
+        "includes": "General Screenings / Master Class / Cine Class",
+        "openText": "Sep 21(Mon) 14:00 (KST)"
+      }
+    ],
+    "prices": [
+      {
+        "label": "Opening & Closing Ceremony",
+        "krw": 30000
+      },
+      {
+        "label": "General Screenings / Cine Class",
+        "krw": 10000
+      },
+      {
+        "label": "Actors’ House/ Master Class",
+        "krw": 15000
+      },
+      {
+        "label": "Midnight Passion",
+        "krw": 20000
+      }
+    ],
+    "discountKrw": 3000,
+    "notes": [
+      "Recommends using Chrome for online (PC/mobile) bookings.",
+      "If the booking page does not appear, please check the pop-up blocking settings on your browser.",
+      "Multiple sessions or simultaneous logins with the same account are restricted.",
+      "Booking across multiple devices, browsers, or tabs within the same browser is not permitted.",
+      "※Ticket booking may not work properly on tablet devices.",
+      "If traffic is heavy, you will be given a queue number and automatically admitted in order. You can book up to 2 tickets per screening code. Booking for a different screening code will require re-entering the queue.",
+      "If booking details cannot be found, contact the BIFF Call Center(1666-9177)."
+    ],
+    "callCenter": "1666-9177",
+    "url": "https://www.biff.kr/eng/addon/10000001/page.asp?page_num=11402"
+  },
+  "programs": [
+    {
+      "code": "021",
+      "kind": "special_talk",
+      "title": "Mother Mary : Producer KIM Tae-ho Expands the TEO Universe from Hit Variety Shows to Film Distribution",
+      "guest": "",
+      "guestZh": null,
+      "dateText": "October 7 (Wed) After the 19:00 Screening",
+      "priceKrw": null,
+      "language": "English, Korean",
+      "venue": "Busan Cinema Center Cinematheque",
+      "moderator": "",
+      "bio": ""
+    },
+    {
+      "code": "082",
+      "kind": "special_talk",
+      "title": "Carte Blanche: The Handmaiden X FAN Bingbing",
+      "guest": "FAN Bingbing",
+      "guestZh": "范冰冰",
+      "dateText": "After the 15:30 screening, Oct 8 (Thu)",
+      "priceKrw": null,
+      "language": "Chinese, Korean",
+      "venue": "Busan Cinema Center Cinema 2",
+      "moderator": "",
+      "bio": ""
+    },
+    {
+      "code": "110",
+      "kind": "special_talk",
+      "title": "Carte Blanche: Three Colours: Blue X HONG Kyung-pyo",
+      "guest": "HONG Kyung-pyo",
+      "guestZh": "洪坰杓",
+      "dateText": "After the 12:50 screening, Oct 8 (Thu)",
+      "priceKrw": null,
+      "language": "English, Korean",
+      "venue": "CGV Centum City 5",
+      "moderator": "",
+      "bio": ""
+    },
+    {
+      "code": "170",
+      "kind": "special_talk",
+      "title": "Carte Blanche: Mad Max X KIM Jeewoon",
+      "guest": "KIM Jeewoon",
+      "guestZh": null,
+      "dateText": "After the 11:30 screening, Oct 9 (Fri)",
+      "priceKrw": null,
+      "language": "English, Korean",
+      "venue": "Busan Cinema Center Cinema 1",
+      "moderator": "",
+      "bio": ""
+    },
+    {
+      "code": "338",
+      "kind": "special_talk",
+      "title": "Carte Blanche: Small, Slow But Steady x EUN Huigyeong",
+      "guest": "EUN Huigyeong",
+      "guestZh": null,
+      "dateText": "Sep 22 (Mon) After the 16:30 screening",
+      "priceKrw": null,
+      "language": "English, Korean",
+      "venue": "Cinema 3, Busan Cinema Center",
+      "moderator": "",
+      "bio": ""
+    },
+    {
+      "code": "408",
+      "kind": "special_talk",
+      "title": "Carte Blanche: Eureka (remastered) x BONG Joon-ho",
+      "guest": "BONG Joon-ho",
+      "guestZh": "奉俊昊",
+      "dateText": "Sep 23 (Tue) After the 18:00 screening",
+      "priceKrw": null,
+      "language": "English, Korean",
+      "venue": "Cinema 1, Busan Cinema Center",
+      "moderator": "",
+      "bio": ""
+    },
+    {
+      "code": "491",
+      "kind": "special_talk",
+      "title": "Behold This Actor: AHN Sung-ki, Another History of Korean Cinema (JUNG Sung-il, Film Critic)",
+      "guest": "",
+      "guestZh": null,
+      "dateText": "October 12 (Mon) After the 15:40 Screening",
+      "priceKrw": null,
+      "language": "Korean",
+      "venue": "CGV Centum City 2",
+      "moderator": "",
+      "bio": ""
+    },
+    {
+      "code": "801",
+      "kind": "actors_house",
+      "title": "Actors’ House: LEE Minho",
+      "guest": "LEE Minho",
+      "guestZh": "李敏镐",
+      "dateText": "Oct 7 (Wed) 18:50 - 19:50",
+      "priceKrw": 15000,
+      "language": "Korean",
+      "venue": "Culture Hall (9F), Shinsegae Centum City",
+      "moderator": "Coming Soon",
+      "bio": ""
+    },
+    {
+      "code": "802",
+      "kind": "actors_house",
+      "title": "Actors’ House: KIM Goeun",
+      "guest": "KIM Goeun",
+      "guestZh": "金高银",
+      "dateText": "Oct 8 (Thu) 16:00 - 17:00",
+      "priceKrw": 15000,
+      "language": "Korean",
+      "venue": "Culture Hall (9F), Shinsegae Centum City",
+      "moderator": "Coming Soon",
+      "bio": ""
+    },
+    {
+      "code": "803",
+      "kind": "actors_house",
+      "title": "Actors’ House: KIM Minha",
+      "guest": "KIM Minha",
+      "guestZh": "金敏荷",
+      "dateText": "Oct 8 (Thu) 18:00 - 19:00",
+      "priceKrw": 15000,
+      "language": "Korean",
+      "venue": "Culture Hall (9F), Shinsegae Centum City",
+      "moderator": "Coming Soon",
+      "bio": ""
+    },
+    {
+      "code": "804",
+      "kind": "actors_house",
+      "title": "Actors’ House: RYU Seung-ryong",
+      "guest": "RYU Seung-ryong",
+      "guestZh": "柳承龙",
+      "dateText": "Oct 9 (Fri) 14:00 - 15:00",
+      "priceKrw": 15000,
+      "language": "Korean",
+      "venue": "Culture Hall (9F), Shinsegae Centum City",
+      "moderator": "Coming Soon",
+      "bio": ""
+    },
+    {
+      "code": "805",
+      "kind": "actors_house",
+      "title": "Actors’ House: JU Jihoon",
+      "guest": "JU Jihoon",
+      "guestZh": "朱智勋",
+      "dateText": "Oct 9 (Fri) 16:00 - 17:00",
+      "priceKrw": 15000,
+      "language": "Korean",
+      "venue": "Culture Hall (9F), Shinsegae Centum City",
+      "moderator": "Coming Soon",
+      "bio": ""
+    },
+    {
+      "code": "806",
+      "kind": "actors_house",
+      "title": "Actors’ House: SHIN Mina",
+      "guest": "SHIN Mina",
+      "guestZh": "申敏儿",
+      "dateText": "Oct 10 (Sat) 16:30 - 17:30",
+      "priceKrw": 15000,
+      "language": "Korean",
+      "venue": "Culture Hall (9F), Shinsegae Centum City",
+      "moderator": "Coming Soon",
+      "bio": ""
+    },
+    {
+      "code": "811",
+      "kind": "master_class",
+      "title": "Master Class : NA Hong-jin, A Genre of His Own",
+      "guest": "NA Hong-jin",
+      "guestZh": "罗泓轸",
+      "dateText": "Oct 8 (Thu) 11:00 - 12:30",
+      "priceKrw": 15000,
+      "language": "English, Korean",
+      "venue": "Culture Hall (9F), Shinsegae Centum City",
+      "moderator": "",
+      "bio": "HOPE for the Competition section at this year’s Cannes marks a monumental moment in Korean cinema history. The overwhelming cinematic world of Na Hong-jin — impossible to define, impossible to predict. \"Na Hong-jin\" is, in itself, a remarkable genre. Let’s hear about the source of unparalleled creativity."
+    },
+    {
+      "code": "812",
+      "kind": "master_class",
+      "title": "Master Class : Lav DIAZ - Time and Memory",
+      "guest": "Lav DIAZ",
+      "guestZh": "拉夫·迪亚兹",
+      "dateText": "Oct 9 (Fri) 11:00 - 12:30",
+      "priceKrw": 15000,
+      "language": "English, Korean",
+      "venue": "Culture Hall (9F), Shinsegae Centum City",
+      "moderator": "",
+      "bio": "Meeting Korean audiences after about a decade, Lav Diaz has long engraved history's scars and human time onto the screen. This session explores his unique creative universe, inviting audiences into a candid conversation on cinema and cinematic time."
+    },
+    {
+      "code": "813",
+      "kind": "master_class",
+      "title": "Master Class : Rintaro, a Living Legend of Japanese Animation",
+      "guest": "Rintaro",
+      "guestZh": "林太郎",
+      "dateText": "Oct 10 (Sat) 14:00 - 15:30",
+      "priceKrw": 15000,
+      "language": "English, Japanese, Korean",
+      "venue": "Culture Hall (9F), Shinsegae Centum City",
+      "moderator": "",
+      "bio": "A titan of Japanese animation, Rintaro shaped the medium's foundational visual language alongside Tezuka Osamu. This master class presents an exceptional occasion to gain insight into his iconic career and his enduring influence on generations of animators and film lovers worldwide."
+    },
+    {
+      "code": "814",
+      "kind": "master_class",
+      "title": "Master Class : Bertrand MANDICO, A Magician of Wild Cinema",
+      "guest": "Bertrand MANDICO",
+      "guestZh": "贝特朗·芒迪科",
+      "dateText": "Oct 10 (Sat) 11:00 - 12:30",
+      "priceKrw": 15000,
+      "language": "English, French, Korean",
+      "venue": "Culture Hall (9F), Shinsegae Centum City",
+      "moderator": "",
+      "bio": "Bertrand Mandico is a director who dissolves the line between reality and fantasy, conjuring grotesque, sensuous visuals into myths upon the screen. Having shattered the taboos of genre and gender with celluloid's texture and an imagination unbound by convention, he now shares, in his own words, the secrets behind his singular art — moderated by film critic Lee Yong-cheol."
+    },
+    {
+      "code": "821",
+      "kind": "cine_class",
+      "title": "ZHANG Lu: Embracing the Unfamiliar World of The Other",
+      "guest": "ZHANG Lu",
+      "guestZh": "张律",
+      "dateText": "Oct 8 (Thu) 19:00 - 20:00",
+      "priceKrw": 10000,
+      "language": "Korean",
+      "venue": "Book Cafe Lounge, 4F, DSU-KIT Centum Campus",
+      "moderator": "",
+      "bio": "ZHANG Lu, winner of the Busan Award for Best Film at BIFF 2025 for Gloaming in Luomu (2025), who will share the world he explores and engages with through his cross-border filmmaking."
+    },
+    {
+      "code": "822",
+      "kind": "cine_class",
+      "title": "Seifollah SAMADIAN: 30 Years with Abbas KIAROSTAMI as His Cinematographer and Friend",
+      "guest": "Seifollah SAMADIAN",
+      "guestZh": "塞福拉·萨马迪安",
+      "dateText": "Oct 10 (Sat) 19:00 - 20:00",
+      "priceKrw": 10000,
+      "language": "Persian, English, Korean",
+      "venue": "Book Cafe Lounge, 4F, DSU-KIT Centum Campus",
+      "moderator": "",
+      "bio": "To mark the 10th anniversary of Abbas Kiarostami’s passing this year, filmmaker Seifollah Samadian, Kiarostami’s cinematographer and longtime friend, will share with the audience his moving and humorous memories of Kiarostami’s films and life."
+    },
+    {
+      "code": "823",
+      "kind": "cine_class",
+      "title": "Women, Rewriting the Screen : A Conversation with Judith GODRÈCHE",
+      "guest": "",
+      "guestZh": null,
+      "dateText": "Oct 11 (Sun) 17:00 - 18:00",
+      "priceKrw": 10000,
+      "language": "French, Korean",
+      "venue": "Book Cafe Lounge, 4F, DSU-KIT Centum Campus",
+      "moderator": "",
+      "bio": "Judith Godrèche, an actress-turned-director who has become an emblematic voice of France's #MeToo movement, arrives in Busan with her new film A Girl's Story , made together with her own daughter, Tess Barthélemy. Join this Cine Class for an intimate encounter with a filmmaker who has rewritten the screen through her own memory — and hear her thoughts, in her own voice."
+    },
+    {
+      "code": "824",
+      "kind": "cine_class",
+      "title": "Billy ACUMEN: The Box-Office Producer′s Secret Behind The King’s Warden, The Outlaws, The Roundup Series",
+      "guest": "Billy ACUMEN",
+      "guestZh": "比利·阿库门",
+      "dateText": "Oct 13 (Tue) 18:00 - 19:00",
+      "priceKrw": 10000,
+      "language": "Korean",
+      "venue": "Book Cafe Lounge, 4F, DSU-KIT Centum Campus",
+      "moderator": "",
+      "bio": "Billy Acumen, the producer behind The King’s Warden (2026) and The Roundup (2017, 2022, 2023, 2024) series will share the secrets behind his box-office successes."
+    },
+    {
+      "code": "825",
+      "kind": "cine_class",
+      "title": "BI Gan: On Making Strange and Beautiful Films",
+      "guest": "BI Gan",
+      "guestZh": "毕赣",
+      "dateText": "Oct 13 (Tue) 19:30 - 20:30",
+      "priceKrw": 10000,
+      "language": "Chinese, Korean",
+      "venue": "Book Cafe Lounge, 4F, DSU-KIT Centum Campus",
+      "moderator": "",
+      "bio": "From his debut feature Kaili Blues to Long Day’s Journey into Night and Resurrection , Bi Gan has created a singular and beautiful cinematic world where dreams, memories, and time intertwine. In this Ciné Class, we hear from Bi Gan about the cinema he dreams of and continues to create."
+    },
+    {
+      "code": "826",
+      "kind": "cine_class",
+      "title": "SHIM Eun-kyoung: Transcending Borders, Discovering Craft",
+      "guest": "SHIM Eun-kyoung",
+      "guestZh": "沈恩京",
+      "dateText": "Oct 14 (Wed) 19:00 - 20:00",
+      "priceKrw": 10000,
+      "language": "Korean",
+      "venue": "Book Cafe Lounge, 4F, DSU-KIT Centum Campus",
+      "moderator": "",
+      "bio": "Shim Eun-kyung shares what she has learned and achieved while pursuing a unique career path that takes her back and forth between South Korea and Japan."
+    },
+    {
+      "code": "831",
+      "kind": "special_talk",
+      "title": "Special Talk: The Cinematic Life of Ann Hui, Winner of the Camellia Award",
+      "guest": "Ann HUI",
+      "guestZh": "许鞍华",
+      "dateText": "Oct 8 (Thu) 20:00 - 21:00",
+      "priceKrw": 10000,
+      "language": "English, Korean",
+      "venue": "Busan Cinema Center Cinema 2",
+      "moderator": "Coming Soon",
+      "bio": ""
+    }
+  ],
+  "ceremony": {
+    "openingDate": "Oct 6(Tue)",
+    "closingDate": "Oct 15(Thu)",
+    "slots": [
+      {
+        "time": "17:00–18:00",
+        "text": "Audience Entrance"
+      },
+      {
+        "time": "18:00–19:00",
+        "text": "Red Carpet Event"
+      },
+      {
+        "time": "19:00–20:00",
+        "text": "Main event"
+      },
+      {
+        "time": "20:20–21:40",
+        "text": "Screening of Opening&Closing Film"
+      }
+    ],
+    "traffic": [
+      {
+        "window": "17:30–19:30",
+        "road": "Suyeonggangbyeon-daero"
+      },
+      {
+        "window": "17:30–19:30",
+        "road": "Centum 5-ro"
+      },
+      {
+        "window": "17:00–23:00",
+        "road": "Centum seo-ro"
+      }
+    ],
+    "url": "https://www.biff.kr/eng/addon/10000001/page.asp?page_num=11233"
+  }
+}

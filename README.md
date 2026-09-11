@@ -167,6 +167,25 @@ npm run preview      # 构建后用 wrangler dev 起本地 Worker 静态资源�
 | 清空全部已排场次 | 只清场次，**保留**「我的选片」里收着的影片与备注 |
 | 清空全部（选片 + 排片） | 把「我的选片」与「我的行程」一起清空（备注 / 场次 / 顺位全删）。**片单只存本机，清完刷新 / 部署都不会再回来** |
 
+### 9. 抢票信息（开票倒计时 / 票价 / 节目嘉宾）
+
+数据来自官网 **Booking Information** 等活动页（离线抓取 → `public/festival-extras.json`，见 §九）。
+
+- **顶栏开票倒计时**：未到开票时显示「距第 N 批开票 X 天 Y 小时 · 京 `9/17 13:00` / 韩 `9/17 14:00`」——
+  ⚠ **同时给两个时区**：官网印的是韩国时间（KST），人在国内看的是北京时间（= KST − 1h），并排显示不必自己换算。
+  全部批次开完后切「售票中」。**无 `festival-extras.json` 时横幅自动隐藏**（纯增强，不阻塞主流程）。
+- **点击横幅 → 「抢票信息」弹层**：
+  - **开票批次**：第一批（开闭幕式 / Open Cinema / Midnight Passion / **Actors' House** / Community BIFF）、
+    第二批（普通场次 / **Master Class** / Cine Class），各带倒计时与「已开票」态；
+  - **票价**：开闭幕式 ₩30,000 · Midnight Passion ₩20,000 · Actors' House / Master Class ₩15,000 ·
+    普通场次 / Cine Class ₩10,000；折扣 −₩3,000（老人 / 残障 / 退伍军人，需证件核验）；
+  - **购票须知**：Chrome、弹窗拦截、每场限 2 张、排队号机制、客服 1666-9177（官网英文原文的关键条目给了中文摘要）；
+  - **开闭幕式**：红毯时间表（17:00 入场 → 18:00 红毯 → 19:00 主活动 → 20:20 放映）+ 当天封路时段；
+  - **加入日历提醒（.ics）**：把两批开票时刻导出成日历事件（提前 30 分钟提醒），导入手机日历即可。
+- **网格卡嘉宾章**：Master Class / Actors' House / Cine Class / Special Talk 的卡片徽章行**最前面**多一枚嘉宾名
+  （中文名优先，如「罗泓轸」），hover 给出形式 / 嘉宾 / 票价；**详情弹层（ⓘ）**另有完整「活动节目」区（形式 / 嘉宾 / 语言 / 票价 / 简介）。
+- **行程票价**：每场场次行右缘显示票价（如 `₩15,000`），日期头显示「当日 ₩XX,XXX」，抽屉摘要行显示「票 ₩XXX,XXX」（全部按官网价目表估算，以购票页实付为准）。
+
 ---
 
 ## 四、技术栈
@@ -181,7 +200,7 @@ npm run preview      # 构建后用 wrangler dev 起本地 Worker 静态资源�
 | 测试 | **Vitest** | 纯函数口径单测（24+ 时制 / GV 有效结束 / 冲突 / `.ics` / 网格卡状态），`npm run build` 前置门禁 |
 | 代码质量 | **ESLint 10** + `typescript-eslint` | `npm run lint`，同为构建门禁 |
 | 部署 | **Cloudflare Workers**（静态资源） | **纯静态产物**（`wrangler.toml [assets]`），全球边缘分发，零服务器成本 |
-| 离线 | **PWA**（`vite-plugin-pwa`） | 预缓存产物 + 四个只读 JSON → 现场断网可用；方形 PNG 图标可加到主屏（含 iOS 180） |
+| 离线 | **PWA**（`vite-plugin-pwa`） | 预缓存产物 + 五个只读 JSON → 现场断网可用；方形 PNG 图标可加到主屏（含 iOS 180） |
 | 运维 | **Wrangler 4** | 本地预览、Workers 部署（**无 D1 / 无 Functions**） |
 | 离线管线 | **Python**（stdlib + openpyxl）+ Node 脚本 | 从 **biff.kr 官网排期页**抓 `schedule.json` / `venues.json`，从官方影片信息 **xlsx** 生成 `films.json`；产物检入仓库，**仅在更新数据时需要**，部署链路不依赖它 |
 
@@ -203,6 +222,7 @@ npm run preview      # 构建后用 wrangler dev 起本地 Worker 静态资源�
   ├─ venues.json（只读场馆）
   ├─ films.json（只读目录）
   ├─ douban.json（豆瓣映射，离线产物，可为空）
+  ├─ festival-extras.json（售票 / 节目嘉宾 / 开闭幕式，离线产物）
   └─ assets/（main.ts 打包）
 
 浏览器 localStorage（用户数据主存储，**不上云**）
@@ -261,7 +281,7 @@ npm run preview      # 构建后用 wrangler dev 起本地 Worker 静态资源�
 ```
 ├─ index.html              # 单页入口（含防闪白内联脚本）
 ├─ src/                    # 前端 TS 源码（见上表）
-├─ public/                 # 静态数据：schedule.json / venues.json / films.json / douban.json / brand/ / robots.txt
+├─ public/                 # 静态数据：schedule.json / venues.json / films.json / douban.json / festival-extras.json / brand/ / robots.txt
 ├─ tools/                  # 离线数据管线：festival_common.py（通用底座）+ extract_schedule.py（BIFF 适配层）
 ├─ skills/                 # 项目能力（Skills）：数据管线 / 部署 / 无头验收 / 并行提交 / Tailwind 核对
 ├─ tests/                  # Vitest 单测（time / conflict / gv / ics / grid-state）
@@ -322,7 +342,7 @@ npm run deploy              # 构建 + wrangler deploy
 
 ## 九、数据从哪来（部署时**不需要**解析 PDF）
 
-**一句话**：部署链路与解析脚本无关。运行时数据就是仓库里的四个静态 JSON，它们**已经检入 git**，`npm run build` 时被 Vite 原样拷进 `dist/`，前端 `data.ts` 用 `fetch("schedule.json")` 加载。
+**一句话**：部署链路与解析脚本无关。运行时数据就是仓库里的五个静态 JSON，它们**已经检入 git**，`npm run build` 时被 Vite 原样拷进 `dist/`，前端 `data.ts` 用 `fetch("schedule.json")` 加载。
 
 | 文件 | 内容 | 由谁产出 |
 |---|---|---|
@@ -330,6 +350,7 @@ npm run deploy              # 构建 + wrangler deploy
 | `public/venues.json` | 影厅清单（厅 id / 影院 / 分区 / 官方代码） | 同上 |
 | `public/films.json` | 影片目录（片名 / 单元 / 年份 / 国家 / 导演 / 豆瓣分） | `tools/build_films.py`（官方影片信息 **xlsx**） |
 | `public/douban.json` | 豆瓣映射（**场次 code 与影片 `f###` 双键** → subject_id / 中文名 / 条目链接；**可为空**） | **`tools/build_douban_map.py`**（豆瓣官方 API，检索 `search/suggestion` + 详情 `movie/{id}` 确认） |
+| `public/festival-extras.json` | 官网「排期之外」的辅助信息：**开票批次 / 票价 / 购票须知**（Booking Information）、**节目嘉宾**（Master Class / Actors' House / Cine Class / Special Talk）、**开闭幕式红毯时间表 + 交通管制** | **`tools/scrape_biff_extras.py`**（抓 biff.kr 官网 `page_num=11402` / `11218` / `11219` / `11366` / `11226` / `11223` / `11233`；只保留 `schedule.json` 里真实存在的 code，自动滤掉往届遗留条目） |
 
 ### 两条排期管线：官网抓取（现役）与 Catalogue PDF（历史）
 

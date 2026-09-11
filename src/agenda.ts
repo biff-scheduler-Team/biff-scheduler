@@ -27,6 +27,7 @@
 
 import type { Catalog, Mapping, Screening } from "./types";
 import { dateInfo, displayTitle, el, filmInfoOf, filmInfoText, fmtEndClock, hmsToMin, slackBetween } from "./util";
+import { formatKrw, priceOf } from "./extras";
 import { effEndMin, filmEndMin, gvTalkMin } from "./gv";
 import { gvTalkMinOv, isAgendaFolded, setRanks, store, toggleAgendaFold } from "./state";
 import { CARD_SHELL_CLS, screeningRow } from "./row";
@@ -112,7 +113,9 @@ export function buildAgenda(ctx: AgendaCtx): HTMLElement {
       headBadge.appendChild(el("i", "inline-block w-[8px] h-[8px] rounded-full bg-conf"));
       headBadge.appendChild(el("span", "", `${conf.pairs.length} 处时间重叠`));
     }
-    head.append(title, headBadge);
+    // 当日票价小计 —— 票价口径见 `extras.ts::priceOf`(开闭幕 / 午夜 / 大师班 / 普通各不同)
+    const dayKrw = list.reduce((n, x) => n + priceOf(x), 0);
+    head.append(title, headBadge, el("span", "text-12 text-muted tabular-nums", `当日 ${formatKrw(dayKrw)}`));
 
     // ---- 按日收起(2026-09-11):日期头左缘的折叠箭头,每块独立开合 ----
     //  ⚠ 与日期标题**分成两枚按钮**:标题点击 = 切网格到这一天(整块可点),
@@ -212,7 +215,7 @@ function buildRow(
     hideDate: true,
     timeText: `${s.start_time}–${endHms}`,
     acts: buildActs(ctx, s, talk, opts.inConflictGroup === true, opts.rank),
-    rowActs: locateBtn(s),
+    rowActs: rowActsOf(s),
   });
 
   // C1:网格「整点时段」筛选同步 —— 当日该时段内的已选行 slot-hit 高亮、时段外行 hour-dim 淡化
@@ -492,6 +495,30 @@ function locateBtn(s: Screening): HTMLElement {
   b.dataset.jumpCode = s.code;
   b.dataset.tip = "在网格中定位本场(切到该日期,横向居中并闪烁高亮)";
   return b;
+}
+
+/** 票价章 —— 官网价目表口径(见 `extras.ts::priceOf`):抢票前先看清「这场要花多少」。
+ *  放在场次行右缘(与「定位 ▸」同组),卡头右缘留给映后 / 顺位 / ✕。 */
+function priceChip(s: Screening): HTMLElement {
+  const krw = priceOf(s);
+  const chip = el(
+    "span",
+    "text-11 font-bold text-ink-2 tabular-nums whitespace-nowrap cursor-help",
+    formatKrw(krw)
+  );
+  chip.dataset.tip =
+    `票价 ${formatKrw(krw)}\n` +
+    "开闭幕式 ₩30,000 · Actors' House / Master Class ₩15,000 · Midnight Passion ₩20,000\n" +
+    "普通场次 / Cine Class ₩10,000;老人(1961 年前生)/ 残障 / 退伍军人可减 ₩3,000(需证件核验)";
+  return chip;
+}
+
+/** 行程卡**场次行右缘**操作组:票价 + 「定位 ▸」(两枚贴场次走) */
+function rowActsOf(s: Screening): HTMLElement {
+  const box = el("div", "flex items-center gap-[6px]");
+  box.appendChild(priceChip(s));
+  box.appendChild(locateBtn(s));
+  return box;
 }
 
 /* ---------------- 方案对比(全部无冲突组合并列) ---------------- */

@@ -173,3 +173,59 @@ export interface Catalog {
   /** 目录索引:原始片名 → 条目。命中口径②(原始片名 == 排期英文名) */
   filmByOrig: Map<string, FilmItem[]>;
 }
+
+/* ---------------- 官网「排期之外」的辅助信息 ----------------
+ * 静态产物 `public/festival-extras.json`(由 `tools/scrape_biff_extras.py` 抓取,见该文件头):
+ * 排期页上**看不到、但抢票要用**的三块 —— 售票信息 / 节目嘉宾 / 开闭幕式。 */
+
+/** 一个活动节目(Master Class / Actors' House / Cine Class / Special Talk)的补充信息。
+ *  键 = 排期 code —— 时间 / 场馆仍以 `schedule.json` 为准,这里只补排期页不印的东西。 */
+export interface ExtraProgram {
+  code: string;
+  kind: "actors_house" | "master_class" | "cine_class" | "special_talk";
+  title: string;
+  /** 主讲 / 嘉宾(英文名,官网口径) */
+  guest: string;
+  /** 嘉宾中文名(人工映射表;查不到为 null,前端只印英文名) */
+  guestZh: string | null;
+  /** 官网原样印的日期文本(如 `Oct 8 (Thu) 11:00 - 12:30`;放映后的 talk 形如 `After the 12:50 screening, Oct 8 (Thu)`) */
+  dateText: string;
+  /** 票价(KRW);`null` = 官网未印(附在放映后的 Special Talk / Carte Blanche,票价含在放映票内) */
+  priceKrw: number | null;
+  language: string;
+  venue: string;
+  moderator: string;
+  bio: string;
+}
+
+/** 开票批次:第一批 / 第二批 —— `openText` 是官网原文(如 `Sep 17(Thu) 14:00 (KST)`) */
+export interface TicketBatch {
+  includes: string;
+  openText: string;
+}
+
+export interface TicketPrice {
+  label: string;
+  krw: number;
+}
+
+export interface FestivalExtras {
+  source: string;
+  generated_at: string;
+  ticketing: {
+    batches: TicketBatch[];
+    prices: TicketPrice[];
+    discountKrw: number | null;
+    notes: string[];
+    callCenter: string;
+    url: string;
+  };
+  programs: ExtraProgram[];
+  ceremony: {
+    openingDate: string;
+    closingDate: string;
+    slots: { time: string; text: string }[];
+    traffic: { window: string; road: string }[];
+    url: string;
+  };
+}

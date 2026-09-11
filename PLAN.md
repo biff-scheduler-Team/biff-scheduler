@@ -3,14 +3,25 @@
 > 定位:自用釜山电影节排片工具 —— 解析官方 Ticket Catalogue → 可视化选片排期 → 冲突检测 → 导出 .ics → 一键跳豆瓣。
 > 栈:Cloudflare Workers 静态资源(**纯静态**,线上 = https://biff.lcandy.co,推 main 自动部署)+ Vite + TS(无框架)+ Tailwind v4(增量双轨)+ 静态 JSON。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-11(**部署口径修正:线上 = https://biff.lcandy.co,推 `main` 即自动部署(Workers Builds);Pages 直传作废**,见 `docs/plans/PLAN-20260911233000.md`;
-> 上一轮 = 分享图片(行程图),更早 = 方案对比:同一部片只留一场 / 接入豆瓣官方 API(82 部实映射) / 拖动顺位 = N 套方案)。
+> 最后更新:2026-09-11(**抢票信息接入:顶栏开票倒计时(北京时间 + 韩国时间)+ 抢票信息弹层 + 开票日历 `.ics`
+> + 网格卡节目嘉宾章 + 详情弹层活动节目区 + 行程票价与总花费**,见 §0 首条与 §3 的 `festival-extras.json` 契约;
+> 上一轮 = 部署口径修正(线上 = https://biff.lcandy.co,推 `main` 自动部署),更早 = 分享图片(行程图) / 方案对比:同一部片只留一场 / 豆瓣官方 API / 拖动顺位 = N 套方案)。
 
 ---
 
 ## 0. 当前状态快照(2026-09-11)
 
 **✅ 已完成(已部署,线上可访问)**
+- **抢票信息 + 节目嘉宾 + 开闭幕式(2026-09-11)**:新增离线管线 **`tools/scrape_biff_extras.py`** →
+  `public/festival-extras.json`(**开票批次 / 票价 / 购票须知** + **节目嘉宾**(Master Class / Actors' House /
+  Cine Class / Special Talk,含嘉宾中文名映射)+ **开闭幕式红毯时间表 + 封路**;只保留 `schedule.json` 里
+  真实存在的 code,自动滤掉官网页面上的往届遗留条目(如 2025 的 Camellia Award 得主)。
+  前端:`src/extras.ts`(加载 + 开票时刻 KST 文本解析 + 票价推算)、`src/ticketing.ts`(顶栏**开票倒计时**横幅
+  —— **同时给北京时间与韩国时间**,官网印 KST、国内看 KST−1h;+ 「抢票信息」弹层 + 开票日历)、
+  `src/ics.ts::buildTicketIcs`;网格卡徽章行**最前**加「活动嘉宾章」(`legend.ts::guestChip`)、
+  详情弹层加「活动节目」区(`modal.ts::buildProgramBlock`);行程行加票价章 + 日期头当日小计 +
+  摘要行总花费(`票 ₩XX,XXX`)。**数据缺失一律静默降级**(无 extras 时横幅隐藏、票价回落普通档)。
+  单测 **113 → 120**(新增 `tests/extras.test.ts`)
 - **部署口径修正(2026-09-11,`PLAN-20260911233000`)**:线上 = **https://biff.lcandy.co**
   (Cloudflare **Workers** 静态资源,CF 账号 `62cbe67b…`),**推 `main` 即触发 Workers Builds 自动部署**
   (GitHub 上可见 `Workers Builds: biff-scheduler` 检查,`2e1007d / 81d5f12 / 71f0394` 连续 success);
@@ -152,7 +163,7 @@
   biff.picks.v2(选片+排片,唯一数据源) / biff.settings.v1 / biff.gvtalk*.v1
 ```
 
-**前端模块(src/,28 文件 + `style.css`)**:`main.ts` 装配+统一事件委托｜`state.ts` 全局 store + localStorage 持久化(**片单只存本地**)+ subscribe 订阅｜`grid.ts` 排片网格｜`agenda.ts` 行程列表(绿框顺位卡拖动排序 + 方案对比)｜`library.ts` 影片库+我的选片(抽屉)｜`settings.ts` 设置弹层｜`share.ts` 分享文案｜`modal.ts` 弹层栈｜`row.ts` 场次行骨架｜`conflict.ts` 纯函数冲突检测｜`plans.ts` 顺位 + 冲突组 → 全部无冲突方案(纯函数;同一部片只留一场)｜`score.ts` 行程质量分｜`ics.ts` 导出｜`gv.ts` 映后口径｜`badges.ts`/`legend.ts` 徽章与图例｜`ui.ts` 按钮/tab/缩放控件类名与工厂｜`chips.ts`/`form.ts`/`toast.ts` 共享 UI 片段｜`data.ts` JSON 加载(含豆瓣映射)｜`tip.ts` 悬停提示｜`types.ts`/`util.ts`/`style.css`
+**前端模块(src/,30 文件 + `style.css`)**:`main.ts` 装配+统一事件委托｜`state.ts` 全局 store + localStorage 持久化(**片单只存本地**)+ subscribe 订阅｜`grid.ts` 排片网格｜`agenda.ts` 行程列表(绿框顺位卡拖动排序 + 方案对比)｜`library.ts` 影片库+我的选片(抽屉)｜`settings.ts` 设置弹层｜`share.ts` 分享文案｜`modal.ts` 弹层栈｜`row.ts` 场次行骨架｜`conflict.ts` 纯函数冲突检测｜`plans.ts` 顺位 + 冲突组 → 全部无冲突方案(纯函数;同一部片只留一场)｜`score.ts` 行程质量分｜`ics.ts` 导出｜`gv.ts` 映后口径｜`badges.ts`/`legend.ts` 徽章与图例｜`ui.ts` 按钮/tab/缩放控件类名与工厂｜`chips.ts`/`form.ts`/`toast.ts` 共享 UI 片段｜`data.ts` JSON 加载(含豆瓣映射)｜`tip.ts` 悬停提示｜`types.ts`/`util.ts`/`style.css`
 
 > 2026-09-10 结构收口(PLAN-20260910232833):`library.ts` 1784→928、`main.ts` 1137→786;
 > 设置 / 抢票清单 / 质量分各自独立成文件;片名链 / 档位权重 / chip 类名 / 日期切段 / 时间标签收口到单一来源;补 `eslint` 门禁。
@@ -212,6 +223,33 @@ public/douban.json = {
 
 **venues.json**(2026):`id / name / name_kr / short / group / region / code` —— **26 厅**(id = 官方代码小写,如 `b1`/`c3`/`l10`;2026 无南浦洞 MEGABOX,新增 Roof Theater `br` / Shinsegae `sc` / DSU-KIT `dk`)
 **films.json**:250 部目录(unit 需按前缀归并:广角镜×3/Vision×2/Korean Cinema Today×2/亚洲电影人奖 2026~2029 四连脏数据 → 18 组;归并在 `library.ts::unitKey()`)
+
+**festival-extras.json**(2026-09-11 新增):官网「排期之外」的辅助信息 —— **不是排期**,
+时间 / 厅 / 片名仍以 `schedule.json` 为准,这里只补排期页不印的东西:
+```jsonc
+{
+  "source": "https://www.biff.kr/eng/", "generated_at": "...",
+  "ticketing": {
+    "batches": [{ "includes": "Opening & Closing Ceremony / …", "openText": "Sep 17(Thu) 14:00 (KST)" }],
+    "prices":  [{ "label": "Opening & Closing Ceremony", "krw": 30000 }],
+    "discountKrw": 3000, "notes": ["…"], "callCenter": "1666-9177", "url": "…page_num=11402"
+  },
+  "programs": [{ "code": "811", "kind": "master_class", "title": "…", "guest": "NA Hong-jin",
+                 "guestZh": "罗泓轸", "dateText": "Oct 8 (Thu) 11:00 - 12:30", "priceKrw": 15000,
+                 "language": "English, Korean", "venue": "…", "moderator": "", "bio": "…" }],
+  "ceremony": { "openingDate": "Oct 6(Tue)", "closingDate": "Oct 15(Thu)",
+                "slots": [{ "time": "18:00–19:00", "text": "Red Carpet Event" }],
+                "traffic": [{ "window": "17:30–19:30", "road": "Suyeonggangbyeon-daero" }], "url": "…" }
+}
+```
+- **生成**:`python3 tools/scrape_biff_extras.py`(抓 `page_num=11402/11218/11219/11366/11226/11223/11233`,
+  `--offline` 复用 `data/_cache/extras/*.html`);**只保留 `schedule.json` 里真实存在的 code** → 往届遗留条目自动滤掉
+- **开票时刻**:官网只印「月日 + KST 时分」(不带年)→ 前端 `extras.ts::ticketOpens(year)` 用 festival 年份组装;
+  **同时给北京时间(KST−1h)与韩国时间** —— 官网印 KST、国内看 KST−1h,倒计时横幅两者并排
+- **票价**:`extras.ts::priceOf()` 是唯一口径 —— **官网节目页优先**,其次按场次类型推断
+  (开闭幕 30,000 / Midnight Passion 20,000 / Master Class·Actors' House 15,000 / 其余 10,000);
+  放映后附带的 Special Talk / Carte Blanche 官网不印价 → `priceKrw: null` 走普通档(票就是那张放映票)
+- **嘉宾中文名**:脚本内 `GUEST_ZH` 人工映射表(查不到只印英文名,不硬译)
 
 **片名桥接(2026-09-11,已知缺口)**:官网排期给**英文名 + 韩文名**,目录给**中文名 + 原始名**,两者只重合约 **55%**(750 场中 412 场命中 `title_zh`)。对不上的场次 `title_zh` 留空 → 前端 `filmNodeKey` 归为「纯排期片」(不串片,但影片库会出现一对「中文条目无排期 + 英文条目有排期」)。补齐需一份双语别名表。
 **片长**:官网排期页不印,按详情页回填;开闭幕式 / 获奖片重映 / 未编号场共 **9 条**用 120min 兜底(自检逐条点名)。

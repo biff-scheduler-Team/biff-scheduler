@@ -1,6 +1,7 @@
 // .ics 导出 — 一律 UTC(Z) 绝对时间 + 相对提醒;UID=code@biff-2026。
 
 import type { Catalog, Mapping, PickEntry, Screening } from "./types";
+import type { TicketOpen } from "./extras";
 import { effEndHms, gvTalkMin } from "./gv";
 import { displayTitle, fmtMinRange } from "./util";
 
@@ -107,6 +108,49 @@ export function buildIcs(
     lines.push("END:VEVENT");
   }
 
+  lines.push("END:VCALENDAR");
+  return lines.join("\r\n") + "\r\n";
+}
+
+/** UTC 毫秒 → iCal 时间戳(`20260917T050000Z`)。开票时刻是**绝对时刻**,不参与 KST 组装。 */
+function toUtcStampMs(ms: number): string {
+  return new Date(ms).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+}
+
+/** 开票提醒日历 —— 每批一个 VEVENT(30 分钟窗口 + 提前提醒)。
+ *  与场次导出的区别:场次按「KST 日期 + 时分」组装,这里直接落绝对时刻(已含 KST 偏移)。 */
+export function buildTicketIcs(opens: TicketOpen[], alarmMin: number, bookingUrl: string): string {
+  const lines: string[] = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//biff-scheduler//BIFF 2026//CN",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    "X-WR-CALNAME:BIFF 2026 抢票提醒",
+  ];
+  opens.forEach((o, i) => {
+    const label = `BIFF 2026 开票 · 第 ${i + 1} 批`;
+    const desc = [
+      `韩国时间 ${o.kst} · 北京时间 ${o.bj}`,
+      `本批包含:${o.includes}`,
+      bookingUrl ? `购票入口:${bookingUrl}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    lines.push("BEGIN:VEVENT");
+    lines.push(`UID:biff-ticket-${i + 1}@biff-2026`);
+    lines.push(`DTSTAMP:${toUtcStampMs(o.at)}`);
+    lines.push(`DTSTART:${toUtcStampMs(o.at)}`);
+    lines.push(`DTEND:${toUtcStampMs(o.at + 30 * 60_000)}`);
+    lines.push(fold(`SUMMARY:${icsEsc(label)}`));
+    lines.push(fold(`DESCRIPTION:${icsEsc(desc)}`));
+    lines.push("BEGIN:VALARM");
+    lines.push("ACTION:DISPLAY");
+    lines.push(`TRIGGER:-PT${alarmMin}M`);
+    lines.push(fold(`DESCRIPTION:${icsEsc(`${label} 即将开始`)}`));
+    lines.push("END:VALARM");
+    lines.push("END:VEVENT");
+  });
   lines.push("END:VCALENDAR");
   return lines.join("\r\n") + "\r\n";
 }

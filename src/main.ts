@@ -64,6 +64,8 @@ import { closePickerDrawer, ensurePickerOpen, isMobileDrawer, isPickerDrawerOpen
 import { openSettings, openTalkMinModal } from "./settings";
 import { initTheme, isThemePref, setThemePref, themePref } from "./theme";
 import { copyShareText } from "./share";
+import { formatKrw, loadExtras, priceOf } from "./extras";
+import { openTicketingModal, startTicketTicker } from "./ticketing";
 import { openPosterModal } from "./poster-panel";
 import { downloadBackup } from "./backup";
 import { openImportBackupModal } from "./backup-panel";
@@ -504,6 +506,23 @@ function buildAgendaHost(): HTMLElement {
     "px-3 pt-[2px] pb-[2px] text-12 text-meta flex items-center gap-[6px] flex-wrap",
     `${picked.length} 场${nConf ? ` · ${nConf} 处冲突` : ""}`
   );
+  // 总花费估算 —— 按官网价目表逐场累加(开闭幕 ₩30,000 / 午夜 ₩20,000 / 大师班 ₩15,000 / 普通 ₩10,000)
+  const totalKrw = picked.reduce((n, code) => {
+    const s = cat.byCode.get(code);
+    return n + (s ? priceOf(s) : 0);
+  }, 0);
+  if (totalKrw > 0) {
+    const cost = el(
+      "span",
+      "inline-flex items-center border border-line rounded-full bg-card px-[8px] leading-[1.7] text-12 font-extrabold tabular-nums text-ink-2 whitespace-nowrap cursor-help",
+      `票 ${formatKrw(totalKrw)}`
+    );
+    cost.dataset.tip =
+      `按官网价目表估算的全部票价 ${formatKrw(totalKrw)}\n` +
+      "开闭幕式 ₩30,000 · Midnight Passion ₩20,000 · Actors' House / Master Class ₩15,000 · 普通场次 / Cine Class ₩10,000\n" +
+      "不含折扣(老人 / 残障 / 退伍军人可减 ₩3,000,需证件);以购票页实付为准";
+    sum.appendChild(cost);
+  }
   // 质量分药丸(P0-2:仅展示,不改排序)
   const rows: ScoredRow[] = [];
   for (const code of picked) {
@@ -741,6 +760,12 @@ function bindEvents(): void {
     if (th) {
       const pref = th.dataset.themePref;
       if (isThemePref(pref)) setThemePref(pref);
+      return;
+    }
+
+    // 顶栏开票倒计时横幅 → 「抢票信息」弹层(开票批次 / 票价 / 须知 / 开闭幕式 / 开票日历)
+    if (t.closest("#ticket-banner")) {
+      openTicketingModal();
       return;
     }
 
@@ -1019,6 +1044,8 @@ async function boot(): Promise<void> {
   loadPicks(filmKeyOfCode);
   // 豆瓣映射 = 静态 douban.json(2026-09-11,D1 退役):在首渲前灌好,避免片名「先英文后中文」跳变。
   await loadMappings();
+  // 官网「排期之外」的辅助信息(售票批次 / 节目嘉宾 / 开闭幕式):缺失即静默降级,不阻塞主流程。
+  await loadExtras();
 
   subscribe((domain) => renderAll(domain));
   // 选片抽屉开 / 收会改变网格可用宽度 → 补一次 renderGrid(横向锚点由 renderGrid 内的
@@ -1068,6 +1095,8 @@ async function boot(): Promise<void> {
   // 空行程不弹(进界面就弹一块空面板只会挡网格);收起后除「再点选一场」外不会被重弹。
   else if (store.picks.size > 0) ensurePickerOpen(libraryCtx(), "agenda");
   updatePickerLabel();
+  // 顶栏开票倒计时(每秒 tick;无 extras 数据时横幅保持隐藏)
+  startTicketTicker(cat.schedule.festival.year);
   toast(currentDate ? "排期取自 BIFF 官网实时页面 — 变动以现场公告为准" : "schedule.json 为空");
 
   // A5:跨分钟/跨天自动推进「现在」线 —— 仅在时间键变化且仍在看当天时重画网格(角标补零、进出轴窗口随渲染取当前时间)

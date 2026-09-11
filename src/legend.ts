@@ -9,9 +9,10 @@
 // 详情层(hover tooltip / 本弹层表 / ICS LOCATION)给英文全名 + 韩名。
 // 官方影院代码(BT/B1/C1/L2…)不单独当行标签,放行首 chip + 悬停说明。
 
-import type { Catalog, RatingKey, Screening, SubsKey, Venue } from "./types";
+import type { Catalog, ExtraProgram, RatingKey, Screening, SubsKey, Venue } from "./types";
 import { el } from "./util";
 import { BADGE_DEFS, badgeEl, codeTip, DOUBAN_CHIP_TITLE, screeningBadgeKeys, UNIFORM_CHIP_BASE } from "./badges";
+import { KIND_LABEL, programOf } from "./extras";
 
 /** 徽章基底(与 badges.ts 同字阶体系;全部字面量 → Tailwind v4 扫描可见)。
  *  ⚠ **只放尺寸 / 排版,不放颜色** —— Tailwind 里同族 utility(`text-*` / `bg-*` / `border-*`)
@@ -303,11 +304,25 @@ export function metaRowFor(s: Screening): HTMLElement {
   let tpl = metaRowCache.get(key);
   if (!tpl) {
     tpl = el("span", "mt-auto flex gap-[3px] flex-wrap items-center leading-none");
+    // 活动嘉宾章放最前 —— 「谁来讲」是 Master Class / Actors' House 的主看点(排期页不印,见 extras.ts)
+    const prog = programOf(s.code);
+    if (prog?.guest) tpl.appendChild(guestChip(prog));
     appendMetaRow(tpl, s);
     tpl.appendChild(durChip(s.duration_min));
     metaRowCache.set(key, tpl);
   }
   return tpl.cloneNode(true) as HTMLElement;
+}
+
+/** 活动嘉宾章(仅 Master Class / Actors' House / Cine Class / Special Talk)——
+ *  品牌红描边,与「等级 / 字幕 / GV」那组中性章错开;hover 给出形式 / 嘉宾 / 票价。 */
+function guestChip(prog: ExtraProgram): HTMLElement {
+  const name = prog.guestZh || prog.guest;
+  const node = el("i", `${CHIP_BASE} font-bold text-biff-ink bg-card border-biff`, name);
+  const guest = prog.guestZh ? `${prog.guestZh}(${prog.guest})` : prog.guest;
+  const price = prog.priceKrw ? `票价 ₩${prog.priceKrw.toLocaleString("en-US")}` : "票价含在放映票内";
+  node.dataset.tip = `${KIND_LABEL[prog.kind]}\n嘉宾:${guest}\n${price}\n点卡片右上 ⓘ 看简介`;
+  return node;
 }
 
 /* ---------------- 影院代码 / 分区 ---------------- */
