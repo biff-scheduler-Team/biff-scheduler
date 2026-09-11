@@ -55,6 +55,11 @@
         <button data-theme-pref="light" class="border-0 px-3 py-[5px] text-13 transition-colors bg-card text-ink" data-tip="固定亮色(普通模式)—— 不随系统变化" data-page-node-id="th3meSeg00000000000002">亮色</button>
         <button data-theme-pref="dark" class="border-0 px-3 py-[5px] text-13 transition-colors bg-card text-ink" data-tip="固定暗色 —— 不随系统变化" data-page-node-id="th3meSeg00000000000003">暗色</button>
       </div>
+      <!-- 「ⓘ 日程表说明」总览入口(2026-09-11 从网格标题行图例条搬到顶栏 Banner)——
+           说明类辅助信息不该挤在筛选图例里;入口常驻顶栏,任何时候都点得到。
+           hover 快速提示 / 点击打开总览弹层的装配见 main.ts boot
+           (提示文本源自 badges.ts::abbrTooltip,弹层内容源自 legend.ts::buildGuideBody)。 -->
+      <button id="abbr-help" class="cursor-help border rounded-6 px-[14px] py-[6px] text-13 font-bold bg-card text-ink border-line hover:opacity-90" data-page-node-id="abbrHelpBtn000000001">ⓘ 日程表说明</button>
       <button id="settings-btn" class="border rounded-6 px-[14px] py-[6px] text-13 font-bold bg-card text-ink border-line hover:opacity-90" data-tip="设置" data-page-node-id="npgS1fAjwczprzv5iPoZCC">设置</button>
     </div>
   </header>
@@ -105,7 +110,6 @@
               <span data-tip="时间紧张 — 同方案相邻两场衔接偏紧&#10;间隔小于转场缓冲,或余量不足 15min&#10;两张卡整卡淡黄底;hover 卡片看完整算式"><i class="inline-block w-[10px] h-[10px] rounded-3 mr-[5px] align-[-1px] border border-tight" style="background:color-mix(in srgb, var(--color-tight) 24%, var(--color-card))"></i>时间紧张</span>
               <span class="text-conf font-semibold inline-flex items-center" data-tip="完全冲突 — 两场放映时间重叠&#10;无法同时观看:整卡红底红框 + 右上角红点;两张卡若不在相邻影厅,会有一条红色虚线把它们的重叠时段连起来(不用来回滚动找对方)&#10;冲突场次可以同时留在行程里 —— 去「我的行程」的冲突组里**拖动排出偏好次序**,工具会把所有无冲突组合列成方案对比"><i class="inline-block w-[8px] h-[8px] rounded-full mr-[5px] align-[-1px] bg-conf"></i>完全冲突</span>
               <span data-tip="顺位 = 偏好次序(在「我的行程」的冲突组里拖动 ⠿ 调整)&#10;同一时间带互相重叠的几场折叠成一张**绿框顺位卡**(绿框 = 已处理好,不是警报),组内顺序就是偏好次序:顺位 1 是最想要,顺位 2 次之……&#10;**顺位不决定分组** —— 方案 = 「每个冲突组各取一场」的**所有组合**(2 组各 2 场 → 4 套),每一套都无冲突&#10;顺位的作用只有一个:给方案排序(成本 = 各组所选顺位之和,越小越优先)&#10;顺位变了 → 顶部的「方案对比」立刻按新次序重排全部方案&#10;红色只留给真异常(有的组合内部仍撞车,正常不会发生)&#10;点顶栏「选片 · 行程」切到「我的行程」查看">① ② ③ 顺位 = 偏好次序</span>
-              <span id="abbr-help" class="cursor-help hover:text-biff-ink">ⓘ 日程表说明</span>
             </div>
           </div>
           <div class="flex items-center gap-[10px] flex-wrap ml-auto" data-page-node-id="kBcNFUpgEoVRTM8QgnhJcf">

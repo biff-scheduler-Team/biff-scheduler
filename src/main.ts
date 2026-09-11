@@ -1050,7 +1050,8 @@ async function boot(): Promise<void> {
   attachTip(); // 缩写说明悬停 tooltip(data-tip 文档级委托,渲染重建无需重绑)
   // D1:刻度不再随视口自动压缩(各日期比例一致),改由用户经缩放控件 / Ctrl+滚轮 自选 ——
   // 故仍不挂 ResizeObserver 重渲(重渲 replaceWith 会丢视口锚点;要「塞满宽度」用「适应」按钮)
-  // 图例「ⓘ 日程表说明」:hover 快速多行提示(单源自 badges.ts abbrTooltip);点击打开总览弹层。
+  // 顶栏 Banner「ⓘ 日程表说明」(2026-09-11 由网格标题行图例条移入):hover 快速多行提示
+  // (单源自 badges.ts abbrTooltip);点击打开总览弹层。
   // 末条分点提示「可点开总览」—— 不挂原生 title(它会先弹一条样式不可控的长横条,与本 tooltip 打架)
   const abbrHelp = document.getElementById("abbr-help");
   if (abbrHelp) {
