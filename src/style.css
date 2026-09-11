@@ -375,11 +375,95 @@ main.is-picker-open {
   max-width: 1680px;
 }
 
+/* ================= 选片抽屉:向右滑出动画 + 可拖拽调宽(2026-09-11,PLAN-20260911140342)=================
+   抽屉恒在 `<main>` 的**左侧**(flex 首子节点),「滑出」= 宽度从 0 过渡到 `--picker-w` ——
+   因为是**挤压式**布局,网格随宽度同步变窄,卡片始终可见可点(不遮挡,与旧口径一致)。
+   ⚠ 为什么不用 `transform: translateX` 做动画:挤压式下 translateX 不参与布局,抽屉会「滑走」
+     而网格宽度纹丝不动 → 留一个空洞。宽度过渡才是与挤压式自洽的做法。
+
+   `--picker-w` 由 `library.ts` 注入(读档 / 拖拽),**CSS 只负责过渡与折叠态**。
+   ⚠ 原先写在 markup 上的那两个固定宽度工具类已删掉、收口到本块:
+     `#picker-drawer`(1,0,0)权重高于 Tailwind 的单类(0,1,0),留在 markup 上会被本块压死,
+     出现「CSS 生效但 markup 写着别的值」的假象 —— 宽度只能有一处来源。
+   ⚠ 本注释**刻意不写出那些类的完整字面量**:Tailwind 连注释一起扫,会凭空生成死类。 */
+#picker-drawer {
+  width: var(--picker-w, 520px);
+  transition:
+    width 240ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    margin-right 240ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    padding 240ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    border-width 240ms ease,
+    opacity 200ms ease;
+}
+
+/* 折叠态(width:0)—— 内距 / 左右描边一并归零,否则 0 宽抽屉仍留 12+1px 的细条。
+   ⚠ `margin-right: -16px` 抵消 `<main>` 的 `gap-4`(16px):flex 的 gap 不受 item 宽度影响,
+     不减这一下,收起后网格左缘会永远空出 16px。 */
+#picker-drawer.is-collapsed {
+  width: 0;
+  margin-right: -16px;
+  padding-left: 0;
+  padding-right: 0;
+  border-left-width: 0;
+  border-right-width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 拖拽中:关掉过渡,宽度严格跟手(否则动画永远追不上指针,手感发飘) */
+#picker-drawer.is-resizing {
+  transition: none;
+}
+
+/* 拖拽手柄:贴在抽屉**右缘**(抽屉在左,向右调宽)。
+   命中区 10px 宽(触屏也够),视觉是 2px 细线,hover / 拖拽中变品牌红。
+   ⚠ 必须**完全落在抽屉盒内**:抽屉带 `overflow-hidden`,伸到盒外的部分会被裁掉(命中区白丢)。 */
+#picker-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 10px;
+  z-index: 6;
+  cursor: col-resize;
+  touch-action: none; /* 触屏拖动不触发页面滚动 */
+}
+
+#picker-resizer::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--border-default);
+  transition: background 120ms ease;
+}
+
+#picker-resizer:hover::after,
+#picker-resizer.is-dragging::after {
+  background: var(--biff-red);
+}
+
 /* 窄屏(≤1099px)放不下「抽屉 + 网格」并排 → 抽屉退化为全宽面板,主列暂时隐藏。
-   ⚠ 抽屉宽 / 位置那几条走 Tailwind 的 `max-[1099px]:` 变体(在 index.html 上),断点必须与此处逐字一致,
-   否则会出现「主列已隐藏但抽屉仍是 520px」的半吊子态。 */
+   ⚠ 断点必须与下面两条媒体查询(`#main-col` 隐藏 / `@media (max-width: 768px)`)逐字一致,
+   否则会出现「主列已隐藏但抽屉仍是 520px」的半吊子态。
+   宽度 100% 时 `--picker-w` 不再参与,拖拽手柄一并隐藏(全宽面板没有可调宽度的意义)。 */
 @media (max-width: 1099px) {
   main.is-picker-open #main-col {
+    display: none;
+  }
+
+  #picker-drawer {
+    width: 100%;
+  }
+
+  #picker-drawer.is-collapsed {
+    width: 0;
+  }
+
+  #picker-resizer {
     display: none;
   }
 }

@@ -38,7 +38,7 @@
         <button data-g="B" class="border-0 px-3 py-[5px] text-13 bg-card text-ink transition-colors" data-page-node-id="9NGCcOMtLYjVa069U4AMOI">B 方案</button>
       </div>
       <button id="conflict-badge" class="inline-flex items-center gap-1 bg-biff-soft text-conf border border-biff-line rounded-full px-[10px] py-1 font-bold text-13 is-hidden" data-tip="查看冲突(打开抽屉 → 「我的行程」tab)" data-page-node-id="RJefHA9WlqGw0kZVvRysCv">⚠ <span id="conflict-count" data-page-node-id="IGFxWEo1sH0PHuxOOfOuDL">0</span></button>
-      <button id="library-btn" class="inline-flex items-center gap-[5px] border rounded-6 px-[14px] py-[6px] text-13 font-bold bg-card text-ink border-line hover:opacity-90" data-tip="打开左侧「选片 · 行程」抽屉(**不遮挡网格**,只是把网格挤窄一点 —— 打标 / 点选场次时始终看得到时间轴)&#10;面板内三个 tab(2026-09-10 加第三个,见 PLAN-20260910190916):&#10;  · **影片库**:全部影片(搜索 / 单元筛选)&#10;  · **我的选片**:按日期与档位筛选、看已排场次、定位、整片移除&#10;  · **我的行程**:按日期分组的已排场次(从主页面 #agenda-wrap 搬入,sticky 常驻可见)&#10;再点本按钮 / 面板内「收起 ✕」/ Esc = 收起" data-page-node-id="1ONdB6TvcdouJmTHgyyGFI"><span id="picker-btn-label">选片 · 行程</span><span id="picker-count" class="is-hidden inline-flex items-center justify-center min-w-[16px] h-[16px] px-[4px] rounded-full text-11 font-extrabold text-on-brand bg-biff tabular-nums" data-page-node-id="Zq3rNv8Hs2KdPmWx5tLbAy">0</span></button>
+      <button id="library-btn" class="inline-flex items-center gap-[5px] border rounded-6 px-[14px] py-[6px] text-13 font-bold bg-card text-ink border-line hover:opacity-90" data-tip="打开左侧「选片 · 行程」抽屉(**不遮挡网格**,只是把网格挤窄一点 —— 打标 / 点选场次时始终看得到时间轴)&#10;面板内三个 tab(2026-09-10 加第三个,见 PLAN-20260910190916):&#10;  · **影片库**:全部影片(搜索 / 单元筛选)&#10;  · **我的选片**:按日期与档位筛选、看已排场次、定位、整片移除&#10;  · **我的行程**:按日期分组的已排场次(从主页面 #agenda-wrap 搬入,sticky 常驻可见)&#10;再点本按钮 / 面板内「收起 ✕」/ Esc = 收起&#10;⚠ 行程非空时进入页面会自动滑出(停在「我的行程」);在时间轴上点选一场也会滑出&#10;⚠ 拖面板**右缘**可调宽窄(双击复位 520px),宽度会被记住" data-page-node-id="1ONdB6TvcdouJmTHgyyGFI"><span id="picker-btn-label">选片 · 行程</span><span id="picker-count" class="is-hidden inline-flex items-center justify-center min-w-[16px] h-[16px] px-[4px] rounded-full text-11 font-extrabold text-on-brand bg-biff tabular-nums" data-page-node-id="Zq3rNv8Hs2KdPmWx5tLbAy">0</span></button>
       <div class="relative" data-export-wrap data-page-node-id="YGSIVmyFXJStGVbISCHllt">
         <button id="export-btn" class="border-0 rounded-6 px-[14px] py-[6px] text-13 font-bold text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05]" data-page-node-id="oHHWF16AQsUPtLManq0BXV">导出 .ics</button>
         <div id="export-menu" class="absolute right-0 top-[calc(100%+6px)] bg-card border border-line rounded-10 shadow-[var(--shadow)] p-[6px] min-w-[150px] z-[60] is-hidden" data-page-node-id="610rEVYENiLYRHZZtixo5u">
@@ -67,8 +67,15 @@
          窄屏(≤1099px)放不下「抽屉 + 网格」并排:抽屉退化为全宽面板,主列暂时隐藏(style.css 的媒体查询)。
          抽屉**不是弹层**(不进 modal 栈),故不隐藏网格 —— 网格宽度变化由 library.ts 回调 main 侧补一次 renderGrid。
          「我的行程」原占主页面下方 2700px+ 之外(基本看不到),2026-09-10 搬入抽屉第三个 tab 后常驻可见。
-         见 PLAN-20260910190916。 -->
-    <aside id="picker-drawer" class="is-hidden sticky top-[64px] w-[520px] shrink-0 flex flex-col max-h-[calc(100vh-80px)] overflow-hidden bg-card border border-line rounded-8 p-[12px] max-[1099px]:static max-[1099px]:w-full" data-page-node-id="pk1R7Yb2nQ5wE4tZ8vC3dA"></aside>
+         见 PLAN-20260910190916。
+
+         ⚠ 2026-09-11(PLAN-20260911140342):开关类由 `is-hidden`(display:none,不可过渡)改为
+         **`is-collapsed`**(width:0 + 透明度,可过渡)—— 抽屉现在从**左缘向右滑出**;
+         宽度由 `--picker-w` 驱动(**可拖拽调宽**,手柄 `#picker-resizer` 由 library.ts 挂),
+         故写死宽度的两个工具类已移入 style.css(避免被 ID 选择器压死后出现两处宽度来源)。
+         ⚠ 注释里**不要**写出那些工具类的完整字面量:Tailwind 会连注释一起扫,凭空生成死类。
+         `relative` 是拖拽手柄(绝对定位在右缘)的包含块。 -->
+    <aside id="picker-drawer" class="is-collapsed relative sticky top-[64px] shrink-0 flex flex-col max-h-[calc(100vh-80px)] overflow-hidden bg-card border border-line rounded-8 p-[12px] max-[1099px]:static" data-page-node-id="pk1R7Yb2nQ5wE4tZ8vC3dA"></aside>
 
     <div id="main-col" class="flex-1 min-w-0 grid gap-4" data-page-node-id="mc0MainCol0000000000000">
       <section id="grid-wrap" class="bg-card border border-line rounded-8 p-[14px] min-w-0" data-page-node-id="UDVmNHtxaQ8LBW4RMKAvxQ">

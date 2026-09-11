@@ -49,7 +49,7 @@ import { attachTip } from "./tip";
 import { buildGuideBody } from "./legend";
 import { scorePlanRows, type ScoredRow } from "./score";
 import { closeAllModals, openModal, showCatalogFilmModal, showFilmModal } from "./modal";
-import { closePickerDrawer, isMobileDrawer, isPickerDrawerOpen, openFilmPicker, setAgendaRenderer, setPickerTab, setPickerToggleHandler } from "./library";
+import { closePickerDrawer, ensurePickerOpen, isMobileDrawer, isPickerDrawerOpen, openFilmPicker, setAgendaRenderer, setPickerTab, setPickerToggleHandler } from "./library";
 import { openSettings, openTalkMinModal } from "./settings";
 import { initTheme, isThemePref, setThemePref, themePref } from "./theme";
 import { copyPicklist } from "./picklist";
@@ -567,6 +567,7 @@ function bindEvents(): void {
         const key = filmKeyOfCode(code);
         if (key) toggleScreening(key, code, store.picks.get(key)?.priority ?? null);
         setGvTalk(code, false);
+        ensurePickerOpen(libraryCtx()); // 新加入 → 抽屉滑出显示行程(2026-09-11)
       }
       return;
     }
@@ -575,7 +576,11 @@ function bindEvents(): void {
       // 新加入按该片已有档位继承(影片库打标 / 详情弹层设过);从未打标 → null(未设,不再默认备选)
       const code = card.dataset.code!;
       const key = filmKeyOfCode(code);
-      if (key) toggleScreening(key, code, store.picks.get(key)?.priority ?? null);
+      if (key) {
+        toggleScreening(key, code, store.picks.get(key)?.priority ?? null);
+        // 加入(而非移出)当前方案 → 抽屉滑出显示行程;移出 / 切方案不弹(2026-09-11,PLAN-20260911140342)
+        if (slotOf(code)) ensurePickerOpen(libraryCtx());
+      }
       return;
     }
 
@@ -608,7 +613,9 @@ function bindEvents(): void {
     // 抽屉已开时只切 tab(保留当前 grid 日期);关着时打开抽屉(默认 tab),用户从 选片 进 行程 多一步。
     if (t.closest("#conflict-badge")) {
       if (isPickerDrawerOpen()) setPickerTab("agenda");
-      else openFilmPicker(libraryCtx());
+      // 关着时走 ensurePickerOpen(只开不收)+ 指定 agenda —— 旧写法 `openFilmPicker()` 用的是
+      // 「上次停留的 tab」,与本节注释「切到「我的行程」」相左(2026-09-11 顺手修正)。
+      else ensurePickerOpen(libraryCtx(), "agenda");
       return;
     }
 
@@ -862,6 +869,9 @@ async function boot(): Promise<void> {
   // 窄屏(≤768px)**列表优先**:首次进入直接打开抽屉,网格降级为次级入口 ——
   // 手机竖屏看二维甘特(29 厅 × 时间轴)在缩放下限下几乎不可用(见 library.ts::isMobileDrawer)。
   if (isMobileDrawer()) openFilmPicker(libraryCtx());
+  // 宽屏:行程非空 → 抽屉自动滑出并停在「我的行程」(2026-09-11,PLAN-20260911140342)。
+  // 空行程不弹(进界面就弹一块空面板只会挡网格);收起后除「再点选一场」外不会被重弹。
+  else if (store.picks.size > 0) ensurePickerOpen(libraryCtx(), "agenda");
   updatePickerLabel();
   toast(currentDate ? "排片为 MOCK 数据 — 官方 Catalogue 发布后一键替换" : "schedule.json 为空");
 
