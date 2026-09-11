@@ -1,8 +1,10 @@
-// 排片表「字段徽章 + 图例总览」单源模块(2025 官方 Schedule Guide 口径;2026 mock/待官方替换)
-//  - 等级 / 字幕 / 节目册页码 等小徽章:随卡片/行程/影片库/详情弹层渲染,每枚带 data-tip 即时说明
-//  - 「ⓘ 日程表说明」总览弹层内容(字段速读 / 等级 / 字幕 / 徽章 / 影院代码 / 网格图例 / 特别提示)
+// 排片表「字段徽章 + 图例总览」单源模块(2026 第 31 届官方 Schedule Guide 口径)
+//  - 等级 / 字幕 / 节目册页码 等小徽章:随卡片/行程/影片库/详情弹层渲染,每枚带 data-tip 即时解释
+//  - 「ⓘ 日程表说明」总览弹层内容(字段速读 / Schedule Guide 三栏 / 徽章 / 影院代码 / 网格图例 / Notice)
 //    2026-09-11 重排:每段收进「分区卡片」(标题条 + 内容区),示例区画成一张模拟网格卡,
 //    表格改细线 + 行 hover,弹层宽度走 modal.ts 的 `xl`(880px)。
+//    同日二次对齐官方新版:等级 / 字幕 / 特性章改**彩底白字实心胶囊**,图例改为官方
+//    「Ratings | Subtitle | Information」三栏,末尾「特别提示」改为官方 Notice 素圆点列表。
 // 场馆名两层口径:紧凑层(甘特影厅列 / 影片库截断行)走 venues.json 的 `short` 短名,
 // 详情层(hover tooltip / 本弹层表 / ICS LOCATION)给英文全名 + 韩名。
 // 官方影院代码(BT/B1/C1/L2…)不单独当行标签,放行首 chip + 悬停说明。
@@ -11,10 +13,16 @@ import type { Catalog, RatingKey, Screening, SubsKey, Venue } from "./types";
 import { el } from "./util";
 import { BADGE_DEFS, badgeEl, codeTip, DOUBAN_CHIP_TITLE, screeningBadgeKeys, UNIFORM_CHIP_BASE } from "./badges";
 
-/** 徽章基底(与 badges.ts 同字阶体系;全部字面量 → Tailwind v4 扫描可见) */
+/** 徽章基底(与 badges.ts 同字阶体系;全部字面量 → Tailwind v4 扫描可见)。
+ *  ⚠ **只放尺寸 / 排版,不放颜色** —— Tailwind 里同族 utility(`text-*` / `bg-*` / `border-*`)
+ *    谁生效取决于它们在产物 CSS 里的先后,而不是 class 属性里的先后;基底带色会让变体的
+ *    覆盖变成「碰运气」。颜色一律由各变体自己写全。 */
 const CHIP_BASE =
-  "not-italic text-10 font-extrabold rounded-3 px-[3px] py-px border leading-[1.45] " +
-  "whitespace-nowrap select-none shrink-0 cursor-help inline-flex items-center";
+  "not-italic text-10 font-extrabold rounded-3 px-[3px] py-px border " +
+  "leading-[1.45] whitespace-nowrap select-none shrink-0 cursor-help inline-flex items-center";
+
+/** 官方新版实底章的**共用配色** —— 彩底 + 白字 + 同色描边(描边只是补齐盒模型,不另起色) */
+const CHIP_SOLID = "text-on-brand border-transparent";
 
 /* ---------------- 观影等级 ---------------- */
 interface RateDef {
@@ -29,7 +37,7 @@ interface RateDef {
 export const RATING_DEFS: Record<RatingKey, RateDef> = {
   ALL: {
     label: "ALL",
-    cls: `${CHIP_BASE} text-rate-all bg-rate-all-soft border-current`,
+    cls: `${CHIP_BASE} ${CHIP_SOLID} bg-rate-all-solid`,
     zh: "全年龄",
     kr: "전체관람가",
     en: "All ages admitted",
@@ -37,7 +45,7 @@ export const RATING_DEFS: Record<RatingKey, RateDef> = {
   },
   "12": {
     label: "12",
-    cls: `${CHIP_BASE} text-rate-12 bg-rate-12-soft border-current`,
+    cls: `${CHIP_BASE} ${CHIP_SOLID} bg-rate-12-solid`,
     zh: "12 岁以上",
     kr: "12세이상관람가",
     en: "Under 12 not admitted",
@@ -45,7 +53,7 @@ export const RATING_DEFS: Record<RatingKey, RateDef> = {
   },
   "15": {
     label: "15",
-    cls: `${CHIP_BASE} text-biff-ink bg-biff-soft border-current`,
+    cls: `${CHIP_BASE} ${CHIP_SOLID} bg-rate-15-solid`,
     zh: "15 岁以上",
     kr: "15세이상관람가",
     en: "Under 15 not admitted",
@@ -53,7 +61,7 @@ export const RATING_DEFS: Record<RatingKey, RateDef> = {
   },
   "19": {
     label: "19",
-    cls: `${CHIP_BASE} text-rate-19 bg-rate-19-soft border-current`,
+    cls: `${CHIP_BASE} ${CHIP_SOLID} bg-rate-19-solid`,
     zh: "19 岁以上",
     kr: "청소년관람불가",
     en: "Under 19 not admitted",
@@ -73,33 +81,38 @@ interface SubsDef {
 export const SUBS_DEFS: Record<SubsKey, SubsDef> = {
   KE: {
     label: "KE",
-    cls: `${CHIP_BASE} text-ink-2 bg-card border-line`,
+    cls: `${CHIP_BASE} ${CHIP_SOLID} bg-subs-ke-solid`,
     en: "Korean Subtitles + English Subtitles or Dialogue",
     zh: "韩文字幕 + 英文字幕或英文对白(最常见)",
     tip: "字幕 KE — Korean Subtitles + English Subtitles or Dialogue\n韩文字幕 + 英文字幕或英文对白",
   },
   KN: {
     label: "KN",
-    cls: `${CHIP_BASE} text-rate-12 bg-card border-rate-12 border-dashed`,
+    cls: `${CHIP_BASE} ${CHIP_SOLID} bg-subs-kn-solid`,
     en: "Korean Subtitles + Non-English Dialogue without English Subtitles",
     zh: "韩文字幕 + 非英语外语对白(无英字;外语观众慎选)",
     tip: "字幕 KN — Korean Subtitles + Non-English Dialogue without English Subtitles\n韩文字幕 + 非英语外语对白,不配英文字幕\n多为日 / 中 / 西语对白片,不熟该语言需留意",
   },
   KK: {
     label: "KK",
-    cls: `${CHIP_BASE} text-ink bg-raised border-line-strong`,
+    cls: `${CHIP_BASE} ${CHIP_SOLID} bg-subs-kk-solid`,
     en: "Korean Subtitles + Korean Dialogue",
     zh: "韩文字幕 + 韩语对白(无外文字幕)",
     tip: "字幕 KK — Korean Subtitles + Korean Dialogue\n韩文字幕 + 韩语对白(无外文字幕;同时为听障观众提供语音 / 字幕解说)",
   },
   NO: {
     label: "NO",
-    cls: `${CHIP_BASE} text-meta bg-card border-line`,
+    cls: `${CHIP_BASE} ${CHIP_SOLID} bg-subs-no-solid`,
     en: "No Dialogue",
     zh: "无对白(实验 / 纪录 / 纯影像)",
     tip: "字幕 NO — No Dialogue\n无对白影片(实验 / 纪录 / 纯影像)",
   },
 };
+
+/** 等级的**展示顺序** —— 必须显式列出:`RATING_DEFS` 的键是 `ALL / 12 / 15 / 19`,
+ *  而 JS 对象会把「整数样」的键(`"12"`/`"15"`/`"19"`)排到最前、无视书写顺序 →
+ *  直接 `Object.keys` 会渲染成 12 / 15 / 19 / ALL,与官方图例的 ALL 打头不符。 */
+export const RATING_ORDER: RatingKey[] = ["ALL", "12", "15", "19"];
 
 /** 未标注(格内无字幕标识)= 英文字幕 + 韩语对白 —— 说明文案(总览用) */
 const SUBS_UNMARKED = {
@@ -184,6 +197,13 @@ function codeField(code: string): HTMLElement {
 function blankChip(): HTMLElement {
   const node = el("i", `${CHIP_BASE} text-meta bg-card border-line border-dashed`, "(空白)");
   node.dataset.tip = "格内未标注该字段\n字幕未标注 = 官方默认「英文字幕 + 韩语对白」";
+  return node;
+}
+
+/** 场次编号占位章 —— 官方图例 Information 列里的 `---` Code(白底虚线框 + 灰字) */
+function codePlaceholderChip(): HTMLElement {
+  const node = el("i", `${CHIP_BASE} text-meta bg-card border-line border-dashed`, "---");
+  node.dataset.tip = codeTip("---");
   return node;
 }
 
@@ -299,6 +319,8 @@ const GROUP_AREA: Record<string, string> = {
   cgv: "CENTUM 主场区 · CGV Centum City",
   lotte: "CENTUM 主场区 · LOTTE CINEMA Centum City",
   kofic: "CENTUM 主场区 · KOFIC Theater(电影振兴委员会)",
+  shinsegae: "CENTUM 主场区 · 新世界 Centum City 文化厅",
+  dsumedia: "CENTUM 主场区 · 东西大学-KIT Centum Campus",
   megabox: "南浦洞 · MEGABOX Busan Theater",
   sohyang: "南浦洞 · 东西大学 Sohyang Theatre",
   bcm: "南浦洞 · 釜山市民媒体中心",
@@ -326,44 +348,27 @@ export function venueTip(v: Venue): string {
  * 「ⓘ 日程表说明」总览弹层内容
  * ================================================================ */
 
-/** 官方影院代码总表(按影院汇总;与上一张逐厅表互补 —— 这张按「影院」归并,
- *  便于与册子封底的影院代码页对表) */
-const VENUE_CODES_2025: { group: string; list: [string, string][] }[] = [
-  {
-    group: "电影殿堂 Busan Cinema Center",
-    list: [
-      ["BT", "BIFF Theatre · 露天剧场"],
-      ["BH", "Haneulyeon Theatre · 天空剧场"],
-      ["B1", "Cinema 1 · 中剧场"],
-      ["B2", "Cinema 2 · 小剧场"],
-      ["B3", "Cinematheque"],
-      ["BD", "Indieplus"],
-    ],
-  },
-  {
-    group: "CGV Centum City",
-    list: [
-      ["C1–C7", "CGV Centum City 1–7 号厅"],
-      ["CX", "CGV Centum City IMAX"],
-    ],
-  },
-  {
-    group: "LOTTE CINEMA Centum City",
-    list: [
-      ["L2–L7", "LOTTE CINEMA Centum City 2–7 号厅"],
-      ["L9 / L10", "LOTTE CINEMA Centum City 9 / 10 号厅"],
-    ],
-  },
-  {
-    group: "其他剧场",
-    list: [
-      ["KT", "KOFIC Theater · 韩国电影振兴委员会剧场"],
-      ["SH", "Sohyang Theatre ShinhanCard Hall(东西大学)"],
-      ["BCM", "Busan Community Media Center Open Hall"],
-      ["M1–M4", "MEGABOX Busan Theater 1–4 号厅(南浦洞)"],
-    ],
-  },
-];
+/** 按「影院」归并的代码总表 —— **直接由 `venues.json` 推导**(2026-09-11 起)。
+ *  原先是一张写死的 2025 表(含当年才有的 M1–M4 / BD / C7),换届后必然过期且不会报错;
+ *  现在按 `group` 归并真实数据,换版本自动跟着变,不存在的影院也不会凭空列出来。 */
+function venueCodeGroups(cat: Catalog): { group: string; list: [string, string][] }[] {
+  const order: string[] = [];
+  const byGroup = new Map<string, Venue[]>();
+  for (const v of cat.venues) {
+    if (!byGroup.has(v.group)) {
+      byGroup.set(v.group, []);
+      order.push(v.group);
+    }
+    byGroup.get(v.group)!.push(v);
+  }
+  return order.map((g) => ({
+    group: GROUP_AREA[g] ?? g,
+    list: byGroup.get(g)!.map((v): [string, string] => [
+      v.code ?? v.id.toUpperCase(),
+      v.name_kr ? `${v.name} · ${v.name_kr}` : v.name,
+    ]),
+  }));
+}
 
 /* ---- 排版积木(2026-09-11 重排)----
  *  旧版是「小标题 + 裸表格」一路直排,7 段挤在 640px 里毫无层级;
@@ -437,14 +442,32 @@ function note(text: string): HTMLElement {
   return el("div", "mt-[9px] text-12 leading-[1.65] text-muted", text);
 }
 
-/** 要点条目(红点标记) */
-function bullet(text: string): HTMLElement {
-  return el(
-    "li",
-    "relative pl-[15px] text-13 leading-[1.65] " +
-      "before:content-[''] before:absolute before:left-[2px] before:top-[8px] before:w-[5px] before:h-[5px] before:bg-biff before:rounded-2",
-    text
-  );
+/** 官方 Schedule Guide 的一栏:栏标题 + 「章 → 说明」列表。
+ *  官方是三栏并排(Ratings / Subtitle / Information);窄屏用 auto-fit 自动折成一栏。 */
+function guideColumn(title: string, rows: [HTMLElement, string][]): HTMLElement {
+  const col = el("div", "grid gap-[7px] content-start min-w-0");
+  col.appendChild(el("h5", "m-0 pb-[6px] text-13 font-bold border-b border-line", title));
+  const ul = el("ul", "grid gap-[6px] m-0 p-0 list-none");
+  for (const [chip, text] of rows) {
+    const li = el("li", "flex items-start gap-[7px] text-12 leading-[1.5]");
+    li.appendChild(chip);
+    li.appendChild(el("span", "min-w-0 text-ink-2", text));
+    ul.appendChild(li);
+  }
+  col.appendChild(ul);
+  return col;
+}
+
+/** 官方「Notice」块的内容:圆点条目(官方是素圆点,不是我们原来的红方块 —— 照搬) */
+function noticeList(items: string[]): HTMLElement {
+  const ul = el("ul", "grid gap-[6px] m-0 p-0 list-none");
+  for (const t of items) {
+    const li = el("li", "flex items-start gap-[7px] text-13 leading-[1.6] text-ink-2");
+    li.appendChild(el("span", "shrink-0 text-meta", "•"));
+    li.appendChild(el("span", "min-w-0", t));
+    ul.appendChild(li);
+  }
+  return ul;
 }
 
 /** 总览弹层主体(点击「ⓘ 日程表说明」打开;main.ts 装配) */
@@ -454,7 +477,7 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
   // ---- 前言 ----
   body.appendChild(
     guideCallout(
-      "字段与代码口径参考 2025 第 30 届 BIFF 官网 Schedule Guide;本排期仍为 MOCK,2026 真实排期(9/11 发布)接入后内容自动更新。悬停任意小徽章即看即时解释,本页为总览。"
+      "字段与代码口径照搬 2026 第 31 届 BIFF 官网排期页的 Schedule Guide;排期 / 片名 / 分级 / 字幕 / GV 均取自官网实时页面(tools/scrape_biff_web.py 抓取)。悬停任意小徽章即看即时解释,本页为总览。"
     )
   );
 
@@ -499,25 +522,40 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     body.appendChild(guideSection("一格怎么读", "SAMPLE", wrap));
   }
 
-  // ---- 2 观影等级 ----
+  // ---- 2 官方三栏 Schedule Guide(Ratings / Subtitle / Information)----
+  //  照搬 biff.kr 排期页「Schedule Guide」的面板结构:三栏并排、每栏「章 + 说明」成行。
+  //  原先这里是两张独立表格(观影等级 / 字幕),信息一样但读起来是「两段文档」而不是「一页图例」。
   {
-    const { tbl, tbody } = mkTable(["标识", "中文", "한국어", "准入"]);
-    (Object.keys(RATING_DEFS) as RatingKey[]).forEach((k) => {
-      const d = RATING_DEFS[k];
-      addRow(tbody, [chipEl(d), d.zh, d.kr, d.en]);
-    });
-    body.appendChild(guideSection("观影等级", "RATINGS", scrollBox(tbl)));
-  }
+    const cols = el("div", "grid gap-[18px] grid-cols-[repeat(auto-fit,minmax(230px,1fr))]");
 
-  // ---- 3 字幕 / 对白标识 ----
-  {
-    const { tbl, tbody } = mkTable(["标识", "官方英文(2025)", "中文"]);
-    (Object.keys(SUBS_DEFS) as SubsKey[]).forEach((k) => {
+    cols.appendChild(
+      guideColumn(
+        "Ratings",
+        RATING_ORDER.map((k) => {
+          const d = RATING_DEFS[k];
+          return [chipEl(d), `${d.zh} · ${d.en}`] as [HTMLElement, string];
+        })
+      )
+    );
+
+    const subsRows: [HTMLElement, string][] = (Object.keys(SUBS_DEFS) as SubsKey[]).map((k) => {
       const d = SUBS_DEFS[k];
-      addRow(tbody, [chipEl(d), d.en, d.zh]);
+      return [chipEl(d), d.en] as [HTMLElement, string];
     });
-    addRow(tbody, [blankChip(), SUBS_UNMARKED.en, SUBS_UNMARKED.zh]);
-    body.appendChild(guideSection("字幕 / 对白标识", "SUBTITLES", scrollBox(tbl)));
+    subsRows.push([blankChip(), `(*) 未标注 = ${SUBS_UNMARKED.en}`]);
+    cols.appendChild(guideColumn("Subtitle", subsRows));
+
+    const infoRows: [HTMLElement, string][] = [
+      [codePlaceholderChip(), "Code — 场次编号(每场唯一,对表 / 抢票以此为准)"],
+      [badgeEl("gv"), "Guest Visit — 嘉宾到场映后交流"],
+    ];
+    for (const d of BADGE_DEFS) {
+      if (d.key === "gv") continue;
+      infoRows.push([badgeEl(d.key), d.title.split("\n")[0]]);
+    }
+    cols.appendChild(guideColumn("Information", infoRows));
+
+    body.appendChild(guideSection("Schedule Guide", "官方图例", cols));
   }
 
   // ---- 4 场次特性徽章 ----
@@ -529,7 +567,7 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
       addRow(tbody, [chip, d.title]);
     });
     wrap.appendChild(scrollBox(tbl));
-    wrap.appendChild(note("GV 徽章为实心黑(默认)。GV 场在网格里拆成「正片 + 映后谈」两张拼接卡:默认一起选中,点映后块或行程行开关可单独放弃(只选正片);放弃后该场按正片结束算转场/冲突/.ics 导出,该段仍留在时间轴上以虚线灰块示意「物理存在但我不参加」。**映后谈时长可配置**:设置里给全局默认(默认 25 分钟,改它 = 谈段长度与有效结束全链路跟着变),行程行点映后胶囊的数字可逐场覆写(留空 = 跟随默认;设 0 = 本场不拆映后段)。"));
+    wrap.appendChild(note("GV 徽章为实心紫(对齐官方新版 Information 列)。GV 场在网格里拆成「正片 + 映后谈」两张拼接卡:默认一起选中,点映后块或行程行开关可单独放弃(只选正片);放弃后该场按正片结束算转场/冲突/.ics 导出,该段仍留在时间轴上以虚线灰块示意「物理存在但我不参加」。**映后谈时长可配置**:设置里给全局默认(默认 25 分钟,改它 = 谈段长度与有效结束全链路跟着变),行程行点映后胶囊的数字可逐场覆写(留空 = 跟随默认;设 0 = 本场不拆映后段)。"));
     body.appendChild(guideSection("场次特性徽章", "BADGES", wrap));
   }
 
@@ -538,7 +576,13 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     const wrap = el("div", "grid gap-0");
     const { tbl, tbody } = mkTable(["代码", "影厅(网格行标签 → 官方全名)", "分区"]);
     cat.venues.forEach((v) => {
-      const codeCell = v.code ? chipEl({ label: v.code, cls: `${CHIP_BASE} text-biff-ink bg-biff-soft border-current`, tip: `影院代码 ${v.code} — 2025 届同馆口径(mock),2026 以官网为准` }) : el("span", "text-meta", "—");
+      const codeCell = v.code
+        ? chipEl({
+            label: v.code,
+            cls: `${CHIP_BASE} text-biff-ink bg-biff-soft border-current`,
+            tip: `影院代码 ${v.code} — 与官方排期页 / 现场指示牌对表用`,
+          })
+        : el("span", "text-meta", "—");
       // 短名 ↔ 全名对照:用户照着网格列里的短名能在这里对回官方全名(否则「BCC Cinema 1」无从溯源)
       const nameCell = el("div", "grid gap-px");
       nameCell.append(
@@ -553,10 +597,10 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     det.className = "mt-[10px] border border-line rounded-8 bg-hover overflow-hidden";
     const sum = document.createElement("summary");
     sum.className = "cursor-pointer text-13 font-semibold text-ink-2 select-none hover:text-biff-ink";
-    sum.textContent = "官方日程表代码总表(2025 口径参考 — 点击展开)";
+    sum.textContent = "按影院归并的代码总表(点击展开)";
     det.appendChild(sum);
     const detBody = el("div", "px-[10px] pb-[8px]");
-    VENUE_CODES_2025.forEach((g) => {
+    venueCodeGroups(cat).forEach((g) => {
       const gHead = el("div", "mt-[6px] mb-[2px] text-12 font-bold text-muted", g.group);
       const { tbl: t2, tbody: tb2 } = mkTable(["代码", "剧场"]);
       g.list.forEach(([code, name]) => addRow(tb2, [code, name]));
@@ -574,15 +618,15 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     const lines: [string | HTMLElement, string][] = [
       [
         labeled(swatch("color-mix(in srgb, var(--color-ok) 14%, var(--color-card))", "border-ok"), "绿底 · 已选"),
-        "已加入当前方案(A/B)的场次 — 整卡淡绿底。档位不染网格卡:请在「影片库」卡片 / 行程卡 / 影片资料弹层点 ★ 设置(蓝 = 必看 / 品红 = 备选 / 灰蓝 = 随缘),冲突取舍与抢票顺位按此排",
+        "已加入行程的场次 — 整卡淡绿底",
       ],
       [
         labeled(swatch("color-mix(in srgb, var(--color-tight) 24%, var(--color-card))", "border-tight"), "黄底 · 时间紧张"),
-        "同方案相邻两场衔接紧:间隔小于转场缓冲(转场不足)或余量 <15min(偏紧)— 两张卡整卡淡黄底,hover 卡片查看完整算式",
+        "已选场次里相邻两场衔接紧:间隔小于转场缓冲(转场不足)或余量 <15min(偏紧)— 两张卡整卡淡黄底,hover 卡片查看完整算式",
       ],
       [
         labeled(swatch("color-mix(in srgb, var(--color-conf) 14%, var(--color-card))", "border-conf"), "红底 · 完全冲突"),
-        "同方案(A 或 B)内两场放映时间重叠,无法同时观看 — 整卡红底 + 红框 + 右上角红点;两张卡不在相邻影厅时,会有一条红色虚线把重叠时段连起来;hover 联动高亮整个冲突组",
+        "两场放映时间重叠,无法同时观看 — 整卡红底 + 红框 + 右上角红点;两张卡不在相邻影厅时,会有一条红色虚线把重叠时段连起来;hover 联动高亮整个冲突组。**重叠不是错误**:两场都留在行程里,去「我的行程」的**绿框顺位卡**里拖动排出偏好次序即可 —— 工具会把「每个冲突组各取一场」的所有无冲突组合都列出来(见「方案对比」)",
       ],
       [
         badgeEl("gv"),
@@ -608,13 +652,11 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     const ul = el("ul", "grid gap-[7px]");
     [
       ["一部片一条记录", "「我的选片」与「我的行程」是同一份数据的两个视图:按片看是选片清单,按场次看是行程。没有第二份拷贝,两边永远一致"],
-      ["必看 / 备选 / 随缘", "档位由**一枚 ★ 星标**表达(★ = 已定档,按档位着色;**蓝 = 必看 / 品红 = 备选 / 灰蓝 = 随缘**;☆ = 未设),点击弹出「必看 / 备选 / 随缘 / 清除档位」菜单 —— 三处完全同款:「影片库」卡片右上角、「我的行程」行程卡、影片资料弹层(2026-09-10 起弹层也由三段文字 seg 改为同一枚 ★)。档位是「影片级」的:改一处,该片所有场次同步"],
-      ["场次只在一处选", "影片行展开 = 唯一场次列表(两个 tab 同款):每场并排「定位 ▸」(跳到时间轴)与「＋ 加入」(加入后变「✓ 已加入」,再点即移出;这场在另一方案时显示「⇄ 已在 B」);「ⓘ」只开影片资料 + 豆瓣,不再重复列排片"],
-      ["甘特 ★ 档位", "定档后,甘特卡标题行前出现一枚 ★(**蓝=必看 / 品红=备选 / 灰蓝=随缘**,2026-09-10 由 7px 色点改为 15px 星标)——与整卡红绿灯底色相互独立:底色说「排得怎么样」,★ 说「是不是我想看的」。档位刻意用冷色系,避开底色的红/黄/绿;备选由「紫」改「品红」是因为蓝紫只差 48° 色相,小尺寸下分不出。同一枚 ★ 也出现在「影片库」卡片右上角、行程卡与影片资料弹层"],
-      ["顶栏「选片 · 行程」", "一个按钮 = 左侧滑出的**排片面板**(再点一次 / 面板内「收起 ✕」/ Esc 收起):面板**不遮挡网格**,只是把网格挤窄一点 —— 所以打标、点选场次时始终能看到时间轴上的变化。面板内**三个 tab**:· **影片库**(全部影片:搜索 / 单元筛选)· **我的选片**(日期导航栏 + 档位 chips;每行只剩「状态标签 + ⓘ + ✕」;展开只列**已排场次**并按日期分节)· **我的行程**(按日期分组的已排场次,原在主页面下方,2026-09-10 搬入 —— 常驻可见;卡片头与选片卡同款:**片名在上、影片信息行在下**)。三个 tab 共用同一套影片行 / 场次行,打标与图标完全一致"],
-      ["我的行程 ✕", "只移出这一场,选片意向保留 —— 该片仍留在「我的选片」里并标注「未排场」,「智能排片」照样会把它排进去"],
-      ["智能排片", "**唯一排片通道**(原「本地引擎」已下线)。需你自己填入模型 API Key(DeepSeek / OpenAI / Moonshot / 硅基流动 / 自定义均可),由浏览器直连服务商生成一版建议行程,再选「并入 A / B 方案」(已有场次保留,只追加不冲突的新场次)。可先在「② 排哪几天」收窄日期;一部片都没打标也能排 —— 走「无片单模式」,怎么排看偏好文字。返回结果会本地复检:无效 code、同片多场、时段冲突一律剔除并明示,不信任模型的自我约束"],
-      ["API Key 只在本机", "Key 只写入本机浏览器的 localStorage,不上传本站服务器、也不进任何发往本站的请求;排片请求由浏览器直连你填写的服务商。本站不提供也不转售模型服务(用你自己的额度),因此也读不到你的 Key。浏览器本地为明文存储 —— 公用电脑请勿保存,随时可在「设置」或弹层里点「清除 Key」"],
+      ["顺位 = 偏好次序 · 方案 = 所有无冲突组合(2026-09-11 新)", "同一时间带互相重叠的几场在「我的行程」里折叠成一张**绿框顺位卡**(绿框 = 这组已经处理好,不是警报);卡片头第 1 列的 **⠿ 把手**可以**上下拖动**,组内顺序就是**偏好次序**(顺位 1 = 最想要)。\n**顺位不决定分组** —— 它只回答「先保哪一场」。**方案 = 「每个冲突组各取一场」的所有组合**:2 个冲突组各有 2 场 → 4 套方案,每一套都无冲突(工具逐套校验过)。行程顶部的「方案对比」把这些方案**全部**并列摆出来,按**顺位成本**(各组所选顺位之和)排序 —— 都取首选的那套排最前,盖「最优先」章。每张卡只列差异场次。顺位是**场次级**的(同一部片的两场可以分属不同顺位),独立存 `biff.ranks.v1`"],
+      ["三步流程:选片 → 挑场次 → 看行程", "**排片只在「我的选片」里挑**(2026-09-11 改):① 在**影片库**选影片,点「＋ 加入我的选片」把片子收进来(这枚按钮随后变成「✓ 已在选片 · 去排场次 ▸」,点它直接带你过去);② 在**我的选片**展开任意一部片,场次行右侧「＋ 加入」挑具体场次(已加入变「✓」,再点即移出),行内「定位 ▸」跳到时间轴;③ **我的行程**按日期看最终结果。影片库那张场次表是**只读**的(只留「定位 ▸」),所以不会「两个地方都能加、跳来跳去」。当然,直接在时间轴上点卡片选场次一样有效 —— 写的是同一份数据"],
+      ["冲突怎么取舍", "冲突**不必现在就决定** —— 两场都留在行程里,去「我的行程」的绿框顺位卡拖出偏好次序即可。抢票时按顺位从上往下试:抢到顺位 1 就按成本最低的那套走,售罄就退到下一套。工具不记账「抢到 / 售罄」(那在票务系统里完成),只负责把偏好次序与全部无冲突方案摆清楚。**红只留给真异常**(有的组合内部仍撞车,正常不会发生)"],
+      ["顶栏「选片 · 行程」", "一个按钮 = 左侧滑出的**排片面板**(再点一次 / 面板内「收起 ✕」/ Esc 收起):面板**不遮挡网格**,只是把网格挤窄一点 —— 所以点选场次时始终能看到时间轴上的变化。**点开落在「我的选片」**(工作台中段:已收的片 + 每片全部可选场次;要看全部影片点旁边「影片库」tab)。面板内**三个 tab**:**影片库**(全部影片:搜索 / 单元筛选 / 「＋ 加入我的选片」)· **我的选片**(日期导航栏;每行「状态标签 + ⓘ + ✕」;**展开列该片全部可选场次**,按日期分节 —— 挑场次在这里)· **我的行程**(按日期分组的已排场次,2026-09-10 搬入抽屉 —— 常驻可见;**冲突组可拖动排顺位**,顶部有方案对比;卡片头与选片卡同款:**片名在上、影片信息行在下**)。三个 tab 共用同一套影片行 / 场次行,图标完全一致"],
+      ["我的行程 ✕", "只移出这一场,选片保留 —— 该片仍留在「我的选片」里并标注「未排场」"],
     ].forEach(([k, v]) => {
       const li = el("li", "text-13 leading-[1.65]");
       li.append(el("b", "font-semibold text-ink", k), document.createTextNode(` — ${v}`));
@@ -623,32 +665,30 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     wrap.appendChild(ul);
     wrap.appendChild(
       note(
-        "档位只有一份,且在影片级 —— 行程卡里的 ★ 改的就是该片的档位(同片多场同步,提示里会写明「本片共 N 场」)。「未设」= 只点了场次还没定档:不参与质量分与抢票顺位,也不进智能排片;去「影片库」或弹层点 ★ 补一个档位即可。"
+        "行程质量分 = 场次数 + GV 场数 − 紧转场次数(「排了就算数」)。历史上还有过「档位(必看 / 备选 / 随缘)」—— 它已于 2026-09-11 整体删除:冲突决策改由「拖动顺位」承担,非冲突场景里档位只剩排序噪声。"
       )
     );
     body.appendChild(guideSection("我的选片", "MY PICKS", wrap));
   }
 
-  // ---- 8 特别提示 ----
-  {
-    const ul = el("ul", "grid gap-[7px]");
-    ul.appendChild(
-      bullet("开闭幕:开幕式 + 开幕影片通常在首日于 BIFF Theatre(露天剧场)举行;闭幕场放映「釜山奖(Busan Award)」获奖作 — 均为 2025 届口径,2026 以官网为准。")
-    );
-    ul.appendChild(
-      bullet("GV:Guest Visit 嘉宾到场安排可能在没有提前通知的情况下发生变化(subject to change without notice)。")
-    );
-    ul.appendChild(
-      bullet("P&I(Press & Industry):面向电影节 / 市场 / 媒体证(badge)持有者的放映,先到先得(first come, first served),提供韩文字幕;普通观众不入 — 若参加以当届官方解释为准。")
-    );
-    ul.appendChild(
-      bullet("节目册 Ticket Catalogue 于排期发布时印刷;其后场次 / 时间变动以 biff.kr 官网为准。")
-    );
-    ul.appendChild(
-      bullet("咨询电话 1666-9177(2025 届官方客服;2026 以官网更新为准)。")
-    );
-    body.appendChild(guideSection("特别提示", "NOTES", ul));
-  }
+  // ---- 8 Notice(官方 Notice 块;2026-09-11 由「红点要点」改为官方素圆点条目)----
+  body.appendChild(
+    guideSection(
+      "Notice",
+      "特别提示",
+      noticeList([
+        "开闭幕:开幕式 + 开幕影片于首日在电影殿堂露天剧场(Roof Theater)举行;闭幕场放映「釜山奖(Busan Award)」获奖作 —— 本工具数据即取自官网 2026 排期页。",
+        "GV(Guest Visit):部分韩国影片的映后谈可能不提供英语口译;部分非韩 / 英语影片的映后谈同样可能不提供英语口译。",
+        "GV 日程可能在没有提前通知的情况下变更(schedules can be changed without beforehand notice)。",
+        "4 岁以下儿童即使有家长陪同也不得入场。",
+        "严禁拍照与录像(含预告片与片尾字幕)。",
+        "放映开始 15 分钟后禁止入场;迟到者不保证保留座位。",
+        "P&I(Press & Industry):面向电影节 / 市场 / 媒体证(badge)持有者的放映,先到先得;普通观众不入。",
+        "官网排期会持续变动,场次 / 时间以 biff.kr 与现场公告为准。",
+        "咨询电话 1666-9177(BIFF Call Center,工作时间 10:00–17:00,周末与公休日休息)。",
+      ])
+    )
+  );
 
   return body;
 }

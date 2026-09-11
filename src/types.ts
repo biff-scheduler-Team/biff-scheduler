@@ -82,6 +82,10 @@ export interface VenuesFile {
 /** 影片目录(来自用户提供的影片信息表,先只接片名与元信息) */
 export interface FilmItem {
   id: string; // f001…,目录序号
+  /** **官网英文片名** —— 与 `Screening.title_en` 同源,是排期与片单之间的**唯一身份**。
+   *  目录已改为由官网片目生成(见 tools/build_films_2026.py),故这一列必然存在;
+   *  匹配一律优先走它,中文名 / 原始片名只作兜底。 */
+  title_en?: string;
   unit: string; // 单元:主竞赛 / Icons / 亚洲电影之窗 …
   remark: string; // 备注:世界首映 …
   title_zh: string;
@@ -91,6 +95,14 @@ export interface FilmItem {
   rating_count: number | null;
   country: string;
   director: string;
+  /** 海报(相对站点根的路径,如 `/posters/36990574-m.jpg`)—— 由 `tools/build_films.py`
+   *  按豆瓣 subject_id 对齐 `public/posters/` 里**已下载**的档位。缺图是常态(250 部里 174 部有),
+   *  前端按「无海报」渲染,**不给豆瓣外链兜底**(豆瓣图床有 Referer 防盗链,外链必 418 破图)。 */
+  poster?: string;
+  /** **仅合集成员**:该片没有独立场次,只在某个合集块(Asian / Korean Short Film
+   *  Competition、Midnight Passion 等)里放映 —— 值是块场次的 code。前端据此把它
+   *  挂到那一场上,显示「收录于合集 XXX」,而不是「暂无排期」。 */
+  block_code?: string;
 }
 
 export interface FilmsFile {
@@ -99,25 +111,22 @@ export interface FilmsFile {
   films: FilmItem[];
 }
 
-export type Group = "A" | "B";
-export type Priority = "must" | "maybe" | "wild";
-
-/** 一条已选场次:选的是哪一场 + 归属哪个方案。
- *  group 留在场次级(同一部片的两场可以分别放进 A / B 方案),档位则统一在影片级(见 PickEntry)。 */
+/** 一条已选场次:选的是哪一场。
+ *  ⚠ 历史:2026-09-11 起**方案(A/B)已整体移除**(`PLAN-20260911190000` D7),
+ *  旧 localStorage 里的 `group` 字段读取时被忽略(`state.ts::hydrate`),所有场次同处一套。 */
 export interface PickSlot {
   code: string;
-  group: Group;
 }
 
 /** 选片记录 —— 全站唯一数据源(「我的选片」按片看 / 「我的行程」按场次看,都是它的视图)。
  *  键 = filmNodeKey(`cat:<目录 id>` | `sched:<片名小写>`),一部片一条记录:
- *  ① 档位只有一份且在影片级 —— 行程行改档位 = 改该片档位,两个视图永不打架;
- *  ② 已选场次挂在 picks 里(可空 = 已打标/已选中但未排场);
- *  ③ 从行程里移除某一场只动 picks,记录保留(选片意向不丢)。 */
+ *  ① 已选场次挂在 picks 里(可空 = 已选中但未排场);
+ *  ② 从行程里移除某一场只动 picks,记录保留(选片意向不丢)。
+ *  ⚠ **档位(必看 / 备选 / 随缘)已于 2026-09-11 整体删除**(`PLAN-20260911223000`):
+ *    它在冲突场景里的作用被「拖动顺位」完全取代(见 `plans.ts`),在非冲突场景里只是排序噪声。
+ *    旧数据里的 `priority` 字段读取时被忽略 —— 零迁移。 */
 export interface PickEntry {
   key: string;
-  /** null = 未设档位(直接点选场次、影片库没打标 / 用户主动清空);不参与质量分 */
-  priority: Priority | null;
   picks: PickSlot[];
   note: string;
 }
@@ -156,7 +165,9 @@ export interface Catalog {
   venues: Venue[];
   venueById: Map<string, Venue>;
   byCode: Map<string, Screening>;
-  films: FilmItem[]; // 影片目录(可先于排期发布,按 id 与排期 title 关联)
+  films: FilmItem[]; // 影片目录(由官网片目生成,见 tools/build_films_2026.py)
+  /** 目录索引:**官网英文片名 → 条目** —— 排期与片单的唯一身份口径(命中优先级最高)。 */
+  filmByEn: Map<string, FilmItem>;
   /** 目录索引:目录中文名(无中文名则原始片名)→ 条目。`filmNodeKey` / `filmInfoOf` 的命中口径① */
   filmByZh: Map<string, FilmItem[]>;
   /** 目录索引:原始片名 → 条目。命中口径②(原始片名 == 排期英文名) */

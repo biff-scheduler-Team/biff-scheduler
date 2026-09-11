@@ -67,13 +67,69 @@ export interface GroupedPlan {
   conflicts: ConflictResult | undefined;
 }
 
-/** §14 1b:取与某 code 同属一个冲突组的全部 code(自身 + 与之成对的对方)。未冲突返回 undefined。 */
+/** 由 pairs 建**无向邻接表**(conflictGroupFor / conflictGroups 共用)。
+ *  只收录成对的 code —— 未冲突的场次不在表内。 */
+function adjacencyOf(result: ConflictResult): Map<string, Set<string>> {
+  const adj = new Map<string, Set<string>>();
+  const link = (a: string, b: string): void => {
+    let set = adj.get(a);
+    if (!set) {
+      set = new Set<string>();
+      adj.set(a, set);
+    }
+    set.add(b);
+  };
+  for (const [a, b] of result.pairs) {
+    link(a, b);
+    link(b, a);
+  }
+  return adj;
+}
+
+/** 从某 code 出发做 BFS,取它所在**连通分量**的全部 code。
+ *  与 `conflictGroupFor` 同源,但一次给出**当天所有**冲突组(抢票视图按组聚合用)。 */
+export function conflictGroups(result: ConflictResult | undefined): string[][] {
+  if (!result || result.pairs.length === 0) return [];
+  const adj = adjacencyOf(result);
+  const seen = new Set<string>();
+  const groups: string[][] = [];
+  for (const start of adj.keys()) {
+    if (seen.has(start)) continue;
+    const stack = [start];
+    const group: string[] = [];
+    seen.add(start);
+    while (stack.length > 0) {
+      const cur = stack.pop()!;
+      group.push(cur);
+      for (const nb of adj.get(cur) ?? []) {
+        if (seen.has(nb)) continue;
+        seen.add(nb);
+        stack.push(nb);
+      }
+    }
+    group.sort();
+    groups.push(group);
+  }
+  // 稳定顺序:组内首 code 字典序 —— 网格 / 行程 / 测试都据此可预期
+  groups.sort((a, b) => a[0].localeCompare(b[0]));
+  return groups;
+}
+
+/** §14 1b:取与某 code 同属一个冲突组的全部 code(自身 + 同组其余)。未冲突返回 undefined。
+ *  ⚠ 是**连通分量**而非一跳邻居:三场两两重叠时必须一次拿全(A↔B、B↔C 但 A 与 C 不重叠时,
+ *  只走一跳会漏掉 C —— 网格 hover 联动 / 行程择一卡都要求拿全)。 */
 export function conflictGroupFor(result: ConflictResult | undefined, code: string): Set<string> | undefined {
   if (!result || !result.codeSet.has(code)) return undefined;
+  const adj = adjacencyOf(result);
   const group = new Set<string>([code]);
-  for (const [a, b] of result.pairs) {
-    if (a === code) group.add(b);
-    else if (b === code) group.add(a);
+  const stack = [code];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    for (const nb of adj.get(cur) ?? []) {
+      if (group.has(nb)) continue;
+      group.add(nb);
+      stack.push(nb);
+    }
   }
   return group;
 }

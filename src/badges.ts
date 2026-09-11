@@ -58,9 +58,10 @@ export const BADGE_DEFS: BadgeDef[] = [
       "放弃后该场按正片结束算转场,后续冲突即时放宽\n" +
       "映后时长可配置:设置里改全局默认,行程行点映后胶囊的数字逐场覆写\n" +
       "官方提示:场次可能临时变动,部分场次无英文口译",
-    // GV 默认外观:实心黑底白字(与历史 .gv-tag 等价)
-    // ⚠ 底走 `ink-solid`(不是 `bg-ink`):后者暗色下被提亮成近白 → 白底白字
-    cls: "px-1 py-px text-on-brand bg-ink-solid",
+    // GV 默认外观:实心**紫**底白字(2026-09-11 起对齐官方新版 Schedule Guide 的 Information 列)
+    // ⚠ 底走 `gv-solid` 这个专用 token,不再用 `ink-solid` —— 官方把 GV 画成紫色,
+    //    而 `bg-ink` 在暗色下会被提亮成近白 → 白底白字。专用 token 两套主题同值。
+    cls: "px-1 py-px text-on-brand bg-gv-solid",
   },
   {
     key: "masterclass",
@@ -85,12 +86,12 @@ export const BADGE_DEFS: BadgeDef[] = [
     key: "batch",
     label: "묶",
     title: "Batch Screening · 连场连续放映(官方偶用;显示即以此为义)",
-    // 虚线描边 = 「成组/连场」;与 premiere/open_talk 的实线描边区分,不与 KN 的虚线撞(那是等级色虚线)
-    cls: "px-[3px] py-px text-ink-2 bg-card border border-line-strong border-dashed",
+    // 官方新版把 묶 画成近黑实底(与 GV 的紫、字幕的彩底都错开),这里照搬
+    cls: "px-1 py-px text-on-brand bg-batch-solid",
   },
   // ---- 特别节目(2025 Community BIFF 单元;解析器 tags 直出这三个键)----
-  // 配色:青绿族(--ev-teal),与档位色(蓝/紫/灰蓝)、红绿灯(红/黄/绿)、
-  // 观影等级(绿/橙/深红)三族全部错开;三者靠「实心 → 实线描边 → 虚线描边」分权重。
+  // 配色:青绿族(--ev-teal),与红绿灯(红/黄/绿)、观影等级(绿/橙/深红)两族错开;
+  // 三者靠「实心 → 实线描边 → 虚线描边」分权重。
   {
     key: "talk",
     label: "Talk",

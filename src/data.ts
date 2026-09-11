@@ -64,7 +64,7 @@ export async function loadCatalog(): Promise<Catalog> {
   }
 
   // 原册有一部分场次**只印韩文片名**(2025 版 M1–M4 南浦洞共 41 场),title_en 为空 →
-  // 卡片 / 列表标题(displayTitle 最后一级就是 title_en)会整条空白。原地用 title_kr 兜底,
+  // 片名(displayTitle 的**英文位**就是 title_en,缺则整条空白)会丢。原地用 title_kr 兜底,
   // 单一入口,不动 util / library 各自的取值链(它们读的是同一批对象)。
   for (const s of schedule.screenings) {
     if (!s.title_en) s.title_en = s.title_kr;
@@ -85,9 +85,11 @@ export async function loadCatalog(): Promise<Catalog> {
  *  (O(screenings × films))。这里把「目录中文名(无则原始片名)」与「原始片名」两个命中口径
  *  预计算成两张 Map,消费方改走 O(1) 查表。生产(loadCatalog)与测试夹具共用本函数。 */
 export function buildFilmIndex(films: FilmItem[]): {
+  filmByEn: Map<string, FilmItem>;
   filmByZh: Map<string, FilmItem[]>;
   filmByOrig: Map<string, FilmItem[]>;
 } {
+  const filmByEn = new Map<string, FilmItem>();
   const filmByZh = new Map<string, FilmItem[]>();
   const filmByOrig = new Map<string, FilmItem[]>();
   const push = (m: Map<string, FilmItem[]>, k: string, f: FilmItem): void => {
@@ -96,11 +98,12 @@ export function buildFilmIndex(films: FilmItem[]): {
     else m.set(k, [f]);
   };
   for (const f of films) {
+    if (f.title_en) filmByEn.set(f.title_en, f);
     const zhKey = f.title_zh || f.title_orig;
     if (zhKey) push(filmByZh, zhKey, f);
     if (f.title_orig) push(filmByOrig, f.title_orig, f);
   }
-  return { filmByZh, filmByOrig };
+  return { filmByEn, filmByZh, filmByOrig };
 }
 
 /** 某日各厅的场次,厅顺序按 venues.json 出现顺序(未登记厅排在最后) */

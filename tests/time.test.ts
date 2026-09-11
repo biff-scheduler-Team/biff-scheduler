@@ -50,10 +50,10 @@ describe("起止区间文本", () => {
   });
 });
 
-describe("dateInfo:本地时区安全解析", () => {
-  it("2026-10-08 → 10/8 周四", () => {
+describe("dateInfo:本地时区安全解析 + OCT 显示口径", () => {
+  it("2026-10-08 → OCT 8 周四", () => {
     const d = dateInfo("2026-10-08");
-    expect(d.label).toBe("10/8"); // ⚠ 日**不**补零(实现是 `${m}/${d}`)
+    expect(d.label).toBe("OCT 8"); // ⚠ 日**不**补零(与官方 Schedule by Date 一致)
     expect(d.weekday).toBe("周四");
     // 用本地时区构造 —— 不能走 Date.parse('2026-10-08')(会被当 UTC,东八区外会偏移一天)
     expect(d.date.getFullYear()).toBe(2026);
@@ -61,8 +61,8 @@ describe("dateInfo:本地时区安全解析", () => {
     expect(d.date.getDate()).toBe(8);
   });
 
-  it("个位月 / 日都不补零(与实现逐字一致,勿「顺手」改成 10/05)", () => {
-    expect(dateInfo("2026-10-05").label).toBe("10/5");
-    expect(dateInfo("2026-10-15").label).toBe("10/15");
+  it("个位日不补零、月份走英文缩写(勿「顺手」改回 10/5)", () => {
+    expect(dateInfo("2026-10-05").label).toBe("OCT 5");
+    expect(dateInfo("2026-10-15").label).toBe("OCT 15");
   });
 });

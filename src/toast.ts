@@ -1,5 +1,5 @@
-// Toast 单例(固定节点 #toast,见 index.html)—— main / settings / picklist 共用。
-// 独立成模块,避免 settings / picklist 反向依赖 main。
+// Toast 单例(固定节点 #toast,见 index.html)—— main / settings / share 共用。
+// 独立成模块,避免 settings / share 反向依赖 main。
 
 let toastTimer: number | undefined;
 

@@ -1,15 +1,12 @@
 // .ics 导出 — 一律 UTC(Z) 绝对时间 + 相对提醒;UID=code@biff-2026。
 
-import type { Catalog, Group, Mapping, PickEntry, Priority, Screening } from "./types";
+import type { Catalog, Mapping, PickEntry, Screening } from "./types";
 import { effEndHms, gvTalkMin } from "./gv";
-import { PRI_LABEL } from "./pick";
 import { displayTitle, fmtMinRange } from "./util";
 
-/** 导出用的「一场已选」行:方案 / 场次来自场次级,档位 / 备注来自影片级(唯一数据源的投影) */
+/** 导出用的「一场已选」行:场次来自场次级,备注来自影片级(唯一数据源的投影) */
 export interface PickRow {
   code: string;
-  group: Group;
-  priority: Priority | null;
   note: string;
 }
 
@@ -56,13 +53,6 @@ function fold(line: string): string {
   return parts.join("\r\n ");
 }
 
-/** 未设档位(priority=null)在 ICS 描述里的兜底标签 */
-export const PRIORITY_TAG_UNSET = "未分级";
-/** 档位标签(含未设兜底),供 ICS / 清单等文本出口复用 —— 档位文案单一来源 `pick.ts::PRI_LABEL` */
-export function priorityTag(p: Priority | null): string {
-  return p ? PRI_LABEL[p] : PRIORITY_TAG_UNSET;
-}
-
 export function buildIcs(
   cat: Catalog,
   entries: PickRow[],
@@ -98,7 +88,6 @@ export function buildIcs(
     const timeNote = talk > 0 ? (talkOn ? ` · 含映后 ${talk}min` : ` · 已放弃映后谈(仅正片)`) : "";
     desc.push(`时间(KST):${fmtMinRange(s.start_time, endHms)} · ${s.duration_min}min${timeNote}`);
     desc.push(`场馆:${s.venue_display}`);
-    desc.push(`方案:${e.group} · ${priorityTag(e.priority)}`);
     if (map?.douban_url) desc.push(`豆瓣:${map.douban_url}`);
     if (e.note) desc.push(`备注:${e.note}`);
 
@@ -134,20 +123,15 @@ export function downloadIcs(content: string, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-/** 从选片记录展开出「某方案(或 A+B)的全部场次」,按日期/开始时间排序。
+/** 从选片记录展开出**全部**已排场次,按日期/开始时间排序。
  *  一场一行 —— 档位随影片级记录带出,故同一部片的多场档位必然一致。 */
-export function pickEntries(
-  picks: Map<string, PickEntry>,
-  cat: Catalog,
-  which: Group | "ALL"
-): PickRow[] {
+export function pickEntries(picks: Map<string, PickEntry>, cat: Catalog): PickRow[] {
   const rows: { r: PickRow; s: Screening }[] = [];
   for (const e of picks.values()) {
     for (const p of e.picks) {
-      if (which !== "ALL" && p.group !== which) continue;
       const s = cat.byCode.get(p.code);
       if (!s) continue; // 排期换版后已不存在的场次 → 静默跳过
-      rows.push({ r: { code: p.code, group: p.group, priority: e.priority, note: e.note }, s });
+      rows.push({ r: { code: p.code, note: e.note }, s });
     }
   }
   rows.sort((a, b) => a.s.date.localeCompare(b.s.date) || a.s.start_time.localeCompare(b.s.start_time));

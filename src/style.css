@@ -25,25 +25,13 @@
   --biff-red-tint-3: #fbecec;
   --biff-selection: #ffe1e3;
 
-  /* 状态(红绿灯:绿=已选 / 黄=时间紧张 / 红=冲突)—— 只回答「排得怎么样」,不参与档位着色 */
+  /* 状态(红绿灯:绿=已选 / 黄=时间紧张 / 红=冲突)—— 只回答「排得怎么样」 */
   --status-danger: var(--biff-red);
   --status-ok: #2f9e44;
   --status-tight: #e6a800; /* 紧转场黄(网格「时间紧张」整卡底色源色) */
 
-  /* 档位(必看 / 备选 / 随缘)—— 冷色系:蓝 / **品红** / 灰蓝。
-     与红绿灯底色(红/黄/绿)整族错开 —— 甘特星标正是画在这三种底色卡上,同色系会互相吃掉。
-     行程行 ★ 与「我的选片」卡片 ★ 同源(见 pick.ts 的 PRI_TEXT / wishIcon)。
-     ⚠ 2026-09-10 备选 `#7e22ce`(紫)→ **`#a21caf`(品红)**:旧蓝(#1d4ed8,色相 224°)与紫(272°)
-     只差 48°,在 7px 色点 / 12px 星标这种尺寸下几乎分不出(用户反馈「蓝色和紫色很相似」)。
-     品红色相 294° —— 距蓝 70°、距冲突红(#ce1e36,351°)57°,小尺寸下也能一眼分开;
-     且 `#a21caf` 对白字对比度 6.2:1(PRI_BG_ON 的 seg 选中态需要),`#c026d3` 只有 4.2:1 偏弱。 */
-  --pri-must: #1d4ed8;
-  --pri-maybe: #a21caf;
-  --pri-wild: #64748b;
-  /* 档位 Tag 浅底(统一微圆角标签:浅底 + 同族深字,见 pick.ts 的 PRI_TAG) */
-  --pri-must-soft: #e9eefc;
-  --pri-maybe-soft: #fae8fc;
-  --pri-wild-soft: #eef1f5;
+  /* (档位色族 --pri-* 已于 2026-09-11 整体删除 —— 必看 / 备选 / 随缘随「档位」概念一起下线,
+     冲突决策改由「拖动顺位」承担,见 plans.ts) */
 
   /* 观影等级(2025 Schedule Guide 图例色系:ALL 绿 / 12 橙 / 15 红 / 19 深红) */
   --rate-all: #1e7b34;
@@ -52,6 +40,24 @@
   --rate-12-soft: #fdf1e4;
   --rate-19: #6e1522;
   --rate-19-soft: #f7eaec;
+
+  /* ---- 官方新版 Schedule Guide **实底**配色(2026-09-11)----
+     官网排期页把等级 / 字幕 / 场次特性都画成「彩底 + 白字」的实心胶囊,这里照搬。
+     ⚠ 必须与上面的 `--rate-*`(文字色)分开:后者暗色下会提亮,拿去当底会吃掉白字。
+     ⚠ 12 档官方是亮黄(#f0b429 那类),白字对比度只有 ~2:1 → 压深一档到 #c07a00(≈3.6:1),
+       仍是同一色相、仍读得出「黄 = 12」,但小字号下看得清。 */
+  --rate-all-solid: #2f9e44;
+  --rate-12-solid: #c07a00;
+  --rate-15-solid: #e8590c;
+  --rate-19-solid: #c92a2a;
+  /* 字幕四档:官方 KE 藏青 / KN 紫 / KK 棕 / NO 近黑 */
+  --subs-ke-solid: #233b8f;
+  --subs-kn-solid: #5b21b6;
+  --subs-kk-solid: #8b5e34;
+  --subs-no-solid: #3f3f46;
+  /* 场次特性:GV 官方紫 / 联映块(묶)近黑 */
+  --gv-solid: #7c3aed;
+  --batch-solid: #18181b;
 
   /* 特别节目(Community BIFF 单元:Talk / Commentary / Event)—— 青绿族。
      与档位(蓝/紫/灰蓝)、红绿灯(红/黄/绿)、观影等级(绿/橙/深红)三族都错开;
@@ -70,7 +76,6 @@
   --bg-hover-soft: #f0f2f5;
   --bg-raised: #f0f0f0;
   --bg-raised-hover: #e2e2e2;
-  --bg-in-other: #fafbfc;
   --topbar-bg: rgb(255 255 255 / 92%);
   --overlay-bg: rgb(15 23 42 / 45%);
   --toast-bg: rgb(17 17 17 / 94%);
@@ -177,17 +182,11 @@
   --color-hover: var(--bg-hover);
   --color-raised: var(--bg-raised);
   --color-raised-hover: var(--bg-raised-hover);
-  --color-in-other: var(--bg-in-other);
+
   --color-line: var(--border-default);
   --color-line-soft: var(--border-soft);
   --color-line-strong: var(--border-strong);
   --color-line-faint: var(--border-faint);
-  --color-pri-must: var(--pri-must);
-  --color-pri-maybe: var(--pri-maybe);
-  --color-pri-wild: var(--pri-wild);
-  --color-pri-must-soft: var(--pri-must-soft);
-  --color-pri-maybe-soft: var(--pri-maybe-soft);
-  --color-pri-wild-soft: var(--pri-wild-soft);
   --color-ok: var(--status-ok);
   --color-tight: var(--status-tight);
   /* 冲突红:走 --conf(= --status-danger)而非 --biff-red —— 暗色下单独提亮,
@@ -199,6 +198,17 @@
   --color-rate-12-soft: var(--rate-12-soft);
   --color-rate-19: var(--rate-19);
   --color-rate-19-soft: var(--rate-19-soft);
+  /* 官方新版实底(彩底 + 白字,见 :root 注释) */
+  --color-rate-all-solid: var(--rate-all-solid);
+  --color-rate-12-solid: var(--rate-12-solid);
+  --color-rate-15-solid: var(--rate-15-solid);
+  --color-rate-19-solid: var(--rate-19-solid);
+  --color-subs-ke-solid: var(--subs-ke-solid);
+  --color-subs-kn-solid: var(--subs-kn-solid);
+  --color-subs-kk-solid: var(--subs-kk-solid);
+  --color-subs-no-solid: var(--subs-no-solid);
+  --color-gv-solid: var(--gv-solid);
+  --color-batch-solid: var(--batch-solid);
   --color-ev-teal: var(--ev-teal);
   --color-ev-teal-soft: var(--ev-teal-soft);
   /* 青绿实底(白字)—— 不走会提亮的 --ev-teal,见 :root 注释 */
@@ -296,6 +306,16 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-biff) 35%, transparent) !important;
 }
 
+/* 冲突组拖动排序:被「拿起来」的那一行 —— 抬高 + 强投影 + 品牌色描边,与下面正在让位的行拉开层次。
+   ⚠ 必须 `!important`:`hl-row`(hover 联动)同为 !important,行在被拿起前若已被 hover 高亮,
+   非 important 的内联投影会被它压掉 —— 拿起的那一行就「没有浮起来」。
+   位移由 `agenda.ts::attachRankDrag` 内联 transform 驱动(逐帧跟手,不走过渡)。 */
+@utility rank-lift {
+  border-color: var(--color-biff) !important;
+  box-shadow: 0 12px 26px color-mix(in srgb, var(--color-ink) 24%, transparent) !important;
+  cursor: grabbing;
+}
+
 /* 红绿灯整卡底色语言(网格卡,与冲突/紧转场同一套交互;优先级不在网格染色 — 见行程行 seg):
    绿 = 已选入当前方案;黄 = 时间紧张(相邻衔接不足/偏紧);红 = 完全冲突(时间重叠)。
    三者均为 @utility + !important 压 .bg-card(同为类选择器、Tailwind 生成的 .bg-card 源序靠后,避免基础白底吃掉底色)。 */
@@ -306,18 +326,6 @@
 
 @utility in-conf {
   background: color-mix(in srgb, var(--color-conf) 14%, var(--color-card)) !important;
-}
-
-/* 另一方案的选中(虚线 / 灰)
-   ⚠ `background` 必须 !important:本类在产物里的源序**早于** `.bg-card`(实测 ~10096 vs ~12626),
-   而卡片类名里恒有 `bg-card`(grid.ts::appendCard),二者同为单类选择器 (0,1,0) → 靠后者胜。
-   缺了 !important 时这里的灰底是**死代码**(卡实际渲染成白底,只剩虚线框与 A/B 角标可辨)。
-   口径与 in-plan / in-conf / slot-hit 一致。 */
-@utility in-other {
-  border-style: dashed;
-  border-color: var(--color-line);
-  opacity: 0.9;
-  background: var(--color-in-other) !important;
 }
 
 /* 放弃映后谈的 GV 谈块:块仍占槽位(表示该段物理存在),灰虚线已由 grid 端内联类给出,
@@ -383,13 +391,20 @@
    ⚠ 为什么不用 `transform: translateX` 做动画:挤压式下 translateX 不参与布局,抽屉会「滑走」
      而网格宽度纹丝不动 → 留一个空洞。宽度过渡才是与挤压式自洽的做法。
 
-   `--picker-w` 由 `library.ts` 注入(读档 / 拖拽),**CSS 只负责过渡与折叠态**。
-   ⚠ 原先写在 markup 上的那两个固定宽度工具类已删掉、收口到本块:
-     `#picker-drawer`(1,0,0)权重高于 Tailwind 的单类(0,1,0),留在 markup 上会被本块压死,
-     出现「CSS 生效但 markup 写着别的值」的假象 —— 宽度只能有一处来源。
+   `--picker-w` 由 `library.ts` 在**用户拖过之后**注入(读档 / 拖拽),**CSS 负责自适应默认宽度 + 过渡 + 折叠态**。
+   ⚠ 2026-09-11 五改:**默认宽度不再是写死的 520px**。原先 `var(--picker-w, 520px)` 的兜底是死值,
+      而 library.ts 又总在启动时把 `--picker-w` 写成 520 —— 两头都是魔数,「开箱宽度」永远钉死。
+      现在没拖过时 `--picker-w` 是**空的**,由这里的 `clamp()` 随视口走:
+        · 520px 下限 = 卡片排版成立的最小档(见 library.ts::PICKER_W_MIN);
+        · 36vw 跟随屏幕宽度 —— 窄屏不至于过宽、宽屏给足卡片呼吸位;
+        · 700px 上限 = 再宽卡片就拉得过长(用户反馈「卡片有点大」,42vw/760 已收一档)。
+      想再调,改这一个 `clamp()` 即可(拖拽 / 双击复位都照常工作)。
+      ⚠ 原先写在 markup 上的那两个固定宽度工具类已删掉、收口到本块:
+      `#picker-drawer`(1,0,0)权重高于 Tailwind 的单类(0,1,0),留在 markup 上会被本块压死,
+      出现「CSS 生效但 markup 写着别的值」的假象 —— 宽度只能有一处来源。
    ⚠ 本注释**刻意不写出那些类的完整字面量**:Tailwind 连注释一起扫,会凭空生成死类。 */
-#picker-drawer {
-  width: var(--picker-w, 520px);
+   #picker-drawer {
+   width: var(--picker-w, clamp(520px, 36vw, 700px));
   /* 面板阴影 —— 抽屉与网格同为 `bg-card` 白卡,不给阴影就「糊在一起」、没有工作台的主次感 */
   box-shadow: var(--shadow-panel);
   transition:
@@ -518,6 +533,59 @@ main:not(.is-picker-open) #picker-resizer {
   }
 }
 
+/* ---------- 滚动条统一收口(2026-09-11):抽屉面板 + 网格工作台 ----------
+   ① 抽屉(`#picker-panel`):列表很长(影片库 388 行),竖向滚动条原本走 macOS 的 **overlay** ——
+      滚动时浮在内容之上,正好压住卡片右缘的图标组(★ ⓘ ✕),用户反馈「滚轮遮挡电影卡片」。
+   ② 网格(`#grid-scroll`):工作台化后它同时横向 + 纵向滚动,overlay 滚动条会浮在最后一行卡片上。
+   ⚠ **定义 `::-webkit-scrollbar` 就等于关掉 overlay**:浏览器改用**占位式**滚动条,
+     内容自动让开这 8px,滚动条永远不再盖住卡片;同时收细 + 去轨道底色,降低存在感
+     (用户反馈「滚轮很长」—— 旧的原生滚动条又宽又抢眼)。
+   ⚠ 占位式会吃掉 8px 可用宽/高:`#grid-scroll` 的横向锚点换算全部读 `clientWidth`(已扣滚动条),
+     故不受影响;`pb-[6px]` 让最后一行卡片与滚动条之间仍有呼吸位。 */
+#picker-panel::-webkit-scrollbar,
+#grid-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+#picker-panel::-webkit-scrollbar-track,
+#grid-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 滑块:透明边框 + `background-clip: content-box` 把视觉宽度收到 4px —— 8px 的命中区不变,
+   但看起来只是一根细线,不与卡片抢视线。 */
+#picker-panel::-webkit-scrollbar-thumb,
+#grid-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 2px solid transparent;
+  border-radius: 4px;
+  background-clip: content-box;
+}
+
+#picker-panel::-webkit-scrollbar-thumb:hover,
+#grid-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+#picker-panel::-webkit-scrollbar-corner,
+#grid-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox 走**标准属性**(Chrome / Safari 走上面的 `::-webkit-scrollbar`)。
+   ⚠ 刻意用 `@supports not selector(::-webkit-scrollbar)` 隔开:两条路都声明会让 Chrome 在
+     「标准滚动条」与「自定义滚动条」之间二选一 —— 实测会退回 overlay(浮在内容上),反而失去占位。 */
+@supports not selector(::-webkit-scrollbar) {
+  #picker-panel,
+  #grid-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+}
+
 /* 横向滚动条隐藏：日期导航 / 滚动列表用，鼠标滚轮 / 拖拽 / 方向键仍可滚。
    WebKit + Firefox 各自一套伪元素，全 hide 才彻底。 */
 @utility scrollbar-none {
@@ -556,14 +624,6 @@ main:not(.is-picker-open) #picker-resizer {
   --status-ok: #4ade80;
   --status-tight: #fbbf24;
 
-  /* 档位(蓝 / 品红 / 灰蓝):前景提亮 + 浅底转深 */
-  --pri-must: #7aa2ff;
-  --pri-maybe: #e879f9;
-  --pri-wild: #a8b3c4;
-  --pri-must-soft: #1b2547;
-  --pri-maybe-soft: #3c1a45;
-  --pri-wild-soft: #232a33;
-
   /* 观影等级 */
   --rate-all: #6ee7a0;
   --rate-all-soft: #14301f;
@@ -583,7 +643,6 @@ main:not(.is-picker-open) #picker-resizer {
   --bg-hover-soft: #262a30;
   --bg-raised: #2a2e35;
   --bg-raised-hover: #343941;
-  --bg-in-other: #1d2025;
   /* 「墨实底」面:与实底品牌红同理**不跟随文字色提亮** —— 只从 #111 抬到
      比 --bg-card(#1a1c20)/--bg-raised(#2a2e35) 更亮一档的灰,白字对比度 ~8:1,
      且仍读得出「这是一块实心底」。 */
@@ -648,8 +707,16 @@ main:not(.is-picker-open) #picker-resizer {
    ⚠ **只加在抽屉列表行上,不加甘特卡**:网格的反向定位靠 `centerCardX` 读 `offsetLeft/offsetWidth`,
      未渲染元素的尺寸是估算值 → 居中会算错。完整虚拟化另立一轮(见 PLAN §4)。
    选择器:`#picker-drawer [data-key]` 精确命中 `filmRow`(`item.dataset.key = n.key`),
-   场次行用的是 `data-code`,不受影响。 */
-#picker-drawer [data-key] {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 116px;
+   场次行用的是 `data-code`,不受影响。
+
+   ⚠ **2026-09-11 三改:只在窄屏(≤768px)启用**。
+   桌面端列表行本身渲染成本不高(388 个纯 div),而 `content-visibility` 的代价是
+   滚动到哪一行才渲染哪一行 —— 用户滚到列表底部时会看到内容「渐现」、滚动条长度随
+   `contain-intrinsic-size` 的估算值跳动,被描述为「划到底下会重新渲染」。
+   桌面全渲染后这个现象彻底消失;手机端保留虚拟化(那里才是它真正的收益场景)。 */
+@media (max-width: 768px) {
+  #picker-drawer [data-key] {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 116px;
+  }
 }

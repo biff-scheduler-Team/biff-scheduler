@@ -1,25 +1,25 @@
 // 入口 — 装配数据/状态/视图,统一事件委托。
 // 全量化:仅维护基础骨架(顶栏/面板/弹层根/Toast/底部),所有内部样式由 markup 端 Tailwind utility 表达。
 
-import type { Catalog, Group, Priority } from "./types";
+import type { Catalog } from "./types";
 import { OK_SLACK, dateInfo, el, filmNodeKey, hmsToMin, todayIsoLocal } from "./util";
 import { loadCatalog } from "./data";
 import { computeConflicts, conflictGroupFor, type ConflictResult, type Slot } from "./conflict";
+import { buildPlanSet, type PlanSet } from "./plans";
 import { buildIcs, downloadIcs, pickEntries } from "./ics";
 import { effEndMin, talkOnOf } from "./gv";
 import {
-  codesOfGroup,
-  flipGroup,
+  allCodes,
+  loadAgendaFold,
   loadGvTalk,
   loadGvTalkMin,
   loadMappings,
   loadPicks,
+  loadRanks,
   loadSettings,
-  priorityOfCode,
+  rankOf,
   removeScreening,
-  setCurrentGroup,
   setGvTalk,
-  setPriorityOfCode,
   setZoom,
   slotOf,
   store,
@@ -48,12 +48,24 @@ import { buildAgenda } from "./agenda";
 import { abbrTooltip } from "./badges";
 import { attachTip } from "./tip";
 import { buildGuideBody } from "./legend";
+import {
+  hasActiveFilter,
+  loadFilters,
+  makeFilterState,
+  matchesFilters,
+  renderFilterBar,
+  saveFilters,
+  venueAllowed,
+  venueFilterKey,
+} from "./filters";
 import { scorePlanRows, type ScoredRow } from "./score";
 import { closeAllModals, openModal, showCatalogFilmModal, showFilmModal } from "./modal";
 import { closePickerDrawer, ensurePickerOpen, isMobileDrawer, isPickerDrawerOpen, openFilmPicker, setAgendaRenderer, setPickerTab, setPickerToggleHandler } from "./library";
 import { openSettings, openTalkMinModal } from "./settings";
 import { initTheme, isThemePref, setThemePref, themePref } from "./theme";
-import { copyPicklist } from "./picklist";
+import { copyShareText } from "./share";
+import { downloadBackup } from "./backup";
+import { openImportBackupModal } from "./backup-panel";
 import { toast } from "./toast";
 import { BAR_IDLE, BAR_ON } from "./chips";
 import { SEG_OFF, SEG_ON, ZBTN, ZFIT, ZMID } from "./ui";
@@ -61,8 +73,25 @@ import { SEG_OFF, SEG_ON, ZBTN, ZFIT, ZMID } from "./ui";
 let cat: Catalog;
 let currentDate = "";
 let conflicts = new Map<string, ConflictResult>();
+/** 顺位 → 全部无冲突方案(与 `conflicts` 同轮派生,见 `computePlanSet`) */
+let plans: PlanSet = {
+  groups: [],
+  common: [],
+  rankOf: new Map(),
+  options: [],
+  total: 0,
+  truncated: false,
+  broken: new Set(),
+};
 /** 甘特时间筛选:点击时间轴整点置为对应小时;null = 不过滤(切日期/再点/重置均清除) */
 let hourFilter: number | null = null;
+/** **甘特图那套**排片筛选(字幕 / 影厅 / GV)—— 与时间筛选**正交**,三者之间是「与」,每道内部是「或」。
+ *  刻意不随切日期清空:筛选说的是「我想看什么样的场」,跨日有效。
+ *  字幕 / GV 两道与 hourFilter 同一机制:不通过者只是 `hour-dim` 淡出,几何与 DOM 都不动(不跳版);
+ *  **影厅**那道另有一层效果 —— 决定纵轴**整行**的去留(见 grid.ts::buildGrid)。
+ *  ⚠ 状态与控件都在 `filters.ts`,但**只有甘特图在用这一份**:影片库抽屉另有一份独立状态
+ *    (`library.ts::libFilters`,持久化键也不同)—— 两处各筛各的,互不影响(2026-09-11 用户要求)。 */
+const filters = makeFilterState();
 /** 甘特缩放 —— **横纵共用的单一倍率**(整体等比):横向时间刻度 = PX_PER_MIN × zoom,
  *  纵向行高 = ROW_H × zoom,卡片内字号 / 留白 / 色点 / 徽章行全部按同一倍率**线性**缩 ——
  *  卡片变小的时候内部排版严格等比,不会挤乱。持久化在 store.settings.zoom(视图偏好)。 */
@@ -77,6 +106,9 @@ let lastGridDate = "";
 /** 上一次**全量重建**时的几何签名(见 grid.ts::gridGeometryKey)。
  *  与当前签名相同 ⇒ 网格结构可整体复用,`renderGrid` 只走 `patchGridStates` 重刷状态。 */
 let lastGridKey = "";
+/** 最近一次在网格里点选的场次 code —— 抽屉会因这次点选滑出并把网格挤窄,
+ *  用它把那张卡带回视野(见 boot 里的 setPickerToggleHandler)。 */
+let lastToggledCode: string | null = null;
 
 /** code → 影片节点 key(全站单一 key 口径:grid / agenda / 影片库 / 详情弹层同源);
  *  排期里已没有该 code(数据换版)时返回 null。 */
@@ -97,10 +129,12 @@ function libraryCtx() {
     cat,
     picks: store.picks,
     slots: store.slotIndex,
-    group: store.group,
     mappings: store.mappings,
     onLocate: jumpToScreening,
     onToggle: toggleScreening, // 唯一场次列表(影片库行内展开)的加入/移出 → 与网格整卡点选同源
+    // ⚠ 排片筛选**不在这里传**:抽屉有自己那份状态(`library.ts::libFilters`),与甘特图
+    //    (`main.ts::filters`)互相独立 —— 在时间轴上点掉几家影院,影片库列表不会跟着变。
+    //    控件与判定仍是同一套(filters.ts),只是状态两份(2026-09-11 用户要求「分开」)。
     onFilm: (code: string) => {
       // 详情压在列表之上(弹层栈),「← 返回」回列表 —— 不再 closeModal() 把列表销毁
       // f### = 目录片 id(暂无排期):走目录片弹层,可先关联豆瓣
@@ -119,9 +153,9 @@ function gvTalkOf(code: string): boolean {
   return talkOnOf(code);
 }
 
-function computeConflictsForCurrentGroup(): Map<string, ConflictResult> {
+function computeAllConflicts(): Map<string, ConflictResult> {
   const slots: Slot[] = [];
-  for (const code of codesOfGroup(store.group)) {
+  for (const code of allCodes()) {
     const s = cat.byCode.get(code);
     if (!s) continue;
     // 有效结束:放弃映后谈 → 正片末(该场与后场冲突/需缓冲即刻按单卡重判)
@@ -134,6 +168,16 @@ function computeConflictsForCurrentGroup(): Map<string, ConflictResult> {
     });
   }
   return computeConflicts(slots, (a, b) => (a === b ? 0 : store.settings.transitMin));
+}
+
+/** 顺位 → N 套方案(见 `plans.ts`)。**与 `conflicts` 同轮派生** —— 两者必须同源,
+ *  否则「拖动顺位」之后方案对比会与冲突红标对不上。
+ *  组内兜底排序键只取**开始时刻**:冲突组按 `date` 分桶,组内必然同一天(见 plans.ts 文件头)。 */
+function computePlanSet(): PlanSet {
+  return buildPlanSet(allCodes(), conflicts, rankOf, (code) => {
+    const s = cat.byCode.get(code);
+    return s ? hmsToMin(s.start_time) : 0;
+  });
 }
 
 function totalConflictPairs(): number {
@@ -153,9 +197,13 @@ function renderAll(domain: ChangeDomain = "all"): void {
     renderThemeSeg();
     return;
   }
-  conflicts = computeConflictsForCurrentGroup();
+  // 行程按日收起 / 展开:纯抽屉内视图折叠 —— 网格 / 顶栏 / 角标全不受影响,
+  // 由 library.ts 的抽屉订阅重绘 agenda tab(不在这里做任何重建,避免白刷整张网格)。
+  if (domain === "agenda") return;
+  conflicts = computeAllConflicts();
+  plans = computePlanSet();
   renderChips();
-  renderGroupSeg();
+  renderFilters();
   renderBadge();
   renderPicksBadge();
   renderThemeSeg();
@@ -177,19 +225,37 @@ function renderChips(): void {
     const { label, weekday } = dateInfo(d);
     const dayShows = cat.schedule.screenings.filter((s) => s.date === d).length;
     const cls = d === currentDate ? BAR_ON : BAR_IDLE;
-    const btn = el("button", cls, `${label} ${weekday}`);
-    btn.dataset.tip = `${dayShows} 场排片`;
+    const btn = el("button", cls, label);
+    btn.dataset.tip = `${label} ${weekday} · ${dayShows} 场排片`;
     btn.dataset.date = d;
     bar.appendChild(btn);
   }
 }
 
-/* A/B 方案切换段按钮的字面量已收敛到 `ui.ts`(SEG_ON / SEG_OFF)。 */
+/* ---------------- 排片筛选(字幕 / 影厅 / GV) ----------------
+ * 控件与判定都在 `filters.ts`(网格与影片库共用);这里只负责「往哪画 + 画完重绘什么」。
+ * 网格侧永远铺开三行(宽度够);影片库那侧在窄抽屉里,走可折叠形态(见 library.ts)。 */
 
-function renderGroupSeg(): void {
-  document.querySelectorAll<HTMLButtonElement>("#group-switch button").forEach((b) => {
-    const on = b.dataset.g === store.group;
-    b.className = on ? SEG_ON : SEG_OFF;
+/** **甘特图那套**排片筛选变化的唯一收口:
+ *  ① 落盘 —— 「记住你的选项」(见 filters.ts::saveFilters);
+ *  ② 重画网格筛选条(选中态)+ 网格。
+ *  ⚠ **不再同步抽屉**:两处状态已分开(见 `libraryCtx` 注释与 `library.ts::libFilters`),
+ *    抽屉那边有自己的筛选条与重绘时机,不该被时间轴上的改动带着重画。
+ *  ⚠ 影厅那道会改**纵轴行集合**,故 renderGrid 会走全量重建(几何签名含 venueFilterKey);
+ *    字幕 / GV 两道只改状态,走 patch 不跳版。 */
+function onFiltersChanged(): void {
+  saveFilters(filters);
+  renderFilters();
+  renderGrid();
+}
+
+/** 网格筛选条:任何一道变化 → 重画筛选条 + 重绘网格(影厅那道会改行集合 → 重建) */
+function renderFilters(): void {
+  const host = document.getElementById("grid-filters");
+  if (!host) return;
+  renderFilterBar(host, filters, {
+    venues: cat.venues,
+    onChange: onFiltersChanged,
   });
 }
 
@@ -206,10 +272,21 @@ function gridAnchor(scroll: HTMLElement): { min: number; screenX: number } {
   return { min: axisStartFor(cat, currentDate) + (scroll.scrollLeft + screenX - lw) / px, screenX };
 }
 
-/** **纵向**视口锚点:参考线(视口顶 y = 0;网格顶若还在视口下方则用网格顶)落在第几行(小数行号)。
- *  纵向是**页面**在滚(`#grid-scroll` 只有 overflow-x-auto),而网格每次重建都换新容器、行高一缩
- *  页面总高就变 —— 浏览器会把 window.scrollY 直接 clamp 到新范围,正在看的第 20 厅会瞬间飞出屏幕
- *  (29 行 × 41px ≈ 1189px 的位移)。故重建前记行号、重建后补回。
+/** 网格工作台视口高度(2026-09-11 工作台化):限高后横向滚动条常驻容器底部、纵向滚动条落在容器右缘 ——
+ *  旧版横向滚动条长在「标尺 + 29 行」这整块内容的最底部,要横向滚动必须先滚到页面最底,
+ *  且 overlay 滚动条会浮在最后一行卡片上。
+ *  高度 = 视口高 − 网格顶边在**页面坐标**中的位置 − 底部呼吸位(用页面坐标,页面已滚动也不受影响)。
+ *  ⚠ 必须在挂载后量(`getBoundingClientRect` 要真实布局);窗口缩放 / 顶栏折行 / 抽屉开合
+ *    (改网格宽度 → 上方标题行可能折行)都会让顶边位置变,需重算。 */
+function fitGridHeight(grid: HTMLElement): void {
+  const wrapTop = grid.getBoundingClientRect().top + window.scrollY;
+  grid.style.maxHeight = `${Math.max(320, Math.round(window.innerHeight - wrapTop - 20))}px`;
+}
+
+/** **纵向**视口锚点:参考线(网格视口顶边;网格顶若还在参考线下方则用网格顶)落在第几行(小数行号)。
+ *  ★ 2026-09-11 工作台化:纵向滚动从**页面**移到**网格容器**(`#grid-scroll` 限高 + `overflow-auto`),
+ *  于是参考线由「视口顶 0」改为「容器顶边」,回补由 `window.scrollBy` 改为容器 `scrollTop`。
+ *  仍必须记锚点:重建会换新容器(scrollTop 归零),正在看的第 20 厅会瞬间跳回第 0 行。
  *  行高从相邻两行的 top 差**实测**,不读任何常量(将来改行高公式也不会失效)。 */
 function rowAnchor(grid: HTMLElement): { row: number; refY: number } | null {
   const rows = grid.querySelectorAll<HTMLElement>("[data-vrow]");
@@ -217,12 +294,13 @@ function rowAnchor(grid: HTMLElement): { row: number; refY: number } | null {
   const top = rows[0].getBoundingClientRect().top;
   const h = rows[1].getBoundingClientRect().top - top;
   if (!(h > 1)) return null;
-  const refY = Math.max(top, 0); // 网格顶还在视口下方(没滚到它)→ 以网格顶为参考线,锚点即第 0 行
+  // 网格顶还在参考线下方(没滚到它)→ 以网格顶为参考线,锚点即第 0 行
+  const refY = Math.max(top, grid.getBoundingClientRect().top);
   return { row: (refY - top) / h, refY };
 }
 
 /** 重建后把锚点行拉回参考线:delta > 0 = 该行跑到参考线下方了 → 向上滚。
- *  视口够不着(已到页面两端)时浏览器会自行 clamp,这是预期行为,不再补偿。 */
+ *  视口够不着(已到容器两端)时浏览器会自行 clamp,这是预期行为,不再补偿。 */
 function applyRowAnchor(grid: HTMLElement, a: { row: number; refY: number }): void {
   const rows = grid.querySelectorAll<HTMLElement>("[data-vrow]");
   if (rows.length < 2) return;
@@ -230,7 +308,7 @@ function applyRowAnchor(grid: HTMLElement, a: { row: number; refY: number }): vo
   const h = rows[1].getBoundingClientRect().top - top;
   if (!(h > 1)) return;
   const delta = top + a.row * h - a.refY;
-  if (Math.abs(delta) > 0.5) window.scrollBy(0, delta);
+  if (Math.abs(delta) > 0.5) grid.scrollTop += delta;
 }
 
 /** 缩放:改**横纵共用**的倍率并就地重绘网格(整体等比)。**只重绘网格** —— 缩放不影响行程 / 角标,
@@ -294,13 +372,16 @@ function renderZoomCtl(): void {
 /** 网格标题行(日期标题 + 场次数 + 「只看 X 段」pill)—— 全量重建与就地 patch **都要**刷新 */
 function renderGridMeta(): void {
   const { label, weekday } = dateInfo(currentDate);
-  const dayShows = cat.schedule.screenings.filter((s) => s.date === currentDate).length;
-  const pickedOnDay = codesOfGroup(store.group).filter(
-    (c) => cat.byCode.get(c)?.date === currentDate
-  ).length;
+  const dayList = cat.schedule.screenings.filter((s) => s.date === currentDate);
+  const dayShows = dayList.length;
+  const pickedOnDay = allCodes().filter((c) => cat.byCode.get(c)?.date === currentDate).length;
   document.getElementById("grid-date-title")!.textContent = `${label} ${weekday} · 排片总览`;
   const countEl = document.getElementById("grid-count")!;
-  countEl.textContent = `${dayShows} 场 · 本组已选 ${pickedOnDay} 场`;
+  // 有筛选时把「命中 / 当日总数」摆出来 —— 否则用户会以为当天只有这么几场(淡出不是隐藏)
+  const shown = hasActiveFilter(filters) ? dayList.filter((s) => matchesFilters(s, filters)).length : dayShows;
+  countEl.textContent = hasActiveFilter(filters)
+    ? `${shown}/${dayShows} 场(已筛选)· 本组已选 ${pickedOnDay} 场`
+    : `${dayShows} 场 · 本组已选 ${pickedOnDay} 场`;
   if (hourFilter != null) {
     const hh = String(hourFilter).padStart(2, "0");
     const pill = el(
@@ -318,7 +399,14 @@ function renderGridMeta(): void {
  *  分钟进签名是**刻意**的:「现在」线画在网格内部,分钟一变位置就变 ——
  *  与旧版每 20s 轮询、分钟变化即重建整网格的行为逐字一致(不是本轮引入的回归)。 */
 function gridKeyNow(): string {
-  const base = gridGeometryKey(cat, currentDate, PX_PER_MIN * zoom, rowMetrics(zoom).rowH);
+  // 影厅筛选进签名:它决定纵轴**行集合**(行数会变 ⇒ 必须全量重建,见 grid.ts::buildGrid)
+  const base = gridGeometryKey(
+    cat,
+    currentDate,
+    PX_PER_MIN * zoom,
+    rowMetrics(zoom).rowH,
+    venueFilterKey(filters)
+  );
   if (todayIsoLocal() !== currentDate) return base;
   const d = new Date();
   return `${base}|now:${d.getHours() * 60 + d.getMinutes()}`;
@@ -332,14 +420,13 @@ function renderGrid(opts: { force?: boolean } = {}): void {
     cat,
     pxPerMin,
     slots: store.slotIndex,
-    group: store.group,
     mappingOf: (c) => store.mappings.get(c),
     conflictCodes: conf?.codeSet,
     conflictPairs: conf?.pairs,
     transitMin: store.settings.transitMin,
     gvTalkOf,
-    wishOf: (s) => store.picks.get(filmNodeKey(cat, s))?.priority ?? undefined,
     hourFilter,
+    filters, // 字幕 / 影厅 / GV 三道筛选(状态在 filters.ts,网格与影片库共用)
     row: rowMetrics(zoom), // 行几何(行高 / 字号倍率 / 留白 / 徽章行开关)单一来源,随缩放倍率
   };
   const key = gridKeyNow();
@@ -382,6 +469,7 @@ function renderGrid(opts: { force?: boolean } = {}): void {
   if (vAnchor) applyRowAnchor(grid, vAnchor);
   lastGridDate = currentDate;
   lastGridKey = key;
+  fitGridHeight(grid); // ★ 工作台化:限高(横向滚动条常驻容器底部 + 纵向滚动条落在右缘)—— 必须挂载后量
   fitTimeTexts(grid); // 挂载后量测:窄卡时间文本降级,绝不截断
   drawConflictLinks(grid, conf); // 挂载后量测:把同一冲突组的两张卡跨行连起来(隔着几十行也看得见)
   renderGridMeta();
@@ -393,25 +481,25 @@ function renderGrid(opts: { force?: boolean } = {}): void {
 //  每次重绘时调用。主页面不再有 `#agenda-wrap` / `#agenda-summary` / `#agenda` 挂载点。
 
 /** 「我的行程」抽屉 agenda tab 的**注入渲染函数**(2026-09-10,`PLAN-20260910190916`):
- *  - 摘要行(A 方案 N 场 · ⚠M + 质量分药丸)替代原来的 `#agenda-summary`(被删)
+ *  - 摘要行(N 场 · M 处冲突 + 质量分药丸)替代原来的 `#agenda-summary`(被删)
  *  - 行程 body = `buildAgenda(...)`,保留 `id="agenda"` 以让 `HOVER_SEL` 仍然命中。
- *  - 每次抽屉 agenda tab 重绘时调用,读 main 的 `conflicts` / `gvTalkOf` / `currentDate` / `hourFilter` 闭包值。 */
+ *  - 每次抽屉 agenda tab 重绘时调用,读 main 的 `conflicts` / `plans` / `gvTalkOf` / `currentDate` / `hourFilter` 闭包值。 */
 function buildAgendaHost(): HTMLElement {
   const wrap = el("div", "grid gap-[8px]");
 
   // 摘要行(原 #agenda-summary,现在是 agenda tab 顶部的一行)
-  const picked = codesOfGroup(store.group);
+  const picked = allCodes();
   const nConf = totalConflictPairs();
   const sum = el(
     "div",
     "px-3 pt-[2px] pb-[2px] text-12 text-meta flex items-center gap-[6px] flex-wrap",
-    `${store.group} 方案 ${picked.length} 场${nConf ? ` · ${nConf} 处冲突` : ""}`
+    `${picked.length} 场${nConf ? ` · ${nConf} 处冲突` : ""}`
   );
-  // 质量分药丸(P0-2:与引擎同权重;仅展示,不改排序)
+  // 质量分药丸(P0-2:仅展示,不改排序)
   const rows: ScoredRow[] = [];
   for (const code of picked) {
     const s = cat.byCode.get(code);
-    if (s) rows.push({ priority: priorityOfCode(code) ?? null, screening: s });
+    if (s) rows.push({ screening: s });
   }
   if (rows.length) {
     const sc = scorePlanRows(rows, store.settings.transitMin, OK_SLACK, (s) => effEndMin(s, gvTalkOf(s.code)));
@@ -421,10 +509,8 @@ function buildAgendaHost(): HTMLElement {
       `分 ${sc.total}`
     );
     pill.dataset.tip =
-      `行程质量分 ${sc.total} —— 必看 ×3 · 备选 ×2 · 随缘 ×1 · GV +1 · 紧转场 −1(未分级不计分)\n` +
-      `必看 ${sc.pri.must}×3 · 备选 ${sc.pri.maybe}×2 · 随缘 ${sc.pri.wild}×1` +
-      `${sc.unset ? ` · 未分级 ${sc.unset}×0` : ""}` +
-      `${sc.gv ? ` · GV +${sc.gv}` : ""}${sc.tight ? ` · 紧转场 −${sc.tight}` : ""} = ${sc.total}`;
+      `行程质量分 ${sc.total} —— 排了就算数:每场 +1 · GV +1 · 紧转场 −1\n` +
+      `场次 ${sc.count}${sc.gv ? ` + GV ${sc.gv}` : ""}${sc.tight ? ` − 紧转场 ${sc.tight}` : ""} = ${sc.total}`;
     sum.appendChild(pill);
   }
   wrap.appendChild(sum);
@@ -433,12 +519,11 @@ function buildAgendaHost(): HTMLElement {
   const body = buildAgenda({
     cat,
     slots: store.slotIndex,
-    picks: store.picks,
-    group: store.group,
     mappings: store.mappings,
     transitMin: store.settings.transitMin,
     gvTalkOf,
     conflicts,
+    plans, // 顺位 → N 套方案(与 conflicts 同轮派生;见 computePlanSet)
     slotDate: currentDate,
     slotHour: hourFilter,
   });
@@ -465,7 +550,7 @@ function renderPicksBadge(): void {
 }
 
 /** 顶栏「外观」三段选择器(2026-09-11):跟随系统 / 亮色 / 暗色 —— **点哪段就是哪段**。
- *  只刷选中态(与顶栏 A/B 方案共用 ui.ts 的 SEG_ON / SEG_OFF,单一视觉来源);
+ *  只刷选中态(与顶栏其它段按钮共用 ui.ts 的 SEG_ON / SEG_OFF,单一视觉来源);
  *  文案 / tooltip 是静态的,写在 index.html 上,故这里不重建节点(保住悬停 tooltip 不闪)。
  *  切主题的实际落盘 / 重绘在 theme.ts(改 data-theme + setSettings → 广播 → 本函数刷新选中态)。 */
 function renderThemeSeg(): void {
@@ -534,20 +619,18 @@ function bindEvents(): void {
       return;
     }
 
-    // 方案切换
-    const g = t.closest<HTMLElement>("#group-switch [data-g]");
-    if (g) {
-      setCurrentGroup(g.dataset.g as Group);
-      return;
-    }
-
-    // 「影片库 · 选片」:左侧挤压抽屉(左 = 全部影片可搜可筛 / 我的选片两个 tab)。
+    // 顶栏「选片 · 行程」= 左侧挤压抽屉的开关(三个 tab:影片库 / 我的选片 / 我的行程)。
     // 已打开时再点 = 收起(而不是重建内容丢搜索 / 筛选状态)。
+    // ⚠ 落点**固定「我的选片」**(2026-09-11,用户反馈「行程应该跳我的选片,不要跳到影片库」):
+    //   旧写法 `openFilmPicker()` 走「上次停留的 tab」,而 `pickerTab` 初值是 `lib` ——
+    //   首开(以及上次停在影片库时)都落到影片库,与按钮文案不符。
+    //   现在这条入口落在工作台的**中段**:「我的选片」= 已收的片 + 每片全部可选场次,
+    //   进可挑场次、退可看已选;要看全部影片点旁边「影片库」tab 即可(一点即达)。
     // ⚠ 不在这里补 renderGrid():抽屉的开 / 收自己会回调(见 setPickerToggleHandler),
     //   否则同一次开合会重绘网格两遍。
     if (t.closest("#library-btn")) {
       if (isPickerDrawerOpen()) closePickerDrawer();
-      else openFilmPicker(libraryCtx());
+      else openFilmPicker(libraryCtx(), "pick");
       return;
     }
 
@@ -561,15 +644,13 @@ function bindEvents(): void {
     const talkHit = t.closest<HTMLElement>("#grid-scroll [data-talk]");
     if (talkHit) {
       const code = talkHit.dataset.code!;
-      const hit = slotOf(code);
-      if (hit && hit.group === store.group) {
-        // 已在当前方案:翻转含↔弃(覆写落 localStorage,不删场次、不动全局默认)
+      if (slotOf(code)) {
+        // 已选:翻转含↔弃(覆写落 localStorage,不删场次、不动全局默认)
         setGvTalk(code, !talkOnOf(code));
       } else {
-        // 未在当前方案(含在另一方案):一枪「只要正片」= 加入当前方案 + 覆写放弃映后谈;
-        // 档位按该片已有记录继承(从未打标 → null 未设)
+        // 未选:一枪「只要正片」= 加入行程 + 覆写放弃映后谈
         const key = filmKeyOfCode(code);
-        if (key) toggleScreening(key, code, store.picks.get(key)?.priority ?? null);
+        if (key) toggleScreening(key, code);
         setGvTalk(code, false);
         ensurePickerOpen(libraryCtx()); // 新加入 → 抽屉滑出显示行程(2026-09-11)
       }
@@ -577,29 +658,23 @@ function bindEvents(): void {
     }
     const card = t.closest<HTMLElement>("#grid-scroll [data-code]");
     if (card) {
-      // 新加入按该片已有档位继承(影片库打标 / 详情弹层设过);从未打标 → null(未设,不再默认备选)
       const code = card.dataset.code!;
+      lastToggledCode = code; // 这次点选可能让抽屉滑出 → 记下来,供「把它带回视野」的兜底用
       const key = filmKeyOfCode(code);
       if (key) {
-        toggleScreening(key, code, store.picks.get(key)?.priority ?? null);
-        // 加入(而非移出)当前方案 → 抽屉滑出显示行程;移出 / 切方案不弹(2026-09-11,PLAN-20260911140342)
+        toggleScreening(key, code);
+        // 加入(而非移出)行程 → 抽屉滑出显示行程;移出不弹(2026-09-11,PLAN-20260911140342)
         if (slotOf(code)) ensurePickerOpen(libraryCtx());
       }
       return;
     }
 
-    // 行程行操作(§14 2c:优先级走三段 seg 直接定位;grp/del 原样;gv-talk 翻转本场映后谈)
+    // 行程行操作(✕ 移出 / gv-talk 翻转本场映后谈 / 本场映后时长)
     const act = t.closest<HTMLElement>("[data-act]");
     if (act) {
       const code = act.closest<HTMLElement>("[data-code]")?.dataset.code;
       if (!code) return;
-      if (act.dataset.act === "pri") {
-        // 再点当前档 = 取消 → 回到「未设」(与「我的选片」打标 seg 同语义,否则设过档就再也回不到未设)
-        // 档位在影片级 → 改的是该片档位,同片所有场次同步(这正是「一套数据」的核心)
-        const p = act.dataset.pri as Priority;
-        setPriorityOfCode(code, (priorityOfCode(code) ?? null) === p ? null : p);
-      } else if (act.dataset.act === "grp") flipGroup(code);
-      else if (act.dataset.act === "del") removeScreening(code);
+      if (act.dataset.act === "del") removeScreening(code);
       else if (act.dataset.act === "gv-talk") setGvTalk(code, !talkOnOf(code));
       else if (act.dataset.act === "gv-talk-min") openTalkMinModal(code, cat); // 本场映后时长覆写(小弹层)
       return;
@@ -637,8 +712,14 @@ function bindEvents(): void {
     }
     const ex = t.closest<HTMLElement>("#export-menu button");
     if (ex) {
-      if (ex.dataset.which === "PICK") copyPicklist(cat, gvTalkOf);
-      else exportIcs(ex.dataset.which as "A" | "B" | "ALL");
+      // 菜单统一在这里收起:四项里有三项自己会关(exportIcs / copyShareText / 本处),
+      // 重复 add 同一类是幂等的,换来的是「新加一项忘了关菜单」这个坑不必再记。
+      document.getElementById("export-menu")!.classList.add("is-hidden");
+      const which = ex.dataset.which;
+      if (which === "SHARE") copyShareText(cat, gvTalkOf);
+      else if (which === "BACKUP") downloadBackup();
+      else if (which === "RESTORE") openImportBackupModal();
+      else exportIcs();
       return;
     }
     if (!t.closest("[data-export-wrap]")) {
@@ -682,18 +763,28 @@ function bindEvents(): void {
     },
     { passive: false }
   );
+
+  // 工作台限高随视口变化重算(窗口缩放 / 顶栏折行都会改网格顶边位置);节流到停止 resize 后一次。
+  let resizeTimer: number | undefined;
+  window.addEventListener("resize", () => {
+    if (resizeTimer !== undefined) window.clearTimeout(resizeTimer);
+    resizeTimer = window.setTimeout(() => {
+      const grid = document.getElementById("grid-scroll");
+      if (grid) fitGridHeight(grid);
+    }, 120);
+  });
 }
 
-function exportIcs(which: "A" | "B" | "ALL"): void {
+function exportIcs(): void {
   document.getElementById("export-menu")!.classList.add("is-hidden");
-  const entries = pickEntries(store.picks, cat, which);
+  const entries = pickEntries(store.picks, cat);
   if (entries.length === 0) {
-    toast(which === "ALL" ? "还没有任何选片" : `${which} 方案还没有选片`);
+    toast("还没有任何选片");
     return;
   }
   const ics = buildIcs(cat, entries, store.mappings, store.settings.alarmMin, gvTalkOf);
-  downloadIcs(ics, `biff2026-${which.toLowerCase()}.ics`);
-  toast(`已导出 ${entries.length} 场(${which === "ALL" ? "A+B" : which}),导入日历后按手机时区显示`);
+  downloadIcs(ics, "biff2026.ics");
+  toast(`已导出 ${entries.length} 场,导入日历后按手机时区显示`);
 }
 
 /* ---------------- 影片库反向定位:跳日期 + 滚到卡片高亮 ---------------- */
@@ -709,41 +800,61 @@ function flashScreening(root: ParentNode, code: string): void {
   }
 }
 
-/** 横向把某张卡滚到视口中央(「定位」的落点口径,单场 / 批量共用)。
+/** 卡片在**容器内容坐标系**里的「正中」落点(横向居中 + 纵向居中于**标尺以下的可见净区**)。
+ *  ⚠ 纵向净区必须扣掉吸顶标尺(`[data-grid-ruler]`):标尺 `sticky top-0` 盖在容器顶部一条,
+ *    按 `clientHeight / 2` 居中会让卡片整体**偏上**(用户反馈「定位到的卡片不在显示的中点」)。
+ *  ⚠ **两个轴必须一次 `scrollTo` 给全**,不可拆成「先滚 x 再滚 y」两次调用 ——
+ *    同一元素上的第二次 `scrollTo` 会**取消**第一次正在进行的平滑滚动,前一个轴停在动画中途
+ *    (症状:纵向到位了、横向没到,或反之)。这正是本文件旧写法(centerCardX → centerCardY)的坑。
  *  `scroll.clientWidth` 取的是**当前**宽度 —— 抽屉挤压后网格变窄,用它算仍是正中。 */
-function centerCardX(scroll: HTMLElement, card: HTMLElement): void {
+function scrollTargetFor(scroll: HTMLElement, card: HTMLElement): { left: number; top: number } {
   const sRect = scroll.getBoundingClientRect();
   const cRect = card.getBoundingClientRect();
-  const x = cRect.left - sRect.left + scroll.scrollLeft;
-  scroll.scrollTo({
+  const x = cRect.left - sRect.left + scroll.scrollLeft; // 卡片在内容坐标系里的 x
+  const y = cRect.top - sRect.top + scroll.scrollTop; // 卡片在内容坐标系里的 y
+  const rulerH = scroll.querySelector<HTMLElement>("[data-grid-ruler]")?.offsetHeight ?? 0;
+  const netH = Math.max(0, scroll.clientHeight - rulerH); // 标尺以下的可见净高
+  return {
     left: Math.max(0, x - scroll.clientWidth / 2 + cRect.width / 2),
-    behavior: "smooth",
-  });
+    top: Math.max(0, y - rulerH - netH / 2 + cRect.height / 2),
+  };
 }
 
-/** 纵向把某张卡滚到**视口中央** —— 与 `centerCardX`(横向)对称的「定位」落点口径。
- *  网格 29 厅 × 92px ≈ 2670px,只滚到网格顶部的话目标影厅往往还在视口外(用户反馈:
- *  「只有左右的位置上是对的,上下的位置还需要再滑动」),故单场定位必须**同时**管纵向。
- *  居中而非贴顶:目标行上下都留有上下文;顶栏 sticky 64px 在居中位置之上,不会遮住卡片。
- *  ⚠ `#grid-scroll` 只负责横向滚动,纵向由**页面**承担 —— 故这里滚 `window` 而不是容器。 */
-function centerCardY(card: HTMLElement): void {
-  const r = card.getBoundingClientRect();
-  const top = window.scrollY + r.top - (window.innerHeight - r.height) / 2;
-  window.scrollTo({ top: Math.max(top, 0), behavior: "smooth" });
+/** 把某张卡滚到可视区**正中**(横向 + 纵向一次到位)—— 「定位」的唯一落点口径。
+ *  `instant` = 用 `behavior:"auto"` **直接到位**,不做平滑动画。
+ *  ⚠ 什么时候必须 instant:网格容器刚被**整体重建**(换日期 / 改影厅筛选 → `replaceWith`),
+ *    新容器的 `scrollTop`/`scrollLeft` 都是 0。此时平滑滚过去 = 让用户先看到「回到左上角」
+ *    那一帧再滑到目标 —— 观感就是「整页重新定位了一下,跳了一下」「右边滚动条跳到某个位置」。
+ *    容器是**复用**的(同日定位)时起点有意义,平滑动画反而帮用户建立方位感,故保留。 */
+function scrollCardIntoCenter(scroll: HTMLElement, card: HTMLElement, instant: boolean): void {
+  const t = scrollTargetFor(scroll, card);
+  scroll.scrollTo({ left: t.left, top: t.top, behavior: instant ? "auto" : "smooth" });
 }
 
-/** 页面滚到排片面板(顶部被吸顶栏盖住的部分留出)—— **仅 `jumpToDate`(定位「整天」)使用**:
- *  它要展示的是当天全部场次,故停在网格顶部;单场定位改走 `centerCardY` 纵向居中到该影厅行。 */
+/** 横向把某张卡滚到视口中央(**只横向**,纵向不动;「别跑出视野」的兜底用)。 */
+function centerCardX(scroll: HTMLElement, card: HTMLElement): void {
+  scroll.scrollTo({ left: scrollTargetFor(scroll, card).left, behavior: "smooth" });
+}
+
+/** 让卡片**横向回到视口舒适区**(已在区内则一动不动)—— 与 `centerCardX` 的分工:
+ *  那个是「定位」的落点口径(必须居中);这个只是兜底「别让它跑出视野」,
+ *  所以只在卡片真的贴边 / 出界时才滚 —— 否则每次点选都把视图挪一下会很烦。
+ *  用于抽屉滑出后:网格左缘右移 500+px 且可用宽度收窄,刚点的那张卡很容易被挤出右缘
+ *  (用户反馈「点了片子,刚才点的片子就消失在视野之外」)。 */
+function ensureCardVisibleX(scroll: HTMLElement, card: HTMLElement): void {
+  const sRect = scroll.getBoundingClientRect();
+  const cRect = card.getBoundingClientRect();
+  const pad = 48; // 左右各留 48px,卡片不紧贴容器边缘
+  if (cRect.left >= sRect.left + pad && cRect.right <= sRect.right - pad) return;
+  centerCardX(scroll, card);
+}
+
+/** 网格容器回到最顶(纵向 scrollTop = 0)。
+ *  网格 29 厅 × 92px ≈ 2670px,只滚到网格顶部的话目标影厅往往还在视口外 —— 故**单场定位**走
+ *  `scrollCardIntoCenter`(纵向居中到该影厅行);本函数只作兜底(卡片找不到)与「整天」定位的纵向落点。
+ *  ★ 工作台化后纵向滚动归 `#grid-scroll` 容器(旧版由页面承担),故这里滚容器而不是 `window`。 */
 function scrollGridTop(): void {
-  const wrap = document.getElementById("grid-wrap");
-  if (!wrap) return;
-  const top = wrap.getBoundingClientRect().top + window.scrollY - 64;
-  window.scrollTo({ top: Math.max(top, 0), behavior: "smooth" });
-}
-
-/** 等两帧布局稳定后执行 —— 切日期 / 缩放会整体重建网格容器,须等新节点落位再量尺寸 */
-function afterLayout(fn: () => void): void {
-  requestAnimationFrame(() => requestAnimationFrame(fn));
+  document.getElementById("grid-scroll")?.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 /** 把网格切到某日期并清掉时间筛选;返回是否真的发生了切换(供调用方决定后续定位) */
@@ -760,53 +871,76 @@ function gotoDate(date: string): boolean {
 function jumpToScreening(code: string): void {
   const s = cat.byCode.get(code);
   if (!s) return;
+  // 目标场次所在影厅被影厅筛选整行藏起来时,先清掉影厅筛选 —— 否则「定位 ▸」点了毫无反应
+  // (卡片根本不在 DOM 里,连闪烁都落空)。只清影厅:字幕 / GV 两道与行的去留无关,
+  // 卡片仍在(只是淡化),定位照样成立,不该顺手抹掉用户设的筛选。
+  if (filters.venues.size > 0 && !venueAllowed(s.venue_id, filters)) {
+    filters.venues.clear();
+    saveFilters(filters);
+    renderFilters();
+    renderGrid(); // 行集合变了 → 必须先重建,否则下面找不到卡片(同日期时 gotoDate 不会重绘)
+    toast("已清除影厅筛选 —— 目标场次所在影厅此前被隐藏");
+  }
   closeAllModals(); // 整栈关闭:详情弹层任何一层都不能还盖着网格
   // ⚠ **不收起选片抽屉**(2026-09-10 改):抽屉是 `#main-col` 的 **flex 兄弟节点**,不是浮层 ——
   // 网格里的卡片永远不可能被它挡住,故没有「必须收起」的理由;而收起会让「定位 A → 看一眼时间轴 →
   // 再定位 B」每次都要重新打开抽屉(正是「有去无回」那条老毛病)。网格变窄由下面的居中逻辑自然
   // 吸收:`scroll.clientWidth` 已是挤压后的宽度,卡片照样居中。
+  //
+  // ★ 2026-09-11 修「定位时整页跳一下 / 右边滚动条跳到某个位置」:**定位改为同步完成,不等 rAF**。
+  //   换日期 / 刚清完影厅筛选会**整体重建**网格容器(`host.replaceWith(grid)`),新容器的
+  //   scrollTop / scrollLeft 都是 0。旧写法把它丢进 `afterLayout`(两帧后)再 `scrollTo({smooth})` ——
+  //   浏览器早把「回到左上角」那一帧画出来了,用户看到的是「先跳回顶 / 左,再滑到目标」。
+  //   同步定位时浏览器**还没绘制**那个 0 状态,直接落到目标位置,一次到位、零跳变。
+  //   ⚠ 容器**复用**(同日定位)时保留平滑动画:起点有意义,滑过去能帮用户建立方位感。
+  const prev = document.getElementById("grid-scroll");
   gotoDate(s.date);
-  // 等两帧布局稳定后:横向居中 + **纵向居中到该影厅行** + 带底色闪烁 3s(1s × 3)。
-  // ⚠ 纵向不能在切日期前滚(那时网格还是旧日期的高度,量出来的 rect 作废),故一并放进 afterLayout。
-  afterLayout(() => {
-    const scroll = document.getElementById("grid-scroll");
-    const card = scroll?.querySelector<HTMLElement>(`[data-code="${code}"]`);
-    if (!scroll || !card) {
-      scrollGridTop(); // 兜底:卡片没找到时至少把网格带进视口
-      return;
-    }
-    centerCardX(scroll, card);
-    centerCardY(card);
-    flashScreening(scroll, code); // 正片卡 + 映后谈块一起闪
-  });
+  const scroll = document.getElementById("grid-scroll");
+  if (!scroll) return;
+  const card = scroll.querySelector<HTMLElement>(`[data-card="1"][data-code="${code}"]`);
+  if (!card) {
+    scrollGridTop(); // 兜底:卡片没找到时至少把网格带回顶部
+    return;
+  }
+  scrollCardIntoCenter(scroll, card, prev !== scroll); // 容器刚重建 → 直接到位(见函数注释)
+  flashScreening(scroll, code); // 正片卡 + 映后谈块一起闪
 }
 
 /* ---------------- 「我的行程」日期头:切到该日 + 当天场次**批量**闪烁 ---------------- */
 /** 「在网格中查看这一天」:把甘特切到该日期,横向滚到**当天最早一场**并居中,再把当天行程里的
  *  所有场次卡片批量闪烁 3s。
  *  与 `jumpToScreening` 同一套 `flash-locate` 动画 / 同 3s 时长 / 同一套横向居中口径
- *  (`centerCardX`),区别只在**批量**:一天的场次一起闪。
+ *  (`scrollTargetFor().left`),区别只在**批量**:一天的场次一起闪。
  *  ⚠ 一天多场没法同时居中,取**最早一场**当落点 —— 它是「这一天的起点」,也是列表首行,
  *    与行程 section 的阅读顺序一致(用户原话:「你可以定位到最早的那场的位置吗」)。
  *  (历史:这里原先是抽屉内 `scrollIntoView`,但行程搬进抽屉后目标行本就在视口里 →
  *   等于什么都没发生,故用户反馈「没有起效」;现在改为真正切网格日期 + 横向居中 + 批量回执。) */
 function jumpToDate(date: string): void {
+  // 与 `jumpToScreening` 同一条口径:换日期会**整体重建**网格容器 → 同步定位,不等 rAF,
+  // 否则用户先看到「新日期停在左上角」那一帧再滑过去(见 jumpToScreening 的 ★ 注释)。
+  const prev = document.getElementById("grid-scroll");
   gotoDate(date);
-  scrollGridTop(); // 与 jumpToScreening 同口径
-  // 当天行程(当前方案)的场次 code —— 与 agenda 的日期 section 同源(都是 codesOfGroup)
-  const codes = codesOfGroup(store.group).filter((c) => cat.byCode.get(c)?.date === date);
-  if (codes.length === 0) return;
+  const scroll = document.getElementById("grid-scroll");
+  if (!scroll) return;
+  // 当天行程的场次 code —— 与 agenda 的日期 section 同源(都是 allCodes)
+  const codes = allCodes().filter((c) => cat.byCode.get(c)?.date === date);
+  if (codes.length === 0) {
+    scrollGridTop(); // 当天没有行程场次 → 至少把网格带回顶部
+    return;
+  }
   // 最早一场 = 横向落点(start_time 是 "HH:MM:SS" 定宽字符串,可直接字典序比较)
   const earliest = codes.reduce((a, b) =>
     (cat.byCode.get(a)?.start_time ?? "") <= (cat.byCode.get(b)?.start_time ?? "") ? a : b);
-  // 等两帧布局稳定后(切日期会整体重建网格容器)再横向定位 + 批量打动画
-  afterLayout(() => {
-    const scroll = document.getElementById("grid-scroll");
-    if (!scroll) return;
-    const anchor = scroll.querySelector<HTMLElement>(`[data-code="${earliest}"]`);
-    if (anchor) centerCardX(scroll, anchor); // 居中到当天最早一场(与「定位 ▸」同口径)
-    for (const code of codes) flashScreening(scroll, code); // 每场正片卡 + 映后谈块一起闪
+  const anchor = scroll.querySelector<HTMLElement>(`[data-card="1"][data-code="${earliest}"]`);
+  // ⚠ 纵向回顶与横向居中**合并成一次 `scrollTo`**:同一元素上的第二次调用会取消第一次的平滑滚动。
+  // ⚠ 「整天」的纵向落点是**顶部**(top: 0,标尺吸顶处),与单场定位的「纵向居中」刻意不同:
+  //   要展示的是当天全部场次,停在顶部才读得全。
+  scroll.scrollTo({
+    left: anchor ? scrollTargetFor(scroll, anchor).left : scroll.scrollLeft, // 居中到当天最早一场(与「定位 ▸」同口径)
+    top: 0,
+    behavior: prev === scroll ? "smooth" : "auto",
   });
+  for (const code of codes) flashScreening(scroll, code); // 每场正片卡 + 映后谈块一起闪
 }
 
 
@@ -834,6 +968,9 @@ function applyHoverLink(host: HTMLElement | null): void {
 }
 
 function onHoverLinkMove(ev: MouseEvent, entering: boolean): void {
+  // 拖动排序进行中 → 不做 hover 联动:同冲突组的每一行都会被 `hl-row` 描边,
+  // 盖掉「拿起」那一行的投影(`agenda.ts::attachRankDrag` 置的 body 标记)。
+  if (document.body.dataset.rankDragging) return;
   const host = (ev.target as HTMLElement).closest<HTMLElement>(HOVER_SEL) as HTMLElement | null;
   const rel = ev.relatedTarget instanceof Node ? (ev.relatedTarget as HTMLElement).closest<HTMLElement>(HOVER_SEL) : null;
   if (entering) {
@@ -857,11 +994,16 @@ async function boot(): Promise<void> {
   initTheme();
   loadGvTalk();
   loadGvTalkMin();
+  loadRanks(); // 抢票顺位(场次级;冲突组内的拖动顺序 = 方案编号,见 plans.ts)
+  loadAgendaFold(); // 「我的行程」按日收起(纯视图偏好,与选片 / 排片数据无关)
   // 缩放倍率随设置恢复(renderAll 里的 renderZoomCtl 同步控件态)。
   // 旧版存的可能是横向倍率(如 3 / 0.5)或旧行高倍率,clampZoom 统一钳进 [0.55, 1.2] —— 无需迁移。
   zoom = clampZoom(store.settings.zoom ?? 1);
   cat = await loadCatalog();
   currentDate = cat.dates[0] ?? "";
+  // 排片筛选**持久化**恢复(「记住你的选项」)—— 必须在 cat 就绪后:影厅 id 要按当前
+  // venues.json 校验(换版后不存在的厅留着会让「空集 = 不过滤」失效,表现为「什么都没了」)。
+  loadFilters(filters, new Set(cat.venues.map((v) => v.id)));
   // 选片记录(唯一数据源)必须在 cat 就绪之后载入:首次迁移要用 filmNodeKey(cat, s)
   // 把旧的场次级 plan 归并到影片级记录(旧两套 → 一套)
   loadPicks(filmKeyOfCode);
@@ -872,9 +1014,22 @@ async function boot(): Promise<void> {
   // 选片抽屉开 / 收会改变网格可用宽度 → 补一次 renderGrid(横向锚点由 renderGrid 内的
   // pendingAnchor / gridAnchor 机制保住)。放在这里注入,library.ts 不必反向依赖 main。
   setPickerToggleHandler(() => {
-    // 抽屉开合会改 `#grid-scroll` 的可用宽度(clientWidth),而**宽度不进几何签名** ——
-    // 故这里强制重建,让横向锚点机制按新宽度重新居中(与旧版行为一致)。
-    renderGrid({ force: true });
+    // ★ 2026-09-11:抽屉开合**不再全量重建**。
+    //   网格画布是**定宽**的(总宽只由倍率与轴长决定),容器变宽变窄只影响视口 —— 宽度根本不进几何签名。
+    //   旧版 `renderGrid({ force: true })` 会让 `replaceWith` 把整棵网格 DOM 重建一遍(视觉上「闪一下」),
+    //   且重建后横向锚点按「视口中心对应的时刻」恢复,而不是「你刚点的那张卡」——
+    //   抽屉从左滑出会把网格左缘右移 500+px,刚点的卡片很容易被挤出右缘
+    //   (用户反馈「拉了很长后点了片子,刚才点的片子就消失在视野之外」)。
+    //   现在:走 patch(几何未变,零重建)+ 把刚点的那张卡带回视野。
+    renderGrid();
+    const grid = document.getElementById("grid-scroll");
+    if (grid) {
+      fitGridHeight(grid); // 宽度变化可能让上方标题行折行 → 网格顶边下移,限高要重算
+      const card = lastToggledCode
+        ? grid.querySelector<HTMLElement>(`[data-card="1"][data-code="${lastToggledCode}"]`)
+        : null;
+      if (card) ensureCardVisibleX(grid, card);
+    }
     updatePickerLabel(); // 开 / 收后刷新顶栏按钮文案(窄屏「时间轴 ▸」↔「列表 · 行程」)
   });
   // 「我的行程」从主页面 #agenda-wrap 搬到选片抽屉的第三个 tab(`PLAN-20260910190916`):
@@ -895,12 +1050,14 @@ async function boot(): Promise<void> {
   renderAll();
   // 窄屏(≤768px)**列表优先**:首次进入直接打开抽屉,网格降级为次级入口 ——
   // 手机竖屏看二维甘特(29 厅 × 时间轴)在缩放下限下几乎不可用(见 library.ts::isMobileDrawer)。
-  if (isMobileDrawer()) openFilmPicker(libraryCtx());
+  // 落点显式给「影片库」:窄屏首进是**找片**场景(按钮文案也叫「列表 · 行程」),
+  // 与顶栏按钮那条入口(固定「我的选片」)刻意不同 —— 两边都别依赖 `pickerTab` 的初值。
+  if (isMobileDrawer()) openFilmPicker(libraryCtx(), "lib");
   // 宽屏:行程非空 → 抽屉自动滑出并停在「我的行程」(2026-09-11,PLAN-20260911140342)。
   // 空行程不弹(进界面就弹一块空面板只会挡网格);收起后除「再点选一场」外不会被重弹。
   else if (store.picks.size > 0) ensurePickerOpen(libraryCtx(), "agenda");
   updatePickerLabel();
-  toast(currentDate ? "排片为 MOCK 数据 — 官方 Catalogue 发布后一键替换" : "schedule.json 为空");
+  toast(currentDate ? "排期取自 BIFF 官网实时页面 — 变动以现场公告为准" : "schedule.json 为空");
 
   // A5:跨分钟/跨天自动推进「现在」线 —— 仅在时间键变化且仍在看当天时重画网格(角标补零、进出轴窗口随渲染取当前时间)
   let lastNowKey = "";

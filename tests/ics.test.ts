@@ -7,7 +7,7 @@ import { buildIcs, type PickRow } from "../src/ics";
 import { minToHms, slackBetween } from "../src/util";
 import { catalog, show } from "./helpers";
 
-const ENTRIES: PickRow[] = [{ code: "001", group: "A", priority: "must", note: "" }];
+const ENTRIES: PickRow[] = [{ code: "001", note: "" }];
 const NO_MAP = new Map();
 
 describe("ics:转义与折叠", () => {

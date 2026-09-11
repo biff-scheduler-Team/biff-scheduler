@@ -1,7 +1,6 @@
-// 应用状态:选片记录(影片级) / 豆瓣映射 / 方案与设置。
+// 应用状态:选片记录 / 抢票顺位 / 豆瓣映射 / 设置。
 //
 // 单一数据源 = store.picks:「我的选片」(按片看)与「我的行程」(按场次看)是同一份数据的两个视图。
-// 档位只有一份且在影片级 —— 行程行改档位 = 改该片档位,两个视图永不打架(旧版 wish + plan 两套已合并)。
 //
 // ★ 存储分工(2026-09-11,PLAN-20260911001107):
 //   · **片单(选片 / 排片)只存 localStorage** `biff.picks.v2` —— 不写云端,刷新 / 部署都不会「复活」;
@@ -9,49 +8,102 @@
 //     文件留空即「零映射」,弹层 / 影片库走中英文搜索兜底。
 //   历史:片单曾双写 D1 `user_pick`、映射曾存 D1 `douban_map` —— 两次都因「部署换 origin、云端为准」
 //   造成数据复活 / 覆盖,现已全部退役(前端不再 fetch 任何后端)。
+//
+// ★ **档位(必看 / 备选 / 随缘)已于 2026-09-11 整体删除**(`PLAN-20260911223000`):
+//   冲突决策改由**场次级「抢票顺位」**承担(拖动冲突组内的场次排序,见 `plans.ts`),
+//   档位在非冲突场景里只剩排序噪声,两套排序机制并存只会互相打架。
 
-import type { Group, Mapping, PickEntry, PickSlot, Priority, Settings } from "./types";
+import type { Mapping, PickEntry, PickSlot, Settings } from "./types";
 import { loadDoubanMappings } from "./data";
 
 const LS_PICKS = "biff.picks.v2";
 const LS_SETTINGS = "biff.settings.v1";
 const LS_GV_TALK = "biff.gvtalk.v1"; // GV 映后谈单场覆写(code → 是否参加);缺省跟随 Settings.gvTalkOn
 const LS_GV_TALK_MIN = "biff.gvtalkmin.v1"; // GV 映后谈单场时长覆写(code → 分钟);缺省跟随 Settings.gvTalkMin
-/** 旧版两套数据的 localStorage key —— 仅作一次性迁移源(迁移后不删,留作回退) */
+const LS_AGENDA_FOLD = "biff.agendafold.v1"; // 「我的行程」按日收起:已收起的日期集合(纯视图偏好,独立键)
+const LS_RANKS = "biff.ranks.v1"; // 抢票顺位:场次 code → 组内序号(1-based);独立键,与 gvtalk 同口径
+/** 旧版数据的 localStorage key —— 仅作一次性迁移源(迁移后即删) */
 const LS_PLAN_LEGACY = "biff.plan.v1";
 const LS_WISH_LEGACY = "biff.wish.v1";
 
 export const store = {
   /** 唯一数据源:影片 key(filmNodeKey)→ 选片记录 */
   picks: new Map<string, PickEntry>(),
-  /** 派生索引:场次 code → { 影片 key, 方案 }。每次变更**原地重建**,供网格/行程/弹层 O(1) 反查。
+  /** 派生索引:场次 code → 影片 key。每次变更**原地重建**,供网格/行程/弹层 O(1) 反查。
    *  ⚠ 原地(clear + set)而不是整体换新 Map:视图层会把这个引用存进 ctx(如 grid 的 `slots`),
    *  整体换新会让持有者读到点选前的快照(见 `modal.ts::actState` 注释)。 */
-  slotIndex: new Map<string, { key: string; group: Group }>(),
-  /** 派生索引:方案 → 该方案全部场次 code。`codesOfGroup()` O(1) 取用,避免每次全量遍历 picks */
-  groupIndex: new Map<Group, string[]>(),
+  slotIndex: new Map<string, { key: string }>(),
+  /** 派生索引:全部已排场次 code。`allCodes()` O(1) 取用,避免每次全量遍历 picks */
+  allIndex: [] as string[],
   mappings: new Map<string, Mapping>(),
-  group: "A" as Group,
   settings: { alarmMin: 45, transitMin: 0, gvTalkOn: true, gvTalkMin: 25 } as Settings,
 };
 
 /* ---------- 派生查询(视图层只读这些,不再自己遍历 picks) ---------- */
 
-/** 该场是否已选 / 归属方案 */
-export function slotOf(code: string): { key: string; group: Group } | undefined {
+/** 该场是否已选 / 属于哪部影片 */
+export function slotOf(code: string): { key: string } | undefined {
   return store.slotIndex.get(code);
 }
 
-/** 某方案下的全部场次 code —— 读派生索引(O(1));**返回内部数组,调用方只读** */
-export function codesOfGroup(g: Group): string[] {
-  return store.groupIndex.get(g) ?? [];
+/** 全部已排场次 code —— 读派生索引(O(1));**返回内部数组,调用方只读** */
+export function allCodes(): string[] {
+  return store.allIndex;
 }
 
-/** 某场对应的影片档位(行程行三段 seg 读它);未选场次 → undefined */
-export function priorityOfCode(code: string): Priority | null | undefined {
-  const hit = store.slotIndex.get(code);
-  return hit ? store.picks.get(hit.key)?.priority : undefined;
+/* ---------- 抢票顺位(场次级,2026-09-11,PLAN-20260911223000) ----------
+ * 场次 code → 组内序号(1-based)。**只在冲突组内有意义** —— 它回答的是
+ * 「同一时间带互相重叠的几场,先保哪一场」,顺序即方案编号(见 `plans.ts`)。
+ *
+ * ⚠ 存的是**用户拖出来的次序**,不是绝对值:每次拖完都由 `setRanks()` 把该组整组归一成 1..n,
+ *   所以「删掉组内一场」不会留下空洞(下一次拖拽 / 渲染即重新归一)。
+ * ⚠ 独立 localStorage 键(`biff.ranks.v1`,与 `biff.gvtalk.v1` 同口径)—— 视图偏好不混进
+ *   `biff.settings.v1`,「重置设置」不会顺手把顺位带走。
+ * ⚠ 场次被移出行程后其顺位由 `rebuildIndex()` 就地 prune(否则换版 / 重排后残留脏数据)。 */
+export const rankOf = new Map<string, number>();
+
+export function loadRanks(): void {
+  try {
+    const raw = localStorage.getItem(LS_RANKS);
+    if (!raw) return;
+    for (const [k, v] of Object.entries(JSON.parse(raw) as Record<string, unknown>)) {
+      if (typeof v === "number" && Number.isFinite(v) && v >= 1) rankOf.set(k, Math.round(v));
+    }
+  } catch {
+    /* ignore */
+  }
 }
+
+function saveRanks(): void {
+  try {
+    localStorage.setItem(LS_RANKS, JSON.stringify(Object.fromEntries(rankOf)));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 某场的顺位;未设 / 不在冲突组 → undefined */
+export function rankOfCode(code: string): number | undefined {
+  return rankOf.get(code);
+}
+
+/** 把一组场次按给定次序写成顺位 1..n(冲突组内拖动排序的唯一出口)。
+ *  只动这一组的 code —— 别的组的顺位不受影响。广播 `"picks"`:行程 / 方案对比 / 冲突角标都随之刷新。 */
+export function setRanks(codes: string[]): void {
+  let changed = false;
+  codes.forEach((code, i) => {
+    if (rankOf.get(code) !== i + 1) {
+      rankOf.set(code, i + 1);
+      changed = true;
+    }
+  });
+  if (!changed) return;
+  saveRanks();
+  scheduleNotify("picks");
+}
+
+/* (原「抢票结果」三态状态已于 2026-09-11 删除 —— 抢票在票务系统里完成,
+ *  在排片工具里追踪「已抢到 / 售罄」是多余的中间态;冲突组仍保留聚合与顺位排序。) */
 
 /** GV 映后谈单场覆写:code → 参加(true)/放弃(false);无条目 = 跟随全局默认 */
 export const gvTalk = new Map<string, boolean>();
@@ -116,6 +168,48 @@ export function setGvTalkMin(code: string, min: number | null): void {
   scheduleNotify("settings"); // 映后时长改的是几何(轴末 / 谈块宽度)→ 归 settings,网格必须重建
 }
 
+/* ---------- 「我的行程」按日收起(2026-09-11) ----------
+ * 纯视图偏好:只回答「这一天在行程里折不折」,不碰选片 / 排片数据 —— 收起 ≠ 取消选片。
+ * 独立 localStorage 键(与 `biff.gvtalk.v1` / 抽屉宽度同口径):不进 Settings,
+ * 「清空 / 重置设置」不会顺手把折叠状态带走。 */
+
+/** 已收起的日期集合(ISO 日期字符串,如 "2026-09-17") */
+export const agendaFolded = new Set<string>();
+
+export function loadAgendaFold(): void {
+  try {
+    const raw = localStorage.getItem(LS_AGENDA_FOLD);
+    if (!raw) return;
+    const rows = JSON.parse(raw) as unknown;
+    if (!Array.isArray(rows)) return;
+    for (const d of rows) if (typeof d === "string" && d) agendaFolded.add(d);
+  } catch {
+    /* ignore */
+  }
+}
+
+function saveAgendaFold(): void {
+  try {
+    localStorage.setItem(LS_AGENDA_FOLD, JSON.stringify([...agendaFolded]));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 该日期在行程里是否已收起 */
+export function isAgendaFolded(date: string): boolean {
+  return agendaFolded.has(date);
+}
+
+/** 收起 / 展开行程中的某一天(点日期头左侧的折叠箭头)。
+ *  广播 `"agenda"` 域 —— 只有抽屉会重绘,网格 / 顶栏 / 角标全部跳过(纯抽屉内视图折叠)。 */
+export function toggleAgendaFold(date: string): void {
+  if (agendaFolded.has(date)) agendaFolded.delete(date);
+  else agendaFolded.add(date);
+  saveAgendaFold();
+  scheduleNotify("agenda");
+}
+
 /** 变更域 —— 让订阅方**按域过滤**重绘,避免「切个主题也重建整张网格 / 整个抽屉」。
  *
  *  ⚠ 域只回答「**哪一类**数据变了」,不回答「哪个具体值变了」:
@@ -123,14 +217,14 @@ export function setGvTalkMin(code: string, min: number | null): void {
 export type ChangeDomain =
   /** 选片 / 排片 / 档位 / GV 单场覆写 —— 网格、行程、抽屉计数全要刷 */
   | "picks"
-  /** 当前方案 A/B */
-  | "group"
   /** 设置(转场缓冲 / 提醒提前量 / GV 默认 / 缩放) */
   | "settings"
   /** **仅外观**(跟随系统 / 亮色 / 暗色)—— 全站配色由 CSS token 驱动,结构不依赖主题 */
   | "theme"
   /** 豆瓣映射载入完成(影响卡片标题里的中文名) */
   | "mappings"
+  /** **仅「我的行程」视图**(按日收起 / 展开)—— 抽屉重绘即可,网格 / 顶栏 / 角标不受影响 */
+  | "agenda"
   /** 未分类 / 多域合并 —— 订阅方按「全刷」处理 */
   | "all";
 
@@ -179,23 +273,31 @@ function saveLocal(): void {
 }
 
 /** 由 picks 重建派生索引(**原地**更新 slotIndex,见 store.slotIndex 注释)。
- *  唯一写点:所有变更都经 `commit()` / `mutate()`。 */
+ *  唯一写点:所有变更都经 `commit()` / `mutate()`。
+ *  ★ 顺带 prune `rankOf`:场次被移出行程后它的顺位已无意义,留着会在换版 / 重排后
+ *    把「上一轮的次序」当成用户意图(且 localStorage 只增不减)。 */
 function rebuildIndex(): void {
   store.slotIndex.clear();
-  const byGroup: Record<Group, string[]> = { A: [], B: [] };
+  const codes: string[] = [];
   for (const e of store.picks.values()) {
     for (const p of e.picks) {
-      store.slotIndex.set(p.code, { key: e.key, group: p.group });
-      byGroup[p.group].push(p.code);
+      store.slotIndex.set(p.code, { key: e.key });
+      codes.push(p.code);
     }
   }
-  store.groupIndex.set("A", byGroup.A);
-  store.groupIndex.set("B", byGroup.B);
+  store.allIndex = codes;
+  let pruned = false;
+  for (const code of [...rankOf.keys()]) {
+    if (store.slotIndex.has(code)) continue;
+    rankOf.delete(code);
+    pruned = true;
+  }
+  if (pruned) saveRanks();
 }
 
-/** 空壳记录(无场次 / 无档位 / 无备注)= 已无意义 → 可整条删除 */
+/** 空壳记录(无场次 / 无备注)= 已无意义 → 可整条删除 */
 function isOrphan(e: PickEntry): boolean {
-  return e.picks.length === 0 && e.priority == null && !e.note;
+  return e.picks.length === 0 && !e.note;
 }
 
 /** 记录变更统一出口:落本地 → 重建索引 → 广播(广播合并到微任务)。
@@ -230,15 +332,8 @@ function readJson<T>(key: string): T | null {
   }
 }
 
-function isPriority(v: unknown): v is Priority {
-  return v === "must" || v === "maybe" || v === "wild";
-}
-
-function isGroup(v: unknown): v is Group {
-  return v === "A" || v === "B";
-}
-
-/** 校验并灌入一批记录(本地 / 云端共用;非法字段一律兜底,绝不抛) */
+/** 校验并灌入一批记录(本地 / 云端共用;非法字段一律兜底,绝不抛)
+ *  ⚠ 旧数据里的 `group`(方案 A/B)与 `priority`(档位)字段都已废弃 —— 只取 code / note,其余忽略(零迁移)。 */
 function hydrate(rows: unknown): number {
   if (!Array.isArray(rows)) return 0;
   let n = 0;
@@ -252,12 +347,11 @@ function hydrate(rows: unknown): number {
       for (const s of r.picks) {
         if (!s || typeof s !== "object") continue;
         const sl = s as Partial<PickSlot>;
-        if (typeof sl.code === "string" && sl.code && isGroup(sl.group)) picks.push({ code: sl.code, group: sl.group });
+        if (typeof sl.code === "string" && sl.code) picks.push({ code: sl.code });
       }
     }
     store.picks.set(key, {
       key,
-      priority: isPriority(r.priority) ? r.priority : null,
       picks,
       note: typeof r.note === "string" ? r.note : "",
     });
@@ -266,7 +360,7 @@ function hydrate(rows: unknown): number {
   return n;
 }
 
-/** 载入选片记录。localStorage 无 v2 数据时,从旧「plan(场次级)+ wish(影片级)」合成一次。
+/** 载入选片记录。localStorage 无 v2 数据时,从旧「plan(场次级)」合成一次。
  *  迁移要用 filmNodeKey 把 code 归到影片 key,故必须在 loadCatalog() 之后调用。 */
 export function loadPicks(filmKeyOf: (code: string) => string | null): void {
   const rows = readJson<unknown>(LS_PICKS);
@@ -278,8 +372,9 @@ export function loadPicks(filmKeyOf: (code: string) => string | null): void {
   rebuildIndex();
 }
 
-/** 一次性迁移:旧两套 → 统一记录。
- *  ① 旧 wish(影片级打标)→ 记录档位;② 旧 plan(场次级排片)→ picks(档位并入影片级)。
+/** 一次性迁移:旧 plan(场次级排片)→ 统一记录。
+ *  ⚠ 旧 `wish`(影片级档位)自 2026-09-11 起**不再迁移** —— 档位概念已整体删除
+ *  (`PLAN-20260911223000`),没有可落的字段;只保留 plan 里的场次与备注。
  *  ★ 迁移完成后**删除旧 key**(2026-09-10,PLAN-20260910235630):原先「不删,留作回退」是怕新结构出问题,
  *  但旧 key 会在 `biff.picks.v2` 被清掉时**重新合成出排片与选片**(第二个「数据复活」源)。
  *  现在 v2 是唯一源、且设置里有显式清空入口,回退需求已消失。 */
@@ -291,18 +386,12 @@ function migrateLegacy(filmKeyOf: (code: string) => string | null): void {
   const ensure = (key: string): PickEntry => {
     let e = store.picks.get(key);
     if (!e) {
-      e = { key, priority: null, picks: [], note: "" };
+      e = { key, picks: [], note: "" };
       store.picks.set(key, e);
     }
     return e;
   };
 
-  if (legacyWish) {
-    for (const [key, p] of Object.entries(legacyWish)) {
-      if (!key || !isPriority(p)) continue;
-      ensure(key).priority = p;
-    }
-  }
   if (Array.isArray(legacyPlan)) {
     for (const r of legacyPlan) {
       const code = typeof r?.code === "string" ? r.code : "";
@@ -310,8 +399,7 @@ function migrateLegacy(filmKeyOf: (code: string) => string | null): void {
       const key = filmKeyOf(code);
       if (!key) continue; // 排期里已没有这场(数据换版)→ 丢弃,避免造出无法定位的孤儿场次
       const e = ensure(key);
-      if (!e.picks.some((s) => s.code === code)) e.picks.push({ code, group: isGroup(r.group) ? r.group : "A" });
-      if (e.priority == null && isPriority(r.priority)) e.priority = r.priority;
+      if (!e.picks.some((s) => s.code === code)) e.picks.push({ code });
       if (!e.note && typeof r.note === "string") e.note = r.note;
     }
   }
@@ -335,34 +423,27 @@ export async function loadMappings(): Promise<void> {
   notify("mappings");
 }
 
-/* ---------- 变更入口(本地即时 + 云端异步) ---------- */
+/* ---------- 变更入口(本地即时) ---------- */
 
-/** 设/清某影片的档位(全站唯一一份档位)。
- *  清成 null 且该片已无场次 → 整条记录删除;有场次则保留(回到「未设档位」)。 */
-export function setWish(key: string, priority: Priority | null): void {
-  const cur = store.picks.get(key);
-  if (!cur) {
-    if (priority) commit(key, { key, priority, picks: [], note: "" });
-    return;
-  }
-  if (cur.priority === priority) return;
-  if (!priority && isOrphan({ ...cur, priority: null })) {
-    commit(key); // 空壳(只打标、无场次、无备注)取消 → 删记录
-    return;
-  }
-  commit(key, { ...cur, priority });
+/** 「＋ 加入我的选片」:只把**影片**挂进选片清单,**不落任何场次**(2026-09-11 流程改版)。
+ *
+ *  为什么需要它:流程是「影片库 = 选片 → 我的选片 = 挑场次」两步 ——
+ *  「把这部片收进清单」与「排下这一场」是两个动作,前者需要一个只建记录的落点。
+ *  幂等:已在清单里则原样返回(记录里的场次 / 备注都不动)。 */
+export function addPickFilm(key: string): void {
+  if (store.picks.has(key)) return;
+  commit(key, { key, picks: [], note: "" });
 }
 
-/** 网格 / 影片库场次行点选某场:已在 → 移出;不在 → 加入当前方案。
- *  记录不存在时按 initialPriority 建(未打标的片传 null = 未设档位,不再默认「备选」)。 */
-export function toggleScreening(key: string, code: string, initialPriority: Priority | null = null): void {
+/** 网格 / 影片库场次行点选某场:已在 → 移出;不在 → 加入行程。 */
+export function toggleScreening(key: string, code: string): void {
   const cur = store.picks.get(key);
   if (!cur) {
-    commit(key, { key, priority: initialPriority, picks: [{ code, group: store.group }], note: "" });
+    commit(key, { key, picks: [{ code }], note: "" });
     return;
   }
   const has = cur.picks.some((p) => p.code === code);
-  const picks = has ? cur.picks.filter((p) => p.code !== code) : [...cur.picks, { code, group: store.group }];
+  const picks = has ? cur.picks.filter((p) => p.code !== code) : [...cur.picks, { code }];
   if (isOrphan({ ...cur, picks })) {
     commit(key); // 只剩空壳 → 删记录
     return;
@@ -370,8 +451,8 @@ export function toggleScreening(key: string, code: string, initialPriority: Prio
   commit(key, { ...cur, picks });
 }
 
-/** 行程行 ✕:只移除该场,记录保留(选片意向不丢 —— 该片仍留在「我的选片」里,标注「未排场」)。
- *  例外:该片从未打标(档位未设)且这是最后一场 → 记录已无意义,一并删除。 */
+/** 行程行 ✕:只移除该场,记录保留(该片仍留在「我的选片」里,标注「未排场」)。
+ *  例外:这是该片最后一场且无备注 → 记录已无意义,一并删除。 */
 export function removeScreening(code: string): void {
   const hit = store.slotIndex.get(code);
   if (!hit) return;
@@ -385,60 +466,13 @@ export function removeScreening(code: string): void {
   commit(cur.key, { ...cur, picks });
 }
 
-/** 行程行三段 seg:按 code 反查影片 → 改影片档位(该片全部场次同步,这是「一套数据」的核心语义)。
- *  再点当前档 = null → 回到「未设」。 */
-export function setPriorityOfCode(code: string, priority: Priority | null): void {
-  const hit = store.slotIndex.get(code);
-  if (!hit) return;
-  setWish(hit.key, priority);
-}
-
-/** 翻转某场归属方案(A↔B) */
-export function flipGroup(code: string): void {
-  const hit = store.slotIndex.get(code);
-  if (!hit) return;
-  const cur = store.picks.get(hit.key);
-  if (!cur) return;
-  const picks = cur.picks.map((p) => (p.code === code ? { code: p.code, group: p.group === "A" ? ("B" as Group) : ("A" as Group) } : p));
-  commit(hit.key, { ...cur, picks });
-}
-
 /** 整片移除(记录 + 其全部场次) */
 export function removePick(key: string): void {
   commit(key);
 }
 
-/** 把一批场次**追加**进方案 g(§13.4 M2.5「采纳建议」)。**不清空已有场次** ——
- *  另一方案的场次与 g 的现有场次都不动,故「先排 9/19、再排 9/20」可以累积。
- *  (旧 `replaceGroup` 是整组替换:第二次采纳会把第一次的场次一起清掉 —— 即用户报的「覆盖」bug。)
- *  去重口径:该片在 g 里已有场次 → 跳过(每片一场,且保证幂等:重复采纳同一份建议不长出重复场次);
- *  「同片已有 / 与 g 现有场次冲突」由 `ai.ts::planMerge()` 在调用前按网格同口径剔除。
- *  `priority` 传 `null` = **「未设」**(无片单模式:用户从没给这些片打标,不该替他编一个档位);
- *  此时若该片已有档位则**保留原档位**,不抹掉。
- *  返回实际加入的场次数,供 UI 回执。 */
-export function addGroupPicks(
-  g: Group,
-  picks: { key: string; code: string; priority: Priority | null }[]
-): number {
-  let added = 0;
-  mutate(() => {
-    for (const { key, code, priority } of picks) {
-      const cur = store.picks.get(key);
-      if (!cur) {
-        store.picks.set(key, { key, priority, picks: [{ code, group: g }], note: "" });
-        added++;
-        continue;
-      }
-      if (cur.picks.some((p) => p.group === g)) continue;
-      store.picks.set(key, { ...cur, priority: priority ?? cur.priority, picks: [...cur.picks, { code, group: g }] });
-      added++;
-    }
-  });
-  return added;
-}
-
-/** 清空全部已排场次(A+B 两方案)。影片打标 / 选片意向保留 ——
- *  没排场的片仍留在「我的选片」里(标注「未排场」),不会被一起清掉。 */
+/** 清空全部已排场次。选片意向保留 —— 没排场的片仍留在「我的选片」里(标注「未排场」)。
+ *  顺位随之被 `rebuildIndex()` prune(已无场次可排序)。 */
 export function clearScreeningSlots(): void {
   mutate(() => {
     for (const e of [...store.picks.values()]) {
@@ -449,17 +483,12 @@ export function clearScreeningSlots(): void {
   });
 }
 
-/** **清空全部**(选片 + 排片):把每条记录整条删掉 —— 档位 / 备注 / 已排场次一起清。
+/** **清空全部**(选片 + 排片):把每条记录整条删掉 —— 备注 / 已排场次一起清。
  *  与 `clearScreeningSlots()`(只清场次、保留选片意向)的区别就是「要不要连选片一起清」。
  *  片单已本地化(2026-09-10,PLAN-20260910235630),故这里**纯本地删除** ——
  *  不存在「云端把旧数据同步回来」的可能(旧 `user_pick` 云端表已退役)。 */
 export function clearAllPicks(): void {
   mutate(() => store.picks.clear());
-}
-
-export function setCurrentGroup(g: Group): void {
-  store.group = g;
-  scheduleNotify("group");
 }
 
 export function setSettings(patch: Partial<Settings>): void {

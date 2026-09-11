@@ -37,17 +37,18 @@ import { appendMetaRow, uniformChipEl, venueTip } from "./legend";
 
 /* ---------------- 卡片头(三处唯一构造) ---------------- */
 
-/** 卡片头片名:15px 加粗墨黑,**最多两行**(放开单行截断的理由见 CONVENTIONS §二) */
+/** 卡片头片名:15px 加粗墨黑,**最多两行**(放开单行截断的理由见 CONVENTIONS §二)。
+ *  文案口径 = **「英文名 · 中文名」**(`util.ts::bilingualTitle`,2026-09-11)。 */
 export const CARD_TITLE_CLS = "text-15 font-bold text-ink line-clamp-2 min-w-0";
-/** 卡片头副标题(影片元信息:原始片名 · 单元 · 国家 · 年份 · 导演):12px 次级灰,**最多两行** */
+/** 卡片头副标题(影片元信息:**其余片名** · 单元 · 国家 · 年份 · 导演):12px 次级灰,**最多两行**。
+ *  ⚠ 英文名 / 中文名已进片名行(`title`),此处只放「其余片名」(原始片名 / 韩文),不重复印。 */
 export const CARD_SUB_CLS = "text-12 text-meta leading-[1.5] line-clamp-2";
-/** 卡片外壳(行程卡;影片库 / 我的选片的卡片外壳在 `library.ts::filmRow`) */
+/** 卡片外壳(行程卡;影片库 / 我的选片的卡片外壳在 `library.ts::filmRow`)
+ *  ⚠ 冲突组内的行**也用这一个**(2026-09-11 去警报化):分组语义由外层**绿框**承担
+ *    (`agenda.ts::buildConflictGroup`),行再套一层红壳会读成「报警」。
+ *    原先的 `CARD_SHELL_CONF_CLS`(红框 + 淡红底)已随之删除。 */
 export const CARD_SHELL_CLS =
   "group border border-line rounded-8 bg-card shadow-[var(--shadow-card)] " +
-  "transition-[border-color,box-shadow] duration-[120ms] ease-in-out hover:border-line-strong hover:shadow-[var(--shadow-hover)]";
-/** 冲突卡的卡片外壳(红框 + 淡红底) */
-export const CARD_SHELL_CONF_CLS =
-  "group border border-conf rounded-8 bg-biff-tint shadow-[var(--shadow-card)] " +
   "transition-[border-color,box-shadow] duration-[120ms] ease-in-out hover:border-line-strong hover:shadow-[var(--shadow-hover)]";
 
 export interface CardHeadOpts {
@@ -64,29 +65,62 @@ export interface CardHeadOpts {
   status?: HTMLElement;
   /** 展开 / 折叠箭头(**仅可折叠卡片**:影片库 / 我的选片);不传 → 仍留同宽空列 */
   collapse?: { open: boolean; attr: string; value: string };
+  /** 拖拽把手(**仅「我的行程」的冲突组择一卡**)—— 占**第 1 列**(箭头列)。
+   *  传了它就把第 1 列从 12px 放宽到 18px(把手要够大才抓得住),并把箭头挤掉 ——
+   *  两个语义(折叠 / 拖动)不可能同时出现在同一张卡上。 */
+  handle?: HTMLElement;
   /** 下缘细分隔线 —— 把「这部片是什么」与「这场怎么排」切开 */
   divider?: boolean;
+  /** 海报路径(如 `/posters/36990574-m.jpg`)—— 有则**加一列 44px 缩略图**。
+   *  ⚠ 没有就**不留空列**(250 部里只有 174 部有图):留空列会让有图 / 无图的卡片
+   *    片名左缘差 52px,列表上下扫读时会明显参差。 */
+  poster?: string;
 }
 
-/** 卡片头 —— 三处唯一构造。`[箭头列][片名 + 副标题 + 状态行][右缘操作 / 图标组]`。 */
+/** 卡片头 —— 三处唯一构造。`[箭头列][海报?][片名 + 副标题 + 状态行][右缘操作 / 图标组]`。 */
 export function cardHead(o: CardHeadOpts): HTMLElement {
   const head = el(
     "div",
-    "grid grid-cols-[12px_minmax(0,1fr)_auto] items-start gap-x-[8px] gap-y-[6px] px-3 py-[10px]" +
+    "grid " +
+      (o.poster ? "grid-cols-[12px_44px_minmax(0,1fr)_auto]" : "grid-cols-[12px_minmax(0,1fr)_auto]") +
+      " items-start gap-x-[8px] gap-y-[6px] px-3 py-[10px]" +
       (o.divider ? " border-b border-line-faint" : "") +
       (o.collapse ? " cursor-pointer select-none hover:bg-hover" : "")
   );
   if (o.collapse) head.dataset[o.collapse.attr] = o.collapse.value;
+  // 第 1 列带拖拽把手时放宽到 18px —— 12px 的抓取区在触屏上几乎点不中。
+  // ⚠ 走**内联**而不是拼 Tailwind 类名:Tailwind v4 只生成源码里的完整字面量,
+  //   `grid-cols-[${n}px_...]` 拼不出来(与 grid.ts::ROW_BASE_CLS 同一条坑)。
+  if (o.handle) {
+    head.style.gridTemplateColumns = o.poster
+      ? "18px 44px minmax(0,1fr) auto"
+      : "18px minmax(0,1fr) auto";
+  }
 
-  // 第 1 列:箭头(定宽 12px)。行程卡没有箭头也占位 —— 三处片名左缘才对得齐。
+  // 第 1 列:拖拽把手(冲突组择一卡)/ 折叠箭头 / 空占位。
+  // 行程卡没有箭头也占位 —— 三处片名左缘才对得齐。
   head.appendChild(
-    el(
-      "span",
-      "text-muted text-10 leading-none pt-[5px] transition-transform duration-150 ease-in-out" +
-        (o.collapse?.open ? " rotate-90" : ""),
-      o.collapse ? "▶" : ""
-    )
+    o.handle ??
+      el(
+        "span",
+        "text-muted text-10 leading-none pt-[5px] transition-transform duration-150 ease-in-out" +
+          (o.collapse?.open ? " rotate-90" : ""),
+        o.collapse ? "▶" : ""
+      )
   );
+
+  // 第 2 列(可选):海报缩略图。`loading="lazy"` 不能省 —— 影片库一次渲染 250 行,
+  // 不懒加载会把 250 张图一起排队(海报走本地静态文件,但仍是 250 次解码)。
+  // 比例按豆瓣海报 540×762 ≈ 0.71 固定,`object-cover` 兜住个别比例不同的图,不撑破行高。
+  if (o.poster) {
+    const img = document.createElement("img");
+    img.src = o.poster;
+    img.alt = "";
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.className = "w-[44px] h-[62px] object-cover rounded-5 bg-raised border border-line-faint";
+    head.appendChild(img);
+  }
 
   const titles = el("div", "grid gap-[3px] min-w-0");
   const titleRow = el("div", "flex items-start gap-2 min-w-0");
@@ -170,13 +204,15 @@ export interface ScreeningRowOpts {
   headTitle?: string;
   /** 卡片头下方的影片元信息行(文案由 `util.ts::filmInfoText` 给) */
   headSub?: string;
+  /** 卡片头第 1 列的**拖拽把手**(仅「我的行程」的冲突组择一卡;见 `CardHeadOpts.handle`) */
+  headHandle?: HTMLElement;
   /** 省略日期(「我的选片」/「我的行程」按日期分节后,日期已由节头给出) */
   hideDate?: boolean;
   /** 覆盖时间文案(行程行按「有效结束」显示,跨午夜带次日标记) */
   timeText?: string;
   /** **只返回场次行时**的行容器类;缺省 = `SHOW_ROW_CLS`(影片库 / 我的选片) */
   rowCls?: string;
-  /** **返回整张卡片时**的卡片外壳类;缺省 = `CARD_SHELL_CLS`(冲突行传 `CARD_SHELL_CONF_CLS`) */
+  /** **返回整张卡片时**的卡片外壳类;缺省 = `CARD_SHELL_CLS` */
   cardCls?: string;
   /** 操作组 —— 有 `headTitle` 时贴**卡片头右缘**,否则贴**场次行第 1 行右缘** */
   acts?: HTMLElement;
@@ -250,7 +286,13 @@ export function screeningRow(o: ScreeningRowOpts): HTMLElement {
   const card = el("div", o.cardCls ?? CARD_SHELL_CLS);
   card.dataset.code = s.code;
   card.appendChild(
-    cardHead({ title: o.headTitle!, sub: o.headSub, trailing: o.acts, divider: true })
+    cardHead({
+      title: o.headTitle!,
+      sub: o.headSub,
+      trailing: o.acts,
+      handle: o.headHandle,
+      divider: true,
+    })
   );
   card.appendChild(line);
   return card;

@@ -22,7 +22,6 @@ function ctxOf(shows: Screening[], opts: Partial<GridCtx> = {}): GridCtx {
     pxPerMin: 3,
     row: { rowH: 92, fontScale: 1, insetY: 2, showBadges: true },
     slots: new Map(),
-    group: "A",
     mappingOf: () => undefined,
     conflictCodes: undefined,
     transitMin: 0,
@@ -37,30 +36,20 @@ beforeEach(() => {
   store.settings = { ...store.settings, gvTalkMin: 25, gvTalkOn: true };
 });
 
-describe("cardStateOf:选中 / 方案归属", () => {
-  it("未选入任一方案 → isIdle,无 in-plan / in-other", () => {
+describe("cardStateOf:选中态", () => {
+  it("未选 → isIdle,无 in-plan", () => {
     const s = show({ code: "001" });
     const st = cardStateOf(s, ctxOf([s]));
     expect(st.isIdle).toBe(true);
     expect(st.stateCls).not.toContain("in-plan");
-    expect(st.stateCls).not.toContain("in-other");
-    expect(st.otherGroup).toBeUndefined();
   });
 
-  it("选入当前方案 → in-plan(且不再 idle)", () => {
+  it("已选 → in-plan(且不再 idle)", () => {
     const s = show({ code: "001" });
-    const st = cardStateOf(s, ctxOf([s], { slots: new Map([["001", { key: "k", group: "A" as const }]]) }));
+    const st = cardStateOf(s, ctxOf([s], { slots: new Map([["001", { key: "k" }]]) }));
     expect(st.inCurrent).toBe(true);
     expect(st.isIdle).toBe(false);
     expect(st.stateCls).toContain("in-plan");
-  });
-
-  it("选入另一方案 → in-other + otherGroup 暴露对方方案名", () => {
-    const s = show({ code: "001" });
-    const st = cardStateOf(s, ctxOf([s], { slots: new Map([["001", { key: "k", group: "B" as const }]]) }));
-    expect(st.inOther).toBe(true);
-    expect(st.otherGroup).toBe("B");
-    expect(st.stateCls).toContain("in-other");
   });
 });
 
@@ -70,7 +59,7 @@ describe("cardStateOf:冲突优先于选中态", () => {
     const st = cardStateOf(
       s,
       ctxOf([s], {
-        slots: new Map([["001", { key: "k", group: "A" as const }]]),
+        slots: new Map([["001", { key: "k" }]]),
         conflictCodes: new Set(["001"]),
       })
     );
@@ -81,18 +70,12 @@ describe("cardStateOf:冲突优先于选中态", () => {
   });
 });
 
-describe("cardStateOf:时间筛选与档位", () => {
+describe("cardStateOf:时间筛选", () => {
   it("hourFilter 命中该时段 → 不淡化;不命中 → 淡化", () => {
     const s = show({ code: "001", start_time: "10:00", end_time: "11:40" });
     expect(cardStateOf(s, ctxOf([s], { hourFilter: 10 })).dim).toBe(false);
     expect(cardStateOf(s, ctxOf([s], { hourFilter: 20 })).dim).toBe(true);
     expect(cardStateOf(s, ctxOf([s], { hourFilter: null })).dim).toBe(false);
-  });
-
-  it("档位星标原样透出(wishOf 决定显示与否)", () => {
-    const s = show({ code: "001" });
-    expect(cardStateOf(s, ctxOf([s])).star).toBeUndefined();
-    expect(cardStateOf(s, ctxOf([s], { wishOf: () => "must" })).star).toBe("must");
   });
 });
 
@@ -106,7 +89,7 @@ describe("cardStateOf:GV 谈块", () => {
     const s = show({ code: "001", is_gv: true });
     const st = cardStateOf(
       s,
-      ctxOf([s], { slots: new Map([["001", { key: "k", group: "A" as const }]]) })
+      ctxOf([s], { slots: new Map([["001", { key: "k" }]]) })
     );
     expect(st.talk?.on).toBe(true);
     expect(st.talk?.label).toBe("✓ 映后 25′");

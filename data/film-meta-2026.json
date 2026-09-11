@@ -1,0 +1,2462 @@
+{
+  "83199": {
+    "c_idx": "436",
+    "country": "Philippines",
+    "duration_min": 85,
+    "premiere": "",
+    "title_en": "58th",
+    "title_kr": "58번째",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "83436": {
+    "c_idx": "436",
+    "country": "India/Canada/Estonia/France",
+    "duration_min": 12,
+    "premiere": "World Premiere",
+    "title_en": "Salt Electric",
+    "title_kr": "소금 전기",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "83554": {
+    "c_idx": "436",
+    "country": "Afghanistan",
+    "duration_min": 71,
+    "premiere": "World Premiere",
+    "title_en": "771 Days",
+    "title_kr": "771일 후",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "83938": {
+    "c_idx": "432",
+    "country": "Sri Lanka/Canada",
+    "duration_min": 117,
+    "premiere": "World Premiere",
+    "title_en": "Dhara",
+    "title_kr": "다라, 흘러감",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "84111": {
+    "c_idx": "431",
+    "country": "Japan",
+    "duration_min": 112,
+    "premiere": "World Premiere",
+    "title_en": "Hinotama: Ball of Fire",
+    "title_kr": "환상의 불빛",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "84442": {
+    "c_idx": "436",
+    "country": "Nepal",
+    "duration_min": 11,
+    "premiere": "International Premiere",
+    "title_en": "Beneath the Barren",
+    "title_kr": "메마른 땅 아래",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "84521": {
+    "c_idx": "442",
+    "country": "Japan",
+    "duration_min": 128,
+    "premiere": "World Premiere",
+    "title_en": "Between Two Lovers",
+    "title_kr": "비트윈 투 러버스",
+    "unit": "Competition",
+    "year": "2026"
+  },
+  "85132": {
+    "c_idx": "431",
+    "country": "Korea",
+    "duration_min": 95,
+    "premiere": "World Premiere",
+    "title_en": "BALER",
+    "title_kr": "베일러",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "85457": {
+    "c_idx": "436",
+    "country": "China",
+    "duration_min": 15,
+    "premiere": "International Premiere",
+    "title_en": "In Our Panic",
+    "title_kr": "혼란 속에서",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "86111": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 77,
+    "premiere": "World Premiere",
+    "title_en": "Recovery",
+    "title_kr": "리커버리",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "86121": {
+    "c_idx": "433",
+    "country": "Korea",
+    "duration_min": 99,
+    "premiere": "World Premiere",
+    "title_en": "Ugly Duckling Ms. Maeng",
+    "title_kr": "수능, 출제의 비밀",
+    "unit": "Korean Cinema Today",
+    "year": "2026"
+  },
+  "86259": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 11,
+    "premiere": "World Premiere",
+    "title_en": "Dear Sunshine",
+    "title_kr": "낮잠",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "86296": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 20,
+    "premiere": "World Premiere",
+    "title_en": "Tomato Pasta Recipe",
+    "title_kr": "토마토 파스타 레시피",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "86416": {
+    "c_idx": "436",
+    "country": "Japan/United States",
+    "duration_min": 113,
+    "premiere": "World Premiere",
+    "title_en": "Revolving Lanterns",
+    "title_kr": "나무는 태어난 곳에서 죽는다",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "86452": {
+    "c_idx": "436",
+    "country": "Japan",
+    "duration_min": 14,
+    "premiere": "World Premiere",
+    "title_en": "The Things That Vanish",
+    "title_kr": "사라지는 것들",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "86619": {
+    "c_idx": "436",
+    "country": "Singapore",
+    "duration_min": 21,
+    "premiere": "World Premiere",
+    "title_en": "She Said",
+    "title_kr": "그녀가 말했다",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "87001": {
+    "c_idx": "436",
+    "country": "Iran",
+    "duration_min": 14,
+    "premiere": "World Premiere",
+    "title_en": "Fatima",
+    "title_kr": "파티마",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "87113": {
+    "c_idx": "436",
+    "country": "Taiwan",
+    "duration_min": 18,
+    "premiere": "World Premiere",
+    "title_en": "Downwind",
+    "title_kr": "바람을 타고",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "87638": {
+    "c_idx": "436",
+    "country": "Nepal",
+    "duration_min": 20,
+    "premiere": "World Premiere",
+    "title_en": "Chumpa: A Doll Under the Basket",
+    "title_kr": "춤파 인형",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "87783": {
+    "c_idx": "431",
+    "country": "Mongolia/Germany",
+    "duration_min": 109,
+    "premiere": "World Premiere",
+    "title_en": "Zogsool",
+    "title_kr": "멈춰서다",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "87852": {
+    "c_idx": "436",
+    "country": "Indonesia",
+    "duration_min": 16,
+    "premiere": "International Premiere",
+    "title_en": "αLPα",
+    "title_kr": "알파",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "87906": {
+    "c_idx": "437",
+    "country": "Singapore/Spain/Italy",
+    "duration_min": 114,
+    "premiere": "",
+    "title_en": "The Violinist",
+    "title_kr": "바이올리니스트",
+    "unit": "Open Cinema",
+    "year": "2026"
+  },
+  "88164": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 29,
+    "premiere": "World Premiere",
+    "title_en": "The Distant Home",
+    "title_kr": "멀리 있는 집",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "88759": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 23,
+    "premiere": "World Premiere",
+    "title_en": "The Variety",
+    "title_kr": "변종",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "88809": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 28,
+    "premiere": "World Premiere",
+    "title_en": "The Boy Who Fell to Earth",
+    "title_kr": "지구에 떨어진 남자",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "88893": {
+    "c_idx": "436",
+    "country": "Taiwan",
+    "duration_min": 15,
+    "premiere": "World Premiere",
+    "title_en": "Wild No More",
+    "title_kr": "잔치는 끝났다",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "88907": {
+    "c_idx": "436",
+    "country": "Iran/France/Spain",
+    "duration_min": 79,
+    "premiere": "World Premiere",
+    "title_en": "Dreams of the Wild Oaks",
+    "title_kr": "야생 참나무의 꿈",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "89025": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 19,
+    "premiere": "World Premiere",
+    "title_en": "Tale of Tails",
+    "title_kr": "지민지민지",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "89057": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 24,
+    "premiere": "World Premiere",
+    "title_en": "Baby Doe",
+    "title_kr": "신원미상",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "89213": {
+    "c_idx": "441",
+    "country": "United States",
+    "duration_min": 17,
+    "premiere": "",
+    "title_en": "Flesh Impact",
+    "title_kr": "플레시 임팩트",
+    "unit": "Special Screenings",
+    "year": "2026"
+  },
+  "89248": {
+    "c_idx": "436",
+    "country": "France",
+    "duration_min": 14,
+    "premiere": "World Premiere",
+    "title_en": "An Uninvited Neighbor",
+    "title_kr": "초대받지 않은 이웃",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "89274": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 15,
+    "premiere": "World Premiere",
+    "title_en": "Amateur Energy",
+    "title_kr": "아마추어 에너지",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "89329": {
+    "c_idx": "432",
+    "country": "Japan",
+    "duration_min": 109,
+    "premiere": "",
+    "title_en": "In My Father′s Room",
+    "title_kr": "아버지의 방",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "89439": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 11,
+    "premiere": "World Premiere",
+    "title_en": "Afternoon on the Bridge",
+    "title_kr": "교량의오후",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "89453": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 13,
+    "premiere": "World Premiere",
+    "title_en": "TOE′S",
+    "title_kr": "여*기의 발가락",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "89479": {
+    "c_idx": "438",
+    "country": "Taiwan",
+    "duration_min": 88,
+    "premiere": "",
+    "title_en": "Welcome to Dolly′s House",
+    "title_kr": "웰컴 투 돌리 하우스",
+    "unit": "Midnight Passion",
+    "year": "2026"
+  },
+  "89688": {
+    "c_idx": "431",
+    "country": "Kazakhstan",
+    "duration_min": 120,
+    "premiere": "World Premiere",
+    "title_en": "The Cord",
+    "title_kr": "탯줄",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "89725": {
+    "c_idx": "442",
+    "country": "Japan",
+    "duration_min": 138,
+    "premiere": "International Premiere",
+    "title_en": "Satoko Always",
+    "title_kr": "사토코는 언제나",
+    "unit": "Competition",
+    "year": "2026"
+  },
+  "89759": {
+    "c_idx": "431",
+    "country": "Hong Kong, China",
+    "duration_min": 88,
+    "premiere": "World Premiere",
+    "title_en": "Dead End",
+    "title_kr": "데드 엔드",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "89762": {
+    "c_idx": "431",
+    "country": "Korea",
+    "duration_min": 117,
+    "premiere": "World Premiere",
+    "title_en": "Things I Left at the Theater",
+    "title_kr": "극장에 두고 온 것들",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "89768": {
+    "c_idx": "432",
+    "country": "Germany/France/Norway/Denmark/Afghanistan",
+    "duration_min": 104,
+    "premiere": "",
+    "title_en": "No Good Men",
+    "title_kr": "좋은 남자는 없다",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "89769": {
+    "c_idx": "434",
+    "country": "Turkiye/France/Netherlands/Greece/Sweden/Saudi Arabia",
+    "duration_min": 120,
+    "premiere": "",
+    "title_en": "Salvation",
+    "title_kr": "구원은 없다",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "89770": {
+    "c_idx": "438",
+    "country": "Japan",
+    "duration_min": 83,
+    "premiere": "World Premiere",
+    "title_en": "The Chain of Roses",
+    "title_kr": "장미의 사슬",
+    "unit": "Midnight Passion",
+    "year": "2026"
+  },
+  "89773": {
+    "c_idx": "435",
+    "country": "Mexico/France/Spain",
+    "duration_min": 90,
+    "premiere": "",
+    "title_en": "Sad Girlz",
+    "title_kr": "새드 걸즈",
+    "unit": "Flash Forward",
+    "year": "2026"
+  },
+  "89787": {
+    "c_idx": "442",
+    "country": "Iran",
+    "duration_min": 133,
+    "premiere": "World Premiere",
+    "title_en": "Midday Meal",
+    "title_kr": "빵과 책",
+    "unit": "Competition",
+    "year": "2026"
+  },
+  "89788": {
+    "c_idx": "432",
+    "country": "France/Cambodia/Serbia/Germany",
+    "duration_min": 78,
+    "premiere": "",
+    "title_en": "Promised Spaces",
+    "title_kr": "약속된 공간",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "89789": {
+    "c_idx": "436",
+    "country": "United Kingdom/Syria/Lebanon",
+    "duration_min": 85,
+    "premiere": "",
+    "title_en": "Birds of War",
+    "title_kr": "전쟁의 새들",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "89791": {
+    "c_idx": "430",
+    "country": "United States",
+    "duration_min": 114,
+    "premiere": "",
+    "title_en": "Paper Tiger",
+    "title_kr": "페이퍼 타이거",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "89792": {
+    "c_idx": "434",
+    "country": "United Kingdom",
+    "duration_min": 121,
+    "premiere": "",
+    "title_en": "Queen at Sea",
+    "title_kr": "엄마의 바다",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "89793": {
+    "c_idx": "430",
+    "country": "Germany/France",
+    "duration_min": 92,
+    "premiere": "",
+    "title_en": "My Wife Cries",
+    "title_kr": "어느 날, 아내가 울었다",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "89795": {
+    "c_idx": "442",
+    "country": "Taiwan",
+    "duration_min": 112,
+    "premiere": "World Premiere",
+    "title_en": "To Be Ordinary",
+    "title_kr": "평범하기 위하여",
+    "unit": "Competition",
+    "year": "2026"
+  },
+  "89822": {
+    "c_idx": "432",
+    "country": "Taiwan/Singapore",
+    "duration_min": 101,
+    "premiere": "",
+    "title_en": "Will You Still Be My Friend",
+    "title_kr": "내 친구로 남아줄래?",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "89839": {
+    "c_idx": "430",
+    "country": "Germany/France/Turkiye",
+    "duration_min": 127,
+    "premiere": "",
+    "title_en": "Yellow Letters",
+    "title_kr": "옐로우 레터스",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "89840": {
+    "c_idx": "432",
+    "country": "Singapore/United Kingdom/Philippines/France/Netherlands",
+    "duration_min": 100,
+    "premiere": "",
+    "title_en": "Filipiñana",
+    "title_kr": "필리피냐나",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "89841": {
+    "c_idx": "432",
+    "country": "India/Singapore",
+    "duration_min": 98,
+    "premiere": "",
+    "title_en": "Not a Hero",
+    "title_kr": "영웅은 아니지만",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "89875": {
+    "c_idx": "442",
+    "country": "Japan",
+    "duration_min": 97,
+    "premiere": "World Premiere",
+    "title_en": "silver express",
+    "title_kr": "실버 익스프레스",
+    "unit": "Competition",
+    "year": "2026"
+  },
+  "89879": {
+    "c_idx": "434",
+    "country": "Chile/Brazil",
+    "duration_min": 113,
+    "premiere": "",
+    "title_en": "La Perra",
+    "title_kr": "라 페라",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "89988": {
+    "c_idx": "435",
+    "country": "France/Belgium",
+    "duration_min": 158,
+    "premiere": "",
+    "title_en": "A Man of His Time",
+    "title_kr": "노트르 살뤼",
+    "unit": "Flash Forward",
+    "year": "2026"
+  },
+  "89989": {
+    "c_idx": "434",
+    "country": "Germany/Austria",
+    "duration_min": 124,
+    "premiere": "",
+    "title_en": "Everytime",
+    "title_kr": "에브리타임",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "89990": {
+    "c_idx": "430",
+    "country": "Portugal/France/Italy/Spain/Qatar",
+    "duration_min": 90,
+    "premiere": "",
+    "title_en": "Red Rocks",
+    "title_kr": "붉은 바위에 아이들이 있다",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "89993": {
+    "c_idx": "430",
+    "country": "France",
+    "duration_min": 115,
+    "premiere": "",
+    "title_en": "Orange-Flavoured Wedding",
+    "title_kr": "오렌지 맛 웨딩",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "90003": {
+    "c_idx": "442",
+    "country": "Uzbekistan",
+    "duration_min": 87,
+    "premiere": "World Premiere",
+    "title_en": "Hilol",
+    "title_kr": "힐롤",
+    "unit": "Competition",
+    "year": "2026"
+  },
+  "90026": {
+    "c_idx": "434",
+    "country": "Rwanda/Gabon/France/Norway/Ivory Coast",
+    "duration_min": 101,
+    "premiere": "",
+    "title_en": "Ben′imana",
+    "title_kr": "베니마나",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "90034": {
+    "c_idx": "440",
+    "country": "Korea",
+    "duration_min": 119,
+    "premiere": "",
+    "title_en": "A Fine, Windy Day",
+    "title_kr": "바람불어 좋은날",
+    "unit": "Special Program in Focus",
+    "year": "1980"
+  },
+  "90036": {
+    "c_idx": "440",
+    "country": "Korea",
+    "duration_min": 112,
+    "premiere": "",
+    "title_en": "Whale Hunting",
+    "title_kr": "고래사냥",
+    "unit": "Special Program in Focus",
+    "year": "1984"
+  },
+  "90037": {
+    "c_idx": "440",
+    "country": "Korea",
+    "duration_min": 108,
+    "premiere": "",
+    "title_en": "Chil-su and Man-su",
+    "title_kr": "칠수와 만수",
+    "unit": "Special Program in Focus",
+    "year": "1988"
+  },
+  "90038": {
+    "c_idx": "440",
+    "country": "Korea",
+    "duration_min": 125,
+    "premiere": "",
+    "title_en": "Gagman",
+    "title_kr": "개그맨",
+    "unit": "Special Program in Focus",
+    "year": "1988"
+  },
+  "90039": {
+    "c_idx": "440",
+    "country": "Korea",
+    "duration_min": 124,
+    "premiere": "",
+    "title_en": "White Badge",
+    "title_kr": "하얀전쟁",
+    "unit": "Special Program in Focus",
+    "year": "1992"
+  },
+  "90060": {
+    "c_idx": "431",
+    "country": "Iran",
+    "duration_min": 106,
+    "premiere": "International Premiere",
+    "title_en": "Slumber",
+    "title_kr": "미몽",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "90091": {
+    "c_idx": "432",
+    "country": "Thailand/Singapore/France/Norway/China/Hong Kong, China/Indonesia/Qatar",
+    "duration_min": 141,
+    "premiere": "",
+    "title_en": "9 Temples to Heaven",
+    "title_kr": "천국으로 가는 아홉 사원",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "90095": {
+    "c_idx": "435",
+    "country": "Chile/United States/Spain/Mexico",
+    "duration_min": 110,
+    "premiere": "",
+    "title_en": "The Meltdown",
+    "title_kr": "멜트다운",
+    "unit": "Flash Forward",
+    "year": "2026"
+  },
+  "90096": {
+    "c_idx": "432",
+    "country": "Nepal/Germany/Brazil/France/Norway",
+    "duration_min": 108,
+    "premiere": "",
+    "title_en": "Elephants in the Fog",
+    "title_kr": "안개 속의 코끼리",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "90097": {
+    "c_idx": "432",
+    "country": "Singapore/Vietnam/Norway/France/Indonesia/Saudi Arabia/Cambodia/Thailand/Taiwan",
+    "duration_min": 120,
+    "premiere": "",
+    "title_en": "Hearing",
+    "title_kr": "조용히 귀 기울이면",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "90119": {
+    "c_idx": "430",
+    "country": "Spain",
+    "duration_min": 112,
+    "premiere": "",
+    "title_en": "Bitter Christmas",
+    "title_kr": "비터 크리스마스",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "90120": {
+    "c_idx": "430",
+    "country": "France",
+    "duration_min": 139,
+    "premiere": "",
+    "title_en": "The Unknown",
+    "title_kr": "언노운",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "90137": {
+    "c_idx": "436",
+    "country": "China/France",
+    "duration_min": 117,
+    "premiere": "World Premiere",
+    "title_en": "AGAAR",
+    "title_kr": "초원의 아가르",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "90158": {
+    "c_idx": "431",
+    "country": "Korea",
+    "duration_min": 140,
+    "premiere": "World Premiere",
+    "title_en": "Space",
+    "title_kr": "스페이스",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "90187": {
+    "c_idx": "431",
+    "country": "Japan",
+    "duration_min": 93,
+    "premiere": "World Premiere",
+    "title_en": "After the Song",
+    "title_kr": "노래가 끝난 후",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "90240": {
+    "c_idx": "434",
+    "country": "France",
+    "duration_min": 95,
+    "premiere": "",
+    "title_en": "Too Many Beasts",
+    "title_kr": "짐승이 너무 많아",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "90241": {
+    "c_idx": "434",
+    "country": "Austria/Germany/France",
+    "duration_min": 115,
+    "premiere": "",
+    "title_en": "Gentle Monster",
+    "title_kr": "젠틀 몬스터",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "90242": {
+    "c_idx": "435",
+    "country": "United States",
+    "duration_min": 120,
+    "premiere": "",
+    "title_en": "Bedford Park",
+    "title_kr": "베드포드 파크",
+    "unit": "Flash Forward",
+    "year": "2026"
+  },
+  "90245": {
+    "c_idx": "430",
+    "country": "France/Italy/Belgium/Saudi Arabia/United States",
+    "duration_min": 140,
+    "premiere": "",
+    "title_en": "Parallel Tales",
+    "title_kr": "패러렐 테일즈: 데칼로그",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "90249": {
+    "c_idx": "435",
+    "country": "Spain/France",
+    "duration_min": 155,
+    "premiere": "",
+    "title_en": "La Bola Negra",
+    "title_kr": "블랙 볼",
+    "unit": "Flash Forward",
+    "year": "2026"
+  },
+  "90250": {
+    "c_idx": "430",
+    "country": "France",
+    "duration_min": 133,
+    "premiere": "",
+    "title_en": "Moulin",
+    "title_kr": "장 물랭",
+    "unit": "Icons",
+    "year": "2025"
+  },
+  "90251": {
+    "c_idx": "430",
+    "country": "Poland/Germany/Italy/France",
+    "duration_min": 82,
+    "premiere": "",
+    "title_en": "Fatherland",
+    "title_kr": "파더랜드",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "90300": {
+    "c_idx": "430",
+    "country": "Romania/France/Norway/Denmark/Finland/Sweden",
+    "duration_min": 146,
+    "premiere": "",
+    "title_en": "Fjord",
+    "title_kr": "피오르",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "90305": {
+    "c_idx": "430",
+    "country": "Belgium/France/Netherlands",
+    "duration_min": 127,
+    "premiere": "",
+    "title_en": "Coward",
+    "title_kr": "겁쟁이",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "90308": {
+    "c_idx": "431",
+    "country": "Korea",
+    "duration_min": 98,
+    "premiere": "World Premiere",
+    "title_en": "Nothing Has Happened Yet",
+    "title_kr": "아직 아무 일도 일어나지 않은",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "90312": {
+    "c_idx": "430",
+    "country": "France/Latvia/Germany",
+    "duration_min": 141,
+    "premiere": "",
+    "title_en": "Minotaur",
+    "title_kr": "미노타우로스",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "90313": {
+    "c_idx": "433",
+    "country": "Korea",
+    "duration_min": 102,
+    "premiere": "World Premiere",
+    "title_en": "The Sorry Generation",
+    "title_kr": "세대유감",
+    "unit": "Korean Cinema Today",
+    "year": "2026"
+  },
+  "90315": {
+    "c_idx": "434",
+    "country": "France",
+    "duration_min": 145,
+    "premiere": "",
+    "title_en": "La Gradiva",
+    "title_kr": "라 그라디바",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "90357": {
+    "c_idx": "433",
+    "country": "Korea",
+    "duration_min": 101,
+    "premiere": "World Premiere",
+    "title_en": "Sapiens",
+    "title_kr": "사피엔스",
+    "unit": "Korean Cinema Today",
+    "year": "2026"
+  },
+  "90388": {
+    "c_idx": "432",
+    "country": "Japan",
+    "duration_min": 135,
+    "premiere": "International Premiere",
+    "title_en": "You, Like a Star",
+    "title_kr": "그대, 별처럼",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "90424": {
+    "c_idx": "436",
+    "country": "Vietnam/Korea",
+    "duration_min": 103,
+    "premiere": "",
+    "title_en": "Baby Jackfruit Baby Guava",
+    "title_kr": "베이비 잭프루츠 베이비 구아바",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "90501": {
+    "c_idx": "431",
+    "country": "India",
+    "duration_min": 141,
+    "premiere": "World Premiere",
+    "title_en": "Birds in the Dark",
+    "title_kr": "어둠 속의 새들",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "90515": {
+    "c_idx": "431",
+    "country": "Vietnam",
+    "duration_min": 88,
+    "premiere": "World Premiere",
+    "title_en": "1982",
+    "title_kr": "1982",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "90557": {
+    "c_idx": "430",
+    "country": "United States/United Kingdom/Chile",
+    "duration_min": 116,
+    "premiere": "",
+    "title_en": "Wild Horse Nine",
+    "title_kr": "와일드 호스 나인",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "90558": {
+    "c_idx": "436",
+    "country": "France/Germany/Switzerland",
+    "duration_min": 105,
+    "premiere": "",
+    "title_en": "Gabin",
+    "title_kr": "시골 소년 가벵과 함께한 10년",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "90564": {
+    "c_idx": "430",
+    "country": "Spain/France",
+    "duration_min": 135,
+    "premiere": "",
+    "title_en": "The Beloved",
+    "title_kr": "에밀리아, 사랑을 기억하다",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "90577": {
+    "c_idx": "432",
+    "country": "India",
+    "duration_min": 86,
+    "premiere": "World Premiere",
+    "title_en": "Birds on Ice",
+    "title_kr": "빙판 위의 새들",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "90592": {
+    "c_idx": "434",
+    "country": "United Kingdom/United States",
+    "duration_min": 131,
+    "premiere": "",
+    "title_en": "Sense and Sensibility",
+    "title_kr": "이성과 감성",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "90598": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 74,
+    "premiere": "World Premiere",
+    "title_en": "Soundweave",
+    "title_kr": "소리그물",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "90715": {
+    "c_idx": "430",
+    "country": "Japan",
+    "duration_min": 110,
+    "premiere": "",
+    "title_en": "Nagi Notes",
+    "title_kr": "나기 노트",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "90720": {
+    "c_idx": "432",
+    "country": "Japan",
+    "duration_min": 127,
+    "premiere": "World Premiere",
+    "title_en": "The Gate of Murder",
+    "title_kr": "살인의 문",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "90746": {
+    "c_idx": "436",
+    "country": "Korea/Italy",
+    "duration_min": 90,
+    "premiere": "World Premiere",
+    "title_en": "ACROSS: Anatomy of the Forgotten War",
+    "title_kr": "어크로스: 전쟁은 어떻게 잊혀지는가",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "90752": {
+    "c_idx": "430",
+    "country": "United States/Hong Kong, China",
+    "duration_min": 100,
+    "premiere": "International Premiere",
+    "title_en": "zi",
+    "title_kr": "zi",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "90758": {
+    "c_idx": "433",
+    "country": "Korea/Japan",
+    "duration_min": 106,
+    "premiere": "World Premiere",
+    "title_en": "Final Interview",
+    "title_kr": "최종면접",
+    "unit": "Korean Cinema Today",
+    "year": "2026"
+  },
+  "90770": {
+    "c_idx": "432",
+    "country": "India",
+    "duration_min": 81,
+    "premiere": "World Premiere",
+    "title_en": "Khoriya",
+    "title_kr": "코리야",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "90780": {
+    "c_idx": "433",
+    "country": "Korea",
+    "duration_min": 110,
+    "premiere": "World Premiere",
+    "title_en": "SINNER",
+    "title_kr": "자필",
+    "unit": "Korean Cinema Today",
+    "year": "2026"
+  },
+  "90781": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 112,
+    "premiere": "World Premiere",
+    "title_en": "The Best Days",
+    "title_kr": "청춘길일",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "90791": {
+    "c_idx": "431",
+    "country": "Korea",
+    "duration_min": 106,
+    "premiere": "World Premiere",
+    "title_en": "Cosmic Trace",
+    "title_kr": "우주의 흔적",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "90841": {
+    "c_idx": "442",
+    "country": "Japan/France",
+    "duration_min": 82,
+    "premiere": "World Premiere",
+    "title_en": "The Day After Sunday",
+    "title_kr": "일요일 다음날",
+    "unit": "Competition",
+    "year": "2026"
+  },
+  "90867": {
+    "c_idx": "432",
+    "country": "United States/Hong Kong, China/Thailand",
+    "duration_min": 83,
+    "premiere": "",
+    "title_en": "Gu Shi",
+    "title_kr": "이야기, 이야기",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "90923": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 89,
+    "premiere": "World Premiere",
+    "title_en": "Our Wish, Our Colors",
+    "title_kr": "바람의 빛깔",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "90984": {
+    "c_idx": "442",
+    "country": "Indonesia/Japan",
+    "duration_min": 96,
+    "premiere": "World Premiere",
+    "title_en": "IBUKU",
+    "title_kr": "마이 마더",
+    "unit": "Competition",
+    "year": "2026"
+  },
+  "91010": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 100,
+    "premiere": "World Premiere",
+    "title_en": "Kim Yun Shin Punches In",
+    "title_kr": "김윤신은 미술관에 없다",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "91015": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 111,
+    "premiere": "World Premiere",
+    "title_en": "Can I Talk to You?",
+    "title_kr": "지금 얘기해도 돼요?",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "91019": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 100,
+    "premiere": "World Premiere",
+    "title_en": "Annyeong, Stellar",
+    "title_kr": "안녕, 스텔라",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "91028": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 100,
+    "premiere": "World Premiere",
+    "title_en": "A Woman Dancing on the Waves",
+    "title_kr": "파도 위에서 춤추는 여자",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "91030": {
+    "c_idx": "431",
+    "country": "Korea",
+    "duration_min": 96,
+    "premiere": "World Premiere",
+    "title_en": "Beyond Love′s Horizon",
+    "title_kr": "사랑의 지평선 너머로",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "91045": {
+    "c_idx": "442",
+    "country": "Korea",
+    "duration_min": 99,
+    "premiere": "",
+    "title_en": "Long Long Night",
+    "title_kr": "긴긴밤",
+    "unit": "Competition",
+    "year": "2026"
+  },
+  "91054": {
+    "c_idx": "434",
+    "country": "France/Belgium",
+    "duration_min": 93,
+    "premiere": "",
+    "title_en": "Goodbye Cruel World",
+    "title_kr": "굿바이, 이놈의 잔인한 세상",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91057": {
+    "c_idx": "434",
+    "country": "France/Belgium",
+    "duration_min": 90,
+    "premiere": "",
+    "title_en": "Iron Boy",
+    "title_kr": "아이언 보이",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91069": {
+    "c_idx": "434",
+    "country": "France",
+    "duration_min": 90,
+    "premiere": "",
+    "title_en": "Viva Carmen",
+    "title_kr": "비바 카르멘",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91073": {
+    "c_idx": "431",
+    "country": "Korea",
+    "duration_min": 139,
+    "premiere": "World Premiere",
+    "title_en": "The Birds",
+    "title_kr": "새",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "91089": {
+    "c_idx": "435",
+    "country": "United Kingdom",
+    "duration_min": 107,
+    "premiere": "",
+    "title_en": "Black Church Bay",
+    "title_kr": "블랙 처치 베이",
+    "unit": "Flash Forward",
+    "year": "2026"
+  },
+  "91095": {
+    "c_idx": "430",
+    "country": "Italy",
+    "duration_min": 123,
+    "premiere": "",
+    "title_en": "The Echo Chamber",
+    "title_kr": "에코 체임버",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "91096": {
+    "c_idx": "431",
+    "country": "India/Saudi Arabia",
+    "duration_min": 97,
+    "premiere": "World Premiere",
+    "title_en": "Selvi",
+    "title_kr": "셀비",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "91097": {
+    "c_idx": "430",
+    "country": "France/Japan/Germany/Belgium",
+    "duration_min": 196,
+    "premiere": "",
+    "title_en": "All of a Sudden",
+    "title_kr": "갑자기 병세가 악화되다",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "91098": {
+    "c_idx": "440",
+    "country": "Japan/France",
+    "duration_min": 75,
+    "premiere": "",
+    "title_en": "A New Dawn",
+    "title_kr": "파리스 그린이 밝는 날에",
+    "unit": "Special Program in Focus",
+    "year": "2026"
+  },
+  "91099": {
+    "c_idx": "440",
+    "country": "Japan",
+    "duration_min": 36,
+    "premiere": "International Premiere",
+    "title_en": "Shiranui",
+    "title_kr": "시라누이",
+    "unit": "Special Program in Focus",
+    "year": "2026"
+  },
+  "91100": {
+    "c_idx": "437",
+    "country": "Italy/France/Belgium",
+    "duration_min": 115,
+    "premiere": "",
+    "title_en": "The Spiral",
+    "title_kr": "스파이럴",
+    "unit": "Open Cinema",
+    "year": "2026"
+  },
+  "91101": {
+    "c_idx": "434",
+    "country": "Denmark",
+    "duration_min": 99,
+    "premiere": "",
+    "title_en": "The Guest",
+    "title_kr": "초대받지 않은 손님",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91102": {
+    "c_idx": "432",
+    "country": "Iran/Germany",
+    "duration_min": 80,
+    "premiere": "",
+    "title_en": "Head to Head",
+    "title_kr": "눈에는 눈",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "91103": {
+    "c_idx": "434",
+    "country": "Ireland/United Kingdom",
+    "duration_min": 102,
+    "premiere": "",
+    "title_en": "Everybody Digs Bill Evans",
+    "title_kr": "내가 사랑한 빌 에반스",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91104": {
+    "c_idx": "434",
+    "country": "United States",
+    "duration_min": 122,
+    "premiere": "",
+    "title_en": "Club Kid",
+    "title_kr": "클럽 키드",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91105": {
+    "c_idx": "434",
+    "country": "France/Belgium",
+    "duration_min": 91,
+    "premiere": "",
+    "title_en": "In Waves",
+    "title_kr": "우리, 파도처럼",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91106": {
+    "c_idx": "432",
+    "country": "Hong Kong, China/United States",
+    "duration_min": 109,
+    "premiere": "",
+    "title_en": "Big Little Things",
+    "title_kr": "나의 사소하고도 큰 일들",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "91107": {
+    "c_idx": "439",
+    "country": "Korea",
+    "duration_min": 151,
+    "premiere": "World Premiere",
+    "title_en": "The Remarried Empress",
+    "title_kr": "재혼 황후",
+    "unit": "On Screen",
+    "year": "2026"
+  },
+  "91108": {
+    "c_idx": "436",
+    "country": "Korea/Denmark/Finland",
+    "duration_min": 83,
+    "premiere": "",
+    "title_en": "Homesick",
+    "title_kr": "홈시크: 바다의 끝에서",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "91109": {
+    "c_idx": "439",
+    "country": "Korea",
+    "duration_min": 138,
+    "premiere": "World Premiere",
+    "title_en": "The Blue Road",
+    "title_kr": "푸른길",
+    "unit": "On Screen",
+    "year": "2026"
+  },
+  "91110": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 21,
+    "premiere": "World Premiere",
+    "title_en": "﻿All of Her",
+    "title_kr": "개",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "91111": {
+    "c_idx": "431",
+    "country": "Korea",
+    "duration_min": 85,
+    "premiere": "World Premiere",
+    "title_en": "Some Detective",
+    "title_kr": "모종의 탐정",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "91112": {
+    "c_idx": "431",
+    "country": "Korea",
+    "duration_min": 122,
+    "premiere": "World Premiere",
+    "title_en": "Not for You",
+    "title_kr": "당신을 위한 것은 아닌",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "91113": {
+    "c_idx": "441",
+    "country": "Korea",
+    "duration_min": 109,
+    "premiere": "World Premiere",
+    "title_en": "M (4K Remastering)",
+    "title_kr": "M (4K 리마스터링)",
+    "unit": "Special Screenings",
+    "year": "2026"
+  },
+  "91114": {
+    "c_idx": "439",
+    "country": "Korea",
+    "duration_min": 142,
+    "premiere": "World Premiere",
+    "title_en": "Dead-End Job",
+    "title_kr": "꿀알바",
+    "unit": "On Screen",
+    "year": "2026"
+  },
+  "91115": {
+    "c_idx": "430",
+    "country": "Korea",
+    "duration_min": 164,
+    "premiere": "",
+    "title_en": "Possible Love",
+    "title_kr": "가능한 사랑",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "91119": {
+    "c_idx": "430",
+    "country": "France/Romania",
+    "duration_min": 94,
+    "premiere": "",
+    "title_en": "The Diary of a Chambermaid",
+    "title_kr": "라두 주데의 어느 하녀의 일기",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "91120": {
+    "c_idx": "433",
+    "country": "Korea",
+    "duration_min": 110,
+    "premiere": "World Premiere",
+    "title_en": "Cattle Run",
+    "title_kr": "정가네",
+    "unit": "Korean Cinema Today",
+    "year": "2026"
+  },
+  "91123": {
+    "c_idx": "429",
+    "country": "Japan",
+    "duration_min": 100,
+    "premiere": "",
+    "title_en": "Look Back",
+    "title_kr": "룩백",
+    "unit": "Gala Presentation",
+    "year": "2025"
+  },
+  "91124": {
+    "c_idx": "431",
+    "country": "China",
+    "duration_min": 90,
+    "premiere": "World Premiere",
+    "title_en": "There Will Be Snow",
+    "title_kr": "다시 눈이 올 거야",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "91125": {
+    "c_idx": "440",
+    "country": "China",
+    "duration_min": 107,
+    "premiere": "",
+    "title_en": "It′s My Time",
+    "title_kr": "우리 할머니는 큐브왕",
+    "unit": "Special Program in Focus",
+    "year": "2026"
+  },
+  "91126": {
+    "c_idx": "432",
+    "country": "China/France",
+    "duration_min": 128,
+    "premiere": "",
+    "title_en": "A Girl Unknown",
+    "title_kr": "무명소녀",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "91127": {
+    "c_idx": "437",
+    "country": "Japan",
+    "duration_min": 120,
+    "premiere": "World Premiere",
+    "title_en": "In the Clear Moonlit Dusk",
+    "title_kr": "아름다운 초저녁달",
+    "unit": "Open Cinema",
+    "year": "2026"
+  },
+  "91128": {
+    "c_idx": "432",
+    "country": "Australia/India/France/Bangladesh",
+    "duration_min": 95,
+    "premiere": "World Premiere",
+    "title_en": "The Soul Whisperer",
+    "title_kr": "소울 위스퍼러",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "91130": {
+    "c_idx": "434",
+    "country": "France",
+    "duration_min": 104,
+    "premiere": "",
+    "title_en": "A Place to Heal",
+    "title_kr": "15/18",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91131": {
+    "c_idx": "434",
+    "country": "France",
+    "duration_min": 102,
+    "premiere": "",
+    "title_en": "A Good Little Soldier",
+    "title_kr": "모범 직원 카를라",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91132": {
+    "c_idx": "434",
+    "country": "Nigeria",
+    "duration_min": 134,
+    "premiere": "",
+    "title_en": "Clarissa",
+    "title_kr": "그날 밤, 클라리사에게",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91133": {
+    "c_idx": "434",
+    "country": "France/Belgium",
+    "duration_min": 86,
+    "premiere": "",
+    "title_en": "Jim Queen",
+    "title_kr": "짐 퀸",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91134": {
+    "c_idx": "429",
+    "country": "Korea/France/Luxembourg/Japan",
+    "duration_min": 138,
+    "premiere": "",
+    "title_en": "Dora",
+    "title_kr": "도라",
+    "unit": "Gala Presentation",
+    "year": "2026"
+  },
+  "91135": {
+    "c_idx": "430",
+    "country": "Korea",
+    "duration_min": 72,
+    "premiere": "",
+    "title_en": "Nowhere to Lay My Eyes",
+    "title_kr": "눈 둘 데가 없네",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "91136": {
+    "c_idx": "442",
+    "country": "Korea",
+    "duration_min": 93,
+    "premiere": "World Premiere",
+    "title_en": "Shaving",
+    "title_kr": "면도",
+    "unit": "Competition",
+    "year": "2026"
+  },
+  "91137": {
+    "c_idx": "428",
+    "country": "Korea",
+    "duration_min": 80,
+    "premiere": "World Premiere",
+    "title_en": "The Table: Day and Night",
+    "title_kr": "낮과 밤은 서로에게",
+    "unit": "Opening/Closing",
+    "year": "2026"
+  },
+  "91138": {
+    "c_idx": "435",
+    "country": "Greece/Romania/Japan/Spain/France",
+    "duration_min": 132,
+    "premiere": "",
+    "title_en": "Titanic Ocean",
+    "title_kr": "타이타닉 오션",
+    "unit": "Flash Forward",
+    "year": "2026"
+  },
+  "91139": {
+    "c_idx": "430",
+    "country": "United States",
+    "duration_min": 97,
+    "premiere": "",
+    "title_en": "The Man I Love",
+    "title_kr": "내가 사랑하는 남자",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "91142": {
+    "c_idx": "434",
+    "country": "Mexico",
+    "duration_min": 108,
+    "premiere": "",
+    "title_en": "Campeón Gabacho",
+    "title_kr": "가바초 챔피언",
+    "unit": "World Cinema",
+    "year": "2025"
+  },
+  "91143": {
+    "c_idx": "440",
+    "country": "Japan/France",
+    "duration_min": 117,
+    "premiere": "",
+    "title_en": "We Are Aliens",
+    "title_kr": "우리는 외계인",
+    "unit": "Special Program in Focus",
+    "year": "2026"
+  },
+  "91144": {
+    "c_idx": "430",
+    "country": "Italy/Brazil",
+    "duration_min": 105,
+    "premiere": "",
+    "title_en": "Back to Buenos Aires",
+    "title_kr": "백 투 부에노스아이레스",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "91145": {
+    "c_idx": "434",
+    "country": "Italy",
+    "duration_min": 93,
+    "premiere": "International Premiere",
+    "title_en": "The Fire Within You",
+    "title_kr": "메리 크리스마스, 엄마",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91146": {
+    "c_idx": "440",
+    "country": "Japan",
+    "duration_min": 78,
+    "premiere": "",
+    "title_en": "The White Snake Enchantress",
+    "title_kr": "백사전",
+    "unit": "Special Program in Focus",
+    "year": "1958"
+  },
+  "91147": {
+    "c_idx": "442",
+    "country": "China",
+    "duration_min": 135,
+    "premiere": "World Premiere",
+    "title_en": "The First Taste of Loneliness",
+    "title_kr": "처음 만난 외로움",
+    "unit": "Competition",
+    "year": "2026"
+  },
+  "91148": {
+    "c_idx": "436",
+    "country": "Czech Republic/Spain/Iran",
+    "duration_min": 101,
+    "premiere": "",
+    "title_en": "Rehearsals for a Revolution",
+    "title_kr": "리허설 포 레볼루션",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "91149": {
+    "c_idx": "434",
+    "country": "Austria/Germany",
+    "duration_min": 94,
+    "premiere": "",
+    "title_en": "Rose",
+    "title_kr": "로즈",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91150": {
+    "c_idx": "430",
+    "country": "France/Italy",
+    "duration_min": 107,
+    "premiere": "",
+    "title_en": "Roma Elastica",
+    "title_kr": "로마 엘라스티카",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "91151": {
+    "c_idx": "430",
+    "country": "United States/Ireland",
+    "duration_min": 109,
+    "premiere": "",
+    "title_en": "Bucking Fastard",
+    "title_kr": "버킹 패스타드",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "91152": {
+    "c_idx": "430",
+    "country": "Germany/Switzerland",
+    "duration_min": 114,
+    "premiere": "",
+    "title_en": "From Inside Out - The Architecture of Peter Zumthor",
+    "title_kr": "페터 춤토르 by 빔 벤더스, 3D",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "91153": {
+    "c_idx": "435",
+    "country": "Germany/Austria",
+    "duration_min": 118,
+    "premiere": "",
+    "title_en": "Oasis",
+    "title_kr": "오아시스",
+    "unit": "Flash Forward",
+    "year": "2026"
+  },
+  "91154": {
+    "c_idx": "440",
+    "country": "Japan",
+    "duration_min": 110,
+    "premiere": "",
+    "title_en": "ghost – end of night",
+    "title_kr": "고스트 - 밤의 끝",
+    "unit": "Special Program in Focus",
+    "year": "2026"
+  },
+  "91155": {
+    "c_idx": "442",
+    "country": "Indonesia",
+    "duration_min": 133,
+    "premiere": "World Premiere",
+    "title_en": "The Sea Speaks His Name",
+    "title_kr": "바다에 새겨진 이름",
+    "unit": "Competition",
+    "year": "2026"
+  },
+  "91156": {
+    "c_idx": "437",
+    "country": "France",
+    "duration_min": 118,
+    "premiere": "",
+    "title_en": "Just an Illusion",
+    "title_kr": "그저 환상일 뿐",
+    "unit": "Open Cinema",
+    "year": "2026"
+  },
+  "91157": {
+    "c_idx": "430",
+    "country": "France",
+    "duration_min": 85,
+    "premiere": "",
+    "title_en": "Thanks for Coming",
+    "title_kr": "와줘서 고맙다는 거장의 인사",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "91158": {
+    "c_idx": "433",
+    "country": "Korea",
+    "duration_min": 115,
+    "premiere": "",
+    "title_en": "The World Before",
+    "title_kr": "첫세계",
+    "unit": "Korean Cinema Today",
+    "year": "2026"
+  },
+  "91159": {
+    "c_idx": "430",
+    "country": "United States",
+    "duration_min": 112,
+    "premiere": "",
+    "title_en": "Mother Mary",
+    "title_kr": "마더 메리",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "91160": {
+    "c_idx": "430",
+    "country": "United Kingdom",
+    "duration_min": 107,
+    "premiere": "",
+    "title_en": "Tender Loving Care",
+    "title_kr": "텐더 러빙 케어",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "91161": {
+    "c_idx": "432",
+    "country": "India/United States",
+    "duration_min": 107,
+    "premiere": "",
+    "title_en": "Lovers in the Blue Night",
+    "title_kr": "블루 나이트의 연인들",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "91162": {
+    "c_idx": "435",
+    "country": "Austria/Italy",
+    "duration_min": 91,
+    "premiere": "",
+    "title_en": "Eklipse",
+    "title_kr": "이클립스",
+    "unit": "Flash Forward",
+    "year": "2026"
+  },
+  "91163": {
+    "c_idx": "436",
+    "country": "Australia",
+    "duration_min": 99,
+    "premiere": "",
+    "title_en": "Time and Tide",
+    "title_kr": "흐르는 세월",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "91164": {
+    "c_idx": "432",
+    "country": "Taiwan",
+    "duration_min": 95,
+    "premiere": "",
+    "title_en": "Happily Ever After",
+    "title_kr": "오래오래 행복하게",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "91165": {
+    "c_idx": "440",
+    "country": "United States",
+    "duration_min": 139,
+    "premiere": "",
+    "title_en": "Everything Everywhere All at Once",
+    "title_kr": "에브리씽 에브리웨어 올 앳 원스",
+    "unit": "Special Program in Focus",
+    "year": "2022"
+  },
+  "91166": {
+    "c_idx": "440",
+    "country": "United States/Malaysia",
+    "duration_min": 11,
+    "premiere": "",
+    "title_en": "Sandiwara",
+    "title_kr": "산디와라",
+    "unit": "Special Program in Focus",
+    "year": "2026"
+  },
+  "91167": {
+    "c_idx": "430",
+    "country": "United States",
+    "duration_min": 119,
+    "premiere": "",
+    "title_en": "Ray Gunn",
+    "title_kr": "레이 건",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "91168": {
+    "c_idx": "434",
+    "country": "Italy",
+    "duration_min": 96,
+    "premiere": "World Premiere",
+    "title_en": "Deep Blue",
+    "title_kr": "딥 블루",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91169": {
+    "c_idx": "440",
+    "country": "Taiwan/Hong Kong, China",
+    "duration_min": 120,
+    "premiere": "",
+    "title_en": "Reign of Assassins",
+    "title_kr": "검우강호",
+    "unit": "Special Program in Focus",
+    "year": "2010"
+  },
+  "91170": {
+    "c_idx": "442",
+    "country": "Korea",
+    "duration_min": 144,
+    "premiere": "World Premiere",
+    "title_en": "Beach Fictions",
+    "title_kr": "그날의 태주",
+    "unit": "Competition",
+    "year": "2026"
+  },
+  "91171": {
+    "c_idx": "431",
+    "country": "Korea",
+    "duration_min": 84,
+    "premiere": "World Premiere",
+    "title_en": "Earbug",
+    "title_kr": "귀벌레",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "91172": {
+    "c_idx": "431",
+    "country": "Korea",
+    "duration_min": 71,
+    "premiere": "World Premiere",
+    "title_en": "The Flower",
+    "title_kr": "화곡사",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "91173": {
+    "c_idx": "431",
+    "country": "Korea",
+    "duration_min": 96,
+    "premiere": "World Premiere",
+    "title_en": "FULL MOON",
+    "title_kr": "풀문",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "91174": {
+    "c_idx": "432",
+    "country": "Thailand/Singapore/France/Netherlands",
+    "duration_min": 118,
+    "premiere": "",
+    "title_en": "The Burning Giants",
+    "title_kr": "불타는 거인들",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "91175": {
+    "c_idx": "431",
+    "country": "Philippines/Netherlands/Norway/Saudi Arabia/Japan",
+    "duration_min": 95,
+    "premiere": "World Premiere",
+    "title_en": "Ria",
+    "title_kr": "리아",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "91176": {
+    "c_idx": "440",
+    "country": "France",
+    "duration_min": 83,
+    "premiere": "",
+    "title_en": "The King and the Mockingbird",
+    "title_kr": "왕과 새",
+    "unit": "Special Program in Focus",
+    "year": "1980"
+  },
+  "91177": {
+    "c_idx": "440",
+    "country": "Japan",
+    "duration_min": 103,
+    "premiere": "",
+    "title_en": "MIND GAME",
+    "title_kr": "마인드 게임",
+    "unit": "Special Program in Focus",
+    "year": "2004"
+  },
+  "91178": {
+    "c_idx": "440",
+    "country": "Japan",
+    "duration_min": 72,
+    "premiere": "",
+    "title_en": "Angel′s Egg",
+    "title_kr": "천사의 알",
+    "unit": "Special Program in Focus",
+    "year": "1985"
+  },
+  "91180": {
+    "c_idx": "437",
+    "country": "Thailand",
+    "duration_min": 129,
+    "premiere": "",
+    "title_en": "Inherit",
+    "title_kr": "인헤릿",
+    "unit": "Open Cinema",
+    "year": "2026"
+  },
+  "91181": {
+    "c_idx": "438",
+    "country": "Taiwan",
+    "duration_min": 108,
+    "premiere": "World Premiere",
+    "title_en": "The Scar-Faced Cat: Way of Asura",
+    "title_kr": "스카페이스 캣: 수라도",
+    "unit": "Midnight Passion",
+    "year": "2026"
+  },
+  "91182": {
+    "c_idx": "429",
+    "country": "France/Belgium",
+    "duration_min": 118,
+    "premiere": "",
+    "title_en": "All About Corinne",
+    "title_kr": "내일은 이름이 있다",
+    "unit": "Gala Presentation",
+    "year": "2026"
+  },
+  "91183": {
+    "c_idx": "432",
+    "country": "Indonesia/France/Netherlands/Norway/Saudi Arabia/Poland",
+    "duration_min": 137,
+    "premiere": "",
+    "title_en": "Four Seasons in Java",
+    "title_kr": "자바의 사계절",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "91185": {
+    "c_idx": "435",
+    "country": "Italy",
+    "duration_min": 86,
+    "premiere": "World Premiere",
+    "title_en": "Föa - Once Upon A Future",
+    "title_kr": "옛날 옛적, 미래에",
+    "unit": "Flash Forward",
+    "year": "2025"
+  },
+  "91186": {
+    "c_idx": "434",
+    "country": "Ireland/United Kingdom",
+    "duration_min": 99,
+    "premiere": "",
+    "title_en": "Skintown",
+    "title_kr": "스킨타운",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91187": {
+    "c_idx": "433",
+    "country": "Korea",
+    "duration_min": 156,
+    "premiere": "",
+    "title_en": "HOPE",
+    "title_kr": "호프",
+    "unit": "Korean Cinema Today",
+    "year": "2026"
+  },
+  "91188": {
+    "c_idx": "435",
+    "country": "Poland",
+    "duration_min": 104,
+    "premiere": "",
+    "title_en": "What Belongs to Others",
+    "title_kr": "타인에게 속한 것들",
+    "unit": "Flash Forward",
+    "year": "2026"
+  },
+  "91189": {
+    "c_idx": "441",
+    "country": "United States",
+    "duration_min": 96,
+    "premiere": "",
+    "title_en": "Bus Stop",
+    "title_kr": "버스정류장",
+    "unit": "Special Screenings",
+    "year": "1956"
+  },
+  "91190": {
+    "c_idx": "432",
+    "country": "United States",
+    "duration_min": 120,
+    "premiere": "",
+    "title_en": "Diary of a Mad Old Man",
+    "title_kr": "미친 노인의 일기",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "91191": {
+    "c_idx": "436",
+    "country": "Iran",
+    "duration_min": 88,
+    "premiere": "World Premiere",
+    "title_en": "On the Road with Abbas Kiarostami",
+    "title_kr": "온 더 로드: 압바스 키아로스타미",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "91192": {
+    "c_idx": "430",
+    "country": "Canada/United Kingdom",
+    "duration_min": 119,
+    "premiere": "",
+    "title_en": "A Long Winter",
+    "title_kr": "긴 겨울",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "91193": {
+    "c_idx": "436",
+    "country": "United States",
+    "duration_min": 110,
+    "premiere": "",
+    "title_en": "Union Town",
+    "title_kr": "유니온 타운: 뉴욕을 달리는 사람들",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "91195": {
+    "c_idx": "430",
+    "country": "Philippines",
+    "duration_min": 151,
+    "premiere": "",
+    "title_en": "Let Us Through, Dear Ancestors",
+    "title_kr": "마키키란 포",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "91197": {
+    "c_idx": "438",
+    "country": "Canada",
+    "duration_min": 98,
+    "premiere": "International Premiere",
+    "title_en": "L’Autre",
+    "title_kr": "불청객",
+    "unit": "Midnight Passion",
+    "year": "2026"
+  },
+  "91198": {
+    "c_idx": "432",
+    "country": "India/United States/United Kingdom",
+    "duration_min": 95,
+    "premiere": "World Premiere",
+    "title_en": "About an Intimate Matter",
+    "title_kr": "사적인 일에 관하여",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "91199": {
+    "c_idx": "434",
+    "country": "United Kingdom/France",
+    "duration_min": 99,
+    "premiere": "",
+    "title_en": "Pressure",
+    "title_kr": "프레셔",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91200": {
+    "c_idx": "440",
+    "country": "Japan",
+    "duration_min": 122,
+    "premiere": "",
+    "title_en": "Phoenix 2772（Space Firebird）",
+    "title_kr": "불새 2772 사랑의 코스모존",
+    "unit": "Special Program in Focus",
+    "year": "1980"
+  },
+  "91201": {
+    "c_idx": "430",
+    "country": "Italy/France/Spain",
+    "duration_min": 103,
+    "premiere": "",
+    "title_en": "It Will Happen Tonight",
+    "title_kr": "오늘 밤, 사랑은 일어난다",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "91202": {
+    "c_idx": "431",
+    "country": "Thailand",
+    "duration_min": 129,
+    "premiere": "World Premiere",
+    "title_en": "Bua",
+    "title_kr": "부아",
+    "unit": "Vision",
+    "year": "2026"
+  },
+  "91203": {
+    "c_idx": "434",
+    "country": "United States",
+    "duration_min": 107,
+    "premiere": "",
+    "title_en": "By Any Means",
+    "title_kr": "바이 애니 민즈: 자비는 없다",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91204": {
+    "c_idx": "440",
+    "country": "Korea",
+    "duration_min": 107,
+    "premiere": "",
+    "title_en": "Festival",
+    "title_kr": "축제",
+    "unit": "Special Program in Focus",
+    "year": "1996"
+  },
+  "91205": {
+    "c_idx": "432",
+    "country": "Vietnam",
+    "duration_min": 135,
+    "premiere": "",
+    "title_en": "Spirit Guardians: The Last Secret Of The First Emperor",
+    "title_kr": "수호전사: 황제의 마지막 비밀",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "91206": {
+    "c_idx": "430",
+    "country": "Taiwan/Spain",
+    "duration_min": 80,
+    "premiere": "",
+    "title_en": "Dust",
+    "title_kr": "더스트",
+    "unit": "Icons",
+    "year": "2026"
+  },
+  "91230": {
+    "c_idx": "433",
+    "country": "Korea",
+    "duration_min": 118,
+    "premiere": "World Premiere",
+    "title_en": "Still Shining",
+    "title_kr": "여전히 찬란하게",
+    "unit": "Korean Cinema Today",
+    "year": "2026"
+  },
+  "91231": {
+    "c_idx": "434",
+    "country": "Germany/Ukraine",
+    "duration_min": 100,
+    "premiere": "",
+    "title_en": "I Rarely Wake Up Dreaming",
+    "title_kr": "올랴와 올레흐: 난 좀처럼 꿈에서 깨어나지 않지",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91232": {
+    "c_idx": "436",
+    "country": "Mongolia/France",
+    "duration_min": 81,
+    "premiere": "",
+    "title_en": "Colors of White Rock",
+    "title_kr": "화이트 록의 색깔",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "91233": {
+    "c_idx": "436",
+    "country": "Spain/France",
+    "duration_min": 96,
+    "premiere": "",
+    "title_en": "From Dawn to Dawn",
+    "title_kr": "새벽에서 다시 새벽으로",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "91234": {
+    "c_idx": "435",
+    "country": "Greece/Germany/France",
+    "duration_min": 87,
+    "premiere": "",
+    "title_en": "A Day in the Life of Jo: Chapter Phaedra",
+    "title_kr": "조의 하루: 페드라 챕터",
+    "unit": "Flash Forward",
+    "year": "2026"
+  },
+  "91235": {
+    "c_idx": "432",
+    "country": "Kazakhstan",
+    "duration_min": 87,
+    "premiere": "World Premiere",
+    "title_en": "In Winter",
+    "title_kr": "겨울 이야기",
+    "unit": "A Window on Asian Cinema",
+    "year": "2026"
+  },
+  "91236": {
+    "c_idx": "440",
+    "country": "Japan",
+    "duration_min": 87,
+    "premiere": "",
+    "title_en": "Belladonna of Sadness",
+    "title_kr": "슬픔의 벨라돈나",
+    "unit": "Special Program in Focus",
+    "year": "1973"
+  },
+  "91237": {
+    "c_idx": "436",
+    "country": "Korea",
+    "duration_min": 127,
+    "premiere": "World Premiere",
+    "title_en": "A Life of an Artist: Kwon Jinkyu",
+    "title_kr": "권진규: 예술가의 일생",
+    "unit": "Wide Angle",
+    "year": "2026"
+  },
+  "91238": {
+    "c_idx": "440",
+    "country": "Japan",
+    "duration_min": 24,
+    "premiere": "",
+    "title_en": "Kakurenbo",
+    "title_kr": "숨바꼭질",
+    "unit": "Special Program in Focus",
+    "year": "2004"
+  },
+  "91239": {
+    "c_idx": "441",
+    "country": "Australia",
+    "duration_min": 93,
+    "premiere": "",
+    "title_en": "Mad Max",
+    "title_kr": "매드 맥스",
+    "unit": "Special Screenings",
+    "year": "1979"
+  },
+  "91240": {
+    "c_idx": "434",
+    "country": "Denmark/Latvia/Sweden",
+    "duration_min": 126,
+    "premiere": "",
+    "title_en": "Woman Unknown",
+    "title_kr": "마리가 뭐 어때서",
+    "unit": "World Cinema",
+    "year": "2026"
+  },
+  "91241": {
+    "c_idx": "438",
+    "country": "Vietnam",
+    "duration_min": 126,
+    "premiere": "World Premiere",
+    "title_en": "Red Thread",
+    "title_kr": "붉은 실",
+    "unit": "Midnight Passion",
+    "year": "2026"
+  },
+  "91242": {
+    "c_idx": "441",
+    "country": "France/Poland",
+    "duration_min": 99,
+    "premiere": "",
+    "title_en": "Three Colours: Blue",
+    "title_kr": "세 가지 색 : 블루",
+    "unit": "Special Screenings",
+    "year": "1993"
+  },
+  "91243": {
+    "c_idx": "441",
+    "country": "Korea",
+    "duration_min": 144,
+    "premiere": "",
+    "title_en": "The Handmaiden",
+    "title_kr": "아가씨",
+    "unit": "Special Screenings",
+    "year": "2016"
+  },
+  "91245": {
+    "c_idx": "429",
+    "country": "France",
+    "duration_min": 117,
+    "premiere": "",
+    "title_en": "A Girl′s Story",
+    "title_kr": "그 소녀의 기억",
+    "unit": "Gala Presentation",
+    "year": "2026"
+  },
+  "91246": {
+    "c_idx": "440",
+    "country": "Japan",
+    "duration_min": 107,
+    "premiere": "",
+    "title_en": "Metropolis",
+    "title_kr": "메트로폴리스",
+    "unit": "Special Program in Focus",
+    "year": "2001"
+  },
+  "91247": {
+    "c_idx": "440",
+    "country": "Japan",
+    "duration_min": 113,
+    "premiere": "",
+    "title_en": "MEMORIES",
+    "title_kr": "메모리즈",
+    "unit": "Special Program in Focus",
+    "year": "1995"
+  },
+  "91257": {
+    "c_idx": "441",
+    "country": "Hong Kong, China/China",
+    "duration_min": 117,
+    "premiere": "",
+    "title_en": "Cold War 1994",
+    "title_kr": "콜드 워 1994",
+    "unit": "Special Screenings",
+    "year": "2026"
+  },
+  "91279": {
+    "c_idx": "429",
+    "country": "Korea",
+    "duration_min": 101,
+    "premiere": "",
+    "title_en": "PARADISE LOST",
+    "title_kr": "실낙원",
+    "unit": "Gala Presentation",
+    "year": "2026"
+  },
+  "91280": {
+    "c_idx": "441",
+    "country": "Denmark",
+    "duration_min": 135,
+    "premiere": "",
+    "title_en": "Melancholia",
+    "title_kr": "멜랑콜리아",
+    "unit": "Special Screenings",
+    "year": "2011"
+  }
+}

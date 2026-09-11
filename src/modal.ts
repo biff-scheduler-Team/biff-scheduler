@@ -3,11 +3,10 @@
 // (library.ts,那里同时给「定位 ▸」与三态「＋ 加入」),避免同一部片出现两份排片列表。
 // 全量化:overlay / modal / 资料弹层结构 全部 Tailwind utility。
 
-import type { Catalog, Mapping } from "./types";
-import { displayTitle, el, filmNodeKey } from "./util";
+import type { Catalog, FilmItem, Mapping } from "./types";
+import { bilingualTitle, displayTitle, el, filmEnName, filmInfoOf } from "./util";
 import { doubanChip } from "./legend";
-import { setWish, slotOf, store } from "./state";
-import { wishIcon } from "./pick";
+import { slotOf, store } from "./state";
 import { hideTip } from "./tip";
 
 /* ---------- 通用容器(弹层栈) ----------
@@ -199,28 +198,20 @@ interface FilmModalCtx {
  *  三态(2026-09-10 重排层级,见 PLAN-20260910184745 §8):
  *    ① 未加入 = **中性描边次要按钮**(原为红渐变主按钮 —— 红色实底现在让给「定位 ▸」这唯一主操作,
  *       两枚红按钮并排会互相抢眼,分不出主次);
- *    ② 已加入当前方案 = **绿描边按钮**(绿勾 + 绿字,与「＋ 加入」**等宽**)—— 原先做成无底无框的
+ *    ② 已加入 = **绿描边按钮**(绿勾 + 绿字,与「＋ 加入」**等宽**)—— 原先做成无底无框的
  *       纯状态标签,但那样按钮一窄就把左侧「定位 ▸」顶走(见 `short` 的等宽注释);现改为同宽按钮,
  *       hover 转红 = 移出。⚠ 仍**保留可点 = 移出**(否则这里就失去了移除入口),
- *       tooltip 明说「点击移出」;
- *    ③ 已在另一方案 = 中性描边,hover 转红。
- *  ⚠ 文案必须与 toggleScreening() 的真实语义一致:一场只属于一个方案,点「已在 B 方案」的按钮
- *  是**移出**(不是搬运)—— 重绘修好之后按钮会当场翻成「＋ 加入」,再点一次才是改入,
- *  所以不能写成「改入 B」(写了两步的事就变成一步的承诺)。
- *  ⚠ **「加入」不写方案名**(2026-09-10):列表 / 网格整个就是当前方案(A/B 由顶栏切换),
- *  「加入 A 方案」把「你正在看的那一个」重复了一遍 —— 只在**跨方案**那态才点名(「已在 B 方案」),
- *  因为那才是「不在你当前方案里」这条信息本身。
+ *       tooltip 明说「点击移出」。
+ *  ⚠ 2026-09-11 起**方案(A/B)已移除**(`PLAN-20260911190000` D7)—— 原「⇄ 已在 B 方案」那态随方案
+ *  概念一起删掉:一场不再有归属歧义,「已加入 / 未加入」两态即全部语义。
  *  ⚠ `short` = **紧凑档**(2026-09-11 四改):抽屉里的场次行第 1 行要留宽度给章组,
  *  故那里只渲染一枚符号(文案全走 `data-tip`)。弹层里有的是地方,继续用 `label`。
  *  两者必须**同源**在这里改,否则抽屉与弹层会显示成两种语义。
- *  ⚠ **三态必须等宽**(2026-09-11 五改):原先「已加入」是无底无框的纯状态标签,宽度从 ≈32px 掉到
+ *  ⚠ **两态必须等宽**(2026-09-11 五改):原先「已加入」是无底无框的纯状态标签,宽度从 ≈32px 掉到
  *  ≈7px —— 按钮一窄,左侧「定位 ▸」整枚右移,用户刚点完「＋ 加入」就得重新找定位按钮
  *  (用户原话:「加入方案按钮点击后会变小,然后定位按钮会偏移,请你把对钩也放到按钮里面,
- *  和 + 号一样大小」)。现在三态共用同一个盒子 + `min-w` + 内容居中,宽度恒定。 */
-export function actState(
-  code: string,
-  group: string
-): { label: string; short: string; cls: string; tip: string } {
+ *  和 + 号一样大小」)。现在两态共用同一个盒子 + `min-w` + 内容居中,宽度恒定。 */
+export function actState(code: string): { label: string; short: string; cls: string; tip: string } {
   const btn =
     "border rounded-6 px-[9px] py-[3px] text-12 font-bold whitespace-nowrap " +
     "transition-[background-color,border-color,color] duration-[120ms] active:translate-y-px ";
@@ -228,89 +219,66 @@ export function actState(
    *  「＋ 加入 ↔ ✓ 已加入」切换时按钮不缩放,左侧「定位 ▸」也就不会偏移。 */
   const shortCls = btn + "min-w-[36px] inline-flex items-center justify-center ";
   const hit = slotOf(code);
-  if (hit?.group === group) {
+  if (hit) {
     return {
       label: "✓ 已加入",
       short: "✓",
       cls: shortCls + "border-ok bg-card text-ok hover:border-conf hover:text-conf",
-      tip: "该场已在当前方案 — 点击移出(影片的选片意向 / 档位不受影响)",
-    };
-  }
-  if (hit) {
-    return {
-      label: `⇄ 已在 ${hit.group}`,
-      short: `⇄${hit.group}`,
-      cls: shortCls + "border-line bg-card text-ink-2 hover:border-biff hover:text-biff-ink",
-      tip: `该场在 ${hit.group} 方案(不是当前方案)— 一场只能属于一个方案:点击先移出,按钮会翻成「＋ 加入」,再点一次即改入当前方案`,
+      tip: "该场已在行程里 — 点击移出(影片仍留在「我的选片」,标注「未排场」)",
     };
   }
   return {
     label: "＋ 加入",
     short: "＋",
     cls: shortCls + "border-line bg-card text-ink hover:border-biff hover:text-biff-ink",
-    tip: "把该场加入当前方案",
+    tip: "把该场加入行程",
   };
 }
 
-/** 「我的选片」档位行(详情弹层内直接改档位)—— key 走 filmNodeKey 单一口径,与影片库 / 甘特 ★ 同源。
- *  档位是影片级的:这里改 = 「我的选片」与「我的行程」里该片所有场次同步。
- *  ⚠ **控件 = ★ 星标(2026-09-10 改,与行程卡 / 影片库卡完全同款)**:原为「必看|备选|随缘」三段 seg,
- *  需求原话「不要在影片资料中标记必看/备选/随缘,需要和我的行程里面一样,直接在卡片上标记等级」——
- *  三段文字换成一枚 ★(已定档按档位着色 / 未设定 ☆),三档文案收进 hover 提示与点击菜单;
- *  弹层里没有卡片底衬托,故用 `size: "lg"`(26px 盒 / 18px 星)让它像个可点的档位控件。
- *  返回 `{ row, draw }`:场次增删后外部调 `draw()` 刷新 ★ 与「已选 N 场」计数(弹层不在 renderAll 重建范围内)。 */
-function buildWishRow(key: string): { row: HTMLElement; draw: () => void } {
-  const row = el("div", "flex items-center gap-[8px] flex-wrap mb-[14px] border-t border-line pt-3");
-  row.appendChild(el("span", "text-13 font-bold whitespace-nowrap", "我的选片"));
-  const slot = el("div", "inline-flex");
-  const hint = el("span", "text-12 text-muted");
-  const draw = (): void => {
-    slot.innerHTML = "";
-    slot.appendChild(
-      wishIcon({
-        cur: store.picks.get(key)?.priority ?? null,
-        anchor: key,
-        onPick: (p) => {
-          setWish(key, p);
-          draw(); // 弹层不在 renderAll 重建范围内 → 就地重画 ★ 反映当前档
-        },
-        size: "lg",
-        tipPrefix: "我的选片 · ",
-      })
-    );
-    const n = store.picks.get(key)?.picks.length ?? 0;
-    hint.textContent = n
-      ? `已选 ${n} 场 · 档位为影片级,改这里全片同步;场次增删在网格 / 影片库`
-      : "点 ★ 打标后可在顶栏「我的选片」总览;甘特图对应场次标题前显示同一枚 ★";
-  };
-  draw();
-  row.append(slot, hint);
-  return { row, draw };
-}
-
-/** 目录评分查询(中文名精确 → 原始片名==排期英文名),无则 null */
-function ratingOf(cat: Catalog, code: string): number | null {
+/** 排期 code → 命中的目录条目(走 `filmInfoOf` 的**同一套命中口径**,不再自写一份)。 */
+function filmOf(cat: Catalog, code: string): FilmItem | null {
   const s = cat.byCode.get(code);
   if (!s) return null;
-  const hit = cat.films.find((f) => f.title_zh === s.title_zh) ?? cat.films.find((f) => f.title_orig === s.title_en);
-  return hit?.rating ?? null;
+  return filmInfoOf(cat, s).cats[0] ?? null;
+}
+
+/** 海报图(弹层大图档)—— 缺图返回 null,调用方据此不留空位 */
+function posterEl(src: string | undefined): HTMLElement | null {
+  if (!src) return null;
+  const img = document.createElement("img");
+  img.src = src;
+  img.alt = "";
+  img.loading = "lazy";
+  img.decoding = "async";
+  img.className = "w-[124px] h-[175px] object-cover rounded-8 border border-line bg-raised shrink-0";
+  return img;
 }
 
 export function showFilmModal(code: string, ctx: FilmModalCtx): void {
   const anchor = ctx.cat.byCode.get(code);
   if (!anchor) return;
   const body = el("div", "film-modal");
+  const film = filmOf(ctx.cat, code);
 
   // ---- 片名区(16-A:有组评价则显示「豆 x.x」)----
-  const meta = el("div", "mb-3");
-  const zh = displayTitle(anchor, ctx.mappings.get(code)?.title_cn);
-  meta.appendChild(el("div", "text-18 font-bold", zh));
-  const enLine = el("div", "text-muted text-13", anchor.title_en);
-  if (anchor.title_en !== zh) meta.appendChild(enLine);
-  if (anchor.title_kr) meta.appendChild(el("div", "text-muted text-13", anchor.title_kr));
-  const rating = ratingOf(ctx.cat, code);
-  if (rating != null) meta.appendChild(doubanChip(rating, "mt-2")); // 豆瓣章单一来源(legend.ts)
-  body.appendChild(meta);
+  // 有海报 → 左图右文;没有则维持原来的整行文本(不占空位,见 row.ts::cardHead 同一条理由)
+  const poster = posterEl(film?.poster);
+  const head = el("div", poster ? "flex gap-[14px] items-start mb-3" : "mb-3");
+  if (poster) head.appendChild(poster);
+  const meta = el("div", poster ? "min-w-0 flex-1" : "");
+  // 片名口径:「英文名 · 中文名」(见 util.ts::bilingualTitle)—— 英文名已含在首行,不再另起一行
+  const title = displayTitle(anchor, ctx.mappings.get(code)?.title_cn);
+  meta.appendChild(el("div", "text-18 font-bold", title));
+  if (anchor.title_kr && anchor.title_kr !== anchor.title_en) {
+    meta.appendChild(el("div", "text-muted text-13", anchor.title_kr));
+  }
+  if (film) {
+    const bits = [film.unit, film.country, film.year ? String(film.year) : "", film.director].filter(Boolean);
+    if (bits.length) meta.appendChild(el("div", "text-muted text-13", bits.join(" · ")));
+  }
+  if (film?.rating != null) meta.appendChild(doubanChip(film.rating, "mt-2")); // 豆瓣章单一来源(legend.ts)
+  head.appendChild(meta);
+  body.appendChild(head);
 
   // ---- 午夜场联映块:块名不是片名,这里把块内成员片列出来 ----
   // 联映块 = 「一张票连看 2~3 部」,册子格子里只有块名 + 页码列表;成员片名由解析器
@@ -331,14 +299,10 @@ export function showFilmModal(code: string, ctx: FilmModalCtx): void {
     body.appendChild(box);
   }
 
-  // ---- 我的选片(档位 ★ —— 与行程卡 / 影片库卡同款;文案走 hover 提示,不铺三段文字)----
-  const wish = buildWishRow(filmNodeKey(ctx.cat, anchor));
-  body.appendChild(wish.row);
-
   // ---- 豆瓣区 ----
   body.appendChild(buildDoubanBlock(code, anchor.title_zh || "", anchor.title_en));
 
-  openModal(`资料 · ${zh}`, body, "lg");
+  openModal(`资料 · ${title}`, body, "lg");
 }
 
 /** 目录片资料(暂无排期):元信息 + 评分 + 豆瓣区(先关联,Catalogue 排期接入后同片自动带出) */
@@ -349,14 +313,16 @@ export function showCatalogFilmModal(
   const film = ctx.cat.films.find((f) => f.id === filmId);
   if (!film) return;
   const body = el("div", "film-modal");
-  const zh = film.title_zh || film.title_orig || film.id;
+  // 片名口径:「英文名 · 中文名」(无排期 → 英文位取目录官方英文名,见 util.ts::filmEnName);
+  // 两者皆缺时退回目录 id(不印空标题)
+  const title = bilingualTitle(filmEnName(film), film.title_zh) || film.id;
 
-  // ---- 片名 / 元信息区 ----
-  const meta = el("div", "mb-3");
-  meta.appendChild(el("div", "text-18 font-bold", zh));
-  if (film.title_orig && film.title_orig !== zh) {
-    meta.appendChild(el("div", "text-muted text-13", film.title_orig));
-  }
+  // ---- 片名 / 元信息区(有海报 → 左图右文) ----
+  const poster = posterEl(film.poster);
+  const head = el("div", poster ? "flex gap-[14px] items-start mb-3" : "mb-3");
+  if (poster) head.appendChild(poster);
+  const meta = el("div", poster ? "min-w-0 flex-1" : "");
+  meta.appendChild(el("div", "text-18 font-bold", title));
   const infoBits = [
     film.unit,
     film.country,
@@ -368,10 +334,8 @@ export function showCatalogFilmModal(
     meta.appendChild(el("div", "text-muted text-13", infoBits.join(" · ")));
   }
   if (film.rating != null) meta.appendChild(doubanChip(film.rating, "mt-2")); // 豆瓣章单一来源(legend.ts)
-  body.appendChild(meta);
-
-  // ---- 我的选片(目录片 key = cat:<id>,与排期后同片打标同源)----
-  body.appendChild(buildWishRow(`cat:${film.id}`).row);
+  head.appendChild(meta);
+  body.appendChild(head);
 
   body.appendChild(
     el(
@@ -382,8 +346,9 @@ export function showCatalogFilmModal(
   );
 
   // ---- 豆瓣区(code = 目录片 id,如 f001)----
-  body.appendChild(buildDoubanBlock(film.id, film.title_zh || "", film.title_orig || ""));
-  openModal(`资料 · ${zh}`, body, "lg");
+  // 英文搜索用**官方英文名**(`filmEnName`);`title_orig` 在新 schema 里是原始韩/日文名,拿去搜豆瓣必空
+  body.appendChild(buildDoubanBlock(film.id, film.title_zh || "", filmEnName(film)));
+  openModal(`资料 · ${title}`, body, "lg");
 }
 
 /** 豆瓣区:有映射 → 条目直链;无映射 → 中英文搜索外链(兜底)。
@@ -407,7 +372,10 @@ function buildDoubanBlock(code: string, qZh: string, qEn: string): HTMLElement {
 
   const search = el("div", "flex gap-3 items-center flex-wrap text-13");
   search.appendChild(el("span", "text-muted text-13", "未关联 — 点这里查豆瓣:"));
-  const q = encodeURIComponent(`${qZh} ${qEn}`.trim());
+  // ⚠ 「中文搜索」只送**中文名** —— 曾经拼成 `${qZh} ${qEn}`,豆瓣会把整串当片名去匹配,
+  //    中英混排(如「Satoko总是这样 Satoko Always」)反而一条都搜不到。
+  //    无中文名(纯英文片)时退回英文名,否则链接会搜空白。
+  const q = encodeURIComponent(qZh.trim() || qEn.trim());
   const qEn2 = encodeURIComponent(qEn);
   const a1 = document.createElement("a");
   a1.href = `https://www.douban.com/search?q=${q}`;

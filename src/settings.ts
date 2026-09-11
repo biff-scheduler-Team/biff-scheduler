@@ -5,11 +5,10 @@
 import type { Catalog } from "./types";
 import { el } from "./util";
 import { fieldBox, numInput } from "./form";
-import { BTN_MINI, BTN_PRIMARY, BTN_PRIMARY_LG } from "./ui";
+import { BTN_PRIMARY, BTN_PRIMARY_LG } from "./ui";
 import { clearAllPicks, clearScreeningSlots, gvTalkMinOv, setGvTalkMin, setSettings, store } from "./state";
 import { closeModal, openModal } from "./modal";
 import { toast } from "./toast";
-import { aiReady, clearAiCfg, loadAiCfg, maskKey } from "./ai";
 
 /* ---------------- 设置 ----------------
  *  排版口径(2026-09-10 优化):① 标题 + 控件同行**流式左对齐**(控件紧贴标题,标签长短不一也不会
@@ -123,44 +122,6 @@ export function openSettings(): void {
   const group2 = el("div", "flex flex-col gap-[14px] mt-[16px] pt-[16px] border-t border-line-soft");
   group2.append(f3, f4);
 
-  // ---- 分组 3:AI 排片 Key(只读状态 + 清除)----
-  //  填写 / 更换的入口收在「影片库 ▸ 智能排片」:那里有隐私说明与自定义偏好同屏,
-  //  设置里不放输入框 —— 避免误触,也让「Key 只在本机」的说明紧贴使用场景。
-  const aiState = el("span", "text-13 font-semibold");
-  const aiClear = el("button", BTN_MINI, "清除 Key");
-  aiClear.dataset.ai = "settings-clear";
-  aiState.dataset.ai = "settings-state";
-  const paintAi = (): void => {
-    const c = loadAiCfg();
-    if (aiReady(c)) {
-      aiState.className = "text-13 font-semibold text-ok";
-      aiState.textContent = `已配置 · ${c.model} · ${maskKey(c.key)}`;
-      aiClear.classList.remove("is-hidden");
-    } else {
-      aiState.className = "text-13 font-semibold text-muted";
-      aiState.textContent = "未配置";
-      aiClear.classList.add("is-hidden");
-    }
-  };
-  aiClear.addEventListener("click", () => {
-    if (!window.confirm("清除本机保存的 AI 排片 API Key?(其它设置与选片不受影响)")) return;
-    clearAiCfg();
-    paintAi();
-    toast("已清除本机保存的 API Key");
-  });
-  paintAi();
-  const aiCtl = el("div", "flex items-center gap-[8px] flex-wrap");
-  aiCtl.append(aiState, aiClear);
-  const f5 = settingsField(
-    "AI 排片 · 模型 API Key",
-    "只保存在本机浏览器（localStorage），不上传本站服务器、也不进任何本站请求。填写 / 更换请到「影片库 ▸ 智能排片」。",
-    aiCtl,
-    "",
-    "div"
-  );
-  const group3 = el("div", "flex flex-col gap-[14px] mt-[16px] pt-[16px] border-t border-line-soft");
-  group3.append(f5);
-
   // ---- 底部主操作:全弹层唯一的亮色按钮(右对齐)----
   const apply = el("button", BTN_PRIMARY_LG, "保存设置");
   apply.addEventListener("click", () => {
@@ -181,26 +142,26 @@ export function openSettings(): void {
   const danger = el(
     "button",
     "border-0 bg-transparent p-0 text-12 text-muted underline-offset-2 hover:text-conf hover:underline",
-    "清空全部已排场次(A+B)"
+    "清空全部已排场次"
   );
-  danger.dataset.tip = "只清场次 —— 「我的选片」的选片意向(档位)保留,清完仍可一键智能排片";
+  danger.dataset.tip = "只清场次 —— 「我的选片」里收着的影片与备注保留";
   danger.addEventListener("click", () => {
-    if (window.confirm("确定清空 A/B 两个方案的「全部已排场次」?选片意向(必看/备选/随缘)会保留。")) {
+    if (window.confirm("确定清空「全部已排场次」?已收进「我的选片」的影片会保留(标注「未排场」)。")) {
       clearScreeningSlots();
       closeModal();
-      toast("已清空全部已排场次(选片意向保留)");
+      toast("已清空全部已排场次(选片保留)");
     }
   });
-  // 「清空全部」= 连选片意向一起清(2026-09-10,PLAN-20260910235630)。
+  // 「清空全部」= 连选片一起清(2026-09-10,PLAN-20260910235630)。
   // 片单只存本机 → 清完**刷新 / 部署都不会再回来**(旧版会从 D1 同步回来,故用户只能反复手清)。
   const dangerAll = el(
     "button",
     "border-0 bg-transparent p-0 text-12 text-muted underline-offset-2 hover:text-conf hover:underline",
     "清空全部(选片 + 排片)"
   );
-  dangerAll.dataset.tip = "把「我的选片」与「我的行程」一起清空 —— 档位 / 备注 / 已排场次全部删除(只影响本机)";
+  dangerAll.dataset.tip = "把「我的选片」与「我的行程」一起清空 —— 备注 / 已排场次 / 抢票顺位全部删除(只影响本机)";
   dangerAll.addEventListener("click", () => {
-    if (window.confirm("确定清空全部?「我的选片」的档位、备注与 A/B 已排场次会一起删除,且只存本机、无法从云端恢复。")) {
+    if (window.confirm("确定清空全部?「我的选片」里的影片、备注与已排场次会一起删除,且只存本机、无法从云端恢复。")) {
       clearAllPicks();
       closeModal();
       toast("已清空全部选片与排片");
@@ -209,7 +170,7 @@ export function openSettings(): void {
   const dangerZone = el("div", "flex flex-wrap gap-x-[16px] gap-y-[8px] mt-[14px] pt-[12px] border-t border-line-soft");
   dangerZone.append(danger, dangerAll);
 
-  body.append(group1, group2, group3, actions, dangerZone);
+  body.append(group1, group2, actions, dangerZone);
 
   openModal("设置", body);
 }

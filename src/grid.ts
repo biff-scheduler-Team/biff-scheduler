@@ -1,14 +1,14 @@
 // 选片网格 — 自研 CSS 网格:行=影厅,列=当日时间轴;卡片绝对定位。
 // 全量化:网格 / 卡片 / 标签 / 时间标尺 / 转场紧底色提示 / ⓘ / 冲突旗 / 其他旗 全部 Tailwind utility。
 
-import type { Catalog, Group, Mapping, Priority, Screening } from "./types";
+import type { Catalog, Mapping, Screening } from "./types";
 import type { ConflictResult } from "./conflict";
 import { displayTitle, el, fmtEndClock, fmtMinRange, fmtMinRangeMin, hmsToMin, slackBetween, todayIsoLocal } from "./util";
 import { screeningsByVenue } from "./data";
 import { codeTip } from "./badges";
 import { effEndMin, filmEndMin, gvTalkMin } from "./gv";
 import { hasBadges, metaRowFor, venueTip } from "./legend";
-import { PRI_LABEL, PRI_TEXT } from "./pick";
+import { matchesFilters, venueAllowed, type FilterState } from "./filters";
 
 export const ROW_H = 92; // 100% 基准行高(1 行 = 1 影厅);实际行高 = ROW_H × 缩放倍率,见 rowMetrics
 const TRAIL_PAD = 60; // A3:末 tick 右侧 +60px 安全边距(标签半宽 + 呼吸),两端标签永不悬出/被裁
@@ -139,19 +139,20 @@ export interface GridCtx {
   pxPerMin: number;
   /** 行几何(行高 / 字号倍率 / 留白 / 徽章行开关)—— 由 main 侧 `rowMetrics(缩放倍率)` 算好传入 */
   row: RowMetrics;
-  /** 已选场次投影:code → { 影片 key, 方案 }。判「已选 / 在哪个方案」全走它(唯一数据源) */
-  slots: Map<string, { key: string; group: Group }>;
-  group: Group;
+  /** 已选场次投影:code → 影片 key。判「是否已选」全走它(唯一数据源) */
+  slots: Map<string, { key: string }>;
   mappingOf: (code: string) => Mapping | undefined; // 豆瓣映射(回填中文名)
-  conflictCodes: Set<string> | undefined; // 当日、当前方案冲突 code
-  /** 当日、当前方案冲突 pair(与 conflictCodes 同源)—— 卡片 hover 说明 + 跨行连线都读它 */
+  conflictCodes: Set<string> | undefined; // 当日冲突 code
+  /** 当日冲突 pair(与 conflictCodes 同源)—— 卡片 hover 说明 + 跨行连线都读它 */
   conflictPairs?: [string, string][];
   transitMin: number; // 跨馆转场缓冲(1a 余量判定)
   /** GV 映后谈是否参加(全局默认 + 单场覆写解析后):决定正片/整场拆分、紧转场按哪段结束算 */
   gvTalkOf: (code: string) => boolean;
-  /** 该片档位(必看/备选/随缘):undefined = 未打标 —— 与红绿灯底色正交,只画标题行前的档位色点 */
-  wishOf?: (s: Screening) => Priority | undefined;
   hourFilter?: number | null; // 点击时间轴整点 → 只看该小时段场次(其余 hour-dim);null = 不过滤
+  /** **甘特图那套**排片筛选(字幕 / 影厅 / GV)—— 判定与控件在 `filters.ts`;
+   *  网格只读它算「淡不淡」与「哪些影厅行要整行去掉」。缺省 = 不过滤。
+   *  ⚠ 影片库抽屉另有一份**独立**状态(见 filters.ts 文件头),不从这里传。 */
+  filters?: FilterState;
 }
 
 /** A1 动态时间轴:轴界由「当日最早开映 − 呼吸时间」与「最晚散场」对齐整点推导,不再写死 09:00–23:00 ——
@@ -196,7 +197,15 @@ const LABEL_BOX_CLS =
 const ROW_BASE_CLS = "grid";
 
 export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
-  const rows = screeningsByVenue(ctx.cat, date);
+  const allRows = screeningsByVenue(ctx.cat, date);
+  // ★ 影厅筛选 = **纵轴整行的去留**(不只是淡化):不去的影院留在轴上只是白占一行高。
+  //   字幕 / GV 两道仍只淡化卡片 —— 它们说的是「这场我不想要」,留着才看得清当天还有什么;
+  //   影厅说的是「我根本不会去那儿」,整行没有信息量。
+  //   ⚠ 行数会随筛选变 ⇒ 必须进几何签名(见 gridGeometryKey 的 venueKey),否则 patch 路径
+  //     会在「行已变但 DOM 没重建」的状态下静默错位。
+  const rows = ctx.filters
+    ? allRows.filter(({ venue, list }) => venueAllowed(venue?.id ?? list[0]?.venue_id ?? "", ctx.filters!))
+    : allRows;
   const axis = axisRangeFor(ctx.cat, date); // A1:当日动态轴(最早开映→最晚散场,整点对齐)
   const axisMin = axis.end - axis.start;
   const pxPerMin = ctx.pxPerMin; // 横向刻度(100% = PX_PER_MIN);由 main 侧随 GridCtx 传入
@@ -209,9 +218,14 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
   const nowPx = todayIsoLocal() === date ? nowPxFor(axis, pxPerMin) : null;
 
   // D3:横向溢出常态化 → 原生滚动条始终可用 + cursor-grab 拖拽平移恒挂(attachPan 内部对装得下的容器自行守卫)
+  // ★ 2026-09-11 **工作台化**:容器同时承担纵向滚动(限高由 main.ts::fitGridHeight 内联写入)。
+  //   旧版只有 `overflow-x-auto` —— 横向滚动条被画在「标尺 + 29 行」这整块内容的**最底部**:
+  //   要横向滚动必须先滚到页面最底,且 overlay 滚动条会浮在最后一行卡片上(用户反馈)。
+  //   现在横向滚动条常驻容器底部(永远在视口内),纵向滚动条落在容器右缘。
   // 画布底板:极浅灰(bg-page)+ 内嵌圆角 —— 外层白面板(#grid-wrap)成为「画框」,
   // 未选中的白卡落在灰底上才有轮廓(旧版画布无底色 → 透出面板白,与卡片「白底叠白底」)。
-  const scroll = el("div", "overflow-x-auto pb-[6px] cursor-grab bg-page rounded-8");
+  // `pb-[10px]`:横向滚动条(占位式或 overlay)与最后一行卡片之间留出呼吸位,绝不压住卡片。
+  const scroll = el("div", "overflow-auto pb-[10px] cursor-grab bg-page rounded-8");
   scroll.dataset.grid = "1"; // 复用路径的锚点标记(见 main.ts::renderGrid / patchGridStates)
   const min = el("div", "relative w-max min-w-full");
   min.style.width = `${totalW}px`;
@@ -223,7 +237,12 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
 
   // 时间标尺(ruler):底部强描边与场馆行分隔。粘性列空占位(动态轴首根整点标签左锚定画在轨道内,
   // 替代旧「9:00 放粘性列」的写法 —— 轴界不再固定 9 点,只有当日首场那一格需要贴左)。
-  const ruler = el("div", `${ROW_BASE_CLS} border-b border-line`);
+  // ★ 工作台化:纵向滚动改由容器承担 → 标尺 `sticky top-0` 吸在容器顶部(滚到第 20 厅也看得见时刻)。
+  //   `bg-page` 不能省:不透明底才能盖住从它下面滚过去的行(否则卡片会从刻度缝里透出来)。
+  const ruler = el("div", `${ROW_BASE_CLS} sticky top-0 z-[4] bg-page border-b border-line`);
+  // 锚点给 main.ts 的定位用:标尺吸顶会盖住容器顶部一条,纵向居中的「可视净区」要从它下缘起算
+  // (见 main.ts::scrollTargetFor)。没有这个锚点只能按 clientHeight 居中 → 卡片整体偏上。
+  ruler.dataset.gridRuler = "1";
   ruler.style.gridTemplateColumns = rowCols;
   ruler.append(el("div", LABEL_BOX_CLS), buildRulerTicks(ctx, axis, pxPerMin, trackW, nowPx));
   min.appendChild(ruler);
@@ -302,7 +321,16 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
   if (rows.length > 0) markTightPairs(ctx, date, cardEls, talkEls); // §14 1a:转场紧 → 问题卡淡底色提示
 
   if (rows.length === 0) {
-    min.appendChild(el("div", "py-[26px] px-3 text-center text-muted", "当日暂无排片"));
+    // 区分「当天本来就没排片」与「被影厅筛选藏空了」—— 后者是用户自己筛的,得给出退出路径
+    min.appendChild(
+      el(
+        "div",
+        "py-[26px] px-3 text-center text-muted",
+        allRows.length > 0
+          ? "当前影厅筛选下,当日所有影厅都被隐藏 —— 改筛选或点「全部」恢复"
+          : "当日暂无排片"
+      )
+    );
   }
 
   scroll.appendChild(min);
@@ -479,8 +507,7 @@ function markTightPairs(
   talkEls?: Map<string, HTMLElement>
 ): void {
   const picks: Screening[] = [];
-  for (const [code, slot] of ctx.slots) {
-    if (slot.group !== ctx.group) continue;
+  for (const code of ctx.slots.keys()) {
     const s = ctx.cat.byCode.get(code);
     if (s && s.date === date) picks.push(s);
   }
@@ -578,8 +605,7 @@ const TALK_BASE_CLS =
 const INFO_BASE_CLS =
   "absolute top-[3px] right-[3px] border-0 bg-transparent text-muted text-11 py-px px-[3px] rounded-4 " +
   "hover:text-biff-ink hover:bg-[var(--biff-red-tint-3)]";
-/** ⓘ 的两种可见性变体:另一方案的卡始终半可见(不随 hover 出现) */
-const INFO_ALWAYS_CLS = "opacity-40";
+/** ⓘ 的可见性变体:常态隐藏,hover / focus 时显现 */
 const INFO_HOVER_CLS =
   "opacity-0 transition-opacity duration-100 group-hover:opacity-[0.85] group-focus-within:opacity-[0.85]";
 
@@ -594,7 +620,6 @@ const CARD_STATE_VOCAB = [
   "border-conf",
   "in-conf",
   "in-plan",
-  "in-other",
 ] as const;
 const TALK_STATE_VOCAB = [
   "border",
@@ -604,13 +629,10 @@ const TALK_STATE_VOCAB = [
   "border-dashed",
   "in-conf",
   "in-plan",
-  "in-other",
   "gv-talk-off",
 ] as const;
 /** 文字色调词表(身份行 CODE / 时间、片名、谈块两行共用) */
 const TONE_VOCAB = ["text-muted", "text-ink", "text-ink-2", "text-conf"] as const;
-/** 档位星标的颜色词表 */
-const PRI_VOCAB = [PRI_TEXT.must, PRI_TEXT.maybe, PRI_TEXT.wild] as const;
 
 /** 按词表切换一组状态类(先全摘、再全加;不在词表里的类原样保留)。
  *  ⚠ 词表条目与 `wanted` **都允许是多类字符串**,内部按空白拆成 token 再交给 classList ——
@@ -639,19 +661,15 @@ export interface TalkState {
 
 /** 网格卡的状态描述符(**不含几何**) */
 export interface CardState {
-  /** 待选(未选入任一方案且不冲突)—— 文字降一档灰阶 */
+  /** 待选(未选且不冲突)—— 文字降一档灰阶 */
   isIdle: boolean;
   isConflict: boolean;
+  /** 已选(绿底) */
   inCurrent: boolean;
-  inOther: boolean;
   /** 整卡状态类(按 CARD_STATE_VOCAB 组合) */
   stateCls: string;
   /** 时间筛选:该场不在所选小时段内 → 淡化 */
   dim: boolean;
-  /** 档位星标(undefined = 不显示) */
-  star: Priority | undefined;
-  /** 另一方案角标(undefined = 不显示) */
-  otherGroup: Group | undefined;
   /** 冲突角标(与 isConflict 同源,单独列出便于 patch 直接 toggle) */
   warn: boolean;
   /** 冲突卡的 hover 说明(列出每一个冲突对方;undefined = 不冲突) */
@@ -671,10 +689,10 @@ function conflictTipOf(s: Screening, ctx: GridCtx, isConflict: boolean): string 
   const lines = others.map((c) => {
     const o = ctx.cat.byCode.get(c);
     if (!o) return c;
-    const zh = displayTitle(o, ctx.mappingOf(c)?.title_cn);
+    const title = displayTitle(o, ctx.mappingOf(c)?.title_cn);
     const v = ctx.cat.venueById.get(o.venue_id);
     const vTxt = v ? v.code ?? v.id.toUpperCase() : o.venue_display;
-    return `${c}《${zh}》${o.start_time.slice(0, 5)}–${o.end_time.slice(0, 5)} · ${vTxt}`;
+    return `${c}《${title}》${o.start_time.slice(0, 5)}–${o.end_time.slice(0, 5)} · ${vTxt}`;
   });
   return ["时间重叠 — 与下列场次无法同时观看", ...lines].join("\n");
 }
@@ -688,13 +706,14 @@ export function cardStateOf(s: Screening, ctx: GridCtx): CardState {
   const talkOn = (ctx.gvTalkOf?.(s.code) ?? true) && talk > 0;
   const slot = ctx.slots.get(s.code);
   const isConflict = Boolean(ctx.conflictCodes?.has(s.code));
-  const inCurrent = Boolean(slot && slot.group === ctx.group);
-  const inOther = Boolean(slot && slot.group !== ctx.group);
-  // 待选(未选中且没选在另一方案):画布灰底上的白卡 —— 极淡边框 + 中灰文字,视为「待激活容器」;
+  const inCurrent = Boolean(slot);
+  // 待选(未选且不冲突):画布灰底上的白卡 —— 极淡边框 + 中灰文字,视为「待激活容器」;
   // hover 时描边加深(叠既有 shadow-hover 投影 + hl-card 红晕),文字不恢复墨色(激活靠点选后的整卡底色)。
-  const isIdle = !isConflict && !inCurrent && !inOther;
-  // 时间筛选:非选中小时段的场次淡化(槽位整段含谈判定)
-  const dim = ctx.hourFilter != null && !(start < (ctx.hourFilter + 1) * 60 && end > ctx.hourFilter * 60);
+  const isIdle = !isConflict && !inCurrent;
+  // 淡化:时间筛选(非选中小时段)+ 字幕/影厅/GV 三道筛选不通过者 —— 两条来源共用一个 dim,
+  // 因为对用户而言它们是同一件事:「这场现在不在我的视野里」。
+  const hourDim = ctx.hourFilter != null && !(start < (ctx.hourFilter + 1) * 60 && end > ctx.hourFilter * 60);
+  const dim = hourDim || (ctx.filters ? !matchesFilters(s, ctx.filters) : false);
 
   let stateCls: string;
   if (isConflict) {
@@ -703,7 +722,6 @@ export function cardStateOf(s: Screening, ctx: GridCtx): CardState {
   } else {
     stateCls = isIdle ? "border border-line hover:border-line-strong" : "border border-line";
     if (inCurrent) stateCls += " in-plan"; // 已选 = 绿底(优先级不参与网格染色 — 见行程行 seg)
-    else if (inOther) stateCls += " in-other";
   }
 
   let talkState: TalkState | undefined;
@@ -713,7 +731,6 @@ export function cardStateOf(s: Screening, ctx: GridCtx): CardState {
     let cls: string;
     if (isConflict) cls = "border-2 border-conf in-conf";
     else if (inCurrent && talkOn) cls = "border border-line in-plan";
-    else if (inOther && talkOn) cls = "border border-line in-other";
     else if (!talkOn) cls = "border border-dashed border-line gv-talk-off";
     else cls = "border border-line";
     talkState = {
@@ -730,23 +747,12 @@ export function cardStateOf(s: Screening, ctx: GridCtx): CardState {
     isIdle,
     isConflict,
     inCurrent,
-    inOther,
     stateCls,
     dim,
-    star: ctx.wishOf?.(s),
-    otherGroup: inOther ? slot!.group : undefined,
     warn: isConflict,
     conflictTip: conflictTipOf(s, ctx, isConflict),
     talk: talkState,
   };
-}
-
-/** 档位星标:切换颜色 + 显隐 + 说明(构建 / patch 共用) */
-function applyStar(star: HTMLElement, p: Priority | undefined): void {
-  setVocab(star, PRI_VOCAB, p ? PRI_TEXT[p] : PRI_TEXT.wild);
-  star.classList.toggle("is-hidden", !p);
-  if (p) star.dataset.tip = `我的选片 · ${PRI_LABEL[p]}(在「我的选片」卡片 / 行程行可改,或点这里去总览)`;
-  else delete star.dataset.tip;
 }
 
 /** 把状态描述符落到**已存在**的卡片 DOM 上(几何 / 文字内容不动) */
@@ -756,22 +762,13 @@ function applyCardState(card: HTMLElement, st: CardState): void {
   const codeB = card.querySelector<HTMLElement>('[data-card-code="1"]');
   const timeSpan = card.querySelector<HTMLElement>(".card-time");
   const ttl = card.querySelector<HTMLElement>('[data-card-title="1"]');
-  const star = card.querySelector<HTMLElement>('[data-wish="1"]');
-  const grp = card.querySelector<HTMLElement>('[data-grp="1"]');
   const warn = card.querySelector<HTMLElement>('[data-warn="1"]');
-  const info = card.querySelector<HTMLElement>("[data-info]");
   if (codeB) setVocab(codeB, TONE_VOCAB, st.isIdle ? "text-muted" : "text-ink");
   if (timeSpan) setVocab(timeSpan, TONE_VOCAB, st.isIdle ? "text-ink-2" : "text-ink");
   if (ttl) setVocab(ttl, TONE_VOCAB, st.isConflict ? "text-conf" : st.isIdle ? "text-ink-2" : "");
-  if (star) applyStar(star, st.star);
-  if (grp) {
-    grp.classList.toggle("is-hidden", !st.otherGroup);
-    if (st.otherGroup) grp.textContent = st.otherGroup;
-  }
   if (warn) warn.classList.toggle("is-hidden", !st.warn);
   // 冲突说明:patch 路径上一步已清空所有卡片的 tip,这里按状态重新挂上(非冲突卡保持无 tip)
   if (st.conflictTip) card.dataset.tip = st.conflictTip;
-  if (info) setVocab(info, [INFO_ALWAYS_CLS, INFO_HOVER_CLS], st.inOther ? INFO_ALWAYS_CLS : INFO_HOVER_CLS);
 }
 
 /** 把谈块状态落到**已存在**的谈块 DOM 上(几何 / 斜纹底不动) */
@@ -802,7 +799,7 @@ function appendCard(
   const end = hmsToMin(s.end_time);
   const talk = gvTalkMin(s); // GV 映后谈分钟(全局默认 + 单场覆写;0 = 不拆,普通整卡)
   const st = cardStateOf(s, ctx); // 状态唯一真源(与 patchGridStates 共用)
-  const { isIdle, isConflict, inOther } = st;
+  const { isIdle, isConflict } = st;
   const { rowH, insetY, fontScale, showBadges } = ctx.row; // 纵向行几何(由行高倍率派生)
 
   const card = el("div", `${CARD_BASE_CLS} ${st.stateCls}`);
@@ -827,7 +824,7 @@ function appendCard(
   // 窄卡放不下完整 "09:00–10:40" 时由挂载后实测降级为只显开始时间,完整时间移入 hover —— 绝不硬裁)。
   // E1:pr-[20px] 把行尾让给右上角标(ⓘ 右 3~18px / ⚠ 右 22px+),角标悬浮于预留空白,不遮挡时间文本。
   const t1 = el("span", "flex items-center gap-[3px] text-12 text-muted whitespace-nowrap overflow-hidden pr-[20px]");
-  // 待选卡:CODE / 时间降一档灰阶(text-muted / text-ink-2);已选/冲突/另一方案仍用墨色(text-ink)
+  // 待选卡:CODE / 时间降一档灰阶(text-muted / text-ink-2);已选 / 冲突仍用墨色(text-ink)
   const codeB = el("b", `shrink-0 text-12 ${isIdle ? "text-muted" : "text-ink"}`, s.code);
   codeB.dataset.cardCode = "1";
   codeB.dataset.tip = codeTip(s.code);
@@ -849,35 +846,27 @@ function appendCard(
   scaleText(codeB, 12, fontScale);
   scaleText(timeSpan, 12, fontScale);
 
-  // D2 重排:顺序 = 身份行(CODE+时间)→ 中文片名 → 英文名 → 徽章流沉底。
+  // D2 重排:顺序 = 身份行(CODE+时间)→ 片名(英文名 · 中文名)→ 其余片名 / 片长 → 徽章流沉底。
   // 徽章流不再横插在时间与片名之间 —— 宽卡下单行放下,不再 wrap 挤压标题区;
   // mt-auto 把徽章贴到卡底,与标题区形成天然分组。信息零删除,各徽章 data-tip 悬停即示义。
-  const zh = displayTitle(s, ctx.mappingOf(s.code)?.title_cn);
-  const ttlCls = `text-13 font-bold truncate flex-1 min-w-0${
+  // ⚠ 片名口径全站统一为「英文名 · 中文名」(见 util.ts::bilingualTitle),卡片窄时 `truncate`
+  //   会裁掉尾巴 —— 故整串同时挂 hover 提示,中文名不会真的丢失。
+  const title = displayTitle(s, ctx.mappingOf(s.code)?.title_cn);
+  const ttlCls = `text-13 font-bold truncate min-w-0${
     isConflict ? " text-conf" : isIdle ? " text-ink-2" : ""
   }`;
-  // 「我的选片」档位 **★ 星标**:标题行最前 —— 与红绿灯整卡底色正交,一眼看出"这是我标的必看/备选/随缘"。
-  // 2026-09-10 改(用户反馈「甘特图的星星图案也要大一点 现在不是很明显」):
-  //   · 7px 圆点 → **15px ★**(基准;随行高等比缩,与标题 13px 同一缩放口径)
-  //   · 与「我的选片」卡片右上角的 ★、行程行的 ★ 同款同色(见 pick.ts::PRI_TEXT / wishIcon)
-  //   ⚠ 用 `leading-none` 压住行盒:15px 星标的行盒若按 1.45 行高会到 21.75px,
-  //     比标题(13×1.45 = 18.85px)还高 → 把标题行撑高、卡片多行排版被挤。
-  const ttlRow = el("span", "flex items-center gap-[4px] min-w-0");
-  // ★ 恒建、按档位显隐(is-hidden):复用路径要能「打标后星标当场出现」而不重建卡片。
-  // `text-15` 是**基准**字号(100% 档);`scaleText` 在 100% 时早退不写内联值,
-  // 所以基准必须落在类名里 —— 否则星标会继承卡片的基准字号,比标题还小。
-  const star = el("span", "shrink-0 leading-none text-15", "★");
-  star.dataset.wish = "1";
-  scaleText(star, 15, fontScale, "1");
-  applyStar(star, st.star);
-  ttlRow.appendChild(star);
-  const ttl = el("span", ttlCls, zh); // 13px:卡片内最大一号字,缩放基准
+  const ttl = el("span", ttlCls, title); // 13px:卡片内最大一号字,缩放基准
   ttl.dataset.cardTitle = "1";
+  ttl.dataset.tip = title; // 窄卡 truncate 时 hover 看全片名(英文名 · 中文名)
   scaleText(ttl, 13, fontScale);
-  ttlRow.appendChild(ttl);
-  const sub = el("span", "text-11 text-muted truncate", s.title_en !== zh ? s.title_en : `${s.duration_min}min`);
+  // 次级行:韩文名(官方只印韩文时 title_en 就是韩文名,故要排掉同值)→ 否则片长兜底
+  const sub = el(
+    "span",
+    "text-11 text-muted truncate",
+    s.title_kr && s.title_kr !== s.title_en ? s.title_kr : `${s.duration_min}min`
+  );
   scaleText(sub, 11, fontScale);
-  card.append(ttlRow, sub);
+  card.append(ttl, sub);
 
   // 徽章行:等级 → 字幕 → 特性(GV/首映…) → 页码 → 片长。无任何徽章(理论仅 mock 缺字段)时不创建,避免空行。
   // 缩放与门控两件事都在这里:
@@ -893,24 +882,12 @@ function appendCard(
     card.appendChild(bdgRow);
   }
 
-  // ⓘ 详情钮:in-other 卡片不随 hover 出现 → opacity-40 始终;其它 opacity-0 + group-hover/group-focus-within 触发
-  const infoBtn = el("button", `${INFO_BASE_CLS} ${inOther ? INFO_ALWAYS_CLS : INFO_HOVER_CLS}`, "ⓘ");
+  // ⓘ 详情钮:常态 opacity-0,hover / focus 时显现(触屏无 hover,见 CONVENTIONS)
+  const infoBtn = el("button", `${INFO_BASE_CLS} ${INFO_HOVER_CLS}`, "ⓘ");
   infoBtn.dataset.info = s.code;
   infoBtn.dataset.tip = "影片资料 / 豆瓣";
   scaleText(infoBtn, 11, fontScale); // 绝对定位、不影响行高,但缩了才与整卡同一比例
   card.appendChild(infoBtn);
-
-  // 两个角标也是「卡片的一部分」→ 同倍率缩(绝对定位,不影响行高预算)。
-  // 同样恒建 + 显隐:复用路径要能当场出现 / 消失(旧版按条件 append,复用就得重建)。
-  const grpTag = el(
-    "span",
-    "absolute left-[3px] top-[2px] text-9 font-bold text-muted border border-line rounded-3 px-[2px]",
-    st.otherGroup ?? ""
-  );
-  grpTag.dataset.grp = "1";
-  grpTag.classList.toggle("is-hidden", !st.otherGroup);
-  scaleText(grpTag, 9, fontScale);
-  card.appendChild(grpTag);
 
   // 冲突角标 = **实心红点**(取代旧 ⚠ 字形 —— 用户明确不要 emoji)。位置与右上角 ⓘ 并列,
   // 直径随行高等比缩(与卡片内其他组件同一缩放口径);颜色与整卡红底 / 红框同族。
@@ -973,16 +950,26 @@ function appendCard(
   return { card, talkEl: null };
 }
 
-/** 网格「几何签名」—— 只由**影响卡片位置 / 宽高 / 字号 / 轴界**的输入构成。
+/** 网格「几何签名」—— 只由**影响卡片位置 / 宽高 / 字号 / 轴界 / 行集合**的输入构成。
  *  相同 ⇒ 结构可整体复用,只需 `patchGridStates()` 重刷状态;
- *  不同 ⇒ 必须 `buildGrid()` 全量重建(换日期 / 缩放 / 改映后时长)。
+ *  不同 ⇒ 必须 `buildGrid()` 全量重建(换日期 / 缩放 / 改映后时长 / 改影厅筛选)。
  *
  *  ⚠ 为什么用「内容签名」而不是「修订号」:几何输入散落在 Screening(起止 / 片长 / 是否 GV)
  *    与 GV 配置(全局默认 + 逐场覆写)两处 —— 用修订号就得**每处改动都记得 bump**,
  *    漏一次就是「卡片尺寸与数据不一致」的静默错位。内容签名不需要任何人记得。
- *    代价是 O(当日场次数) 的字符串拼装(几百字符),远低于重建数百个 DOM 节点。 */
-export function gridGeometryKey(cat: Catalog, date: string, pxPerMin: number, rowH: number): string {
-  let acc = `${date}|${pxPerMin.toFixed(4)}|${rowH}|`;
+ *    代价是 O(当日场次数) 的字符串拼装(几百字符),远低于重建数百个 DOM 节点。
+ *
+ *  ⚠ `venueKey`(见 filters.ts::venueFilterKey)必须进签名:影厅筛选决定**纵轴行集合**,
+ *    行数一变就必须重建 —— 少了它,筛选后行已该消失但走 patch 路径 → 界面纹丝不动。
+ *    空串 = 无影厅筛选,与旧行为逐字一致。 */
+export function gridGeometryKey(
+  cat: Catalog,
+  date: string,
+  pxPerMin: number,
+  rowH: number,
+  venueKey = ""
+): string {
+  let acc = `${date}|${pxPerMin.toFixed(4)}|${rowH}|${venueKey}|`;
   for (const s of cat.schedule.screenings) {
     if (s.date !== date) continue;
     // duration_min 决定正片末(GV 拆分卡主卡的宽度),gvTalkMin 决定谈块宽度与轴末 —— 都必须在签名里

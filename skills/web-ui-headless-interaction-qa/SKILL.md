@@ -94,12 +94,12 @@ agent_created: true
   数 `[class~="border-line-soft"]` 且 `getComputedStyle(e).borderTopWidth !== "0px"`(**不能只看类名**:
   带类但被覆盖/宽度 0 的情况会漏判);③ 「A 在 B 下方」→ 比 `top > B.bottom`,比看 DOM 顺序可靠。
 - **`CHROME_PATH` 必须 `export`,不能只当命令前缀**:`CHROME_PATH=x && echo $CHROME_PATH` 之后那个变量**只在 shell 里、没有导出**,node 里 `process.env.CHROME_PATH` 是 undefined → playwright 回落到默认 `chromium_headless_shell-*` 路径并报 `Executable doesn't exist at .../headless_shell`(看着像"浏览器没装",其实是环境变量没传)。要么 `export CHROME_PATH=...` 单独一行,要么和 node 写在同一条命令前缀里(`CHROME_PATH=... BASE=... node script`)。
-- **条件渲染的控件:断言前先回源码确认渲染条件**(实测,2026-09-10):`[data-ai="run"]` 在「未配置」态**根本不渲染**
-  (`if (!aiReady(cfg) || editing) {…} else { push(runBar()) }`)→ 断言「态A 有 run」假失败。
+- **条件渲染的控件:断言前先回源码确认渲染条件**(实测):某控件只在特定态下才被 push 进 DOM
+  (例如「未配置」态只渲染表单、不渲染运行按钮)→ 断言「态 A 有它」会假失败。
   凡断言某个控件**存在/不存在**,先去源码 grep 它的 push 点看条件,再决定期望值 ——
   否则会把「设计如此」误报成 bug。**判据:同一锚点在别的态下能被找到 → 是条件渲染,不是丢失。**
 - **弹层计数要按「层数」断言,不是「关干净」**:Escape 通常**只关栈顶**(本项目 `modal.ts` 的设计)。
-  从「影片库」再开出「智能排片」时栈深 2 → 按一次 Escape 后计数应为 **1**,再按一次才 0。
+  从列表再开出「详情 / 资料弹层」时栈深 2 → 按一次 Escape 后计数应为 **1**,再按一次才 0。
   断言写死 `=== 0` 会假失败。先在脚本里 `console.log(await page.locator("#modal-root > div").count())`
   确认当前栈深,再写期望。
 - **首屏竞态**:`waitForSelector(按钮)` 只说明按钮存在,不代表**首屏数据已到**(列表可能还是空的)。

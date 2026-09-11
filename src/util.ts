@@ -1,6 +1,7 @@
 // 通用工具:DOM 辅助 / 时间换算 / 格式化 / 影片信息(片名 + 元信息行)
 
 import type { Catalog, FilmItem, Mapping, Screening } from "./types";
+import { unitDef } from "./units";
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -54,12 +55,17 @@ export function minToHms(min: number): string {
 }
 
 const WEEK = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+const MON_EN = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
-/** '2026-10-08' → { label: '10/08', weekday: '周四' }（本地时区安全解析） */
+/** '2026-10-08' → { label: 'OCT 8', weekday: '周四', date }（本地时区安全解析）
+ *  `label` = **全站唯一日期显示口径** —— 官方排期页「Schedule by Date」的写法(月份英文缩写 + 日,如 `OCT 8`),
+ *  日**不补零**(与官方一致)。顶栏日期条 / 网格标题 / 选片日期筛选 / 行程日期头 / 分享文案一律取它,
+ *  不再各写 `10/8` 这类数字写法(2026-09-11 用户:「时间表示不统一 改成 OCT 这种 和甘特用一样的」)。
+ *  中文 `weekday` 作为附带信息紧随其后(如 `OCT 8 周四`),不参与「日期写法」本身。 */
 export function dateInfo(iso: string): { label: string; weekday: string; date: Date } {
   const [y, m, d] = iso.split("-").map(Number);
   const date = new Date(y, m - 1, d);
-  return { label: `${m}/${d}`, weekday: WEEK[date.getDay()], date };
+  return { label: `${MON_EN[m - 1]} ${d}`, weekday: WEEK[date.getDay()], date };
 }
 
 /** 起止区间文本。同日 → "09:00–10:40"(与旧实现逐字节一致);
@@ -108,12 +114,27 @@ export function slackBetween(
   return { gap, need, slack, verdict };
 }
 
-/** 显示名:优先中文片名,其次豆瓣回填中文,最后英文 */
+/** 片名显示口径(全站唯一来源,2026-09-11 需求):**英文名在前,中文名以「 · 」跟在后面**。
+ *  两侧任一缺失只留存在的一侧;两侧同名(纯排期片的 `zh` 会退化成英文名)只印一次 ——
+ *  绝不会产出「Foo · Foo」或首尾带分隔符的空片名。 */
+export function bilingualTitle(en: string | null | undefined, zh: string | null | undefined): string {
+  const e = (en ?? "").trim();
+  const z = (zh ?? "").trim();
+  if (!e) return z;
+  if (!z || normText(z) === normText(e)) return e;
+  return `${e} · ${z}`;
+}
+
+/** 显示名:排期场次 → 「**英文名 · 中文名**」(口径见 `bilingualTitle`)。
+ *  英文名取排期官方英文名(`data.ts::loadCatalog` 保证非空:官方只印韩文时用韩文名兜底);
+ *  中文名取值链 = 排期中文名 → 豆瓣回填中文名。
+ *  ⚠ 全站片名展示(网格卡 / 资料弹层 / 行程卡 / 复制清单 / tooltip / ICS)一律走它或
+ *    `bilingualTitle`,不要再各写一份「中文优先」的取值链。 */
 export function displayTitle(
   s: { title_zh: string; title_en: string },
   mappingTitleCn: string | null | undefined
 ): string {
-  return s.title_zh || mappingTitleCn || s.title_en;
+  return bilingualTitle(s.title_en, s.title_zh || mappingTitleCn);
 }
 
 /** 搜索 / 命中比较用的归一化:小写 + 去首尾空白(全站单一来源,勿各写一份 `.toLowerCase().trim()`)。 */
@@ -133,14 +154,16 @@ export function groupByDate<T>(list: T[], dateOf: (x: T) => string): [string, T[
   return out;
 }
 
-/** 影片节点 key —— 全站单一来源(影片库节点合并 / 智能排片 / 选片总览 / 甘特打标共用)。
+/** 影片节点 key —— 全站单一来源(影片库节点合并 / 选片总览 / 甘特打标共用)。
  *  口径与影片库 catFor 完全一致:①目录中文名(无中文名则原始片名)精确命中 → `cat:<目录 id>`;
  *  ②原始片名 == 排期英文名 → `cat:<id>`;③都不命中(纯排期片)→ `sched:<中文名|英文名 小写>`。
  *  守卫:title_zh 缺失时不做空值相等匹配(否则会与「两个片名都为空」的目录条目假命中);两片名皆缺则退回 code。 */
 export function filmNodeKey(cat: Catalog, s: Screening): string {
   const zh = s.title_zh;
+  // ① **官网英文名**(目录已由官网片目生成,这一路必然命中) → ② 目录中文名 → ③ 原始片名。
   // 走目录索引(O(1));旧实现每次 `cat.films.find` 线性扫描 → 全站 O(screenings × films)
   const hit =
+    (s.title_en ? cat.filmByEn.get(s.title_en) : undefined) ??
     (zh ? cat.filmByZh.get(zh)?.[0] : undefined) ??
     (s.title_en ? cat.filmByOrig.get(s.title_en)?.[0] : undefined);
   if (hit) return `cat:${hit.id}`;
@@ -156,9 +179,14 @@ export function filmNodeKey(cat: Catalog, s: Screening): string {
 
 /** 影片信息:片名 + 其余片名 + 目录元信息 */
 export interface FilmInfo {
-  /** 展示用片名:目录中文名 → 排期中文名 → 豆瓣回填中文名 → 排期英文名 */
+  /** 展示用片名 = **英文名 · 中文名**(口径见 `bilingualTitle`)—— 卡片头 / 行程卡片名行唯一取值 */
+  title: string;
+  /** 英文名:排期官方英文名;目录片无排期时退回原始片名 */
+  en: string;
+  /** 中文名:目录中文名 → 排期中文名 → 豆瓣回填中文名;
+   *  无中文时退化为英文名(排期片恒非空 —— AI 打包 / 排序 / 搜索都依赖它) */
   zh: string;
-  /** 与 zh 不同的其余片名(原始片名 / 英文 / 韩文),去重保序 */
+  /** 与 `title` 不重复的其余片名(原始片名 / 韩文),去重保序 */
   names: string[];
   /** 单元 · 国家 · 年份 · 导演(目录信息;纯排期片为空串) */
   meta: string;
@@ -166,9 +194,30 @@ export interface FilmInfo {
   cats: FilmItem[];
 }
 
-/** 目录条目的「单元 · 国家 · 年份 · 导演」元信息(空位自动省略,全空则空串) */
+/** 目录条目的「英文位」片名 —— 目录片没有排期时取不到 `title_en`,这里兜住两种 schema:
+ *  新 schema(官网片目合并,`title_en` + `title_orig` 为原始韩/日文名)优先 `title_en`;
+ *  旧 schema 只有 `title_orig`(英/日/韩混排)。两者皆缺 = 该片无英文名(卡片只印中文名)。
+ *  ⚠ 与排期片的英文名口径一致:一律取**官方英文名**,不拿原始韩/日文名冒充。 */
+export function filmEnName(f: FilmItem): string {
+  const maybe = f as FilmItem & { title_en?: string };
+  return maybe.title_en || f.title_orig;
+}
+
+/** 单元显示名 = 「**英文 section 名 · 中文单元名**」—— 与片名 `bilingualTitle` 同一排版。
+ *  对照表在 `units.ts`(数据来源与口径见该文件头);查不到 → 原样返回原串,
+ *  故新单元 / 脏数据只会少一次对照,绝不会变空。
+ *  ⚠ 展示侧**唯一**取用口:卡片副标题(`catMetaLine`)、单元下拉筛选(`library.ts`)都走它,
+ *    别再各写一份「原样印 unit」。 */
+export function unitLabel(raw: string | null | undefined): string {
+  const def = unitDef(raw);
+  return def ? bilingualTitle(def.en, def.zh) : (raw ?? "").trim();
+}
+
+/** 目录条目的「单元 · 国家 · 年份 · 导演」元信息(空位自动省略,全空则空串)。
+ *  单元走 `unitLabel()`(中英对照)—— 原先直接印 `cat.unit`,同一份片单里
+ *  「有的单元是英文、有的是中文」,读起来像两套语言。 */
 export function catMetaLine(cat: FilmItem): string {
-  const bits = [cat.unit, cat.country];
+  const bits = [unitLabel(cat.unit), cat.country];
   if (cat.year) bits.push(String(cat.year));
   if (cat.director) bits.push(cat.director);
   return bits.filter(Boolean).join(" · ");
@@ -177,28 +226,31 @@ export function catMetaLine(cat: FilmItem): string {
 /** 排期场次 → 影片信息。目录命中规则与 `filmNodeKey` **逐字一致**
  *  (①目录中文名(无则原始片名)精确命中 ②原始片名 == 排期英文名),否则三处 key / 片名会漂移。 */
 export function filmInfoOf(cat: Catalog, s: Screening, map?: Mapping): FilmInfo {
+  // 命中优先级与 filmNodeKey **逐字一致**(①官网英文名 → ②中文名 → ③原始片名),否则三处会漂
+  const byEn = s.title_en ? cat.filmByEn.get(s.title_en) : undefined;
   const zhKey = s.title_zh;
-  const byName = zhKey ? (cat.filmByZh.get(zhKey) ?? []) : [];
-  const cats = byName.length ? byName : s.title_en ? (cat.filmByOrig.get(s.title_en) ?? []) : [];
+  const byName = byEn ? [] : zhKey ? (cat.filmByZh.get(zhKey) ?? []) : [];
+  const cats = byEn ? [byEn] : byName.length ? byName : s.title_en ? (cat.filmByOrig.get(s.title_en) ?? []) : [];
   const hit = cats[0];
   const zh = hit?.title_zh || s.title_zh || map?.title_cn || s.title_en;
+  // 英文名 = 排期官方英文名(缺则退回目录的官方英文名)—— 与网格卡 / 弹层 / 复制清单同一口径
+  const en = s.title_en || (hit ? filmEnName(hit) : "");
 
   const names = new Set<string>();
   const pushName = (x: string): void => {
-    if (x && x.toLowerCase().trim() !== zh.toLowerCase().trim()) names.add(x);
+    const t = (x ?? "").trim();
+    if (!t) return;
+    const k = normText(t);
+    if (k !== normText(zh) && k !== normText(en)) names.add(t);
   };
   for (const c of cats) pushName(c.title_orig);
-  if (hit) {
-    // 目录条目无原始片名时,退回排期英文名
-    if (!hit.title_orig) pushName(s.title_en);
-  } else {
-    pushName(s.title_en);
-    pushName(s.title_kr);
-  }
-  return { zh, names: [...names], meta: hit ? catMetaLine(hit) : "", cats };
+  // 纯排期片(无目录条目):排期英文名已进 title,韩文名留作副标题
+  if (!hit) pushName(s.title_kr);
+  return { title: bilingualTitle(en, zh), en, zh, names: [...names], meta: hit ? catMetaLine(hit) : "", cats };
 }
 
 /** 元信息行文案:「其余片名 · 单元 · 国家 · 年份 · 导演」(空位自动省略)。
+ *  ⚠ 片名(`title`)已由卡片头片名行给出,故这里**只放其余片名与目录元信息**,不重复印英文名。
  *  空串 = 无任何可展示信息(理论上不会:纯排期片至少有英文名)。 */
 export function filmInfoText(info: FilmInfo): string {
   return [...info.names, info.meta].filter(Boolean).join(" · ");
