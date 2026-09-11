@@ -8,7 +8,7 @@ import { doubanChip } from "./legend";
 import { cardHead, SHOW_ROW_CLS, screeningRow } from "./row";
 import { actState } from "./modal";
 import { PILL_IDLE, PILL_ON } from "./chips";
-import { BTN_GO, ICON_BTN, NAV_BTN, TAB_OFF, TAB_ON } from "./ui";
+import { BTN_GO_SM, ICON_BTN, NAV_BTN, TAB_OFF, TAB_ON } from "./ui";
 import { WISH_ORDER, wishIcon } from "./pick";
 import { codesOfGroup, removePick, setWish, subscribe } from "./state";
 // 智能排片 = **AI 单通道**;UI 全部在 `ai-panel.ts`(本文件只负责挂入口)。
@@ -94,7 +94,7 @@ function chipRow(label: string, chips: HTMLElement): HTMLElement {
 }
 
 /* 日期导航钮 / 卡片图标钮 / 「定位 ▸」的字面量已收敛到 `ui.ts`
-   (NAV_BTN / ICON_BTN / BTN_GO;ICON_BTN 带 `ui-icon-btn` 触屏钩子,见 style.css 的 @media (hover:none))。 */
+   (NAV_BTN / ICON_BTN / BTN_GO_SM;ICON_BTN 带 `ui-icon-btn` 触屏钩子,见 style.css 的 @media (hover:none))。 */
 
 /** 日期小标题(「10/21 周三 · 2 场」)—— 「我的选片」tab 按日期分节时的节头 */
 function dateHead(date: string, count: number): HTMLElement {
@@ -189,8 +189,7 @@ function buildFilmList(ctx: LibraryCtx): FilmListData {
  * ② **调宽**:抓手 `#picker-resizer` 挂在 **`#main-col` 左缘** —— 骑在抽屉与网格之间那条 16px 缝的中央,
  *    也就是两块卡片的**分割线**上(抽屉带 `overflow-hidden`,挂在抽屉里会被裁到缝外,画不到线上)。
  *    拖拽写 `--picker-w`,宽度落 `biff.pickerw.v1`(独立键,与 `biff.ai.v1` / `biff.gvtalk.v1` 同口径)。
- *    **拖到比最小宽度还窄 → 松手即收起抽屉**:`.is-snap` 让抓手变实心红作回执;硬地板 150px;
- *    收起时**不覆盖已存宽度**(下次打开仍是上次那个合适宽度)。
+ *    范围 **520(硬下限,到即卡住)~ 800**,默认 520 —— 见 `PICKER_W_MIN` 注释。
  * ③ **自动常驻**:`ensurePickerOpen()` —— 进界面行程非空 / 甘特图点选场次后由 `main.ts` 调用;
  *    已开则原样返回(**不切 tab、不重建**,用户可能正在「影片库」打标),关着才打开并切到 agenda。 */
 
@@ -226,19 +225,16 @@ export function setAgendaRenderer(fn: () => HTMLElement): void {
 /** 宽度持久化键 —— **独立于** `biff.settings.v1`(与 `biff.ai.v1` / `biff.gvtalk.v1` 同口径:
  *  视图偏好不混进设置序列化,清 Key / 重置设置不会顺手把宽度带走)。 */
 const PICKER_W_KEY = "biff.pickerw.v1";
-/** 最小宽度 **400**(2026-09-11 三改:360 → 400)。
- *  这是「**卡片排版仍然成立**」的阈值,不是随手定的数:`row.ts::SHOW_ROW_CLS` 的第 1 层
- *  = 身份(`[CODE][影院] 日期 时间` ≈200px)+ 操作组(`定位 ▸` + `加入态` ≈120px)+ 间距 8px ≈ 330px,
- *  加上行内距 24 + 抽屉内距 24 = 378 —— 取 400 留出余量。
- *  再窄下去第 1 层就放不下、会被抽屉裁掉,所以**到这里就到底了**(见 pickerResizer:
- *  越过它继续往左拖 = 松手收起抽屉,而不是把卡片挤坏)。 */
-const PICKER_W_MIN = 400;
+/** 最小宽度 **= 默认宽度 = 520**(2026-09-11 四改:400 → 520)。
+ *  520 是「卡片排版仍然成立」的档位:`row.ts::SHOW_ROW_CLS` 第 1 行要放下
+ *  「身份 ≈226 + 章组 ≈163 + 操作组 ≈127 + 间距」≈ 530,加行内距 24 + 抽屉内距 24 ≈ 578 ——
+ *  520 已是最低可用档(再窄章组会明显折行),也是用户认可的开箱宽度。
+ *  ⚠ 它是**硬下限**:拖到 520 就**卡住**,不再有「继续往左拖 = 收起抽屉」——
+ *    那条交互用户明确否掉(「小于 520 就不应该往左再能缩小了 应该卡住」)。
+ *    收起抽屉的出口 = 面板内「收起 ✕」/ `Esc` / 顶栏「选片 · 行程」按钮。 */
+const PICKER_W_MIN = 520;
 /** 上限 800:再宽就比网格还宽,挤压式布局失去意义 */
 const PICKER_W_MAX = 800;
-/** 拖拽的**硬**下限(视觉地板):越过 `PICKER_W_MIN` 后仍可继续拖到这么窄 ——
- *  留这段区间是为了让「我要收起它」有一个明确动作与视觉回执(抓手变实心红),
- *  而不是硬顶在最小宽度上(硬顶时用户分不清是拖不动还是到头了)。松手若仍 < `PICKER_W_MIN` → 收起。 */
-const PICKER_W_DRAG_FLOOR = 150;
 const PICKER_W_DEFAULT = 520;
 
 function clampPickerW(w: number): number {
@@ -370,10 +366,9 @@ function ensurePickerResizer(): void {
 
   const grip = el("div");
   grip.id = "picker-resizer";
-  grip.dataset.tip =
-    "拖动调整面板宽度\n· 双击复位为 520px\n· 一直往左拖到底 = 收起面板";
+  grip.dataset.tip = "拖动调整面板宽度\n· 最小 520px(到下限即卡住)\n· 双击复位为 520px";
   grip.setAttribute("role", "separator");
-  grip.setAttribute("aria-label", "拖动调整选片面板宽度(拖到底收起)");
+  grip.setAttribute("aria-label", "拖动调整选片面板宽度");
   grip.setAttribute("aria-orientation", "vertical");
   grip.appendChild(el("span", "picker-knob")); // 视觉抓手(三枚圆点,纯 CSS 画的)
 
@@ -388,36 +383,20 @@ function ensurePickerResizer(): void {
     grip.classList.add("is-dragging");
     drawer.classList.add("is-resizing"); // 关过渡 → 宽度严格跟手
 
-    const onMove = (e: PointerEvent): void => {
-      const w = widthAt(e);
-      // 越过最小宽度 → 进入「松手就收起」的意图区(抓手整颗变实心红,见 style.css 的 .is-snap)
-      grip.classList.toggle("is-snap", w < PICKER_W_MIN);
-      // 硬地板 = PICKER_W_DRAG_FLOOR(比最小宽度更小),留出这段可拖区间作视觉回执
-      setPickerW(Math.max(PICKER_W_DRAG_FLOOR, Math.min(PICKER_W_MAX, w)));
-    };
+    // 拖拽**逐帧就钳制**:到 `PICKER_W_MIN`(520)立刻卡住 —— 用户明确要求
+    // 「小于 520 就不应该往左再能缩小了 应该卡住」,不再有「拖到底 = 收起」那套意图区。
+    const onMove = (e: PointerEvent): void => setPickerW(clampPickerW(widthAt(e)));
     const onUp = (e: PointerEvent): void => {
       if (grip.hasPointerCapture(e.pointerId)) grip.releasePointerCapture(e.pointerId);
       grip.removeEventListener("pointermove", onMove);
       grip.removeEventListener("pointerup", onUp);
       grip.removeEventListener("pointercancel", onUp);
-      const raw = widthAt(e);
-      const snap = raw < PICKER_W_MIN;
-      grip.classList.remove("is-dragging", "is-snap");
-
-      if (snap) {
-        // ★ 一直往左拖过最小宽度 → 收起抽屉。先摘「关过渡」再收起,让这段收起动画正常播放
-        //   (从当前拖到的窄宽度滑到 0)。**不覆盖已存宽度**:下次打开仍是上次那个合适的宽度,
-        //   而不是被这次「拖到底」的临时值污染。
-        drawer.classList.remove("is-resizing");
-        closePickerDrawer();
-        return;
-      }
-
       // ⚠ 先把最终宽度落定(**仍在 is-resizing 里 → 无过渡**),再摘类:否则松手瞬间会补一段
       //   从「拖拽中的值」到「钳制后的值」的动画,手感像被弹一下。
-      const w = clampPickerW(raw);
+      const w = clampPickerW(widthAt(e));
       setPickerW(w);
       savePickerW(w);
+      grip.classList.remove("is-dragging");
       drawer.classList.remove("is-resizing");
       // 宽度定了才通知 main 侧重绘一次网格(拖拽中逐帧重绘代价高;网格内部画布是定宽,
       // 只有外层 `overflow-x-auto` 视口在变,不重排也不会有渲染错误)。此处**不必**等 transitionend
@@ -550,11 +529,9 @@ export function openFilmPicker(ctx: LibraryCtx): void {
   pickPane.append(pickStat, pickDateRow, pickChipsRow, pickList);
 
   /** 滚动面板:抽屉高度固定,当前 tab 的内容在面板内滚动(两个 pane 只有一个是 panel 的子节点)。
-   *  ⚠ `@container`(`container-type: inline-size`)是**三个 tab 共用的容器查询锚点** ——
-   *  `row.ts::SHOW_ROW_CLS` 靠它决定场次行是「一行」还是「两层」(见该文件头部 ②)。
-   *  一处标记即可覆盖三处:影片库 / 我的选片的列表(它们自己也有 `@container`,就近生效,宽度只差 4px)
-   *  与行程 tab(没有自己的容器 → 落到这里)。 */
-  const panel = el("div", "min-h-0 flex-1 overflow-y-auto @container");
+   *  ⚠ 场次行的「单行优先」排版是**纯栅格**实现的(`row.ts::SHOW_ROW_CLS`,外层不换行 + 内层流式),
+   *  **不依赖容器查询** —— 三改曾在这里挂 `@container` 做断点,四改已撤(见 row.ts 头部 ②)。 */
+  const panel = el("div", "min-h-0 flex-1 overflow-y-auto");
 
   // ---- 视图状态 ----
   /** 影片库 tab 展开态:默认全折叠(目录 250 部,全展开不可用) */
@@ -751,8 +728,11 @@ export function openFilmPicker(ctx: LibraryCtx): void {
    *  本 tab 只注入右侧**操作组**(定位 ▸ + 加入三态),其余骨架与「我的行程」完全一致。 */
   function showRow(s: Screening, withTopBorder: boolean, hideDate = false): HTMLElement {
     // ---- 右:操作(层级分明 —— 定位 = 唯一主操作;加入/已加入 = 次要 / 状态) ----
-    const acts = el("div", "flex items-center gap-[8px] shrink-0");
-    const go = el("button", BTN_GO, "定位 ▸");
+    // ⚠ 2026-09-11 四改:抽屉里的场次行第 1 行要**把宽度留给章组**(用户原话:「图标换行太多了
+    //   明明右边有空间也不往右延展」),故这两枚都收窄:定位走 `BTN_GO_SM`(紧凑档),
+    //   加入态只渲染**符号**(`actState().short`,文案全走 `data-tip`)—— 两枚合计省 ≈40px。
+    const acts = el("div", "flex items-center gap-[6px] shrink-0");
+    const go = el("button", BTN_GO_SM, "定位 ▸");
     go.dataset.libGo = s.code;
     go.dataset.tip = "跳到该影厅时间轴位置";
     // 加入/移出方案 —— 唯一场次列表在这里(弹层已不再重复列场次),与「定位 ▸」并排:
@@ -762,7 +742,7 @@ export function openFilmPicker(ctx: LibraryCtx): void {
     act.dataset.libToggle = s.code;
     act.dataset.film = filmNodeKey(ctx.cat, s);
     const st0 = actState(s.code, ctx.group);
-    act.textContent = st0.label;
+    act.textContent = st0.short; // 紧凑符号;完整语义在 tip 与卡片底色(已选 = 绿底)上
     act.className = st0.cls;
     act.dataset.tip = st0.tip;
     acts.append(go, act);

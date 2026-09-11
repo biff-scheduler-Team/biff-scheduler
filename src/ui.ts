@@ -20,9 +20,12 @@ export const BTN_MINI =
 /** 主按钮的禁用态(占位,避免 disabled 时改尺寸) */
 export const BTN_DISABLED =
   "border-0 rounded-6 px-[14px] py-[6px] text-13 font-bold text-muted bg-raised cursor-not-allowed whitespace-nowrap";
-/** 场次行主操作「定位 ▸」—— 去饱和品牌红实底(弱于 BTN_PRIMARY,不与弹层主按钮抢眼) */
-export const BTN_GO =
-  "border-0 rounded-6 px-[10px] py-[3px] text-12 font-bold whitespace-nowrap " +
+/** 场次行主操作「定位 ▸」—— 去饱和品牌红实底(弱于 BTN_PRIMARY,不与弹层主按钮抢眼)。
+ *  **紧凑档**(2026-09-11 四改,由 `BTN_GO` 改名):内距 / 圆角 / 字阶各降一档 ——
+ *  场次行第 1 行的宽度要留给章组,主操作也得让出一点(它与「＋ 加入」并排,两枚合计省 ≈30px)。
+ *  (旧的 `BTN_GO` 大档已删:抽屉是它唯一调用点,留着就是死代码。) */
+export const BTN_GO_SM =
+  "border-0 rounded-5 px-[7px] py-[2px] text-11 font-bold whitespace-nowrap " +
   "text-on-brand bg-biff-muted hover:bg-biff-hover transition-colors duration-[120ms] active:translate-y-px";
 /** 日期导航 ‹ / › 步进钮(到边界置灰) */
 export const NAV_BTN =

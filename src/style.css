@@ -491,13 +491,6 @@
   color: var(--biff-red-ink);
 }
 
-/* 已拖过最小宽度(松手就收起)→ 抓手整颗变实心红:这是「再往左就是收起」的唯一回执 */
-#picker-resizer.is-snap .picker-knob {
-  border-color: var(--biff-red);
-  background: var(--biff-red);
-  color: var(--text-on-brand);
-}
-
 /* 抽屉收起时抓手一并隐藏:此时 `#main-col` 顶到最左,`left:-16px` 整条会落在视口外 */
 main:not(.is-picker-open) #picker-resizer {
   display: none;

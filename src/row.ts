@@ -10,15 +10,15 @@
 //      `[箭头列 12px][片名 + 副标题 + 状态行][右缘操作 / 图标组]`
 //    行程卡没有箭头,**仍留同宽空列** —— 三处的片名左缘严格对齐(差 20px 会很显眼)。
 //
-// ② **场次行从 `flex-wrap` 改成两层栅格**。旧版 `flex flex-wrap` + 操作组 `ml-auto`:
-//    空间不够时操作组被挤到第 2 行**并右对齐**,留下「[章组] …… [定位 ▸][＋加入]」
-//    这种右侧孤立行(用户截图否掉:「这样的暴力换行很丑」)。现在折行位置是**设计好的**:
-//      宽(容器 ≥ 540px)   一行:  `[身份][章组] ……………… [操作]`
-//      窄                 两层:  `[身份] ……………… [操作]`
-//                                `[章组]`
-//    身份(CODE / 影院 / 日期 / 时间)与操作组**永远同层**,章组整层下沉、**左对齐**。
-//    容器查询靠抽屉 `panel` 上的 `@container`(`library.ts::openFilmPicker`)—— 三个 tab
-//    的内容都在它里面,故一处标记即可覆盖三处。
+// ② **场次行 = 单行优先的「外层不换行 + 内层流式」**(四改,取代三改的两层栅格)。
+//    三改把它做成「宽一行 / 窄两层」的容器查询栅格,被用户否掉:窄档下章组整层下沉,
+//    第 1 行只剩身份 + 操作组、**中间一大段空白** ——「明明右边有空间也不往右延展」。
+//    现在**没有断点**,外层就是两列栅格 `[身份 + 章组(流式)][操作组]`,于是:
+//      · 操作组**永远在第 1 行右缘**(外层只有两个格子,它没地方可去);
+//      · 「身份 + 章组」自己流式折行 —— 第 1 行先被填满,装不下的章组逐枚折到第 2 行**左对齐**。
+//    效果(520px 档):
+//      `[001][BT] 9/17 周三 18:00–22:19 [139min][15][GV]        [定位 ▸][＋加入]`
+//      `[KE][P.43]`                       ← 只在真的装不下时才出现,且左对齐、不右漂
 //
 // ⚠ 章组**不用固定 3 列等宽网格**:短章(15 / KE)只占自身宽度却要占满 1/3 列,章与章之间
 //   会出现大片空白(用户反馈「图标之间都有空隙」)。它是 `flex flex-wrap` + 4px 间距。
@@ -101,28 +101,27 @@ export function cardHead(o: CardHeadOpts): HTMLElement {
   return head;
 }
 
-/* ---------------- 场次行(两层栅格) ---------------- */
+/* ---------------- 场次行(单行优先:外层不换行 + 内层流式) ---------------- */
 
-/** 场次行容器 —— 宽:`[身份][章组][操作]` 一行;窄:身份 + 操作在第 1 行、章组整行下沉。
- *  ⚠ 断点 540px 是**容器宽度**(抽屉内容宽),不是视口宽 —— 见 `panel` 上的 `@container`。 */
-export const SHOW_ROW_CLS =
-  "grid items-center gap-x-[8px] gap-y-[3px] px-3 py-[8px] " +
-  "grid-cols-[1fr_auto] @min-[540px]:grid-cols-[auto_1fr_auto]";
+/** 场次行容器 —— 两列栅格:`[身份 + 章组(流式)][操作组]`。
+ *  ⚠ **折行位置是设计好的**,这是本行排版的关键(2026-09-11 四改):
+ *    · 外层**只有两个格子**,故**操作组永远在第 1 行右缘** —— 不会被甩到下一行;
+ *    · 「身份 + 章组」是第 1 格里的**独立流式容器**(`FLOW_CLS`),它自己按可用宽度折行 ——
+ *      第 1 行会被**填满**之后才折,折下来的章组**左对齐**(不会出现右侧孤立行)。
+ *  旧版把三组塞进**同一个** `flex-wrap` + 操作组 `ml-auto`:`flex-wrap` 按**固有宽度**断行,
+ *  空间不够时最后一项(操作组)被甩到第 2 行、又被 `ml-auto` 顶到右缘 → 用户截图否掉的
+ *  「[章组] …… [定位 ▸][＋加入]」右侧孤立行,且明明右边有空间也不往右延展。
+ *  ⚠ `minmax(0,1fr)` 而非 `1fr`:后者 min 是 `auto`,第 1 格不肯收缩 → 流式容器无从折行。 */
+export const SHOW_ROW_CLS = "grid items-start gap-x-[8px] gap-y-[3px] px-3 py-[8px] grid-cols-[minmax(0,1fr)_auto]";
 
-/** 身份对(CODE + 影院章 + 日期 + 时间)—— 恒在**第 1 行左**,与操作组同层。
- *  ⚠ 刻意**不给** `min-w-0`:内容是 `whitespace-nowrap`,允许收缩只会把它内部挤到溢出;
- *    让它保持固有宽度,由抽屉的最小宽度(`PICKER_W_MIN`)保证放得下。 */
-const WHEN_CLS = "col-start-1 row-start-1 flex items-center gap-[5px] tabular-nums whitespace-nowrap";
-/** 元数据章组 —— 宽时在第 1 行中段;窄时整行下沉到第 2 行(**左对齐**,不右漂) */
-const WHERE_CLS =
-  "col-span-2 row-start-2 flex flex-wrap items-center gap-x-[4px] gap-y-[3px] min-w-0 " +
-  "@min-[540px]:col-span-1 @min-[540px]:col-start-2 @min-[540px]:row-start-1";
-/** 操作组 —— 恒在**第 1 行右**。`justify-self-end` 贴右:
- *  旧版靠 `ml-auto`,而 `flex-wrap` 折行后 `ml-auto` 会把整组推到第 2 行右缘 → 右侧孤立行。 */
-const ACTS_CLS =
-  "col-start-2 row-start-1 justify-self-end flex items-center gap-[8px] @min-[540px]:col-start-3";
-/** 追加行(行程 = 冲突提示)—— 独占最后一行整宽 */
-const EXTRA_CLS = "col-span-2 row-start-3 @min-[540px]:col-span-3 @min-[540px]:row-start-2";
+/** 「身份 + 章组」的**流式容器**(第 1 格):先填满第 1 行,装不下才逐枚折到下一行(左对齐)。
+ *  ⚠ 章组直接作为它的子节点(不再套一层容器)—— 套一层就变成「整组一起折」,
+ *    第 1 行会被浪费掉(用户原话:「明明右边有空间也不往右延展」)。 */
+const FLOW_CLS = "col-start-1 row-start-1 flex flex-wrap items-center gap-x-[6px] gap-y-[3px] min-w-0";
+/** 操作组(第 2 格)—— 恒在**第 1 行右缘**;`shrink-0` 保证它不被章组挤变形 */
+const ACTS_CLS = "col-start-2 row-start-1 flex items-center gap-[6px] shrink-0";
+/** 追加行(行程 = 冲突提示)—— 独占下一行整宽 */
+const EXTRA_CLS = "col-span-2 row-start-2";
 
 /** CODE 章(11px 黑块白字)—— 场次身份的第一元素,三处同款 */
 export function codeChip(code: string): HTMLElement {
@@ -133,11 +132,6 @@ export function codeChip(code: string): HTMLElement {
   );
   node.dataset.tip = codeTip(code);
   return node;
-}
-
-/** 元数据章组容器(紧凑流式)—— 片长 + 等级 / 字幕 / GV / 页码的落点,三处同款 */
-export function metaChipRow(extraCls = ""): HTMLElement {
-  return el("div", "flex flex-wrap items-center gap-x-[4px] gap-y-[3px] min-w-0" + (extraCls ? ` ${extraCls}` : ""));
 }
 
 /** 片长说明(hover)—— 网格卡 / 行程行 / 选片行同一份文案 */
@@ -173,11 +167,14 @@ export function screeningRow(o: ScreeningRowOpts): HTMLElement {
   const line = el("div", o.rowCls ?? SHOW_ROW_CLS);
   const isCard = Boolean(o.headTitle);
 
-  // ---- 身份对(CODE + 影院章) + 日期 + 时间 ----
+  // ---- 第 1 格:身份 + 章组的**流式容器** ----
+  const flow = el("div", FLOW_CLS);
+
+  // 身份对(CODE + 影院章) + 日期 + 时间 —— 一枚整体(`shrink-0`),不会被拆到两行
   const venue = cat.venueById.get(s.venue_id);
   const vCode = venue ? venue.code ?? venue.id.toUpperCase() : s.venue_display;
   const { label, weekday } = dateInfo(s.date);
-  const when = el("div", WHEN_CLS);
+  const when = el("div", "flex items-center gap-[5px] shrink-0 tabular-nums whitespace-nowrap");
   when.appendChild(codeChip(s.code));
   when.appendChild(
     uniformChipEl(vCode, venue ? venueTip(venue) : s.venue_display, "font-extrabold text-ink-2 bg-card border-line")
@@ -186,15 +183,15 @@ export function screeningRow(o: ScreeningRowOpts): HTMLElement {
   when.appendChild(
     el("span", "text-12 font-semibold text-ink", o.timeText ?? fmtMinRange(s.start_time, s.end_time))
   );
-  line.appendChild(when);
+  flow.appendChild(when);
 
-  // ---- 元数据章组(片长 + 等级 / 字幕 / GV / 页码;紧凑流式,无等宽列空隙) ----
-  const where = metaChipRow(WHERE_CLS);
-  where.appendChild(uniformChipEl(`${s.duration_min}min`, durTip(s.duration_min)));
-  appendMetaRow(where, s, { uniform: true });
-  line.appendChild(where);
+  // ---- 章组(片长 + 等级 / 字幕 / GV / 页码)—— **直接进流容器**:
+  //      逐枚参与折行,第 1 行先被填满;若套一层容器就变成「整组一起折」,第 1 行右侧会被浪费 ----
+  flow.appendChild(uniformChipEl(`${s.duration_min}min`, durTip(s.duration_min)));
+  appendMetaRow(flow, s, { uniform: true });
+  line.appendChild(flow);
 
-  // ---- 操作组:有卡片头 → 挂到卡片头右缘;否则挂场次行第 1 行右缘 ----
+  // ---- 操作组:有卡片头 → 挂到卡片头右缘;否则挂场次行**第 1 行右缘**(见 SHOW_ROW_CLS 注释) ----
   if (o.acts && !isCard) {
     o.acts.classList.add(...ACTS_CLS.split(" "));
     line.appendChild(o.acts);

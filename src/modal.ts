@@ -206,8 +206,14 @@ interface FilmModalCtx {
  *  所以不能写成「改入 B」(写了两步的事就变成一步的承诺)。
  *  ⚠ **「加入」不写方案名**(2026-09-10):列表 / 网格整个就是当前方案(A/B 由顶栏切换),
  *  「加入 A 方案」把「你正在看的那一个」重复了一遍 —— 只在**跨方案**那态才点名(「已在 B 方案」),
- *  因为那才是「不在你当前方案里」这条信息本身。 */
-export function actState(code: string, group: string): { label: string; cls: string; tip: string } {
+ *  因为那才是「不在你当前方案里」这条信息本身。
+ *  ⚠ `short` = **紧凑标签**(2026-09-11 四改):抽屉里的场次行第 1 行要留宽度给章组,
+ *  故那里只渲染一枚符号(文案全走 `data-tip`)。弹层里有的是地方,继续用 `label`。
+ *  两者必须**同源**在这里改,否则抽屉与弹层会显示成两种语义。 */
+export function actState(
+  code: string,
+  group: string
+): { label: string; short: string; cls: string; tip: string } {
   const btn =
     "border rounded-6 px-[9px] py-[3px] text-12 font-bold whitespace-nowrap " +
     "transition-[background-color,border-color,color] duration-[120ms] active:translate-y-px ";
@@ -215,6 +221,7 @@ export function actState(code: string, group: string): { label: string; cls: str
   if (hit?.group === group) {
     return {
       label: "✓ 已加入",
+      short: "✓",
       cls:
         "border-0 bg-transparent p-0 text-12 font-bold whitespace-nowrap text-ok " +
         "cursor-pointer underline-offset-2 hover:underline",
@@ -224,12 +231,14 @@ export function actState(code: string, group: string): { label: string; cls: str
   if (hit) {
     return {
       label: `⇄ 已在 ${hit.group}`,
+      short: `⇄${hit.group}`,
       cls: btn + "border-line bg-card text-ink-2 hover:border-biff hover:text-biff-ink",
       tip: `该场在 ${hit.group} 方案(不是当前方案)— 一场只能属于一个方案:点击先移出,按钮会翻成「＋ 加入」,再点一次即改入当前方案`,
     };
   }
   return {
     label: "＋ 加入",
+    short: "＋",
     cls: btn + "border-line bg-card text-ink hover:border-biff hover:text-biff-ink",
     tip: "把该场加入当前方案",
   };
