@@ -17,6 +17,7 @@ import {
   renderFilterBar,
   saveFilters,
 } from "./filters";
+import { KIND_LABEL, programOf } from "./extras";
 import { BTN_GO_SM, ICON_BTN, NAV_BTN, TAB_OFF, TAB_ON } from "./ui";
 import { addPickFilm, allCodes, removePick, subscribe } from "./state";
 import { toast } from "./toast";
@@ -98,13 +99,28 @@ function buildUnitChips(films: FilmItem[]): UnitChip[] {
     .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key, "zh"));
 }
 
-/** 节点命中搜索:code / 片名(英文名 · 中文名)/ 其余片名 / 单元·国家·导演 */
+/** 节点命中搜索:code / 片名(英文名 · 中文名)/ 其余片名 / 单元·国家·导演 /
+ *  **活动场的中文检索词**(活动形式名 + 嘉宾中英文名)。
+ *  ⚠ 活动形式 / 嘉宾只存在于 `festival-extras.json`(排期页不印,见 `extras.ts`),
+ *    故这一段单独走 `matchProgram`;extras 未加载(缺文件 / 旧部署)时静默跳过,
+ *    其余字段照常匹配 —— 增强字段不能反过来拖垮基础搜索。 */
 function matchNode(n: FilmNode, kw: string): boolean {
   if (!kw) return true;
   if (normText(n.title).includes(kw)) return true; // 含英文名与中文名两侧
   if (n.names.some((x) => normText(x).includes(kw))) return true;
   if (normText(n.meta).includes(kw)) return true;
-  return n.shows.some((s) => s.code.toLowerCase().includes(kw));
+  if (n.shows.some((s) => s.code.toLowerCase().includes(kw))) return true;
+  return n.shows.some((s) => matchProgram(s.code, kw));
+}
+
+/** 活动场命中:活动形式名(「演员之家」「大师班」「电影课」「特别对谈」)与嘉宾名(中 / 英)。
+ *  数据源 = `extras.ts::programOf`(按 code 取 `festival-extras.json` 的 programs 条目);
+ *  非活动场 / extras 未加载 → 恒 false。 */
+function matchProgram(code: string, kw: string): boolean {
+  const p = programOf(code);
+  if (!p) return false;
+  if (normText(KIND_LABEL[p.kind]).includes(kw)) return true;
+  return normText(p.guest ?? "").includes(kw) || normText(p.guestZh ?? "").includes(kw);
 }
 
 /** 节点是否属于某归并单元(纯排期片无目录,只在「全部」下出现) */
@@ -598,8 +614,8 @@ export function openFilmPicker(ctx: LibraryCtx, tab?: "lib" | "pick" | "agenda")
   ) as HTMLInputElement;
   search.type = "search";
   search.placeholder = ctx.cat.films.length
-    ? `搜 中文片名 / 原始片名 / code / 单元·导演(目录 ${ctx.cat.films.length} 部)`
-    : "搜 中文片名 / 英文片名 / code";
+    ? `搜 中文片名 / 原始片名 / 嘉宾 / code / 单元·导演(目录 ${ctx.cat.films.length} 部)`
+    : "搜 中文片名 / 英文片名 / 嘉宾 / code";
   search.autocomplete = "off";
   libTool.append(search);
   // 单元筛选 = **下拉**(2026-09-11 由 chips 改):单元名的长短差极大(「Icons」↔
