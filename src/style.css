@@ -145,6 +145,9 @@
   --shadow-card: 0 1px 2px rgb(17 17 17 / 5%), 0 1px 4px rgb(17 17 17 / 7%);
   --shadow-hover: 0 2px 8px rgb(17 17 17 / 13%);
   --shadow-modal: 0 20px 50px rgb(0 0 0 / 22%);
+  /* 面板阴影(选片抽屉专用,2026-09-11):抽屉与网格同为白卡,需要一层「浮起来」的投影
+     才有工作台的主次感 —— 比 --shadow-card 更散、更远,但不至于像弹层(--shadow-modal)。 */
+  --shadow-panel: 0 6px 24px rgb(17 17 17 / 12%), 0 1px 3px rgb(17 17 17 / 8%);
   --shadow: var(--shadow-card);
   --font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
 }
@@ -365,14 +368,15 @@
   max-width: min(320px, calc(100vw - 24px));
 }
 
-/* 「影片库 · 我的选片」抽屉打开时放宽 <main> 的容器上限(1280 → 1680)。
-   抽屉是**挤压式**的(`<main>` 是 flex 行,抽屉 520px 在左、`#main-col` flex-1 在右):
-   若 main 仍卡 1280,抽屉就会净吃掉网格 520px 宽度;放宽到 1680 后
-   `1680 − 32(px-4×2) − 520(抽屉) − 16(gap)` = 1112px(1440 视口下 ≈872px)
-   —— 即「打开选片尽量少牺牲网格宽度」。
-   选择器 `main.is-picker-open`(0,1,1) 压过 Tailwind 的 `.max-w-\[1280px\]`(0,1,0),不必 !important。 */
-main.is-picker-open {
-  max-width: 1680px;
+/* ★ 全出血布局(2026-09-11 二改):`<main>` 已去掉 `max-w-[1280px] mx-auto px-4`
+   —— 抽屉左缘 = 视口左缘、`#grid-wrap` 右缘 = 视口右缘,两块面板夹着 16px 的缝构成「工作台」。
+   (旧写法是「打开抽屉才把 main 上限放宽到 1680」;全出血后这个上限规则**已删** ——
+    宽度不再有上限,抽屉与网格各自贴边,不会再有「开抽屉净吃掉网格宽度」的问题。)
+   贴边的那一侧圆角 / 描边必须去掉:1px 线画在视口边缘只会像「被切掉」,圆角同理。 */
+#grid-wrap {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right-width: 0;
 }
 
 /* ================= 选片抽屉:向右滑出动画 + 可拖拽调宽(2026-09-11,PLAN-20260911140342)=================
@@ -388,6 +392,12 @@ main.is-picker-open {
    ⚠ 本注释**刻意不写出那些类的完整字面量**:Tailwind 连注释一起扫,会凭空生成死类。 */
 #picker-drawer {
   width: var(--picker-w, 520px);
+  /* 贴页面左缘:左侧圆角 / 描边去掉(理由同 `#grid-wrap` 的右缘) */
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left-width: 0;
+  /* 面板阴影 —— 抽屉与网格同为 `bg-card` 白卡,不给阴影就「糊在一起」、没有工作台的主次感 */
+  box-shadow: var(--shadow-panel);
   transition:
     width 240ms cubic-bezier(0.22, 0.61, 0.36, 1),
     margin-right 240ms cubic-bezier(0.22, 0.61, 0.36, 1),
@@ -396,7 +406,7 @@ main.is-picker-open {
     opacity 200ms ease;
 }
 
-/* 折叠态(width:0)—— 内距 / 左右描边一并归零,否则 0 宽抽屉仍留 12+1px 的细条。
+/* 折叠态(width:0)—— 内距 / 右侧描边一并归零,否则 0 宽抽屉仍留 12+1px 的细条。
    ⚠ `margin-right: -16px` 抵消 `<main>` 的 `gap-4`(16px):flex 的 gap 不受 item 宽度影响,
      不减这一下,收起后网格左缘会永远空出 16px。 */
 #picker-drawer.is-collapsed {
@@ -404,7 +414,6 @@ main.is-picker-open {
   margin-right: -16px;
   padding-left: 0;
   padding-right: 0;
-  border-left-width: 0;
   border-right-width: 0;
   opacity: 0;
   pointer-events: none;
@@ -415,35 +424,89 @@ main.is-picker-open {
   transition: none;
 }
 
-/* 拖拽手柄:贴在抽屉**右缘**(抽屉在左,向右调宽)。
-   命中区 10px 宽(触屏也够),视觉是 2px 细线,hover / 拖拽中变品牌红。
-   ⚠ 必须**完全落在抽屉盒内**:抽屉带 `overflow-hidden`,伸到盒外的部分会被裁掉(命中区白丢)。 */
+/* ---------- 拖拽抓手(2026-09-11 二改)----------
+   挂点从「抽屉右缘内侧」挪到 **`#main-col` 的左缘**,理由有二:
+     ① 抽屉带 `overflow-hidden`,手柄伸出盒外的部分会被裁掉 → 画不到两块卡片**中间的分割线**上;
+     ② 用户要的正是「调整线落在卡片之间的分割线上」—— 那 16px 缝隙的中央才是分割线。
+   `#main-col` 左缘 = 抽屉右缘 + 16px(gap),即那条缝相对 `#main-col` 是 `[-16px, 0]` ——
+   故 `left:-16px; width:16px` 恰好铺满整条缝,`::before` 的 1px 线正落在缝中央(= 分割线)。
+   `#main-col` 在 ≤1099px 是 `display:none` → 抓手随之消失(全宽面板本来也没得调)。 */
 #picker-resizer {
   position: absolute;
   top: 0;
-  right: 0;
   bottom: 0;
-  width: 10px;
+  left: -16px;
+  width: 16px;
   z-index: 6;
   cursor: col-resize;
   touch-action: none; /* 触屏拖动不触发页面滚动 */
 }
 
-#picker-resizer::after {
+/* 分割线本体:贯穿整条缝的 1px 竖线,常态极淡 —— 它是「两块卡片的分界」,不是装饰 */
+#picker-resizer::before {
   content: "";
   position: absolute;
-  top: 12px;
-  bottom: 12px;
-  left: 8px;
+  top: 0;
+  bottom: 0;
+  left: 7px;
   width: 2px;
-  border-radius: 2px;
+  border-radius: 1px;
   background: var(--border-default);
-  transition: background 120ms ease;
+  opacity: 0.6;
+  transition: background 120ms ease, opacity 120ms ease;
 }
 
-#picker-resizer:hover::after,
-#picker-resizer.is-dragging::after {
+/* 抓手图标:竖直居中的小胶囊 + 三枚圆点(纯 CSS,不依赖字体)→ 用户一眼知道这里能拖 */
+#picker-resizer .picker-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  box-shadow: var(--shadow-card);
+  color: var(--text-meta);
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+#picker-resizer .picker-knob::after {
+  content: "";
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentcolor;
+  /* 三枚圆点(自身 + 上下各一枚)= 竖排抓手 */
+  box-shadow: 0 -6px 0 currentcolor, 0 6px 0 currentcolor;
+}
+
+#picker-resizer:hover::before,
+#picker-resizer.is-dragging::before {
   background: var(--biff-red);
+  opacity: 1;
+}
+
+#picker-resizer:hover .picker-knob,
+#picker-resizer.is-dragging .picker-knob {
+  border-color: var(--biff-red);
+  color: var(--biff-red-ink);
+}
+
+/* 已拖过最小宽度(松手就收起)→ 抓手整颗变实心红:这是「再往左就是收起」的唯一回执 */
+#picker-resizer.is-snap .picker-knob {
+  border-color: var(--biff-red);
+  background: var(--biff-red);
+  color: var(--text-on-brand);
+}
+
+/* 抽屉收起时抓手一并隐藏:此时 `#main-col` 顶到最左,`left:-16px` 整条会落在视口外 */
+main:not(.is-picker-open) #picker-resizer {
+  display: none;
 }
 
 /* 窄屏(≤1099px)放不下「抽屉 + 网格」并排 → 抽屉退化为全宽面板,主列暂时隐藏。
@@ -457,6 +520,9 @@ main.is-picker-open {
 
   #picker-drawer {
     width: 100%;
+    /* 全宽面板两侧都贴视口边缘 → 圆角 / 右侧描边一并去掉(否则右缘像「被切掉」) */
+    border-radius: 0;
+    border-right-width: 0;
   }
 
   #picker-drawer.is-collapsed {
@@ -560,6 +626,8 @@ main.is-picker-open {
   --shadow-card: 0 1px 2px rgb(0 0 0 / 45%), 0 1px 4px rgb(0 0 0 / 35%);
   --shadow-hover: 0 2px 8px rgb(0 0 0 / 55%);
   --shadow-modal: 0 20px 50px rgb(0 0 0 / 65%);
+  /* 面板阴影:暗底上要更实(否则投影看不见),但比弹层浅 */
+  --shadow-panel: 0 6px 24px rgb(0 0 0 / 55%), 0 1px 3px rgb(0 0 0 / 45%);
 }
 
 /* 显式亮色:与 :root 同值(只声明 color-scheme,让表单控件 / 滚动条也走浅色)。

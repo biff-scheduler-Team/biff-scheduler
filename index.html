@@ -60,24 +60,32 @@
     </div>
   </header>
 
-  <main class="max-w-[1280px] mx-auto px-4 py-4 flex items-start gap-4 max-[720px]:px-2.5 max-[720px]:py-2.5" data-page-node-id="Azu1iXrZ77JCXHU9nTLfUn">
+  <!-- 全出血工作台(2026-09-11 二改):去掉 `max-w-[1280px] mx-auto px-4` ——
+       抽屉左缘贴视口左缘、`#grid-wrap` 右缘贴视口右缘,中间 16px 的缝就是两块卡片的分割线
+       (拖拽抓手 `#picker-resizer` 挂在 `#main-col` 左缘、骑在这条缝上)。
+       贴边侧的圆角 / 描边由 style.css 去掉(1px 线画在视口边缘只会像「被切掉」)。 -->
+  <main class="py-4 flex items-start gap-4 max-[720px]:py-2.5" data-page-node-id="Azu1iXrZ77JCXHU9nTLfUn">
     <!-- 左侧抽屉(2026-09-10 起,「选片 · 行程」工作台):「影片库 / 我的选片 / 我的行程」三个 tab。
-         打开时给 main 加 .is-picker-open(容器上限 1280 → 1680,见 style.css),网格仍在其右**可见可点** ——
-         打标 / 点选当场反馈,不再有「换页丢上下文」的问题。内容由 library.ts::openFilmPicker 挂进本容器(每次打开重建)。
+         打开时给 main 加 .is-picker-open(网格仍在其右**可见可点**)—— 打标 / 点选当场反馈,
+         不再有「换页丢上下文」的问题。内容由 library.ts::openFilmPicker 挂进本容器(每次打开重建)。
          窄屏(≤1099px)放不下「抽屉 + 网格」并排:抽屉退化为全宽面板,主列暂时隐藏(style.css 的媒体查询)。
-         抽屉**不是弹层**(不进 modal 栈),故不隐藏网格 —— 网格宽度变化由 library.ts 回调 main 侧补一次 renderGrid。
+         抽屉**不是弹层**(不进 modal 栈),故不隐藏网格 —— 网格宽度变化由 library.ts 回调 main 侧补一次 renderGrid
+         (⚠ 2026-09-11 起该回调**推迟到宽度过渡结束**,见 library.ts::notifyAfterWidthTransition)。
          「我的行程」原占主页面下方 2700px+ 之外(基本看不到),2026-09-10 搬入抽屉第三个 tab 后常驻可见。
          见 PLAN-20260910190916。
 
          ⚠ 2026-09-11(PLAN-20260911140342):开关类由 `is-hidden`(display:none,不可过渡)改为
          **`is-collapsed`**(width:0 + 透明度,可过渡)—— 抽屉现在从**左缘向右滑出**;
-         宽度由 `--picker-w` 驱动(**可拖拽调宽**,手柄 `#picker-resizer` 由 library.ts 挂),
-         故写死宽度的两个工具类已移入 style.css(避免被 ID 选择器压死后出现两处宽度来源)。
+         宽度由 `--picker-w` 驱动,故写死宽度的两个工具类已移入 style.css
+         (避免被 ID 选择器压死后出现两处宽度来源)。
          ⚠ 注释里**不要**写出那些工具类的完整字面量:Tailwind 会连注释一起扫,凭空生成死类。
-         `relative` 是拖拽手柄(绝对定位在右缘)的包含块。 -->
-    <aside id="picker-drawer" class="is-collapsed relative sticky top-[64px] shrink-0 flex flex-col max-h-[calc(100vh-80px)] overflow-hidden bg-card border border-line rounded-8 p-[12px] max-[1099px]:static" data-page-node-id="pk1R7Yb2nQ5wE4tZ8vC3dA"></aside>
 
-    <div id="main-col" class="flex-1 min-w-0 grid gap-4" data-page-node-id="mc0MainCol0000000000000">
+         ⚠ 2026-09-11 二改(全出血工作台):本元素**贴视口左缘**(`main` 的容器上限 / 左右内距已删),
+         左侧圆角 / 描边与面板阴影都在 style.css 里给;**拖拽抓手不在本元素内** ——
+         它挂在 `#main-col` 左缘、骑在两块卡片的分割线上(本元素带 `overflow-hidden`,挂在里面会被裁到缝外)。 -->
+    <aside id="picker-drawer" class="is-collapsed sticky top-[64px] shrink-0 flex flex-col max-h-[calc(100vh-80px)] overflow-hidden bg-card border border-line rounded-8 p-[12px] max-[1099px]:static" data-page-node-id="pk1R7Yb2nQ5wE4tZ8vC3dA"></aside>
+
+    <div id="main-col" class="relative flex-1 min-w-0 grid gap-4" data-page-node-id="mc0MainCol0000000000000">
       <section id="grid-wrap" class="bg-card border border-line rounded-8 p-[14px] min-w-0" data-page-node-id="UDVmNHtxaQ8LBW4RMKAvxQ">
         <div id="date-chips" class="flex gap-[6px] flex-wrap mb-[10px]" data-page-node-id="laZc2XY6YE1UCNZfyxjzDd"></div>
         <div class="flex items-baseline justify-between mb-[10px] gap-2 flex-wrap" data-page-node-id="PqNAkzpjzbBJlBwKEjdAsA">

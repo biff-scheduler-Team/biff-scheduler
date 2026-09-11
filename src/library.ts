@@ -186,8 +186,11 @@ function buildFilmList(ctx: LibraryCtx): FilmListData {
  * ---- 2026-09-11 增补(PLAN-20260911140342):滑出动画 / 可拖拽调宽 / 行程非空自动常驻 ----
  * ① **滑出**:折叠类由 `is-hidden`(display:none)换成 `is-collapsed`(width:0)—— 宽度可过渡,
  *    抽屉从**左缘向右**长出来,收起时缩回;挤压式布局下网格同步变窄(见 style.css 的 `#picker-drawer` 块)。
- * ② **调宽**:抽屉右缘挂 `#picker-resizer`(绝对定位,见 style.css),拖拽写 `--picker-w`;
- *    宽度落 `biff.pickerw.v1`(独立键,与 `biff.ai.v1` / `biff.gvtalk.v1` 同口径:视图偏好不混进设置序列化)。
+ * ② **调宽**:抓手 `#picker-resizer` 挂在 **`#main-col` 左缘** —— 骑在抽屉与网格之间那条 16px 缝的中央,
+ *    也就是两块卡片的**分割线**上(抽屉带 `overflow-hidden`,挂在抽屉里会被裁到缝外,画不到线上)。
+ *    拖拽写 `--picker-w`,宽度落 `biff.pickerw.v1`(独立键,与 `biff.ai.v1` / `biff.gvtalk.v1` 同口径)。
+ *    **拖到比最小宽度还窄 → 松手即收起抽屉**:`.is-snap` 让抓手变实心红作回执;硬地板 150px;
+ *    收起时**不覆盖已存宽度**(下次打开仍是上次那个合适宽度)。
  * ③ **自动常驻**:`ensurePickerOpen()` —— 进界面行程非空 / 甘特图点选场次后由 `main.ts` 调用;
  *    已开则原样返回(**不切 tab、不重建**,用户可能正在「影片库」打标),关着才打开并切到 agenda。 */
 
@@ -223,10 +226,15 @@ export function setAgendaRenderer(fn: () => HTMLElement): void {
 /** 宽度持久化键 —— **独立于** `biff.settings.v1`(与 `biff.ai.v1` / `biff.gvtalk.v1` 同口径:
  *  视图偏好不混进设置序列化,清 Key / 重置设置不会顺手把宽度带走)。 */
 const PICKER_W_KEY = "biff.pickerw.v1";
-/** 下限 360:再窄 `filmRow` 的场次行 `[CODE][时间][影院…] → [定位 ▸]` 会折成多行 */
+/** 最小宽度 360:再窄 `filmRow` 的场次行 `[CODE][时间][影院…] → [定位 ▸]` 会折成多行。
+ *  ⚠ 它**不是拖拽的硬下限** —— 拖到比它还窄就是「松手即收起」的意图区(见 pickerResizer)。 */
 const PICKER_W_MIN = 360;
 /** 上限 800:再宽就比网格还宽,挤压式布局失去意义 */
 const PICKER_W_MAX = 800;
+/** 拖拽的**硬**下限(视觉地板):越过 `PICKER_W_MIN` 后仍可继续拖到这么窄 ——
+ *  留这段区间是为了让「我要收起它」有一个明确动作与视觉回执(抓手变实心红),
+ *  而不是硬顶在最小宽度上(硬顶时用户分不清是拖不动还是到头了)。松手若仍 < `PICKER_W_MIN` → 收起。 */
+const PICKER_W_DRAG_FLOOR = 150;
 const PICKER_W_DEFAULT = 520;
 
 function clampPickerW(w: number): number {
@@ -250,13 +258,16 @@ function savePickerW(w: number): void {
   }
 }
 
-/** 把宽度写到抽屉元素上 —— `--picker-w` 的**唯一写入点**(style.css 的 `#picker-drawer` 消费它) */
-function applyPickerW(w: number): void {
-  document.getElementById("picker-drawer")?.style.setProperty("--picker-w", `${clampPickerW(w)}px`);
+/** 把宽度**原样**写到抽屉元素上(仅取整,**不钳制**)—— `--picker-w` 的**唯一写入点**
+ *  (style.css 的 `#picker-drawer` 消费它)。
+ *  ⚠ 钳制**不能**放这里:拖拽时要能写到 `PICKER_W_MIN` 以下(那段是「松手即收起」的意图区),
+ *    钳制只发生在「落盘」与「拖拽硬地板」两处(见 clampPickerW / pickerResizer)。 */
+function setPickerW(w: number): void {
+  document.getElementById("picker-drawer")?.style.setProperty("--picker-w", `${Math.round(w)}px`);
 }
 
 // 模块加载即恢复上次宽度:index.html 在 <body> 末尾引入本模块,#picker-drawer 此时已就位。
-applyPickerW(loadPickerW());
+setPickerW(loadPickerW());
 
 /** 选片抽屉当前是否打开 —— 折叠类 `is-collapsed` 的反面(见 style.css 的 `#picker-drawer` 块) */
 export function isPickerDrawerOpen(): boolean {
@@ -343,38 +354,67 @@ export function closePickerDrawer(): void {
   notifyAfterWidthTransition();
 }
 
-/* ---------- 拖拽调宽(手柄绝对定位在抽屉右缘,样式见 style.css 的 `#picker-resizer`) ---------- */
+/* ---------- 拖拽调宽(抓手样式见 style.css 的 `#picker-resizer`) ---------- */
 
-/** 手柄元素 —— 每次 `openFilmPicker` 重建内容时一并挂上(`host.replaceChildren` 会清掉旧的,
- *  故不做跨次复用;监听挂在手柄自身上,旧手柄随节点一起丢弃,不会累积)。 */
-function pickerResizer(host: HTMLElement): HTMLElement {
+/** 抓手挂载 —— **挂点 = `#main-col` 的左缘**,骑在抽屉与网格之间那条 16px 缝的中央(即两块卡片的分割线)。
+ *  ⚠ 不能挂在抽屉里:抽屉带 `overflow-hidden`,伸到盒外的部分会被裁掉,画不到分割线上。
+ *  只建一次(`#main-col` 不随抽屉重建);抽屉收起时由 style.css 的
+ *  `main:not(.is-picker-open) #picker-resizer` 隐藏(此时 `#main-col` 顶到最左,抓手会有一半在视口外)。 */
+function ensurePickerResizer(): void {
+  const mainCol = document.getElementById("main-col");
+  if (!mainCol || document.getElementById("picker-resizer")) return;
+
   const grip = el("div");
   grip.id = "picker-resizer";
-  grip.dataset.tip = "拖动调整面板宽度(双击复位为 520px)";
+  grip.dataset.tip =
+    "拖动调整面板宽度\n· 双击复位为 520px\n· 一直往左拖到底 = 收起面板";
   grip.setAttribute("role", "separator");
-  grip.setAttribute("aria-label", "拖动调整选片面板宽度");
+  grip.setAttribute("aria-label", "拖动调整选片面板宽度(拖到底收起)");
   grip.setAttribute("aria-orientation", "vertical");
+  grip.appendChild(el("span", "picker-knob")); // 视觉抓手(三枚圆点,纯 CSS 画的)
 
   grip.addEventListener("pointerdown", (ev: PointerEvent) => {
     ev.preventDefault();
+    const drawer = document.getElementById("picker-drawer");
+    if (!drawer) return;
     // 抽屉左缘在拖拽期间固定(挤压式:main 总宽不变,变的是抽屉 / 网格的宽度分配),量一次即可
-    const left = host.getBoundingClientRect().left;
+    const left = drawer.getBoundingClientRect().left;
+    const widthAt = (e: PointerEvent): number => e.clientX - left;
     grip.setPointerCapture(ev.pointerId);
     grip.classList.add("is-dragging");
-    host.classList.add("is-resizing"); // 关过渡 → 宽度严格跟手
-    const onMove = (e: PointerEvent): void => applyPickerW(e.clientX - left);
+    drawer.classList.add("is-resizing"); // 关过渡 → 宽度严格跟手
+
+    const onMove = (e: PointerEvent): void => {
+      const w = widthAt(e);
+      // 越过最小宽度 → 进入「松手就收起」的意图区(抓手整颗变实心红,见 style.css 的 .is-snap)
+      grip.classList.toggle("is-snap", w < PICKER_W_MIN);
+      // 硬地板 = PICKER_W_DRAG_FLOOR(比最小宽度更小),留出这段可拖区间作视觉回执
+      setPickerW(Math.max(PICKER_W_DRAG_FLOOR, Math.min(PICKER_W_MAX, w)));
+    };
     const onUp = (e: PointerEvent): void => {
       if (grip.hasPointerCapture(e.pointerId)) grip.releasePointerCapture(e.pointerId);
       grip.removeEventListener("pointermove", onMove);
       grip.removeEventListener("pointerup", onUp);
       grip.removeEventListener("pointercancel", onUp);
+      const raw = widthAt(e);
+      const snap = raw < PICKER_W_MIN;
+      grip.classList.remove("is-dragging", "is-snap");
+
+      if (snap) {
+        // ★ 一直往左拖过最小宽度 → 收起抽屉。先摘「关过渡」再收起,让这段收起动画正常播放
+        //   (从当前拖到的窄宽度滑到 0)。**不覆盖已存宽度**:下次打开仍是上次那个合适的宽度,
+        //   而不是被这次「拖到底」的临时值污染。
+        drawer.classList.remove("is-resizing");
+        closePickerDrawer();
+        return;
+      }
+
       // ⚠ 先把最终宽度落定(**仍在 is-resizing 里 → 无过渡**),再摘类:否则松手瞬间会补一段
       //   从「拖拽中的值」到「钳制后的值」的动画,手感像被弹一下。
-      const w = clampPickerW(e.clientX - left);
-      applyPickerW(w);
+      const w = clampPickerW(raw);
+      setPickerW(w);
       savePickerW(w);
-      grip.classList.remove("is-dragging");
-      host.classList.remove("is-resizing");
+      drawer.classList.remove("is-resizing");
       // 宽度定了才通知 main 侧重绘一次网格(拖拽中逐帧重绘代价高;网格内部画布是定宽,
       // 只有外层 `overflow-x-auto` 视口在变,不重排也不会有渲染错误)。此处**不必**等 transitionend
       // —— 上面已在「关过渡」状态下把宽度定死,不会再有过渡发生。
@@ -387,12 +427,12 @@ function pickerResizer(host: HTMLElement): HTMLElement {
 
   // 双击复位默认宽度(拖窄了 / 拖宽了想回到基准)
   grip.addEventListener("dblclick", () => {
-    applyPickerW(PICKER_W_DEFAULT);
+    setPickerW(PICKER_W_DEFAULT);
     savePickerW(PICKER_W_DEFAULT);
     pickerToggleHandler?.();
   });
 
-  return grip;
+  mainCol.appendChild(grip);
 }
 
 /** 抽屉骨架的一次性绑定:Esc。
@@ -522,7 +562,8 @@ export function openFilmPicker(ctx: LibraryCtx): void {
   // 挂进抽屉(既不是弹层、也不是页面):每次打开都重建内容 —— ctx 不缓存,
   // 故永远读到最新的 `store.picks`。
   // 状态同步走 bindPickerState 的订阅(替代弹层栈的 onReturn)。
-  host.replaceChildren(head, panel, pickerResizer(host)); // 右缘拖拽手柄(绝对定位,不参与 flex 列布局)
+  ensurePickerResizer(); // 抓手挂在 `#main-col` 左缘(骑在抽屉与网格的分割线上);已存在则不重复挂
+  host.replaceChildren(head, panel);
   bindPickerChrome();
   bindPickerState();
   pickerRender = render;

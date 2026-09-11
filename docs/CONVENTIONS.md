@@ -49,22 +49,35 @@
   `sticky top-[64px]`,在左)+ `#main-col`(`flex-1 min-w-0 grid gap-4`,只剩 `#grid-wrap` ——
   **2026-09-10 起「我的行程」从 `#agenda-wrap` 搬入抽屉第三个 tab**,见 `PLAN-20260910190916`)
   —— 抽屉打开后网格**完全可见可点**,打标 → 卡片色点当场出现;点选 → 卡片当场变绿。
-  · 开 / 收:给 `main` 加 `.is-picker-open`(容器上限 1280 → 1680,`style.css` 原生规则,
-    权重 (0,1,1) 压过 Tailwind 的 `.max-w-\[1280px\]` —— 放宽后宽屏下抽屉尽量少抢网格宽度:
-    `1680 − 32 − 520 − 16 = 1112px`,1440 视口下 ≈872px)+ `#picker-drawer` 的 **`is-collapsed`**;
+  · **★ 全出血工作台(2026-09-11 二改)**:`<main>` **已去掉** `max-w-[1280px] mx-auto px-4`
+    (旧的「打开抽屉才把 main 上限放宽到 1680」规则随之**删除**)—— 抽屉左缘 = 视口左缘、
+    `#grid-wrap` 右缘 = 视口右缘,两块面板夹着 16px 的缝。贴边那一侧的圆角 / 描边必须去掉
+    (`style.css` 的 `#picker-drawer` / `#grid-wrap` 各管一边):1px 线画在视口边缘只会像「被切掉」。
+    抽屉另加 `--shadow-panel`(专用 token,亮 / 暗各一套)—— 两块面板同为 `bg-card` 白卡,
+    不给投影就「糊在一起」、没有工作台的主次感。
+  · 开 / 收:给 `main` 加 `.is-picker-open` + `#picker-drawer` 的 **`is-collapsed`**;
     出口 = 顶栏按钮(开关,文案「选片 · 行程」)/ 抽屉内「收起 ✕」/ `Esc`(仅无弹层时,与旧口径一致)。
     ⚠ **2026-09-11(`PLAN-20260911140342`)折叠类由 `is-hidden`(display:none)改为 `is-collapsed`**
-      (`width:0` + `margin-right:-16px` 抵消 `gap-4` + 内距/左右描边归零 + 透明度 0)——
+      (`width:0` + `margin-right:-16px` 抵消 `gap-4` + 内距 / 右侧描边归零 + 透明度 0)——
       `display:none` 不可过渡;`width` 过渡天然给出「**从左缘向右滑出**」的观感,且与挤压式布局自洽
       (`translateX` 不参与布局 → 抽屉会滑走而网格宽度纹丝不动,留一个空洞)。
       宽度**只能有一处来源**:`--picker-w`(`style.css` 的 `#picker-drawer` 消费);markup 上的
       `w-[520px]` / `max-[1099px]:w-full` 已删 —— ID 选择器 (1,0,0) 会压死 Tailwind 单类 (0,1,0)。
-  · **可拖拽调宽(2026-09-11)**:抽屉右缘 `#picker-resizer`(绝对定位;**必须完全落在抽屉盒内** ——
-    抽屉带 `overflow-hidden`,伸出去的部分会被裁掉),拖拽写 `--picker-w`,落 `biff.pickerw.v1`
-    (独立键,与 `biff.ai.v1` / `biff.gvtalk.v1` 同口径);钳制 360~800px(下限:场次行再窄会折行;
-    上限:比网格还宽则挤压式失去意义);双击复位 520px;拖拽中加 `.is-resizing`(关过渡 → 跟手),
+  · **可拖拽调宽(2026-09-11;二改挪了挂点)**:抓手 `#picker-resizer` 挂在 **`#main-col` 左缘**
+    (`left:-16px; width:16px` —— 那条 16px 缝相对 `#main-col` 正是 `[-16px,0]`,铺满它,
+    `::before` 的 1px 线就落在缝中央 = **两块卡片的分割线**上)。
+    ⚠ **别挂回抽屉里**:抽屉带 `overflow-hidden`,伸到盒外的部分会被裁掉,画不到缝里。
+    抽屉收起时由 `main:not(.is-picker-open) #picker-resizer` 隐藏(此时 `#main-col` 顶到最左,
+    `left:-16px` 整条落在视口外);≤1099px 因 `#main-col` 是 `display:none` 而自然消失。
+    视觉 = 贯穿缝的 1px 竖线(`::before`)+ 竖直居中的胶囊抓手(`.picker-knob`,三枚圆点纯 CSS 画)。
+    拖拽写 `--picker-w`,落 `biff.pickerw.v1`(独立键,与 `biff.ai.v1` / `biff.gvtalk.v1` 同口径);
+    双击复位 520px;拖拽中加 `.is-resizing`(关过渡 → 跟手),
     **只在 pointerup** 回调 `pickerToggleHandler` 重绘网格一次(逐帧重绘代价高;网格内部画布定宽,
     只有外层 `overflow-x-auto` 视口在变)。
+    · **最小宽度 360px 不是硬下限**:`PICKER_W_MIN` 只约束「落盘宽度」;拖拽可继续降到
+      `PICKER_W_DRAG_FLOOR`(150px),越过 `PICKER_W_MIN` 即进 `.is-snap`(抓手变实心红 =
+      「松手就收起」的唯一回执);**松手仍 < MIN → `closePickerDrawer()`**,且**不覆盖已存宽度**
+      (下次打开还是上次那个合适宽度)。硬顶在 MIN 是错的 —— 用户分不清「拖不动」还是「到头了」。
   · **自动常驻(2026-09-11)**:`library.ts::ensurePickerOpen(ctx, tab = "agenda")` ——
     ① `boot()` 里 `store.picks.size > 0` 时调用(空行程不弹);② 甘特图整卡点选 / GV 谈块「新加入」
     分支里 `slotOf(code)` 有值时调用(移出 / 切方案不弹)。**已开 → 原样返回**(不切 tab、不重建 ——
