@@ -5,7 +5,7 @@
 import type { Catalog, FilmItem, Group, Mapping, PickEntry, Priority, Screening } from "./types";
 import { catMetaLine, dateInfo, el, filmInfoOf, filmNodeKey, groupByDate, normText } from "./util";
 import { doubanChip } from "./legend";
-import { SHOW_ROW_CLS, screeningRow } from "./row";
+import { CARD_SUB_CLS, CARD_TITLE_CLS, SHOW_ROW_CLS, screeningRow } from "./row";
 import { actState } from "./modal";
 import { PILL_IDLE, PILL_ON } from "./chips";
 import { BTN_GO, ICON_BTN, NAV_BTN, TAB_OFF, TAB_ON } from "./ui";
@@ -477,7 +477,9 @@ export function openFilmPicker(ctx: LibraryCtx): void {
 
   // ---- 头部:tab 切换 + 收起(抽屉不是弹层,关闭走 ✕ / Esc / 顶栏按钮) ----
   // 三个 tab(2026-09-10 加 agenda,见 PLAN-20260910190916):影片库(找片) / 我的选片(打标) / 我的行程(结果)。
-  const head = el("div", "flex items-center gap-[6px] mb-[10px]");
+  // ⚠ `flex-wrap` 不能省:抽屉可拖到 150px(远窄于「三个 tab + 收起 ✕」的 min-content ≈300px),
+  //   不换行时这一行会横向溢出、被抽屉的 `overflow-hidden` 裁掉(用户报的「被抽屉截断」)。
+  const head = el("div", "flex items-center gap-[6px] mb-[10px] flex-wrap");
   const libTab = el("button", TAB_ON, "影片库");
   const pickTab = el("button", TAB_OFF, "我的选片");
   const agendaTab = el("button", TAB_OFF, "我的行程");
@@ -613,22 +615,23 @@ export function openFilmPicker(ctx: LibraryCtx): void {
     const cat0 = n.cats[0];
     const titles = el("div", "grid gap-[3px] min-w-0");
     // 片名行:片名(15px 加粗 + 深黑,与副标题拉开层级)+ 豆瓣章
-    // ⚠ **最多两行**(`line-clamp-2`),不再是单行 `truncate`(2026-09-11 二改):
-    //   抽屉可拖到 360px,单行省略号会把长片名切得只剩几个字;放开到两行 = 卡片自己长高、
-    //   信息纵向重排,横向就不必硬挤(用户原话:「纵向拉长一些 让信息能够重新布局」)。
+    // ⚠ 排版走 `CARD_TITLE_CLS`(`row.ts` 的**共享常量**)—— 与「我的行程」卡片头**同一份定义**,
+    //   不是各写一份字面量;它是**最多两行** `line-clamp-2`,不再是单行 `truncate`:
+    //   抽屉可拖到 360px,单行省略号会把长片名切得只剩几个字;两行 = 卡片自己长高、信息纵向重排,
+    //   横向就不必硬挤(用户原话:「纵向拉长一些 让信息能够重新布局」)。
     //   豆瓣章配 `items-start` 贴首行,而不是在两行之间居中(它属于片名,不属于整个块)。
     const zhTop = el("div", "flex items-start gap-2 min-w-0");
-    zhTop.appendChild(el("div", "text-15 font-bold text-ink line-clamp-2 flex-1", n.zh));
+    zhTop.appendChild(el("div", `${CARD_TITLE_CLS} flex-1`, n.zh));
     if (cat0?.rating != null) {
       zhTop.appendChild(doubanChip(cat0.rating)); // 豆瓣章单一来源(legend.ts;豆 = 豆瓣评分)
     }
     titles.appendChild(zhTop);
     // 副标题:原始片名 + 单元 · 国家 · 年份 · 导演 —— 统一次级灰 `text-meta`,不与片名抢戏。
     // 原先分成两行(names 走 text-muted / meta 走 text-meta),合并成一行既省高度、又只有一个灰阶。
-    // ⚠ 同样放开到**两行**(与片名同一口径),`data-tip` 仍在(更长时 hover 看全文)。
+    // ⚠ 排版走 `CARD_SUB_CLS`(同一份共享常量),`data-tip` 仍在(两行还放不下时 hover 看全文)。
     const subBits = [...n.names, n.meta].filter(Boolean);
     if (subBits.length) {
-      const sub = el("div", "text-12 text-meta leading-[1.5] line-clamp-2", subBits.join(" · "));
+      const sub = el("div", CARD_SUB_CLS, subBits.join(" · "));
       sub.dataset.tip = subBits.join(" · "); // 仍超出两行时 hover 可读全文
       titles.appendChild(sub);
     }

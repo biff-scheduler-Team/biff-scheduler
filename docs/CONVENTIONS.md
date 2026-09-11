@@ -49,10 +49,13 @@
   `sticky top-[64px]`,在左)+ `#main-col`(`flex-1 min-w-0 grid gap-4`,只剩 `#grid-wrap` ——
   **2026-09-10 起「我的行程」从 `#agenda-wrap` 搬入抽屉第三个 tab**,见 `PLAN-20260910190916`)
   —— 抽屉打开后网格**完全可见可点**,打标 → 卡片色点当场出现;点选 → 卡片当场变绿。
-  · **★ 全出血工作台(2026-09-11 二改)**:`<main>` **已去掉** `max-w-[1280px] mx-auto px-4`
-    (旧的「打开抽屉才把 main 上限放宽到 1680」规则随之**删除**)—— 抽屉左缘 = 视口左缘、
-    `#grid-wrap` 右缘 = 视口右缘,两块面板夹着 16px 的缝。贴边那一侧的圆角 / 描边必须去掉
-    (`style.css` 的 `#picker-drawer` / `#grid-wrap` 各管一边):1px 线画在视口边缘只会像「被切掉」。
+  · **★ 近全宽工作台(2026-09-11 二改 → 三改)**:`<main>` 去掉了 `max-w-[1280px] mx-auto`
+    (旧的「打开抽屉才把 main 上限放宽到 1680」规则随之**删除**),但**保留 `px-2`(8px)** ——
+    抽屉与网格各占一侧,中间 16px 的缝就是两块卡片的分割线。
+    ⚠ **别把 `px-2` 也删掉**:二改曾把内距清零 + 把贴边侧的圆角 / 描边归零,结果两端 8px 圆角
+    整个消失、面板像被浏览器边缘「切掉」,用户当场否掉。现在的口径 = **接近贴边 + 完整圆角**:
+    `#picker-drawer` / `#grid-wrap` 的圆角 / 描边**全部交回 markup 的 `rounded-8 border border-line`**,
+    `style.css` 不再对它们做任何贴边覆写。
     抽屉另加 `--shadow-panel`(专用 token,亮 / 暗各一套)—— 两块面板同为 `bg-card` 白卡,
     不给投影就「糊在一起」、没有工作台的主次感。
   · 开 / 收:给 `main` 加 `.is-picker-open` + `#picker-drawer` 的 **`is-collapsed`**;
@@ -160,10 +163,15 @@
     单行时片名常被挤到只剩几个字。
     配套:`style.css` 的 `#picker-drawer [data-key]` 占位高度 `contain-intrinsic-size` 92 → 116px。
   - **共用边界(别搞错)**:三处的**场次行**是唯一一份实现(`row.ts::screeningRow`,影片库 / 我的选片
-    / 我的行程共用,只注入不同的 `acts`);**卡片外壳与卡片头不是共用的** ——
+    / 我的行程共用,只注入不同的 `acts`);**卡片外壳与卡片头是两份实现** ——
     `library.ts::filmRow`(可折叠卡片:▶ / 片名区 / 图标组三列 grid)与 `agenda.ts::buildRow`
-    (走 `screeningRow` 的 `headTitle`/`headSub` 分支)是两份实现,只靠字号 / 灰阶对齐。
-    改卡片头排版**两处都要改**。
+    (走 `screeningRow` 的 `headTitle`/`headSub` 分支)。结构差异**保留**(形态不同,不是排版不同),
+    但**排版片段已收口成共享常量**:`row.ts::CARD_TITLE_CLS`(片名 15px 加粗 + 两行)与
+    `row.ts::CARD_SUB_CLS`(副标题 12px 次级灰 + 两行)—— 两处都从这里取,**别再写回字面量**
+    (2026-09-11 改「单行 → 两行」时就差点只改一处)。卡片头的**骨架**(折叠箭头 / 状态标签 /
+    图标组 / 操作组)仍各写各的 —— 别为「统一」硬凑成一个带一堆可选参数的函数。
+  - 另:`library.ts::openFilmPicker` 里 tab 那一行**必须 `flex-wrap`** —— 抽屉可拖到 150px,
+    而「三个 tab + 收起 ✕」的 min-content ≈300px,不换行会被抽屉的 `overflow-hidden` 裁掉。
   - **右上角图标组**(常态 `opacity-45`,`group-hover:opacity-100` 才完全显现 —— 卡片上有 `group`):
     档位 `★`(`pick.ts::wishIcon`,已定档按档位着色 / 未设定 `☆`,文字只走 `data-tip`)、
     `ⓘ` 资料、`✕` 整片移除(仅「我的选片」tab,hover 转 `text-conf`)。

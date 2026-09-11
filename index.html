@@ -60,11 +60,12 @@
     </div>
   </header>
 
-  <!-- 全出血工作台(2026-09-11 二改):去掉 `max-w-[1280px] mx-auto px-4` ——
-       抽屉左缘贴视口左缘、`#grid-wrap` 右缘贴视口右缘,中间 16px 的缝就是两块卡片的分割线
+  <!-- 近全宽工作台(2026-09-11 三改):去掉 `max-w-[1280px] mx-auto`,但**保留 `px-2`(8px)** ——
+       抽屉与网格各占一侧,中间 16px 的缝就是两块卡片的分割线
        (拖拽抓手 `#picker-resizer` 挂在 `#main-col` 左缘、骑在这条缝上)。
-       贴边侧的圆角 / 描边由 style.css 去掉(1px 线画在视口边缘只会像「被切掉」)。 -->
-  <main class="py-4 flex items-start gap-4 max-[720px]:py-2.5" data-page-node-id="Azu1iXrZ77JCXHU9nTLfUn">
+       ⚠ 别把 `px-2` 也删掉:二改曾清零内距 + 归零贴边侧的圆角 / 描边,结果两端 8px 圆角整个消失、
+       面板像被浏览器边缘「切掉」,用户当场否掉 —— 现在的口径是「接近贴边 + 完整圆角」。 -->
+  <main class="px-2 py-4 flex items-start gap-4 max-[720px]:px-1.5 max-[720px]:py-2.5" data-page-node-id="Azu1iXrZ77JCXHU9nTLfUn">
     <!-- 左侧抽屉(2026-09-10 起,「选片 · 行程」工作台):「影片库 / 我的选片 / 我的行程」三个 tab。
          打开时给 main 加 .is-picker-open(网格仍在其右**可见可点**)—— 打标 / 点选当场反馈,
          不再有「换页丢上下文」的问题。内容由 library.ts::openFilmPicker 挂进本容器(每次打开重建)。
@@ -80,9 +81,11 @@
          (避免被 ID 选择器压死后出现两处宽度来源)。
          ⚠ 注释里**不要**写出那些工具类的完整字面量:Tailwind 会连注释一起扫,凭空生成死类。
 
-         ⚠ 2026-09-11 二改(全出血工作台):本元素**贴视口左缘**(`main` 的容器上限 / 左右内距已删),
-         左侧圆角 / 描边与面板阴影都在 style.css 里给;**拖拽抓手不在本元素内** ——
-         它挂在 `#main-col` 左缘、骑在两块卡片的分割线上(本元素带 `overflow-hidden`,挂在里面会被裁到缝外)。 -->
+         ⚠ 2026-09-11 二 / 三改(近全宽工作台):`main` 去掉了容器上限,只留 `px-2`;
+         本元素的圆角 / 描边**仍走自己的 `rounded-8 border border-line`**(二改曾把贴边侧归零 →
+         两端圆角消失像被浏览器边缘切掉,三改已撤销),另外由 style.css 给一层面板阴影;
+         **拖拽抓手不在本元素内** —— 它挂在 `#main-col` 左缘、骑在两块卡片的分割线上
+         (本元素带 `overflow-hidden`,挂在里面会被裁到缝外)。 -->
     <aside id="picker-drawer" class="is-collapsed sticky top-[64px] shrink-0 flex flex-col max-h-[calc(100vh-80px)] overflow-hidden bg-card border border-line rounded-8 p-[12px] max-[1099px]:static" data-page-node-id="pk1R7Yb2nQ5wE4tZ8vC3dA"></aside>
 
     <div id="main-col" class="relative flex-1 min-w-0 grid gap-4" data-page-node-id="mc0MainCol0000000000000">

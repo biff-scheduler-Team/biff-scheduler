@@ -23,6 +23,18 @@ import { dateInfo, el, fmtMinRange } from "./util";
 import { codeTip } from "./badges";
 import { appendMetaRow, uniformChipEl, venueTip } from "./legend";
 
+/* ---------- 卡片头排版常量(三处卡片头的**唯一来源**,2026-09-11 三改)----------
+ * 「影片库 / 我的选片」的卡片头(`library.ts::filmRow`)与「我的行程」的卡片头
+ * (`screeningRow` 的 `headTitle` / `headSub`)是**两份实现** —— 前者是可折叠卡片 + 三列 grid,
+ * 后者是行程卡的两行头。结构差异保留(那是形态不同,不是排版不同),但**字号 / 灰阶 / 截断口径
+ * 必须逐字一致**:原先两处各写一份字面量,2026-09-11 改「单行 → 两行」时就有只改一处的隐患。
+ * 故把**可复用的排版片段**收在这里,两处都从这里取。
+ * ⚠ 卡片头的**骨架**(折叠箭头 / 状态标签 / 图标组 / 操作组)仍各写各的,不要为「统一」硬凑。 */
+/** 卡片头片名:15px 加粗墨黑,**最多两行**(放开单行截断的理由见 CONVENTIONS §二) */
+export const CARD_TITLE_CLS = "text-15 font-bold text-ink line-clamp-2 min-w-0";
+/** 卡片头副标题(影片元信息:原始片名 · 单元 · 国家 · 年份 · 导演):12px 次级灰,最多两行 */
+export const CARD_SUB_CLS = "text-12 text-meta leading-[1.5] line-clamp-2";
+
 /** 场次行默认容器(影片库 / 我的选片;无边框 —— 节内分隔线由调用方按需加) */
 export const SHOW_ROW_CLS = "flex flex-wrap items-center gap-x-[8px] gap-y-[4px] px-3 py-[8px]";
 
@@ -82,18 +94,18 @@ export function screeningRow(o: ScreeningRowOpts): HTMLElement {
   if (o.headTitle) {
     const head = el("div", "w-full min-w-0 border-b border-line-faint pb-[6px]");
     const titleRow = el("div", "flex items-center gap-x-[8px] min-w-0");
-    // ⚠ **最多两行**(`line-clamp-2`),不再是单行 `truncate`(2026-09-11,与 `library.ts::filmRow` 同口径):
-    //   行程卡头右侧还挂着操作组(映后 N′ / A / ★ / ✕,≈160px 且 `shrink-0`),它先吃掉宽度,
-    //   剩下的才给片名 —— 单行截断会把长片名挤到只剩几个字;放开两行 = 卡片长高、信息纵向重排。
-    titleRow.appendChild(el("div", "text-15 font-bold text-ink line-clamp-2 flex-1 min-w-0", o.headTitle));
+    // 排版走 CARD_TITLE_CLS(与 `library.ts::filmRow` **同一份常量**)。
+    // ⚠ 行程卡头右侧还挂着操作组(映后 N′ / A / ★ / ✕,≈160px 且 `shrink-0`),它先吃掉宽度,
+    //   剩下的才给片名 —— 单行截断会把长片名挤到只剩几个字;两行 = 卡片长高、信息纵向重排。
+    titleRow.appendChild(el("div", `${CARD_TITLE_CLS} flex-1`, o.headTitle));
     if (o.acts) {
       o.acts.classList.add("ml-auto");
       titleRow.appendChild(o.acts);
     }
     head.appendChild(titleRow);
-    // 元信息行:与选片卡副标题同款(12px 次级灰 / 最多两行 / 仍超出时 hover 看全文)
+    // 元信息行:与选片卡副标题同款(排版走 CARD_SUB_CLS;仍超出两行时 hover 看全文)
     if (o.headSub) {
-      const sub = el("div", "text-12 text-meta leading-[1.5] line-clamp-2 mt-[2px]", o.headSub);
+      const sub = el("div", `${CARD_SUB_CLS} mt-[2px]`, o.headSub);
       sub.dataset.tip = o.headSub;
       head.appendChild(sub);
     }

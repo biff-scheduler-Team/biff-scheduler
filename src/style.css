@@ -368,16 +368,14 @@
   max-width: min(320px, calc(100vw - 24px));
 }
 
-/* ★ 全出血布局(2026-09-11 二改):`<main>` 已去掉 `max-w-[1280px] mx-auto px-4`
-   —— 抽屉左缘 = 视口左缘、`#grid-wrap` 右缘 = 视口右缘,两块面板夹着 16px 的缝构成「工作台」。
-   (旧写法是「打开抽屉才把 main 上限放宽到 1680」;全出血后这个上限规则**已删** ——
-    宽度不再有上限,抽屉与网格各自贴边,不会再有「开抽屉净吃掉网格宽度」的问题。)
-   贴边的那一侧圆角 / 描边必须去掉:1px 线画在视口边缘只会像「被切掉」,圆角同理。 */
-#grid-wrap {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-  border-right-width: 0;
-}
+/* ★ 近全宽工作台(2026-09-11 二改 → 三改):`<main>` 去掉了 `max-w-[1280px] mx-auto`
+   (旧写法是「打开抽屉才把 main 上限放宽到 1680」;现在宽度不再有上限,抽屉与网格各占一侧,
+    不会再有「开抽屉净吃掉网格宽度」的问题)。
+   ⚠ **左右各留 `px-2`(8px)而不是贴死视口边缘**:二改时把内距清零 + 贴边侧圆角 / 描边归零,
+   结果两端的 8px 圆角整个消失、面板像被浏览器边缘「切掉」——用户当场否掉。
+   现在的口径:**留 8px 呼吸位 + 完整圆角 / 描边**(与卡片语言一致),既接近贴边又不被切。
+   `#grid-wrap` / `#picker-drawer` 的圆角与描边**全部交回 markup 的 `rounded-8 border border-line`**,
+   本文件不再对它们做任何贴边覆写(三改已撤销那批覆写)。 */
 
 /* ================= 选片抽屉:向右滑出动画 + 可拖拽调宽(2026-09-11,PLAN-20260911140342)=================
    抽屉恒在 `<main>` 的**左侧**(flex 首子节点),「滑出」= 宽度从 0 过渡到 `--picker-w` ——
@@ -392,10 +390,6 @@
    ⚠ 本注释**刻意不写出那些类的完整字面量**:Tailwind 连注释一起扫,会凭空生成死类。 */
 #picker-drawer {
   width: var(--picker-w, 520px);
-  /* 贴页面左缘:左侧圆角 / 描边去掉(理由同 `#grid-wrap` 的右缘) */
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-  border-left-width: 0;
   /* 面板阴影 —— 抽屉与网格同为 `bg-card` 白卡,不给阴影就「糊在一起」、没有工作台的主次感 */
   box-shadow: var(--shadow-panel);
   transition:
@@ -520,9 +514,6 @@ main:not(.is-picker-open) #picker-resizer {
 
   #picker-drawer {
     width: 100%;
-    /* 全宽面板两侧都贴视口边缘 → 圆角 / 右侧描边一并去掉(否则右缘像「被切掉」) */
-    border-radius: 0;
-    border-right-width: 0;
   }
 
   #picker-drawer.is-collapsed {
