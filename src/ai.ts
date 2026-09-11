@@ -14,69 +14,11 @@ import type { Catalog, Priority, Screening } from "./types";
 import { computeConflicts, type Slot } from "./conflict";
 import { effEndMin, talkOnOf } from "./gv";
 import { filmNodeKey, fmtEndClock, hmsToMin } from "./util";
-import type { EngineFilm } from "./engine";
+import { PRI_RANK } from "./pick";
+import { SYSTEM_PROMPT } from "./ai-prompt";
+import type { EngineFilm } from "./score";
 
-/* ================= 隐藏主 Prompt(界面不展示、不可编辑) =================
- * 设计取舍:① 只要 code,不要片名/时间 —— 幻觉面最小,前端按 code 反查权威数据;
- * ② 硬约束编号 C1–C6,便于模型自查,也便于把校验失败原因映射回具体条款;
- * ③ 跨午夜显式说明 —— 模型对「29:35」几乎必然理解错,故打包时已换成「次日 05:35」文本;
- * ④ 强制 dropped 带原因 —— 让 must 不静默消失,每部未排入的片都有可读理由;
- * ⑤ C6 把用户偏好里的「排除 / 时间限定」升为硬约束,并加「中文时间表达归一」——
- *   修「写了『下午五点开始看』却被排 16:00 场」的漏排:模型拿到『下午五点』『早上十点』
- *   『晚上七点』『上午不看』这类口语化写法时,必须先归一到 24h 数字(下午 = 12~17、
- *   晚上 = 18~23、上午 = 06~11),再按 C1–C6 判定;本地复检**不**做这一步
- *   (prompt 层归一是稳的最小路径;不要在本地解析自然语言偏好 —— NLU 复杂度远超收益)。
- *   (C5 的「优先选更早场次」只在**未被 C6 排除**的候选里生效,不得借它绕过 C6)。 */
-const SYSTEM_PROMPT = [
-  "你是电影节排片助手,为一位观众在硬约束下挑选场次。",
-  "",
-  "【输入】两条清单:",
-  "1) films[]:{key(影片唯一标识), zh(中文名), orig(原始片名), priority(档位:must=必看 / maybe=备选 / wild=随缘), rating(豆瓣评分)}",
-  "2) screenings[]:{code(场次唯一标识), film_key(所属影片的 key), date(YYYY-MM-DD), start(开始 HH:MM),",
-  "   end(结束,可能写作「次日 05:35」= 跨午夜), venue(影厅代码), gv(该场是否含映后谈)}",
-  "env:{transit_min(跨影厅转场缓冲分钟), gv_talk_min(映后谈时长), dates(本次只在这些日期内排片;screenings 已按此过滤)}",
-  "",
-  "【硬约束 —— 任何情况下不得违反】",
-  "C1 每部影片最多选 1 场。",
-  "C2 同一天内任意两场不得时间重叠;若两场影厅(venue)不同,前一场结束后必须再留出 transit_min 分钟转场。",
-  "   标着「次日 HH:MM」的场次占用次日凌晨,与次日早晨的场次同样按此判定。",
-  "C3 只能使用 screenings[] 里出现过的 code,禁止编造、禁止改写、禁止大小写变换。",
-  "C4 优先级:must 尽力全覆盖(实在排不下才可放弃,并在 dropped 里说明原因);maybe 在硬约束内尽量多排;",
-  "   wild 只在完全不影响 must/maybe 时才考虑。",
-  "C5 同一部影片有多场可选时,优先选 gv=true 的场次;同为 GV 或同为非 GV 时,优先选时间更早的场次。",
-  "C6 用户偏好里的「排除 / 时间限定」类要求,与 C1–C5 同等效力,任何情况下不得违反 —— 例如:",
-  "   「17:00 才开始看」「X 点前结束」「上午不看片」「不接受午夜场」「只看某几家影院」「只看某几天」。",
-  "   凡落在排除范围内的场次一律不得选入 picks,只能放进 dropped 并写明原因;",
-  "   哪怕该片当天仅此一场、或它是 must,也不得破例 —— 宁可放弃它,也绝不排到用户明确排除的时段。",
-  "",
-  "【C6 时间窗口的归一与判定 —— 这是「下午五点开始看」被误读为「16:00 开始 OK」的根因,务必严守】",
-  "  · 「X 点开始看 / X 点之后才开始 / X 点前不看」一律归一为「start ≥ X:00」;",
-  "    start_time < X:00 的场次**严格排除**,不得借 C5 的「优先选更早」或「该片仅此一场」绕过。",
-  "  · 「X 点前结束」= 该场 end ≤ X:00(若 end 跨午夜写成「次日 HH:MM」,先换算到当日分钟再比)。",
-  "  · 「看到最后一场 / 排到当日最晚 / 看完当日」= 排到当日最晚 end(含跨午夜 end > 24:00 的场次),",
-  "    不得因为「看完太晚」或「跨午夜」就保守缩范围;跨午夜场属于正常候选。",
-  "  · 「上午不看 / 下午不看 / 晚上不看」按 06~11 / 12~17 / 18~23 排除对应时段场次。",
-  "  · 「不要午夜场」= 22:00 ≤ start < 次日 06:00 的场次排除。",
-  "  · 「只看某几家影院 / 某几天」= venue / date 不在白名单内的场次排除。",
-  "",
-  "【中文偏好写法对照(高频口语表达 → 正确语义)—— 拿到用户偏好后先按本表归一,再开始求解】",
-  "  · 「下午 N 点开始看」= 「N+12 点开始看」(下午 = 12~17;「下午五点」= 17:00,不是 05:00);",
-  "  · 「早上 / 上午 N 点」= 「N 点」(上午 = 06~11);「晚上 N 点」= 「N+12 点」(晚上 = 18~23);",
-  "  · 「看到最后 / 看到最后一场 / 看到最晚 / 看完当日」= 排到当日(含跨午夜)最晚 end 的场次;",
-  "  · 「排满 / 排到结束」= 范围够宽时**应当**贪心排满,不要只挑 1 场就停;",
-  "  · 「不要午夜场」= 22:00 ≤ start < 次日 06:00 的场次排除;",
-  "  · 「上午不看 / 下午不看」= 对应时段全排除;",
-  "  · 「每部片优先选带 GV 的场」= 同片多场时 GV 场优于非 GV(与 C5 一致);",
-  "  · 「集中在某几家影院 / 只看 BCC」= venue 不在该白名单的场次排除。",
-  "",
-  "【输出】只输出一个 JSON 对象,不要任何解释文字,不要 Markdown 代码围栏:",
-  '{"plans":[{"title":"<方案名,不超过 14 字>","picks":["<code>", ...],"dropped":[{"key":"<影片 key>","why":"<不超过 20 字的放弃原因>"}],"note":"<不超过 60 字的策略说明>"}],"note":"<不超过 60 字的整体说明>"}',
-  "plans = **1~3 个候选方案**(用户会自己挑一个,故必须按「最贴合用户优先级」→「次优取舍」从高到低排列):",
-  "  · 方案一 = 最优先满足用户偏好与档位优先级(must > maybe > wild)的那一份;",
-  "  · 若还存在明显不同的合理取舍(更紧凑 / 覆盖更多 must / 更少跨馆转场 / 结束更晚),再给方案二、方案三;",
-  "  · 只有一种合理排法时给 1 个即可 —— 不要为凑数硬造雷同方案;",
-  "  · 每个方案各自满足 C1–C6,picks 各自按日期与开始时间升序排列;可排场次为空则该方案 picks 为空数组。",
-].join("\n");
+/* 隐藏主 Prompt 已外移到 `ai-prompt.ts`(纯文本常量,见该文件头的设计取舍)。 */
 
 /* ================= 配置:三件套全可配 + 预设 ================= */
 
@@ -184,8 +126,23 @@ export function maskKey(k: string): string {
 
 /* ================= 打包(只送已定档影片,控 token) ================= */
 
-/** 序列化上限 —— 超了按 wild → maybe 丢片,must 永不丢 */
+/** 序列化上限(字符)兜底 —— 超了按 wild → maybe 丢片,must 永不丢。
+ *  ⚠ 上限**按模型上下文档位取**(见 `payloadLimitFor`):固定 120k 对 `moonshot-v1-8k`
+ *  这类 8k 上下文模型必然 400,而截断逻辑永远够不着。 */
 const PAYLOAD_LIMIT = 120_000;
+
+/** 按模型名里的上下文档位(`8k` / `32k` / `128k` …)推算可安全序列化的字符上限。
+ *  中文约 1 字符 ≈ 1 token,JSON 里多为 ASCII,故取「上下文 token 数 × 1.5」作字符预算,
+ *  再为 SYSTEM_PROMPT 与输出留出余量。识别不出档位时退回默认上限(不改变现有行为)。 */
+export function payloadLimitFor(model: string): number {
+  const m = model.toLowerCase();
+  const hit = /(\d+)\s*k/.exec(m);
+  const ctxK = hit ? Number(hit[1]) : 0;
+  if (ctxK && ctxK <= 8) return 12_000;
+  if (ctxK && ctxK <= 32) return 60_000;
+  if (ctxK && ctxK >= 128) return 240_000;
+  return PAYLOAD_LIMIT;
+}
 
 export interface AiPayloadFilm {
   key: string;
@@ -221,8 +178,6 @@ function origOf(cat: Catalog, key: string): string {
   return f ? f.title_orig : "";
 }
 
-const PRI_RANK: Record<Priority, number> = { must: 0, maybe: 1, wild: 2 };
-
 /** 打包:入参 `films` 只应含**已定档**(priority ≠ null)的影片 —— 「未设档位」不参与排片。
  *  `dates` = **本次考虑并送给模型的日期**(面板上的日期范围选择)——场次按它过滤,
  *  所选日期内一场都没有的影片**整条不送**(送过去模型也排不了,白烧 token);
@@ -234,7 +189,9 @@ export function buildPayload(
   cat: Catalog,
   transitMin: number,
   gvTalkMin: number,
-  dates: string[]
+  dates: string[],
+  /** 序列化字符上限(按模型上下文档位,见 `payloadLimitFor`);省略 = 默认上限 */
+  limit: number = PAYLOAD_LIMIT
 ): AiPayload {
   const ordered = [...films].sort((a, b) => PRI_RANK[a.priority] - PRI_RANK[b.priority]);
   const dateSet = new Set(dates);
@@ -259,7 +216,7 @@ export function buildPayload(
   let truncated = 0;
   while (
     filmsOut.length > 0 &&
-    JSON.stringify({ films: filmsOut, screenings: showsOut }).length > PAYLOAD_LIMIT
+    JSON.stringify({ films: filmsOut, screenings: showsOut }).length > limit
   ) {
     let idx = -1;
     for (let i = filmsOut.length - 1; i >= 0; i--) {
@@ -291,6 +248,7 @@ export const AI_TIMEOUT_MS = 120_000;
 export type AiErrorKind =
   | "aborted"
   | "timeout"
+  | "offline"
   | "cors"
   | "auth"
   | "forbidden"
@@ -316,6 +274,8 @@ export function aiErrorText(e: unknown): string {
       return "已中断。";
     case "timeout":
       return `超过 ${Math.round(AI_TIMEOUT_MS / 1000)} 秒未返回 —— 可能是模型太慢或网络不通,可换更快的模型再试。`;
+    case "offline":
+      return "当前处于离线状态(浏览器报告无网络)—— 请连上网络后再试。排期 / 片单本身离线可用,只有 AI 排片需要联网。";
     case "cors":
       return "请求发不出去(浏览器被跨域/CORS 拦截)。该服务商可能不允许浏览器直连 —— 请换一家服务商,或填自建的网关地址。本站不提供代理,以免 Key 经手服务器。";
     case "auth":
@@ -408,6 +368,7 @@ export async function callLLM(
       body: JSON.stringify({
         model: cfg.model.trim(),
         temperature: 0.2, // 排片是约束求解,不是创作
+        max_tokens: 4096, // 约束输出规模:防跑飞 / 控成本(方案文本远小于此)
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userMsg },
@@ -444,6 +405,8 @@ export async function callLLM(
     if (e instanceof AiError) throw e;
     if (timedOut) throw new AiError("timeout", "");
     if (ctl.signal.aborted) throw new AiError("aborted", "");
+    // 先判「离线」再判 CORS:断网时 fetch 抛的是同一个 TypeError,旧实现会误导用户去换服务商
+    if (typeof navigator !== "undefined" && navigator.onLine === false) throw new AiError("offline", "");
     throw new AiError("cors", e instanceof Error ? e.message : String(e));
   } finally {
     clearTimeout(timer);
@@ -509,14 +472,16 @@ function tryParse(s: string): { ok: true; val: unknown } | { ok: false } {
   }
 }
 
-/** 容错提取首个**括号平衡**的 JSON 对象(剥 ```json 围栏、忽略前后废话) */
+/** 容错提取首个**括号平衡**的 JSON 值(剥 ```json 围栏、忽略前后废话)。
+ *  顶层既可能是对象 `{…}` 也可能是数组 `[…]`(模型偶尔只回方案数组),
+ *  故用括号栈同时支持两种,且字符串内的括号不计数。 */
 function extractJson(raw: string): unknown {
   const t = raw.trim();
   const direct = tryParse(t);
   if (direct.ok) return direct.val;
-  const start = t.indexOf("{");
+  const start = t.search(/[[{]/);
   if (start < 0) return undefined;
-  let depth = 0;
+  const stack: string[] = [];
   let inStr = false;
   let esc = false;
   for (let i = start; i < t.length; i++) {
@@ -528,10 +493,10 @@ function extractJson(raw: string): unknown {
       continue;
     }
     if (ch === '"') inStr = true;
-    else if (ch === "{") depth++;
-    else if (ch === "}") {
-      depth--;
-      if (depth === 0) {
+    else if (ch === "{" || ch === "[") stack.push(ch === "{" ? "}" : "]");
+    else if (ch === "}" || ch === "]") {
+      if (stack.pop() !== ch) return undefined; // 括号不匹配 → 放弃
+      if (stack.length === 0) {
         const r = tryParse(t.slice(start, i + 1));
         return r.ok ? r.val : undefined;
       }
@@ -548,6 +513,9 @@ function readCodes(v: unknown): string[] {
     else if (x && typeof x === "object") {
       const c = (x as { code?: unknown }).code;
       if (typeof c === "string") out.push(c.trim());
+      // 数字 code 也收(模型偶发输出 `{"code":4}`);收进来才能走「无效 code」的 rejected 回执,
+      // 而不是被静默丢弃、用户看不到任何解释。
+      else if (typeof c === "number" && Number.isFinite(c)) out.push(String(c));
     }
   }
   return out.filter((c) => c !== "");
@@ -733,15 +701,26 @@ export function parseAiResult(
 ): AiPlan {
   const obj = extractJson(raw);
   if (!obj || typeof obj !== "object") throw new AiError("parse", "");
-  const o = obj as { plans?: unknown; note?: unknown };
-  const legacy = !Array.isArray(o.plans) || o.plans.length === 0;
-  const rawPlans: unknown[] = legacy ? [obj] : (o.plans as unknown[]);
+
+  // 顶层形态三选一:① `{"plans":[…], "note":…}`(新)② `{"picks":[…]}`(旧单方案)③ `[…]`(纯数组)
+  let rawPlans: unknown[];
+  let note = "";
+  if (Array.isArray(obj)) {
+    rawPlans = obj;
+  } else {
+    const o = obj as { plans?: unknown; note?: unknown };
+    const legacy = !Array.isArray(o.plans) || o.plans.length === 0;
+    rawPlans = legacy ? [obj] : (o.plans as unknown[]);
+    note = legacy ? "" : typeof o.note === "string" ? o.note.slice(0, 200) : "";
+  }
 
   const seenSig = new Set<string>();
   const options: AiPlanOption[] = [];
   for (const rp of rawPlans) {
     if (options.length >= 3) break;
     const parsed = parseOnePlan(rp, cat, films, transitMin);
+    // 签名 = 场次 code 集合(**不含标题 / 未纳入名单**)—— 与 tests/ai-parse.test.ts 的
+    // 「雷同方案只保留第一个」契约一致:模型常把同一份排法换个标题抄 2~3 遍。
     const sig = parsed.picks
       .map((x) => x.code)
       .sort()
@@ -751,9 +730,5 @@ export function parseAiResult(
     options.push(parsed);
   }
   if (options.length === 0) options.push(parseOnePlan({}, cat, films, transitMin)); // 兜底:plans 全是空对象
-  return {
-    options,
-    note: legacy ? "" : typeof o.note === "string" ? o.note.slice(0, 200) : "",
-    raw,
-  };
+  return { options, note, raw };
 }

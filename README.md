@@ -3,9 +3,9 @@
 把[釜山国际电影节](https://www.biff.kr/)的官方排期表，变成一张**可点选的甘特网格**：
 选片 → 冲突检测 → 双方案（A/B）对比 → AI 智能排片 → 导出 `.ics` 进手机日历 → 一键跳豆瓣。
 
-个人自用、单用户、零服务器成本。前端无框架手写，数据本地优先、云端尽力同步。
+个人自用、单用户、零服务器成本。前端无框架手写，数据本地优先，**零后端**（纯静态 + 浏览器 localStorage）。
 
-> **当前状态**：核心链路（排片网格 / 冲突检测 / 行程 / 选片 / 影片库 / AI 智能排片 / `.ics` 导出 / 豆瓣映射）均已实现并部署冒烟通过。
+> **当前状态**：核心链路（排片网格 / 冲突检测 / 行程 / 选片 / 影片库 / AI 智能排片 / `.ics` 导出 / 豆瓣跳转）均已实现并部署冒烟通过。
 > 仓库内置的是**第 30 届（2025）真实排期数据**（699 场 / 29 厅 / 7 家影院 / 10 天）作为开发与联调基线；
 > 2026 第 31 届官方排期发布后，用离线管线重新解析灌入 `public/*.json` 即可切换，前端代码零改动。
 
@@ -34,10 +34,11 @@
 ```bash
 npm install
 npm run dev          # 本地开发服务器（Vite）
-npm run preview      # 构建后用 wrangler 起本地 Pages + Functions + D1 环境
+npm run preview      # 构建后用 wrangler 起本地 Pages 环境（纯静态，无 Functions / D1）
 ```
 
-> `npm run preview` 才能连上 `/api/*` 与 D1；单纯 `npm run dev` 时接口不可用，前端会自动降级为「纯本地模式」（数据只落 localStorage）。
+> 2026-09-11 起站点**已无任何后端**：豆瓣映射是静态文件 `public/douban.json`（随部署进 dist），
+> 片单只落 localStorage —— `dev` / `preview` / 线上行为完全一致。
 
 ---
 
@@ -48,7 +49,6 @@ npm run preview      # 构建后用 wrangler 起本地 Pages + Functions + D1 �
 | 控件 | 作用 |
 |---|---|
 | **A 方案 / B 方案** | 切换当前正在编辑的方案。选片、行程、冲突检测、导出都按「当前方案」生效；两套方案互不干扰 |
-| **同步状态点** | 绿点 = 云端（D1）已连通；异常时数据仍会先落本地，恢复后自动补推 |
 | **⚠ 冲突角标** | 当前方案存在冲突时出现，点它平滑滚动到「我的行程」 |
 | **影片库** | 打开全部影片目录（搜索 / 筛选 / 打标 / 展开场次） |
 | **我的选片** | 打开「按片看」的选片总览（与「我的行程」同一份数据） |
@@ -90,7 +90,7 @@ npm run preview      # 构建后用 wrangler 起本地 Pages + Functions + D1 �
 - **行内展开场次**：每部片展开后列出它的所有场次，可直接加入 / 移出当前方案。
 - **打标**：给影片点「必看 / 备选 / 随缘」（再点一次取消 → 回到「未设」）。
 - **定位 ▸**：跳到网格对应日期并滚动闪烁到该场。
-- **资料 ⓘ**：打开影片资料弹层（元信息 + 豆瓣条目关联）。
+- **资料 ⓘ**：打开影片资料弹层（元信息 + 豆瓣条目直链 / 搜索跳转）。
 - 顶部有「**智能排片**」入口，直接带着当前片单进入 AI 面板。
 
 ### 6. 智能排片（AI）
@@ -116,15 +116,17 @@ npm run preview      # 构建后用 wrangler 起本地 Pages + Functions + D1 �
 
 ### 7. 导出与抢票
 
-- **`.ics` 导出**：标准 iCalendar，时间一律 UTC，`UID = <code>@biff-2026`，含相对提醒（默认提前 45 分钟，可在设置改）、场馆、方案与档位、豆瓣链接。导入手机日历后按手机时区显示。
+- **`.ics` 导出**：标准 iCalendar，时间一律 UTC，`UID = <code>@biff-2026`，含相对提醒（默认提前 45 分钟，可在设置改）、场馆、方案与档位。导入手机日历后按手机时区显示。
 - GV 场次的结束时间会按「是否参加映后谈」动态计算，`.ics` 与冲突检测口径一致。
 - **抢票顺位清单（复制）**：按「必看 → 备选 → 随缘」排序的纯文本清单，附场次时间与场馆，方便售票时段按顺位抢票。
 
-### 8. 豆瓣映射（半自动）
+### 8. 豆瓣跳转
 
-- 影片资料弹层里可「拼搜索链接 → 打开豆瓣 → 粘贴条目链接回填」，解析出 `subject_id` 与中文名并存入云端映射表。
-- 映射成功后，影片库与卡片上会显示**豆瓣评分徽章**，`.ics` 描述里也会带上豆瓣链接。
-- 不做爬虫（豆瓣必撞 CAPTCHA），只做链接跳转 + 粘贴回填。
+- 影片资料弹层「豆瓣」区：**有映射** → 豆瓣条目直链；**无映射** → 「中文搜索 / 英文搜索」两个外链（跳 `douban.com/search`）。
+- 影片库「无排期目录片」行内也有一枚「豆瓣搜索 ↗」。
+- 映射是**离线产物** `public/douban.json`（`tools/enrich_douban.py` 跑完后填入），**页面上不可编辑**；留空即全站走搜索兜底。
+- 评分徽章（`豆 x.x`）来自 `public/films.json` 的 `rating`（官方影片信息表），与映射无关。
+- 不做爬虫代理（豆瓣必撞 CAPTCHA / 限流），只做链接跳转。
 
 ### 9. 设置
 
@@ -135,6 +137,7 @@ npm run preview      # 构建后用 wrangler 起本地 Pages + Functions + D1 �
 | GV 映后谈默认 | 全局默认是否参加 + 默认时长（分钟）；单场可在行程里覆写 |
 | AI 排片 · 模型 API Key | 只读状态 + 清除（填写/更换入口在「影片库 ▸ 智能排片」） |
 | 清空全部已排场次 | 只清 A+B 的场次，**保留**选片意向（档位），清完仍可一键智能排片 |
+| 清空全部（选片 + 排片） | 把「我的选片」与「我的行程」一起清空（档位 / 备注 / 场次全删）。**片单只存本机，清完刷新 / 部署都不会再回来** |
 
 ---
 
@@ -146,10 +149,10 @@ npm run preview      # 构建后用 wrangler 起本地 Pages + Functions + D1 �
 | 语言 | **TypeScript 5** | 全量类型标注，`tsc --noEmit` 作为构建前置门禁 |
 | 前端框架 | **无** | 手写 TS + DOM，网格 / 冲突 / 徽章 / 弹层栈 / 甘特缩放全部自研；未引入任何组件库 |
 | 样式 | **Tailwind CSS v4**（`@tailwindcss/postcss`） | **增量双轨**：不引 preflight，存量语义类读设计 token，新 UI 用 utility；token 是唯一色源 |
-| 部署 | **Cloudflare Pages** | 静态产物 + Pages Functions，全球边缘分发，零服务器成本 |
-| 后端 | **Cloudflare Pages Functions** | `functions/api/**` 动态路由（Workers runtime），提供选片 / 映射读写 |
-| 数据库 | **Cloudflare D1**（SQLite） | 存用户选片与豆瓣映射；`user_id` 字段预留多人 |
-| 运维 | **Wrangler 4** | 本地预览、D1 迁移、Pages 部署 |
+| 测试 | **Vitest** | 纯函数口径单测（24+ 时制 / GV 有效结束 / 冲突 / AI 本地复检），`npm run build` 前置门禁 |
+| 部署 | **Cloudflare Pages** | **纯静态产物**，全球边缘分发，零服务器成本 |
+| 离线 | **PWA**（`vite-plugin-pwa`） | 预缓存产物 + 四个只读 JSON → 现场断网可用；方形 PNG 图标可加到主屏（含 iOS 180） |
+| 运维 | **Wrangler 4** | 本地预览、Pages 部署（**无 D1 / 无 Functions**） |
 | 离线管线 | **Python**（PyMuPDF / openpyxl）+ Node 脚本 | 从官方 Ticket Catalogue PDF 与影片信息 xlsx 解析出 `schedule.json` / `venues.json` / `films.json`；产物检入仓库，**仅在更新数据时需要**，部署链路不依赖它 |
 
 **为什么这么选**：单用户自用工具，追求零成本与零重依赖。网格对交互定制要求高（冲突联动、跨午夜 24+ 时制、缩放锚点），现成组件库要么付费、要么样式难融、要么体积过大 —— 自研反而更小更可控。
@@ -161,17 +164,27 @@ npm run preview      # 构建后用 wrangler 起本地 Pages + Functions + D1 �
 ```
 离线数据管线（本机 Python / Node，非部署部分）
   官方 Ticket Catalogue PDF / xlsx
-    └─ tools/*.py ──► public/schedule.json · venues.json · films.json（只读、版本化、可 diff）
+    └─ tools/*.py ──► public/schedule.json · venues.json · films.json · douban.json（只读、版本化、可 diff）
 
-在线应用（Cloudflare Pages + Functions + D1）
-  dist/（Vite 构建产物）      functions/api/            D1（SQLite）
-  ├─ schedule.json（只读排期） ├─ pick.js                ├─ user_pick（我的选片，影片级）
-  ├─ venues.json（只读场馆）   ├─ pick/[key].js           └─ douban_map（豆瓣映射）
-  ├─ films.json（只读目录）    ├─ mapping.js
-  └─ assets/（main.ts 打包）   └─ mapping/[code].js
+在线应用（Cloudflare Pages，纯静态）
+  dist/（Vite 构建产物）
+  ├─ schedule.json（只读排期）
+  ├─ venues.json（只读场馆）
+  ├─ films.json（只读目录）
+  ├─ douban.json（豆瓣映射，离线产物，可为空）
+  └─ assets/（main.ts 打包）
+
+浏览器 localStorage（用户数据主存储）
+  ├─ biff.picks.v2                          选片 + 排片（唯一数据源，**不上云**）
+  ├─ biff.settings.v1                       设置（提醒 / 转场 / GV 默认）
+  ├─ biff.gvtalk.v1 · biff.gvtalkmin.v1     GV 单场覆写
+  └─ biff.ai.v1 · biff.ai.dates.v1          AI 配置与日期选择
 ```
 
-**数据分层原则**：官方排期 = 只读静态 JSON（前端按 code 反查权威数据，版本化、可 diff）；用户数据 = D1（本地优先，云端尽力同步，接口不可用自动降级本地）。
+**数据分层原则**：
+- **官方排期** = 只读静态 JSON（前端按 code 反查权威数据，版本化、可 diff）；
+- **片单（选片 / 排片）** = **只存浏览器 localStorage**，不写云端 —— 刷新 / 重新部署都不会「复活」（2026-09-10 变更，见 `docs/plans/PLAN-20260910235630.md`）；
+- **豆瓣映射** = 只读静态 JSON `public/douban.json`（离线产物，留空即走搜索兜底）—— **全站零上云**（2026-09-11 变更，见 `docs/plans/PLAN-20260911001107.md`）。
 
 **核心数据模型**：全站唯一数据源是「**一部片一条记录**」（`film_key → { priority, picks[], note }`）。
 
@@ -183,30 +196,36 @@ npm run preview      # 构建后用 wrangler 起本地 Pages + Functions + D1 �
 
 | 文件 | 职责 |
 |---|---|
-| `main.ts` | 装配 + 全局事件委托 + 设置 / 导出 / 抢票清单 / 双向 hover 联动 |
-| `state.ts` | 全局 store、localStorage ↔ D1 双向同步、派生索引与订阅 |
+| `main.ts` | 装配 + 全局事件委托 + 导出 / 缩放 / 双向 hover 联动 |
+| `state.ts` | 全局 store、localStorage 持久化（**片单只存本地**）、派生索引与订阅 |
 | `grid.ts` | 甘特排片网格（时间轴、粘性影厅列、缩放锚点、gap-bar） |
 | `agenda.ts` | 我的行程列表 |
-| `library.ts` | 影片库 + 我的选片 + 智能排片弹层 |
-| `ai.ts` | 隐藏主 Prompt（硬约束 C1–C6）、打包、调用、输出校验（纯逻辑，不碰 DOM） |
-| `engine.ts` | 排片质量分 |
+| `library.ts` | 影片库 + 我的选片（左侧挤压抽屉，三 tab） |
+| `ai.ts` | AI 配置 / 打包 / 调用 / 输出校验（纯逻辑，不碰 DOM） |
+| `ai-prompt.ts` | AI 隐藏主 Prompt（硬约束 C1–C6） |
+| `ai-panel.ts` | 智能排片弹层 UI |
+| `settings.ts` | 设置弹层 + GV 映后时长小弹层 |
+| `picklist.ts` | 抢票顺位清单（复制） |
+| `score.ts` | 排片质量分 |
 | `conflict.ts` | 纯函数冲突检测（转场余量可注入） |
 | `ics.ts` | `.ics` 生成（UTC、跨午夜进位、GV 映后） |
 | `gv.ts` | GV 映后谈时长 / 是否参加的统一解析口径 |
+| `row.ts` | 场次行单一构造（影片库 / 我的选片 / 我的行程共用） |
 | `badges.ts` / `legend.ts` | 场次徽章注册表 / 图例与场馆说明 |
 | `modal.ts` | 弹层栈（开新层压住下层、返回恢复滚动与筛选态） |
-| `pick.ts` | 档位语义 / 配色 / 分段控件的共享层 |
-| `data.ts` / `api.ts` / `tip.ts` / `types.ts` / `util.ts` | 数据加载与归一 / D1 API 客户端 / 悬停提示 / 类型 / 工具 |
+| `pick.ts` | 档位语义 / 配色 / ★ 星标控件的共享层 |
+| `ui.ts` / `chips.ts` / `form.ts` / `toast.ts` | 按钮·tab·缩放控件类名与工厂 / 胶囊 chip 类名 / 表单行骨架 / Toast 的共享层 |
+| `data.ts` / `tip.ts` / `types.ts` / `util.ts` | 数据加载与归一（含豆瓣映射 `douban.json`）/ 悬停提示 / 类型 / 工具 |
+
+> **样式与适配（2026-09-10）**：设计 token 是唯一色源（`src/style.css` 的 `:root` 字面值 → `@theme` 映射）；
+> 字阶 / 圆角走**值命名**阶梯（`text-12` = 12px、`rounded-8` = 8px，全站已无 `text-[Npx]` 任意值）；
+> 暗色**跟随系统**（`prefers-color-scheme` 只覆盖 token，零 utility 改动）；
+> 窄屏（≤768px）走**列表优先**（默认打开选片抽屉，网格降级为次级入口）。
 
 **API**
 
-```
-GET    /api/pick            → 我的全部选片（影片级）
-PUT    /api/pick/:key       → upsert { priority(must|maybe|wild|null), note, picks:[{code,group}] }
-DELETE /api/pick/:key       → 删除一条选片记录
-GET    /api/mapping         → 豆瓣映射全量
-PUT    /api/mapping/:code   → { douban_url | subject_id }
-```
+> **本站没有 API**（2026-09-11 起）：片单只落浏览器 localStorage，豆瓣映射是静态文件。
+> `/api/pick*`（2026-09-10 退役）与 `/api/mapping*` + D1 `douban_map`（2026-09-11 退役）均已删除。
 
 ---
 
@@ -215,9 +234,7 @@ PUT    /api/mapping/:code   → { douban_url | subject_id }
 ```
 ├─ index.html              # 单页入口
 ├─ src/                    # 前端 TS 源码（见上表）
-├─ functions/api/          # Pages Functions：pick、mapping 动态路由
-├─ migrations/             # D1 迁移：0001_init / 0002_priority_nullable / 0003_user_pick
-├─ public/                 # 静态数据：schedule.json / venues.json / films.json / brand/ / robots.txt
+├─ public/                 # 静态数据：schedule.json / venues.json / films.json / douban.json / brand/ / robots.txt
 ├─ tools/                  # 离线数据管线：festival_common.py（通用底座）+ extract_schedule.py（BIFF 适配层）
 ├─ skills/                 # 项目能力（Skills）：数据管线 / 部署 / 无头验收 / 并行提交 / Tailwind 核对
 ├─ data/                   # 离线中间产物（enriched_douban.json、films-2026.json 等）
@@ -235,11 +252,11 @@ npm install
 
 npm run dev                 # 本地开发（Vite，无 Functions）
 npm run typecheck           # tsc --noEmit
-npm run build               # typecheck + vite build
-npm run preview             # 构建 + wrangler pages dev dist（含 Functions + 本地 D1）
+npm run test                # vitest run（纯函数口径单测）
+npm run build               # typecheck + lint + test + vite build
+npm run preview             # 构建 + wrangler pages dev dist（纯静态）
 
-# 部署（首次需先创建 D1 与 Pages 项目，见 PLAN.md）
-npm run migrate:remote      # wrangler d1 migrations apply biff-scheduler-db --remote
+# 部署（首次需先创建 Pages 项目，见 PLAN.md）
 npm run deploy              # 构建 + wrangler pages deploy dist（production 分支）
 ```
 
@@ -254,7 +271,7 @@ npm run deploy              # 构建 + wrangler pages deploy dist（production �
 | Skill | 用途 | 何时触发 |
 |---|---|---|
 | [`biff-catalogue-pdf-to-schedule`](./skills/biff-catalogue-pdf-to-schedule/SKILL.md) | BIFF 官方 Catalogue PDF → `schedule.json` / `venues.json` / `films.json` | 换届、更新排期、导入影片目录 |
-| [`cloudflare-pages-d1-deploy`](./skills/cloudflare-pages-d1-deploy/SKILL.md) | Cloudflare Pages + D1 + Functions 全栈部署（非交互模式） | 首次建站、`npm run deploy` 异常 |
+| [`cloudflare-pages-d1-deploy`](./skills/cloudflare-pages-d1-deploy/SKILL.md) | Cloudflare Pages 部署（非交互模式）；**D1 / Functions 已于 2026-09-11 退役，本 skill 只剩静态部署部分** | 首次建站、`npm run deploy` 异常 |
 | [`parallel-agent-safe-commit`](./skills/parallel-agent-safe-commit/SKILL.md) | 多会话并行时只提交自己的改动（blob 手术 + 隔离 worktree 部署） | 提交前发现工作区有他人在途改动 |
 | [`web-ui-headless-interaction-qa`](./skills/web-ui-headless-interaction-qa/SKILL.md) | playwright-core 无头交互验收（DOM 断言） | 改完交互要证据、部署后验证线上 |
 | [`tailwind-v4-built-css-verify`](./skills/tailwind-v4-built-css-verify/SKILL.md) | 核对 Tailwind v4 类是否真的进了构建产物 | 改完样式确认是否生效 |
@@ -267,13 +284,14 @@ npm run deploy              # 构建 + wrangler pages deploy dist（production �
 
 ## 九、数据从哪来（部署时**不需要**解析 PDF）
 
-**一句话**：部署链路与 PDF 无关。运行时数据就是仓库里的三个静态 JSON，它们**已经检入 git**，`npm run build` 时被 Vite 原样拷进 `dist/`，前端 `data.ts` 用 `fetch("schedule.json")` 加载。
+**一句话**：部署链路与 PDF 无关。运行时数据就是仓库里的四个静态 JSON，它们**已经检入 git**，`npm run build` 时被 Vite 原样拷进 `dist/`，前端 `data.ts` 用 `fetch("schedule.json")` 加载。
 
 | 文件 | 内容 | 由谁产出 |
 |---|---|---|
 | `public/schedule.json` | 全部场次（时间 / 影院 / GV / 分级 / 字幕 / 页码…） | `tools/extract_schedule.py`（解析官方 Catalogue **PDF** 的排期页） |
 | `public/venues.json` | 影厅清单（厅 id / 影院 / 分区 / 代码） | 同上 |
 | `public/films.json` | 影片目录（片名 / 单元 / 年份 / 国家 / 导演 / 豆瓣分） | `tools/build_films.py`（官方影片信息 **xlsx**）或 `tools/extract_films_2025.py`（PDF 影片介绍页） |
+| `public/douban.json` | 豆瓣映射（code / `f###` → subject_id / 中文名 / 条目链接；**可为空**） | `tools/enrich_douban.py`（离线慢速回填，见 §八） |
 
 所以：**clone 下来直接 `npm run build` + `npm run deploy` 就有完整数据**，不需要 Python、不需要 PDF、不需要任何解析步骤。
 
@@ -298,8 +316,9 @@ python tools/import_schedule_2025.py \
 python tools/build_films.py --xlsx <影片信息.xlsx> --out public/films.json        # 有官方 xlsx 时优先
 python tools/extract_films_2025.py --pdf <Catalogue.pdf> --out public/films.json  # 否则抽 PDF 介绍页
 
-# 4)（可选）豆瓣评分慢速回填
-python tools/enrich_douban.py
+# 4)（可选）豆瓣映射慢速回填（产物填进 public/douban.json 的 mappings）
+python tools/enrich_douban.py --xlsx <影片信息.xlsx> --out data/enriched_douban.json          # 有 xlsx
+python tools/enrich_douban.py --films-json public/films.json --out data/enriched_douban.json  # 只有 PDF 产物
 ```
 
 ### 不想跑 Python 也行
@@ -329,7 +348,8 @@ python tools/enrich_douban.py
 
 - 排期 / 场次信息来源于 biff.kr 公开页面，**仅作个人非商用排片参考**，不收费、不对外分发；页脚已保留出处归属。
 - `public/brand/` 下的 BIFF 官方 logo 素材（favicon / 字标 / ft_logo）版权归 BIFF 组委会所有，**如转为商业或公开大规模用途，需移除并替换为自有设计**（详见 `PLAN.md` §8）。
-- 影片目录源为电影节官方影片信息表，豆瓣评分由 `tools/enrich_douban.py` 慢速回填，缺失即不展示。
-- 本站不使用 Cookie 追踪、不做用户画像；用户数据仅存于本地浏览器与你自己的 D1 数据库。
+- 影片目录源为电影节官方影片信息表；豆瓣评分来自该表的评分列，豆瓣条目链接由 `tools/enrich_douban.py` 离线慢速回填，缺失即走搜索跳转。
+- 本站不使用 Cookie 追踪、不做用户画像，**也没有任何后端**。**片单（选片 / 排片）只存于你自己的浏览器 localStorage**；
+  豆瓣映射是构建期静态文件 `public/douban.json`，同样不采集任何用户数据。
 
 **Unofficial fan tool, not affiliated with Busan International Film Festival.**

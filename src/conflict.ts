@@ -16,8 +16,14 @@ export interface ConflictResult {
 }
 
 /**
- * 转场规则:同场馆无需缓冲;跨场馆时,先结束的场次 end 追加 transit 再判重叠。
- * transitFor(a, b) 入参为两场馆 id。
+ * 判定口径:**只认时间重叠**(a.end > b.start)。
+ * 这是刻意的红绿灯语义 ——「红 = 完全冲突(时间重叠)」;
+ * 「跨馆余量不足(赶不上)」不是红色,走黄卡(`grid.ts::markTight`)+ 行程页「⚠ 赶不上」。
+ *
+ * ⚠ `transitFor` 是**死参数**(2026-09-11 单测发现,PLAN-20260911000705 §7.5):
+ *   内层 `if (b.start >= a.end) break;` 在追加 transit **之前**就中断了内层循环,而
+ *   `a.end + transit > b.start` 在该 guard 下对任何 `transit ≥ 0` **恒真** → 对结果零影响。
+ *   保留参数只为不改调用方签名;**勿**改成让它参与判定(那只会把黄卡变红卡,与既定语义相左)。
  */
 export function computeConflicts(
   slots: Slot[],

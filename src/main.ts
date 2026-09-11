@@ -1,44 +1,61 @@
 // 入口 — 装配数据/状态/视图,统一事件委托。
 // 全量化:仅维护基础骨架(顶栏/面板/弹层根/Toast/底部),所有内部样式由 markup 端 Tailwind utility 表达。
 
-import type { Catalog, Group, Priority, Screening } from "./types";
-import { OK_SLACK, dateInfo, el, filmNodeKey, fmtMinRangeMin, hmsToMin, todayIsoLocal } from "./util";
+import type { Catalog, Group, Priority } from "./types";
+import { OK_SLACK, dateInfo, el, filmNodeKey, hmsToMin, todayIsoLocal } from "./util";
 import { loadCatalog } from "./data";
 import { computeConflicts, conflictGroupFor, type ConflictResult, type Slot } from "./conflict";
-import { buildIcs, downloadIcs, pickEntries, priorityTag } from "./ics";
-import { effEndMin, gvTalkMin, talkOnOf } from "./gv";
+import { buildIcs, downloadIcs, pickEntries } from "./ics";
+import { effEndMin, talkOnOf } from "./gv";
 import {
-  clearScreeningSlots,
   codesOfGroup,
   flipGroup,
-  gvTalkMinOv,
   loadGvTalk,
   loadGvTalkMin,
+  loadMappings,
   loadPicks,
   loadSettings,
   priorityOfCode,
   removeScreening,
   setCurrentGroup,
   setGvTalk,
-  setGvTalkMin,
   setPriorityOfCode,
-  setSettings,
   setZoom,
   slotOf,
   store,
   subscribe,
-  syncFromCloud,
   toggleScreening,
+  type ChangeDomain,
 } from "./state";
-import { buildGrid, fitTimeTexts, fitZoomLevel, axisStartFor, clampZoom, stepZoom, rowMetrics, labelMetrics, PX_PER_MIN, ZOOM_MAX, ZOOM_MIN } from "./grid";
+import {
+  buildGrid,
+  fitTimeTexts,
+  fitZoomLevel,
+  axisStartFor,
+  clampZoom,
+  stepZoom,
+  rowMetrics,
+  labelMetrics,
+  gridGeometryKey,
+  patchGridStates,
+  PX_PER_MIN,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  type GridCtx,
+} from "./grid";
 import { buildAgenda } from "./agenda";
 import { abbrTooltip } from "./badges";
 import { attachTip } from "./tip";
 import { buildGuideBody } from "./legend";
-import { scorePlanRows, type ScoredRow } from "./engine";
-import { aiReady, clearAiCfg, loadAiCfg, maskKey } from "./ai";
-import { closeAllModals, closeModal, openModal, showCatalogFilmModal, showFilmModal } from "./modal";
-import { closePickerDrawer, isPickerDrawerOpen, openFilmPicker, setAgendaRenderer, setPickerTab, setPickerToggleHandler } from "./library";
+import { scorePlanRows, type ScoredRow } from "./score";
+import { closeAllModals, openModal, showCatalogFilmModal, showFilmModal } from "./modal";
+import { closePickerDrawer, isMobileDrawer, isPickerDrawerOpen, openFilmPicker, setAgendaRenderer, setPickerTab, setPickerToggleHandler } from "./library";
+import { openSettings, openTalkMinModal } from "./settings";
+import { initTheme, isThemePref, setThemePref, themePref } from "./theme";
+import { copyPicklist } from "./picklist";
+import { toast } from "./toast";
+import { BAR_IDLE, BAR_ON } from "./chips";
+import { SEG_OFF, SEG_ON, ZBTN, ZFIT, ZMID } from "./ui";
 
 let cat: Catalog;
 let currentDate = "";
@@ -56,6 +73,9 @@ let zoom = 1;
  *  纵向另有一套:走 rowAnchor() 的实测行号 + window.scrollBy(见下)。 */
 let pendingAnchor: { min: number; screenX: number } | null = null;
 let lastGridDate = "";
+/** 上一次**全量重建**时的几何签名(见 grid.ts::gridGeometryKey)。
+ *  与当前签名相同 ⇒ 网格结构可整体复用,`renderGrid` 只走 `patchGridStates` 重刷状态。 */
+let lastGridKey = "";
 
 /** code → 影片节点 key(全站单一 key 口径:grid / agenda / 影片库 / 详情弹层同源);
  *  排期里已没有该 code(数据换版)时返回 null。 */
@@ -121,13 +141,23 @@ function totalConflictPairs(): number {
   return n;
 }
 
-function renderAll(): void {
+/** 状态 → 视图。`domain` = 本次变更域(见 state.ts::ChangeDomain)。
+ *
+ *  **唯一可安全跳过的域是 `"theme"`**:全站配色由 CSS token 驱动(`:root[data-theme]`),
+ *  主题切换只改 token,不改变任何 DOM 结构 —— 故只需刷新顶栏那枚选择器的选中态。
+ *  其余域(含 `"settings"`:`transitMin` 影响紧转场、`gvTalkMin` 影响几何)都必须走网格重绘,
+ *  网格内部再按几何签名决定「全量重建」还是「就地 patch」(见 renderGrid)。 */
+function renderAll(domain: ChangeDomain = "all"): void {
+  if (domain === "theme") {
+    renderThemeSeg();
+    return;
+  }
   conflicts = computeConflictsForCurrentGroup();
   renderChips();
   renderGroupSeg();
   renderBadge();
-  renderSync();
   renderPicksBadge();
+  renderThemeSeg();
   // 选片抽屉**不隐藏**网格 / 行程(它只挤压宽度),故这里无条件重建 —— 旧的「页面打开时早退」
   // 已随页面形态一起作废;抽屉开合导致的宽度变化由 library.ts 回调 renderGrid() 补(见 setPickerToggleHandler)。
   renderGrid();
@@ -137,10 +167,7 @@ function renderAll(): void {
   renderZoomCtl();
 }
 
-/** 日期 chip 类名(idle / 选中 — 背景/边框色 走 IDLE/ON 各自完整串,避免同类叠加后写者赢) */
-const CHIP_DATE_BASE = "border rounded-[7px] px-3 py-1 text-[13px] whitespace-nowrap hover:border-biff";
-const CHIP_DATE_IDLE = `${CHIP_DATE_BASE} border-line bg-card text-ink`;
-const CHIP_DATE_ON = `${CHIP_DATE_BASE} border-biff bg-biff text-on-brand font-semibold`;
+/* 顶栏日期 chip 的字面量已收敛到 `chips.ts`(BAR_IDLE / BAR_ON)。 */
 
 function renderChips(): void {
   const bar = document.getElementById("date-chips")!;
@@ -148,7 +175,7 @@ function renderChips(): void {
   for (const d of cat.dates) {
     const { label, weekday } = dateInfo(d);
     const dayShows = cat.schedule.screenings.filter((s) => s.date === d).length;
-    const cls = d === currentDate ? CHIP_DATE_ON : CHIP_DATE_IDLE;
+    const cls = d === currentDate ? BAR_ON : BAR_IDLE;
     const btn = el("button", cls, `${label} ${weekday}`);
     btn.dataset.tip = `${dayShows} 场排片`;
     btn.dataset.date = d;
@@ -156,15 +183,12 @@ function renderChips(): void {
   }
 }
 
-/** A/B 方案切换按钮:on 用红填充;off 白底 */
-const SEG_BTN_BASE = "border-0 px-3 py-[5px] text-[13px] transition-colors";
-const SEG_BTN_ON = "bg-biff text-on-brand font-bold";
-const SEG_BTN_OFF = "bg-card text-ink";
+/* A/B 方案切换段按钮的字面量已收敛到 `ui.ts`(SEG_ON / SEG_OFF)。 */
 
 function renderGroupSeg(): void {
   document.querySelectorAll<HTMLButtonElement>("#group-switch button").forEach((b) => {
     const on = b.dataset.g === store.group;
-    b.className = `${SEG_BTN_BASE} ${on ? SEG_BTN_ON : SEG_BTN_OFF}`;
+    b.className = on ? SEG_ON : SEG_OFF;
   });
 }
 
@@ -239,12 +263,7 @@ function resetZoom(): void {
 /** 缩放控件(网格标题行右侧):− / 读数(**纯读数,非按钮**) / + / 适应宽度 / 1:1。
  *  − / + 沿缩放阶梯走(横纵一起缩),到两端置灰;读数常显「缩放 xx%」。
  *  「适应宽度」把当天整条时间轴塞进视口(横纵一起缩),「1:1」回基准比例。 */
-const ZBTN_CLS =
-  "border-0 bg-card px-[8px] py-[3px] text-[12px] font-bold leading-[1.5] text-ink-2 hover:bg-[var(--bg-hover-soft)] disabled:opacity-30 disabled:cursor-not-allowed";
-const ZMID_CLS =
-  "border-0 border-x border-line-soft bg-card px-[6px] py-[3px] text-[12px] font-bold tabular-nums text-ink min-w-[68px] leading-[1.5] text-center select-none whitespace-nowrap";
-const ZFIT_CLS =
-  "border-0 border-l border-line-soft bg-card px-[9px] py-[3px] text-[12px] font-bold leading-[1.5] text-ink-2 hover:bg-[var(--bg-hover-soft)]";
+/* 缩放控件的字面量已收敛到 `ui.ts`(ZBTN / ZMID / ZFIT)。 */
 
 function zoomBtn(label: string, act: string, tip: string, dis: boolean, cls: string): HTMLButtonElement {
   const b = el("button", cls, label);
@@ -258,60 +277,21 @@ function renderZoomCtl(): void {
   const host = document.getElementById("zoom-ctl");
   if (!host) return;
   const pct = `${Math.round(zoom * 100)}%`;
-  const readout = el("span", ZMID_CLS, `缩放 ${pct}`);
+  const readout = el("span", ZMID, `缩放 ${pct}`);
   readout.dataset.tip =
     `整体等比缩放 ${pct} —— 横向时间刻度与纵向行高一起缩,卡片内字号 / 留白 / 色点 / 徽章行全部同倍率线性缩,` +
     `排版严格等比(矮到放不下时徽章行收起,等级 / 字幕 / 页码在 ⓘ 与悬停里仍在)`;
   host.replaceChildren(
-    zoomBtn("−", "out", `缩小(当前 ${pct})—— 一屏看到更多影厅,时间轴同步收窄\n也可按住 Ctrl / ⌘ 滚轮(触控板双指捏合)`, zoom <= ZOOM_MIN + 1e-6, ZBTN_CLS),
+    zoomBtn("−", "out", `缩小(当前 ${pct})—— 一屏看到更多影厅,时间轴同步收窄\n也可按住 Ctrl / ⌘ 滚轮(触控板双指捏合)`, zoom <= ZOOM_MIN + 1e-6, ZBTN),
     readout,
-    zoomBtn("+", "in", `放大(当前 ${pct})—— 卡片更舒展、徽章行更清楚,时间轴同步展宽\n也可按住 Ctrl / ⌘ 滚轮(触控板双指捏合)`, zoom >= ZOOM_MAX - 1e-6, ZBTN_CLS),
-    zoomBtn("适应", "fit", "适应宽度:在缩放阶梯里挑一个刚好把当天整条时间轴塞进视口的档(横纵一起缩,左缘对齐轴起点)", false, ZFIT_CLS),
-    zoomBtn("1:1", "reset", `回到原始比例 100%(当前 ${pct})\n横向时间刻度与纵向行高一起回到基准`, false, ZFIT_CLS)
+    zoomBtn("+", "in", `放大(当前 ${pct})—— 卡片更舒展、徽章行更清楚,时间轴同步展宽\n也可按住 Ctrl / ⌘ 滚轮(触控板双指捏合)`, zoom >= ZOOM_MAX - 1e-6, ZBTN),
+    zoomBtn("适应", "fit", "适应宽度:在缩放阶梯里挑一个刚好把当天整条时间轴塞进视口的档(横纵一起缩,左缘对齐轴起点)", false, ZFIT),
+    zoomBtn("1:1", "reset", `回到原始比例 100%(当前 ${pct})\n横向时间刻度与纵向行高一起回到基准`, false, ZFIT)
   );
 }
 
-function renderGrid(): void {
-  const host = document.getElementById("grid-scroll")!;
-  // 换节点前先记**两个方向**的视口锚点(必须都在 replaceWith 之前量 —— 新容器一挂上,旧 rect 就没了):
-  //   横向 —— 缩放走 applyZoom 预算好的(那时 zoom 还是旧值),其余同日期重建按当前倍率就地算;
-  //   纵向 —— 行高一变页面总高就变,不记行号会被浏览器的 scrollY clamp 甩到别处(见 rowAnchor);
-  //   切日期 / 首渲两者都为空 → 横向回最左、纵向不补偿(保持页面滚动位置)。
-  const anchor = pendingAnchor ?? (currentDate === lastGridDate ? gridAnchor(host) : null);
-  pendingAnchor = null;
-  const vAnchor = currentDate === lastGridDate ? rowAnchor(host) : null;
-  const conf = conflicts.get(currentDate);
-  const pxPerMin = PX_PER_MIN * zoom;
-  const newLw = labelMetrics(pxPerMin).labelW; // 影厅列宽随缩放倍率 —— 回算 scrollLeft 必须用**新**列宽
-  const grid = buildGrid(
-    {
-      cat,
-      pxPerMin,
-      slots: store.slotIndex,
-      group: store.group,
-      mappingOf: (c) => store.mappings.get(c),
-      conflictCodes: conf?.codeSet,
-      transitMin: store.settings.transitMin,
-      gvTalkOf,
-      wishOf: (s) => store.picks.get(filmNodeKey(cat, s))?.priority ?? undefined,
-      hourFilter,
-      row: rowMetrics(zoom), // 行几何(行高 / 字号倍率 / 留白 / 徽章行开关)单一来源,随缩放倍率
-    },
-    currentDate
-  );
-  host.replaceWith(grid);
-  grid.id = "grid-scroll";
-  // 横向锚点回算:同一日期内刻度可能变了(「适应宽度」/「1:1」),故必须用新刻度重算 scrollLeft
-  if (anchor) {
-    const left = (anchor.min - axisStartFor(cat, currentDate)) * pxPerMin - (anchor.screenX - newLw);
-    grid.scrollLeft = Math.max(0, Math.min(left, grid.scrollWidth - grid.clientWidth));
-  }
-  // 纵向锚点回算:必须在挂载后量(行高要实测);放在横向之后 —— scrollBy 改页面滚动、scrollLeft 改容器,
-  // 两者互不干扰,但先定横向再补纵向更贴近「用户看到的那一屏」
-  if (vAnchor) applyRowAnchor(grid, vAnchor);
-  lastGridDate = currentDate;
-  fitTimeTexts(grid); // 挂载后量测:窄卡时间文本降级,绝不截断
-
+/** 网格标题行(日期标题 + 场次数 + 「只看 X 段」pill)—— 全量重建与就地 patch **都要**刷新 */
+function renderGridMeta(): void {
   const { label, weekday } = dateInfo(currentDate);
   const dayShows = cat.schedule.screenings.filter((s) => s.date === currentDate).length;
   const pickedOnDay = codesOfGroup(store.group).filter(
@@ -324,13 +304,83 @@ function renderGrid(): void {
     const hh = String(hourFilter).padStart(2, "0");
     const pill = el(
       "button",
-      "ml-[8px] border border-biff bg-biff-soft text-biff rounded-full px-[8px] py-px text-[12px] font-bold align-middle cursor-pointer hover:bg-biff-line whitespace-nowrap",
+      "ml-[8px] border border-biff bg-biff-soft text-biff-ink rounded-full px-[8px] py-px text-12 font-bold align-middle cursor-pointer hover:bg-biff-line whitespace-nowrap",
       `只看 ${hh}:00 段 · 取消`
     );
     pill.dataset.clearHour = "1";
     pill.dataset.tip = "点击取消时间筛选";
     countEl.appendChild(pill);
   }
+}
+
+/** 网格几何签名(见 grid.ts::gridGeometryKey)+「现在」线的当前分钟。
+ *  分钟进签名是**刻意**的:「现在」线画在网格内部,分钟一变位置就变 ——
+ *  与旧版每 20s 轮询、分钟变化即重建整网格的行为逐字一致(不是本轮引入的回归)。 */
+function gridKeyNow(): string {
+  const base = gridGeometryKey(cat, currentDate, PX_PER_MIN * zoom, rowMetrics(zoom).rowH);
+  if (todayIsoLocal() !== currentDate) return base;
+  const d = new Date();
+  return `${base}|now:${d.getHours() * 60 + d.getMinutes()}`;
+}
+
+function renderGrid(opts: { force?: boolean } = {}): void {
+  const host = document.getElementById("grid-scroll")!;
+  const conf = conflicts.get(currentDate);
+  const pxPerMin = PX_PER_MIN * zoom;
+  const ctx: GridCtx = {
+    cat,
+    pxPerMin,
+    slots: store.slotIndex,
+    group: store.group,
+    mappingOf: (c) => store.mappings.get(c),
+    conflictCodes: conf?.codeSet,
+    transitMin: store.settings.transitMin,
+    gvTalkOf,
+    wishOf: (s) => store.picks.get(filmNodeKey(cat, s))?.priority ?? undefined,
+    hourFilter,
+    row: rowMetrics(zoom), // 行几何(行高 / 字号倍率 / 留白 / 徽章行开关)单一来源,随缩放倍率
+  };
+  const key = gridKeyNow();
+
+  // ★ 几何未变 → **就地 patch**(点选 / 移出 / 改档位 / 冲突 / 紧转场 / 时间筛选 / 切方案都不再重建 DOM)。
+  //   不换节点 ⇒ scrollLeft 与页面滚动位置天然保持,连锚点回算都不需要。
+  //   `pendingAnchor` 非空(缩放 / 「适应宽度」预算过锚点)时必须走重建 —— 见下方 anchor 消费。
+  if (
+    !opts.force &&
+    pendingAnchor === null &&
+    host.dataset.grid === "1" &&
+    currentDate === lastGridDate &&
+    key === lastGridKey
+  ) {
+    patchGridStates(host, ctx, currentDate);
+    renderGridMeta();
+    return;
+  }
+
+  // ---- 以下 = 全量重建(换日期 / 缩放 / 改映后时长 / 抽屉开合 / 首渲)----
+  // 换节点前先记**两个方向**的视口锚点(必须都在 replaceWith 之前量 —— 新容器一挂上,旧 rect 就没了):
+  //   横向 —— 缩放走 applyZoom 预算好的(那时 zoom 还是旧值),其余同日期重建按当前倍率就地算;
+  //   纵向 —— 行高一变页面总高就变,不记行号会被浏览器的 scrollY clamp 甩到别处(见 rowAnchor);
+  //   切日期 / 首渲两者都为空 → 横向回最左、纵向不补偿(保持页面滚动位置)。
+  const anchor = pendingAnchor ?? (currentDate === lastGridDate ? gridAnchor(host) : null);
+  pendingAnchor = null;
+  const vAnchor = currentDate === lastGridDate ? rowAnchor(host) : null;
+  const newLw = labelMetrics(pxPerMin).labelW; // 影厅列宽随缩放倍率 —— 回算 scrollLeft 必须用**新**列宽
+  const grid = buildGrid(ctx, currentDate);
+  host.replaceWith(grid);
+  grid.id = "grid-scroll";
+  // 横向锚点回算:同一日期内刻度可能变了(「适应宽度」/「1:1」),故必须用新刻度重算 scrollLeft
+  if (anchor) {
+    const left = (anchor.min - axisStartFor(cat, currentDate)) * pxPerMin - (anchor.screenX - newLw);
+    grid.scrollLeft = Math.max(0, Math.min(left, grid.scrollWidth - grid.clientWidth));
+  }
+  // 纵向锚点回算:必须在挂载后量(行高要实测);放在横向之后 —— scrollBy 改页面滚动、scrollLeft 改容器,
+  // 两者互不干扰,但先定横向再补纵向更贴近「用户看到的那一屏」
+  if (vAnchor) applyRowAnchor(grid, vAnchor);
+  lastGridDate = currentDate;
+  lastGridKey = key;
+  fitTimeTexts(grid); // 挂载后量测:窄卡时间文本降级,绝不截断
+  renderGridMeta();
 }
 
 // 2026-09-10 起「我的行程」从主页面 #agenda-wrap 搬到选片抽屉的第三个 tab(`PLAN-20260910190916`):
@@ -350,7 +400,7 @@ function buildAgendaHost(): HTMLElement {
   const nConf = totalConflictPairs();
   const sum = el(
     "div",
-    "px-3 pt-[2px] pb-[2px] text-[12px] text-meta flex items-center gap-[6px] flex-wrap",
+    "px-3 pt-[2px] pb-[2px] text-12 text-meta flex items-center gap-[6px] flex-wrap",
     `${store.group} 方案 ${picked.length} 场${nConf ? ` · ${nConf} 处冲突` : ""}`
   );
   // 质量分药丸(P0-2:与引擎同权重;仅展示,不改排序)
@@ -363,7 +413,7 @@ function buildAgendaHost(): HTMLElement {
     const sc = scorePlanRows(rows, store.settings.transitMin, OK_SLACK, (s) => effEndMin(s, gvTalkOf(s.code)));
     const pill = el(
       "span",
-      "inline-flex items-center border border-line rounded-full bg-card px-[8px] leading-[1.7] text-[11.5px] font-extrabold tabular-nums text-ink-2 whitespace-nowrap cursor-default hover:border-biff hover:text-biff",
+      "inline-flex items-center border border-line rounded-full bg-card px-[8px] leading-[1.7] text-12 font-extrabold tabular-nums text-ink-2 whitespace-nowrap cursor-default hover:border-biff hover:text-biff-ink",
       `分 ${sc.total}`
     );
     pill.dataset.tip =
@@ -401,13 +451,6 @@ function renderBadge(): void {
   document.getElementById("conflict-count")!.textContent = String(n);
 }
 
-function renderSync(): void {
-  const dot = document.getElementById("sync-dot")!;
-  dot.classList.toggle("bg-ok", store.online);
-  dot.classList.toggle("bg-disabled", !store.online);
-  dot.dataset.tip = store.online ? "D1 云端同步中" : "云端不可用 · 仅本地保存";
-}
-
 /** 顶栏「影片库 · 选片」实时计数 = 影片记录数(打标 / 点选场次 → commit 广播 → renderAll → 这里刷新;0 时角标隐藏) */
 function renderPicksBadge(): void {
   const n = store.picks.size;
@@ -415,6 +458,30 @@ function renderPicksBadge(): void {
   if (!cnt) return;
   cnt.textContent = String(n);
   cnt.classList.toggle("is-hidden", n === 0);
+}
+
+/** 顶栏「外观」三段选择器(2026-09-11):跟随系统 / 亮色 / 暗色 —— **点哪段就是哪段**。
+ *  只刷选中态(与顶栏 A/B 方案共用 ui.ts 的 SEG_ON / SEG_OFF,单一视觉来源);
+ *  文案 / tooltip 是静态的,写在 index.html 上,故这里不重建节点(保住悬停 tooltip 不闪)。
+ *  切主题的实际落盘 / 重绘在 theme.ts(改 data-theme + setSettings → 广播 → 本函数刷新选中态)。 */
+function renderThemeSeg(): void {
+  document.querySelectorAll<HTMLButtonElement>("#theme-switch [data-theme-pref]").forEach((b) => {
+    b.className = b.dataset.themePref === themePref() ? SEG_ON : SEG_OFF;
+  });
+}
+
+/** 顶栏抽屉按钮文案(2026-09-10,PLAN-20260910235000)——
+ *  窄屏「列表优先」时抽屉就是**主视图**,文案必须表达「点了会去哪」:
+ *  抽屉开着 → 「时间轴 ▸」(回网格);关着 → 「列表 · 行程」(去列表)。
+ *  宽屏维持「选片 · 行程」(抽屉是并列的辅助面板,不涉及主次切换)。 */
+function updatePickerLabel(): void {
+  const label = document.getElementById("picker-btn-label");
+  if (!label) return;
+  label.textContent = !isMobileDrawer()
+    ? "选片 · 行程"
+    : isPickerDrawerOpen()
+      ? "时间轴 ▸"
+      : "列表 · 行程";
 }
 
 /* ---------------- 事件绑定 ---------------- */
@@ -525,15 +592,15 @@ function bindEvents(): void {
       } else if (act.dataset.act === "grp") flipGroup(code);
       else if (act.dataset.act === "del") removeScreening(code);
       else if (act.dataset.act === "gv-talk") setGvTalk(code, !talkOnOf(code));
-      else if (act.dataset.act === "gv-talk-min") openTalkMinModal(code); // 本场映后时长覆写(小弹层)
+      else if (act.dataset.act === "gv-talk-min") openTalkMinModal(code, cat); // 本场映后时长覆写(小弹层)
       return;
     }
 
-    // 行程日期头(2026-09-10 起位于抽屉内) -> 在抽屉 agenda tab 滚到该日期的 section header
-    // (原来是滚到主页面的网格,现在 agenda 在抽屉里 → 改成抽屉内滚动更自然,网格仍可由顶栏日期 chip 切)
+    // 行程日期头「在网格中查看这一天」-> 网格切到该日期 + 当天行程场次卡片批量闪烁 3s。
+    // (原先是抽屉内 `scrollIntoView` —— 行程已在抽屉里、目标行本就在视口内,等于没反应,故改为切网格。)
     const jump = t.closest<HTMLElement>("[data-jump]");
     if (jump) {
-      jump.scrollIntoView({ behavior: "smooth", block: "start" });
+      jumpToDate(jump.dataset.jump!);
       return;
     }
 
@@ -552,12 +619,20 @@ function bindEvents(): void {
     }
     const ex = t.closest<HTMLElement>("#export-menu button");
     if (ex) {
-      if (ex.dataset.which === "PICK") copyPicklist();
+      if (ex.dataset.which === "PICK") copyPicklist(cat, gvTalkOf);
       else exportIcs(ex.dataset.which as "A" | "B" | "ALL");
       return;
     }
     if (!t.closest("[data-export-wrap]")) {
       document.getElementById("export-menu")!.classList.add("is-hidden");
+    }
+
+    // 外观:三段选择器 —— 点哪段切哪段(不做循环);setSettings 广播 → renderAll 刷新选中态
+    const th = t.closest<HTMLElement>("#theme-switch [data-theme-pref]");
+    if (th) {
+      const pref = th.dataset.themePref;
+      if (isThemePref(pref)) setThemePref(pref);
+      return;
     }
 
     // 设置
@@ -604,35 +679,21 @@ function exportIcs(which: "A" | "B" | "ALL"): void {
 }
 
 /* ---------------- 影片库反向定位:跳日期 + 滚到卡片高亮 ---------------- */
-function jumpToScreening(code: string): void {
-  const s = cat.byCode.get(code);
-  if (!s) return;
-  closeAllModals(); // 整栈关闭:详情弹层任何一层都不能还盖着网格
-  // ⚠ **不收起选片抽屉**(2026-09-10 改):抽屉是 `#main-col` 的 **flex 兄弟节点**,不是浮层 ——
-  // 网格里的卡片永远不可能被它挡住,故没有「必须收起」的理由;而收起会让「定位 A → 看一眼时间轴 →
-  // 再定位 B」每次都要重新打开抽屉(正是「有去无回」那条老毛病)。网格变窄由 jumpToScreening
-  // 下面的居中逻辑自然吸收:`scroll.clientWidth` 已是挤压后的宽度,卡片照样居中。
-  // (历史:独立页面形态下这里曾是 `closePickerPage()` —— 那时网格被 `display:none`,
-  //  不先恢复 rect 全 0 会滚错位;现在网格从不隐藏,该前提已不存在。)
-  if (currentDate !== s.date) {
-    currentDate = s.date;
-    hourFilter = null;
-    renderChips();
-    renderGrid();
-    // 抽屉 agenda tab 通过 subscribe 自动重绘 —— 无需调 renderAgenda
+/** 给某场次的**所有网格元素**打「定位回执」闪烁 —— 正片卡 + 右侧 GV 映后谈块。
+ *  两者同带 `data-code`(见 grid.ts)且视觉上是一张拼接卡;只闪正片、留谈块不闪会「半张亮」,
+ *  故统一按 `data-code` 全量取。
+ *  先摘类 + 强制回流:同一场连点两次时 class 已在,不重排不会重播动画。 */
+function flashScreening(root: ParentNode, code: string): void {
+  for (const node of root.querySelectorAll<HTMLElement>(`[data-code="${code}"]`)) {
+    node.classList.remove("flash-locate");
+    void node.offsetWidth;
+    node.classList.add("flash-locate");
   }
-  // 页面滚到排片面板(顶部被吸顶栏盖住的部分留出)
-  const wrap = document.getElementById("grid-wrap");
-  if (wrap) {
-    const top = wrap.getBoundingClientRect().top + window.scrollY - 64;
-    window.scrollTo({ top: Math.max(top, 0), behavior: "smooth" });
-  }
-  // 等两帧布局稳定后:横向滚到卡片 + 带底色闪烁 3s(1s × 3)
-  requestAnimationFrame(() =>
-  requestAnimationFrame(() => {
-  const scroll = document.getElementById("grid-scroll");
-  const card = scroll?.querySelector<HTMLElement>(`[data-code="${code}"]`);
-  if (!scroll || !card) return;
+}
+
+/** 横向把某张卡滚到视口中央(「定位」的落点口径,单场 / 批量共用)。
+ *  `scroll.clientWidth` 取的是**当前**宽度 —— 抽屉挤压后网格变窄,用它算仍是正中。 */
+function centerCardX(scroll: HTMLElement, card: HTMLElement): void {
   const sRect = scroll.getBoundingClientRect();
   const cRect = card.getBoundingClientRect();
   const x = cRect.left - sRect.left + scroll.scrollLeft;
@@ -640,354 +701,80 @@ function jumpToScreening(code: string): void {
     left: Math.max(0, x - scroll.clientWidth / 2 + cRect.width / 2),
     behavior: "smooth",
   });
-  // 先摘类 + 强制回流:同一场连点两次时 class 已在,不重排不会重播动画
-  card.classList.remove("flash-locate");
-  void card.offsetWidth;
-  card.classList.add("flash-locate");
-  })
-  );
 }
 
-/* ---------------- 设置 ----------------
- *  排版口径(2026-09-10 优化):① 标题 + 控件同行**流式左对齐**(控件紧贴标题,标签长短不一也不会
- *  散成右侧一列);② 单位(分钟)移到**框外**做后缀,标题里不再带括号;③ 说明另起一行 12px muted、
- *  行高 1.6;④ 字段之间 14px,分组之间浅灰分割线 —— 一整片文字被切成两块,密度显著下降。 */
-
-/** 设置项数字输入框:统一宽度 / 居中数字 / focus 红描边(与 modal.ts 豆瓣输入框同一口径)。
- *  单位不进框内 —— 由 settingsField 的 unit 参数渲染在框外,避免「分钟」被当成可编辑内容。 */
-function settingsInput(value: string, max: number): HTMLInputElement {
-  const inp = el(
-    "input",
-    "w-[76px] text-center tabular-nums border border-line rounded-[8px] px-2 py-[5px] text-[13px] " +
-      "focus:border-biff focus:[outline:2px_solid_color-mix(in_srgb,var(--color-biff)_30%,var(--color-card))]"
-  ) as HTMLInputElement;
-  inp.type = "number";
-  inp.min = "0";
-  inp.max = String(max);
-  inp.value = value;
-  return inp;
+/** 页面滚到排片面板(顶部被吸顶栏盖住的部分留出)—— jumpToScreening / jumpToDate 共用 */
+function scrollGridTop(): void {
+  const wrap = document.getElementById("grid-wrap");
+  if (!wrap) return;
+  const top = wrap.getBoundingClientRect().top + window.scrollY - 64;
+  window.scrollTo({ top: Math.max(top, 0), behavior: "smooth" });
 }
 
-/** 设置项骨架:标题 + 控件同一行(左对齐流式),可选单位后缀,说明另起一行小字。
- *  ⚠ `tag` 默认 `label`(点标题即聚焦输入框);**内含 button 的控件(分段选择器)必须传 `"div"`** ——
- *  否则点标题会冒泡到 label 内首个 button,表现为「点文字误选了选项」。 */
-function settingsField(
-  label: string,
-  hint: string,
-  control: HTMLElement,
-  unit = "",
-  tag: "label" | "div" = "label"
-): HTMLElement {
-  const box = el(tag, "flex flex-col gap-[3px]");
-  const row = el("div", "flex items-center gap-[8px]");
-  row.appendChild(el("span", "font-semibold text-[13.5px] whitespace-nowrap", label));
-  row.appendChild(control);
-  if (unit) row.appendChild(el("span", "text-[12.5px] text-ink-2", unit));
-  box.append(row, el("div", "text-muted text-[12px] leading-[1.6]", hint));
-  return box;
+/** 等两帧布局稳定后执行 —— 切日期 / 缩放会整体重建网格容器,须等新节点落位再量尺寸 */
+function afterLayout(fn: () => void): void {
+  requestAnimationFrame(() => requestAnimationFrame(fn));
 }
 
-/** iOS 风分段选择器:低饱和灰轨道 + 白色滑块(选中),替代旧「品牌红实底白字」胶囊 ——
- *  设置项里的次要开关不该比「保存设置」这个主按钮更抢眼。两段互斥,点击即切换;
- *  类名口径收口在 cls(),初渲与后续重绘共用一份。 */
-function segmented<T extends string>(
-  opts: { value: T; label: string }[],
-  cur: T,
-  onPick: (v: T) => void
-): HTMLElement {
-  const cls = (on: boolean): string =>
-    "border-0 rounded-[6px] px-[10px] py-[4px] text-[12.5px] font-semibold whitespace-nowrap " +
-    "transition-[background-color,color,box-shadow] duration-[120ms] " +
-    (on ? "bg-card text-ink shadow-[var(--shadow-card)]" : "bg-transparent text-muted hover:text-ink");
-  const track = el("div", "inline-flex items-center gap-[2px] p-[2px] rounded-[8px] bg-raised");
-  const btns = new Map<T, HTMLElement>();
-  const set = (v: T): void => {
-    btns.forEach((b, k) => (b.className = cls(k === v)));
-  };
-  for (const o of opts) {
-    const b = el("button", cls(o.value === cur), o.label);
-    b.type = "button";
-    b.addEventListener("click", () => {
-      onPick(o.value);
-      set(o.value);
-    });
-    btns.set(o.value, b);
-    track.appendChild(b);
-  }
-  return track;
+/** 把网格切到某日期并清掉时间筛选;返回是否真的发生了切换(供调用方决定后续定位) */
+function gotoDate(date: string): boolean {
+  if (currentDate === date) return false;
+  currentDate = date;
+  hourFilter = null;
+  renderChips();
+  renderGrid();
+  // 抽屉 agenda tab 通过 subscribe 自动重绘 —— 无需调 renderAgenda
+  return true;
 }
 
-function openSettings(): void {
-  const body = el("div", "flex flex-col");
-
-  // ---- 分组 1:导出 / 转场 ----
-  const alarm = settingsInput(String(store.settings.alarmMin), 180);
-  const f1 = settingsField(
-    "提醒提前量",
-    "导出 .ics 日历时的闹钟提醒，建议 30 - 60 分钟。",
-    alarm,
-    "分钟"
-  );
-
-  const transit = settingsInput(String(store.settings.transitMin), 120);
-  const f2 = settingsField(
-    "跨场馆转场缓冲",
-    "仅用于判定跨影院场次的冲突，同一影院不受影响（默认 0 为仅判定时间重叠）。",
-    transit,
-    "分钟"
-  );
-
-  const group1 = el("div", "flex flex-col gap-[14px]");
-  group1.append(f1, f2);
-
-  // ---- 分组 2:GV 映后谈(浅灰分割线分组,不另加小标题 —— 标签已自解释,少一层文字) ----
-  let gvDef = store.settings.gvTalkOn;
-  const seg = segmented(
-    [
-      { value: "on", label: "参加 (含映后)" },
-      { value: "off", label: "不参加 (仅正片)" },
-    ],
-    gvDef ? "on" : "off",
-    (v) => {
-      gvDef = v === "on";
-    }
-  );
-  const f3 = settingsField(
-    "GV 场默认映后谈",
-    "新增 GV 场次时默认选中的状态（后续可在具体行程中单独切换）。",
-    seg,
-    "",
-    "div"
-  );
-
-  // f4:GV 映后谈时长(全局默认)—— 改这里 = 谈段长度 / 有效结束 / 转场 / 冲突 / .ics 全链路跟着变
-  const talkMin = settingsInput(String(store.settings.gvTalkMin), 240);
-  const f4 = settingsField(
-    "GV 映后谈默认时长",
-    "官方排期包含 25 分钟映后谈，设为 0 则不拆分映后段（可逐场覆写）。",
-    talkMin,
-    "分钟"
-  );
-
-  const group2 = el("div", "flex flex-col gap-[14px] mt-[16px] pt-[16px] border-t border-line-soft");
-  group2.append(f3, f4);
-
-  // ---- 分组 3:AI 排片 Key(只读状态 + 清除)----
-  //  填写 / 更换的入口收在「影片库 ▸ 智能排片」:那里有隐私说明与自定义偏好同屏,
-  //  设置里不放输入框 —— 避免误触,也让「Key 只在本机」的说明紧贴使用场景。
-  const aiState = el("span", "text-[12.5px] font-semibold");
-  const aiClear = el(
-    "button",
-    "border border-line rounded-[7px] px-[8px] py-[3px] text-[11.5px] font-semibold bg-card text-ink hover:border-line-strong hover:bg-hover whitespace-nowrap",
-    "清除 Key"
-  );
-  aiClear.dataset.ai = "settings-clear";
-  aiState.dataset.ai = "settings-state";
-  const paintAi = (): void => {
-    const c = loadAiCfg();
-    if (aiReady(c)) {
-      aiState.className = "text-[12.5px] font-semibold text-ok";
-      aiState.textContent = `已配置 · ${c.model} · ${maskKey(c.key)}`;
-      aiClear.classList.remove("is-hidden");
-    } else {
-      aiState.className = "text-[12.5px] font-semibold text-muted";
-      aiState.textContent = "未配置";
-      aiClear.classList.add("is-hidden");
-    }
-  };
-  aiClear.addEventListener("click", () => {
-    if (!window.confirm("清除本机保存的 AI 排片 API Key?(其它设置与选片不受影响)")) return;
-    clearAiCfg();
-    paintAi();
-    toast("已清除本机保存的 API Key");
-  });
-  paintAi();
-  const aiCtl = el("div", "flex items-center gap-[8px] flex-wrap");
-  aiCtl.append(aiState, aiClear);
-  const f5 = settingsField(
-    "AI 排片 · 模型 API Key",
-    "只保存在本机浏览器（localStorage），不上传本站服务器、也不进任何本站请求。填写 / 更换请到「影片库 ▸ 智能排片」。",
-    aiCtl,
-    "",
-    "div"
-  );
-  const group3 = el("div", "flex flex-col gap-[14px] mt-[16px] pt-[16px] border-t border-line-soft");
-  group3.append(f5);
-
-  // ---- 底部主操作:全弹层唯一的亮色按钮(右对齐)----
-  const apply = el(
-    "button",
-    "border-0 rounded-[6px] px-[16px] py-[7px] text-[13px] font-bold text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05] active:translate-y-px",
-    "保存设置"
-  );
-  apply.addEventListener("click", () => {
-    setSettings({
-      alarmMin: clampNum(alarm.value, 45),
-      transitMin: clampNum(transit.value, 0),
-      gvTalkOn: gvDef,
-      gvTalkMin: Math.max(0, Math.round(clampNum(talkMin.value, 25))),
-    });
-    closeModal();
-    toast("设置已保存");
-  });
-  const actions = el("div", "flex justify-end mt-[18px]");
-  actions.appendChild(apply);
-
-  // ---- 危险操作:降级为无边框/无底色的灰色文字按钮,并挪到弹窗最底部单独区域,
-  //      与主按钮之间再隔一条分割线 —— 视觉权重拉低 + 误触路径物理隔开 ----
-  const danger = el(
-    "button",
-    "border-0 bg-transparent p-0 text-[12px] text-muted underline-offset-2 hover:text-conf hover:underline",
-    "清空全部已排场次(A+B)"
-  );
-  danger.dataset.tip = "只清场次 —— 「我的选片」的选片意向(档位)保留,清完仍可一键智能排片";
-  danger.addEventListener("click", () => {
-    if (window.confirm("确定清空 A/B 两个方案的「全部已排场次」?选片意向(必看/备选/随缘)会保留。")) {
-      clearScreeningSlots();
-      closeModal();
-      toast("已清空全部已排场次(选片意向保留)");
-    }
-  });
-  const dangerZone = el("div", "flex mt-[14px] pt-[12px] border-t border-line-soft");
-  dangerZone.appendChild(danger);
-
-  body.append(group1, group2, group3, actions, dangerZone);
-
-  openModal("设置", body);
-}
-
-/** GV 映后谈单场时长覆写小弹层:留空 / 点「跟随默认」= 清除覆写(回到跟随全局默认)。
- *  只有 is_gv 场次有入口(非 GV 无谈段);改完走 state 的 notify → renderAll 重绘网格 / 行程。 */
-function openTalkMinModal(code: string): void {
+function jumpToScreening(code: string): void {
   const s = cat.byCode.get(code);
   if (!s) return;
-  const def = store.settings.gvTalkMin;
-  const cur = gvTalkMinOv.get(code);
-  const body = el("div", "grid gap-3");
-
-  const inp = settingsInput(cur == null ? "" : String(cur), 240);
-  inp.placeholder = String(def);
-  const f = settingsField(
-    `本场映后谈时长 · ${code}`,
-    `留空 = 跟随全局默认 ${def}′;仅本场生效（其它 GV 场不动），设 0 则不拆映后段。`,
-    inp,
-    "分钟"
-  );
-  body.appendChild(f);
-
-  // 底部主操作:与设置弹层同一语言 —— 次要操作在左、主按钮贴右下角(全站唯一亮色按钮的落位口径)
-  const actions = el("div", "flex justify-end gap-[10px] mt-1");
-  const ok = el(
-    "button",
-    "border-0 rounded-[6px] px-[14px] py-[6px] text-[13px] font-bold text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05]",
-    "保存"
-  );
-  const follow = el(
-    "button",
-    "border border-line rounded-[6px] px-[12px] py-[6px] text-[13px] font-bold bg-card text-ink hover:border-biff",
-    `跟随默认(${def}′)`
-  );
-  const apply = (min: number | null): void => {
-    setGvTalkMin(code, min);
-    closeModal();
-    toast(min == null ? `已恢复跟随全局默认(${def}′)` : `本场映后谈已设为 ${min}′`);
-  };
-  ok.addEventListener("click", () => {
-    const raw = inp.value.trim();
-    apply(raw === "" ? null : Math.max(0, Math.round(clampNum(raw, def))));
+  closeAllModals(); // 整栈关闭:详情弹层任何一层都不能还盖着网格
+  // ⚠ **不收起选片抽屉**(2026-09-10 改):抽屉是 `#main-col` 的 **flex 兄弟节点**,不是浮层 ——
+  // 网格里的卡片永远不可能被它挡住,故没有「必须收起」的理由;而收起会让「定位 A → 看一眼时间轴 →
+  // 再定位 B」每次都要重新打开抽屉(正是「有去无回」那条老毛病)。网格变窄由下面的居中逻辑自然
+  // 吸收:`scroll.clientWidth` 已是挤压后的宽度,卡片照样居中。
+  gotoDate(s.date);
+  scrollGridTop();
+  // 等两帧布局稳定后:横向滚到卡片 + 带底色闪烁 3s(1s × 3)
+  afterLayout(() => {
+    const scroll = document.getElementById("grid-scroll");
+    const card = scroll?.querySelector<HTMLElement>(`[data-code="${code}"]`);
+    if (!scroll || !card) return;
+    centerCardX(scroll, card);
+    flashScreening(scroll, code); // 正片卡 + 映后谈块一起闪
   });
-  follow.addEventListener("click", () => apply(null));
-  actions.append(follow, ok);
-  body.appendChild(actions);
-
-  openModal("映后谈时长", body);
 }
 
-function clampNum(v: string, fallback: number): number {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-/* ---------------- §14 4b:抢票顺位清单(复制) ---------------- */
-/** 顺位排序权重(必看 → 备选 → 随缘);未设档位(null)在清单里排备选位,不参与质量分 */
-const PRI_RANK: Record<Priority, number> = { must: 0, maybe: 1, wild: 2 };
-const rankOf = (p: Priority | null): number => (p ? PRI_RANK[p] : 1);
-
-function copyPicklist(): void {
-  document.getElementById("export-menu")!.classList.add("is-hidden");
-  const group = store.group;
-  // 一场一行;档位来自影片级记录(同一部片的多场必然同档 —— 这正是「一套数据」)
-  const rows: { code: string; priority: Priority | null; s: Screening }[] = [];
-  for (const code of codesOfGroup(group)) {
-    const s = cat.byCode.get(code);
-    if (s) rows.push({ code, priority: priorityOfCode(code) ?? null, s });
-  }
-  if (rows.length === 0) {
-    toast(`「${group} 方案」还没有选片,先在网格里点选场次`);
-    return;
-  }
-  rows.sort(
-    (a, b) =>
-      rankOf(a.priority) - rankOf(b.priority) ||
-      Number(Boolean(b.s.is_gv)) - Number(Boolean(a.s.is_gv)) ||
-      a.s.date.localeCompare(b.s.date) ||
-      a.s.start_time.localeCompare(b.s.start_time)
-  );
-  const cnt: Record<Priority, number> = { must: 0, maybe: 0, wild: 0 };
-  let unset = 0;
-  rows.forEach((r) => {
-    if (r.priority == null) unset++;
-    else cnt[r.priority]++;
+/* ---------------- 「我的行程」日期头:切到该日 + 当天场次**批量**闪烁 ---------------- */
+/** 「在网格中查看这一天」:把甘特切到该日期,横向滚到**当天最早一场**并居中,再把当天行程里的
+ *  所有场次卡片批量闪烁 3s。
+ *  与 `jumpToScreening` 同一套 `flash-locate` 动画 / 同 3s 时长 / 同一套横向居中口径
+ *  (`centerCardX`),区别只在**批量**:一天的场次一起闪。
+ *  ⚠ 一天多场没法同时居中,取**最早一场**当落点 —— 它是「这一天的起点」,也是列表首行,
+ *    与行程 section 的阅读顺序一致(用户原话:「你可以定位到最早的那场的位置吗」)。
+ *  (历史:这里原先是抽屉内 `scrollIntoView`,但行程搬进抽屉后目标行本就在视口里 →
+ *   等于什么都没发生,故用户反馈「没有起效」;现在改为真正切网格日期 + 横向居中 + 批量回执。) */
+function jumpToDate(date: string): void {
+  gotoDate(date);
+  scrollGridTop(); // 与 jumpToScreening 同口径
+  // 当天行程(当前方案)的场次 code —— 与 agenda 的日期 section 同源(都是 codesOfGroup)
+  const codes = codesOfGroup(store.group).filter((c) => cat.byCode.get(c)?.date === date);
+  if (codes.length === 0) return;
+  // 最早一场 = 横向落点(start_time 是 "HH:MM:SS" 定宽字符串,可直接字典序比较)
+  const earliest = codes.reduce((a, b) =>
+    (cat.byCode.get(a)?.start_time ?? "") <= (cat.byCode.get(b)?.start_time ?? "") ? a : b);
+  // 等两帧布局稳定后(切日期会整体重建网格容器)再横向定位 + 批量打动画
+  afterLayout(() => {
+    const scroll = document.getElementById("grid-scroll");
+    if (!scroll) return;
+    const anchor = scroll.querySelector<HTMLElement>(`[data-code="${earliest}"]`);
+    if (anchor) centerCardX(scroll, anchor); // 居中到当天最早一场(与「定位 ▸」同口径)
+    for (const code of codes) flashScreening(scroll, code); // 每场正片卡 + 映后谈块一起闪
   });
-
-  const lines: string[] = [];
-  lines.push(`【BIFF 2026 抢票顺位 · ${group} 方案】共 ${rows.length} 场`);
-  lines.push(
-    `必看 ${cnt.must} · 备选 ${cnt.maybe} · 随缘 ${cnt.wild}` +
-      (unset ? ` · 未分级 ${unset}` : "") +
-      "(同优先级 GV/映后优先,同日按开场时间)"
-  );
-  lines.push("──");
-  rows.forEach(({ code, priority, s }, i) => {
-    const { label, weekday } = dateInfo(s.date);
-    const title = s.title_zh || store.mappings.get(code)?.title_cn || s.title_en;
-    // 有效结束 + GV 标记:含映后 / 仅正片(放弃)两种标注,转场口径与网格/行程一致
-    const talk = gvTalkMin(s);
-    const talkOn = talk > 0 ? gvTalkOf(code) : true;
-    // 24+ 时制:跨午夜场终点折回 24h 内并带「次日」标记(如 "23:59–次日 05:35")
-    const endMin = effEndMin(s, talkOn);
-    const gvMark =
-      talk > 0 ? (talkOn ? "(GV·含映后)" : "(GV·仅正片)") : s.is_gv ? "(GV)" : "";
-    lines.push(
-      `${i + 1}. [${priorityTag(priority)}] ${s.code} ${title} ${label} ${weekday} ${fmtMinRangeMin(hmsToMin(s.start_time), endMin)} ${s.venue_display}${gvMark}`
-    );
-  });
-  void copyText(lines.join("\n")).then((ok) =>
-    toast(ok ? `已复制抢票顺位清单(${rows.length} 场),按售票时段抢票` : "复制失败,请手动选择复制")
-  );
 }
 
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    /* clipboard 权限拒绝时降级 execCommand */
-  }
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand("copy");
-    ta.remove();
-    return ok;
-  } catch {
-    return false;
-  }
-}
 
 /* ---------------- §14 1b/2a:冲突组 & 行程↔网格 双向 hover 联动 ---------------- */
 // 全量化后不再有 .card / .a-row 语义类,用结构位置选择:grid 内的卡 / agenda 内的行。
@@ -995,20 +782,20 @@ const HOVER_SEL = "#grid-scroll [data-code], #agenda [data-code]";
 
 function applyHoverLink(host: HTMLElement | null): void {
   const nodes = document.querySelectorAll<HTMLElement>(HOVER_SEL);
-  nodes.forEach((n) => {
-    n.classList.remove("hl-card");
-    n.classList.remove("hl-row");
-  });
-  if (!host) return;
+  if (!host) {
+    nodes.forEach((n) => n.classList.remove("hl-card", "hl-row"));
+    return;
+  }
   const code = host.dataset.code!;
   const s = cat.byCode.get(code);
   const conf = s ? conflicts.get(s.date) : undefined;
   const group = conflictGroupFor(conf, code); // 1b:同冲突组全亮
   const want = new Set<string>([code, ...(group ? [...group] : [])]); // 2a:本体双端(grid↔agenda)同亮
-  const isCard = host.closest("#grid-scroll") !== null;
-  const hlCls = isCard ? "hl-card" : "hl-row";
+  const hlCls = host.closest("#grid-scroll") !== null ? "hl-card" : "hl-row";
+  // 单遍遍历:命中的加类,未命中的**就地清掉** —— 旧实现先全清再全设,同一批节点走两遍
   nodes.forEach((n) => {
     if (want.has(n.dataset.code!)) n.classList.add(hlCls);
+    else n.classList.remove("hl-card", "hl-row");
   });
 }
 
@@ -1023,18 +810,17 @@ function onHoverLinkMove(ev: MouseEvent, entering: boolean): void {
 }
 
 
-let toastTimer: number | undefined;
-function toast(msg: string): void {
-  const node = document.getElementById("toast")!;
-  node.textContent = msg;
-  node.classList.remove("is-hidden");
-  window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => node.classList.add("is-hidden"), 3600);
-}
-
 /* ---------------- boot ---------------- */
+/** 「现在」线定时器句柄 —— 供 `teardown()` 清理(单页运行期不会调用) */
+let nowTimer: number | undefined;
+let booted = false;
+
 async function boot(): Promise<void> {
+  if (booted) return; // 幂等:重复调用会叠加全局事件监听与定时器(测试 / HMR 场景)
+  booted = true;
   loadSettings();
+  // 外观:设置就绪后立刻落一次 data-theme(index.html 内联脚本已落过,这里兜住旧缓存)并接管系统变化
+  initTheme();
   loadGvTalk();
   loadGvTalkMin();
   // 缩放倍率随设置恢复(renderAll 里的 renderZoomCtl 同步控件态)。
@@ -1045,11 +831,18 @@ async function boot(): Promise<void> {
   // 选片记录(唯一数据源)必须在 cat 就绪之后载入:首次迁移要用 filmNodeKey(cat, s)
   // 把旧的场次级 plan 归并到影片级记录(旧两套 → 一套)
   loadPicks(filmKeyOfCode);
+  // 豆瓣映射 = 静态 douban.json(2026-09-11,D1 退役):在首渲前灌好,避免片名「先英文后中文」跳变。
+  await loadMappings();
 
-  subscribe(renderAll);
+  subscribe((domain) => renderAll(domain));
   // 选片抽屉开 / 收会改变网格可用宽度 → 补一次 renderGrid(横向锚点由 renderGrid 内的
   // pendingAnchor / gridAnchor 机制保住)。放在这里注入,library.ts 不必反向依赖 main。
-  setPickerToggleHandler(() => renderGrid());
+  setPickerToggleHandler(() => {
+    // 抽屉开合会改 `#grid-scroll` 的可用宽度(clientWidth),而**宽度不进几何签名** ——
+    // 故这里强制重建,让横向锚点机制按新宽度重新居中(与旧版行为一致)。
+    renderGrid({ force: true });
+    updatePickerLabel(); // 开 / 收后刷新顶栏按钮文案(窄屏「时间轴 ▸」↔「列表 · 行程」)
+  });
   // 「我的行程」从主页面 #agenda-wrap 搬到选片抽屉的第三个 tab(`PLAN-20260910190916`):
   // 把 main 拥有的 `conflicts` / `gvTalkOf` / `currentDate` / `hourFilter` 闭包到 buildAgendaHost,
   // 注入给抽屉;抽屉 agenda tab 每次重绘都读最新值。
@@ -1066,12 +859,15 @@ async function boot(): Promise<void> {
     abbrHelp.addEventListener("click", () => openModal("排片表说明 · 图例总览", buildGuideBody(cat), true));
   }
   renderAll();
-  void syncFromCloud();
+  // 窄屏(≤768px)**列表优先**:首次进入直接打开抽屉,网格降级为次级入口 ——
+  // 手机竖屏看二维甘特(29 厅 × 时间轴)在缩放下限下几乎不可用(见 library.ts::isMobileDrawer)。
+  if (isMobileDrawer()) openFilmPicker(libraryCtx());
+  updatePickerLabel();
   toast(currentDate ? "排片为 MOCK 数据 — 官方 Catalogue 发布后一键替换" : "schedule.json 为空");
 
   // A5:跨分钟/跨天自动推进「现在」线 —— 仅在时间键变化且仍在看当天时重画网格(角标补零、进出轴窗口随渲染取当前时间)
   let lastNowKey = "";
-  window.setInterval(() => {
+  nowTimer = window.setInterval(() => {
     const d = new Date();
     const key = `${todayIsoLocal()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
     if (key === lastNowKey) return;
@@ -1081,3 +877,9 @@ async function boot(): Promise<void> {
 }
 
 boot();
+
+/** 清理模块级副作用(定时器)—— 供测试 / HMR 调用;生产单页运行期不需要 */
+export function teardown(): void {
+  if (nowTimer !== undefined) window.clearInterval(nowTimer);
+  nowTimer = undefined;
+}

@@ -2,12 +2,12 @@
 // 全量化:网格 / 卡片 / 标签 / 时间标尺 / 转场紧底色提示 / ⓘ / 冲突旗 / 其他旗 全部 Tailwind utility。
 
 import type { Catalog, Group, Mapping, Priority, Screening } from "./types";
-import { OK_SLACK, el, fmtEndClock, fmtMinRange, fmtMinRangeMin, hmsToMin, todayIsoLocal } from "./util";
+import { displayTitle, el, fmtEndClock, fmtMinRange, fmtMinRangeMin, hmsToMin, slackBetween, todayIsoLocal } from "./util";
 import { screeningsByVenue } from "./data";
-import { codeTip, screeningBadgeKeys } from "./badges";
+import { codeTip } from "./badges";
 import { effEndMin, filmEndMin, gvTalkMin } from "./gv";
-import { appendMetaRow, durChip, venueTip } from "./legend";
-import { PRI_DOT_BG, PRI_LABEL } from "./pick";
+import { hasBadges, metaRowFor, venueTip } from "./legend";
+import { PRI_LABEL, PRI_TEXT } from "./pick";
 
 export const ROW_H = 92; // 100% 基准行高(1 行 = 1 影厅);实际行高 = ROW_H × 缩放倍率,见 rowMetrics
 const TRAIL_PAD = 60; // A3:末 tick 右侧 +60px 安全边距(标签半宽 + 呼吸),两端标签永不悬出/被裁
@@ -66,7 +66,7 @@ export interface RowMetrics {
  * **字号倍率 = 行高倍率(线性)**:卡片宽高与字号同比例收放,内容高 / 行高之比恒定 ⇒ 无论缩到
  * 哪一档,卡片内排版都严格等比,不会出现组件挤作一团(旧版字号走 z^0.6 阻尼,行高先塌、字号滞后)。
  *
- * 徽章行**整行按 `zoom` 等比缩**(见 appendCard):章体是 legend.ts 的显式 `text-[9.5px]`,父级
+ * 徽章行**整行按 `zoom` 等比缩**(见 appendCard):章体是 legend.ts 的显式 `text-10`,父级
  * font-size 不级联;而 `zoom` 是布局级缩放,子元素显式 px 也跟着缩 —— 那枚固定 17.78px 高的章
  * 若不缩就会顶破矮行。`rowH < 80`(55 / 70% 两档)时整行不画:矮行里最先舍信息量最低的它 ——
  * 等级 / 字幕 / GV / 页码 / 片长在 ⓘ 弹层与 hover 提示里都还在,不是信息删除。
@@ -180,10 +180,6 @@ function nowPxFor(axis: { start: number; end: number }, pxPerMin: number): numbe
   return m >= axis.start && m <= axis.end ? (m - axis.start) * pxPerMin : null;
 }
 
-function titleFor(s: Screening, map: Mapping | undefined): string {
-  return s.title_zh || map?.title_cn || s.title_en;
-}
-
 // 粘性场馆列 / 标尺左上空格:底色 = 画布灰(bg-page),与卡片白底拉开层级;
 // 列分隔交给 border-r,不再用白底(旧值 bg-card 与卡片同色 → 代码 chip 像浮在空白上)。
 // 左右内边距由 buildGrid 按缩放内联写(labelMetrics().padX)—— 这里不写死 px-*,否则列宽与内边距不同步。
@@ -212,7 +208,8 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
   // D3:横向溢出常态化 → 原生滚动条始终可用 + cursor-grab 拖拽平移恒挂(attachPan 内部对装得下的容器自行守卫)
   // 画布底板:极浅灰(bg-page)+ 内嵌圆角 —— 外层白面板(#grid-wrap)成为「画框」,
   // 未选中的白卡落在灰底上才有轮廓(旧版画布无底色 → 透出面板白,与卡片「白底叠白底」)。
-  const scroll = el("div", "overflow-x-auto pb-[6px] cursor-grab bg-page rounded-[8px]");
+  const scroll = el("div", "overflow-x-auto pb-[6px] cursor-grab bg-page rounded-8");
+  scroll.dataset.grid = "1"; // 复用路径的锚点标记(见 main.ts::renderGrid / patchGridStates)
   const min = el("div", "w-max min-w-full");
   min.style.width = `${totalW}px`;
 
@@ -247,7 +244,7 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
     const line = el("div", "flex items-center justify-center min-w-0");
     const code = el(
       "i",
-      "not-italic font-extrabold text-biff bg-biff-soft border border-biff-line rounded-[3px] text-center whitespace-nowrap",
+      "not-italic font-extrabold text-biff-ink bg-biff-soft border border-biff-line rounded-3 text-center whitespace-nowrap",
       codeText
     );
     code.style.width = `${chipW}px`;
@@ -305,14 +302,6 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
   return scroll;
 }
 
-/** 分钟 → 标尺标签。**24+ 时制**:h ≥ 24 加「次日」前缀,小时折回 24h 内显示(1440 → "次日 00:00")。
- *  整点标签与缩放后补的半点/刻钟标签共用它 —— 一处口径,跨午夜轴不会两种写法。 */
-function clockLabel(min: number): string {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return `${h >= 24 ? "次日 " : ""}${String(h % 24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
-
 /** 标尺刻度区:整点标签(A1 加粗表格数字、可点=时间筛选)+ 整点 +6px 短刻度线 + 「现在」线/角标。
  *  A3:首根整点标签左锚定(不居中,左半永不越界);末 tick 之后容器留有 TRAIL_PAD 右侧安全边距。
  *  缩放:整点间距随刻度拉开 → 放大后补半点 / 刻钟标签(标尺行同时加高一行),否则 3.0× 时一屏只剩一个标签。 */
@@ -339,10 +328,10 @@ function buildRulerTicks(
   }
   // 细刻度标签(半点 / 刻钟):贴标尺下沿、比整点小一档灰一档;整点位置由主标签占据,故跳过整点
   if (subStep) {
-    const subCls = "absolute bottom-[7px] -translate-x-1/2 pointer-events-none tabular-nums text-[9.5px] text-muted";
+    const subCls = "absolute bottom-[7px] -translate-x-1/2 pointer-events-none tabular-nums text-10 text-muted";
     for (let m = axis.start + subStep; m < axis.end; m += subStep) {
       if (m % 60 === 0) continue;
-      const sub = el("span", subCls, clockLabel(m));
+      const sub = el("span", subCls, fmtEndClock(m));
       sub.style.left = `${(m - axis.start) * pxPerMin}px`;
       ticks.appendChild(sub);
     }
@@ -352,14 +341,14 @@ function buildRulerTicks(
     const isFirst = h === h0; // A3:首根左锚定,不 -translate-x-1/2
     const on = ctx.hourFilter === h;
     // 24+ 时制:整点标签取模 24(24:00 → "00:00"),h ≥ 24 一律加「次日」前缀
-    const label = clockLabel(h * 60);
-    const nextLabel = clockLabel((h + 1) * 60);
+    const label = fmtEndClock(h * 60);
+    const nextLabel = fmtEndClock((h + 1) * 60);
     const b = el(
       "button",
-      "absolute top-[1px] border-0 bg-transparent px-[5px] py-[1px] tabular-nums text-[10.5px] font-bold rounded-[4px] transition-colors cursor-pointer " +
+      "absolute top-[1px] border-0 bg-transparent px-[5px] py-[1px] tabular-nums text-11 font-bold rounded-4 transition-colors cursor-pointer " +
         (isFirst ? "left-0 text-left" : "-translate-x-1/2 ") +
         // hover 底用 bg-card(白药丸)而非 bg-hover(#fafafa)—— 画布已是浅灰底,再 hover 成更浅色等于没反馈
-        (on ? "bg-biff text-on-brand" : "text-ink-2 hover:bg-card hover:text-biff"),
+        (on ? "bg-biff text-on-brand" : "text-ink-2 hover:bg-card hover:text-biff-ink"),
       label
     );
     b.style.left = `${x}px`;
@@ -379,7 +368,7 @@ function buildRulerTicks(
     const d = new Date();
     const nowTag = el(
       "span",
-      "absolute top-[1px] -translate-x-1/2 z-[6] pointer-events-none text-[9px] font-extrabold text-on-brand bg-biff leading-[1.3] px-[4px] py-px rounded-[3px] whitespace-nowrap shadow-[0_0_0_1px_var(--color-card)]",
+      "absolute top-[1px] -translate-x-1/2 z-[6] pointer-events-none text-9 font-extrabold text-on-brand bg-biff leading-[1.3] px-[4px] py-px rounded-3 whitespace-nowrap shadow-[0_0_0_1px_var(--color-card)]",
       `现在 ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
     );
     nowTag.style.left = `${nowPx}px`;
@@ -392,30 +381,34 @@ function buildRulerTicks(
 /** 位移超过该 px 判定为拖动(否则视为点击,交给委托点选) */
 const PAN_DRAG_PX = 5;
 
-/** 拖完吞掉随之而来的 click,避免误触发卡片点选 / ⓘ 弹层等(位移 < 阈值时放行)。 */
-let panSuppress = false;
-document.addEventListener(
-  "click",
-  (ev: MouseEvent) => {
-    if (!panSuppress) return;
-    panSuppress = false;
-    ev.stopPropagation();
-    ev.preventDefault();
-  },
-  true
-);
-
 /**
  * 鼠标拖拽平移:pointerdown 记录起点;move/up 临时挂到 document(不用 setPointerCapture,
  * 否则 pointerup 会被重定向到容器,浏览器合成的 click 落在公共祖先,破坏卡片点选委托)。
  * 拖动中 @utility panning 置 grabbing 光标并禁用子元素 pointer-events(hover 联动不再闪烁)。
  * 触摸/触控板走原生 overflow 滚动,不接管。
+ *
+ * ⚠ 「拖完吞掉随之而来的 click」的监听器**挂在 down、由 click 自己摘**(2026-09-11 改):
+ *    旧版是**模块级常驻** `document.addEventListener("click", …, true)` + 一个全局 `panSuppress` 标志,
+ *    两个问题:① 模块一被 import 就注册监听(加载期副作用,导致本文件在 node 环境无法单测);
+ *    ② 标志只在「下一次 click」里复位 —— 若拖动以 pointercancel 收场(没有后续 click),
+ *       它会残留成 true,**吞掉下一次无关点击**。
+ *    现在:`moved` 就是唯一判据,由 click 自己消费并复位;pointercancel / 未拖动时立即摘除。
  */
 function attachPan(scroll: HTMLElement): void {
   let pid = -1;
   let startX = 0;
   let startLeft = 0;
   let moved = false;
+
+  /** 拖动过 → 吞掉这一次 click(避免误触发卡片点选 / ⓘ 弹层);没拖动 → 放行 */
+  const swallowClick = (ev: MouseEvent): void => {
+    document.removeEventListener("click", swallowClick, true);
+    const dragged = moved;
+    moved = false; // 只吞一次(拖动结束后紧随的那一次)
+    if (!dragged) return;
+    ev.stopPropagation();
+    ev.preventDefault();
+  };
 
   const down = (e: PointerEvent) => {
     if (e.pointerType !== "mouse" || e.button !== 0) return;
@@ -424,7 +417,8 @@ function attachPan(scroll: HTMLElement): void {
     startX = e.clientX;
     startLeft = scroll.scrollLeft;
     moved = false;
-    panSuppress = false;
+    // click 一定在 pointerup 之后派发 → 必须在 down 就挂上,否则吞不到拖动结束的那一次
+    document.addEventListener("click", swallowClick, true);
     document.addEventListener("pointermove", move);
     document.addEventListener("pointerup", up);
     document.addEventListener("pointercancel", up);
@@ -435,7 +429,6 @@ function attachPan(scroll: HTMLElement): void {
     const dx = e.clientX - startX;
     if (!moved && Math.abs(dx) > PAN_DRAG_PX) {
       moved = true;
-      panSuppress = true;
       scroll.classList.add("panning");
     }
     if (moved) scroll.scrollLeft = startLeft - dx;
@@ -444,11 +437,16 @@ function attachPan(scroll: HTMLElement): void {
   const up = (e: PointerEvent) => {
     if (e.pointerId !== pid) return;
     pid = -1;
-    moved = false;
     scroll.classList.remove("panning");
     document.removeEventListener("pointermove", move);
     document.removeEventListener("pointerup", up);
     document.removeEventListener("pointercancel", up);
+    // ⚠ **不要**在这里复位 moved:紧随其后的 click 还要靠它判定「这次是拖动,不是点选」。
+    // 只在「确定不会有 click 来消费」时立刻摘掉(pointercancel / 根本没拖动)。
+    if (e.type === "pointercancel" || !moved) {
+      moved = false;
+      document.removeEventListener("click", swallowClick, true);
+    }
   };
 
   scroll.addEventListener("pointerdown", down);
@@ -489,13 +487,11 @@ function markTightPairs(
     const aTalkOn = ctx.gvTalkOf?.(a.code) ?? true;
     const endA = effEndMin(a, aTalkOn);
     const startB = hmsToMin(b.start_time);
-    const gap = startB - endA;
+    const { gap, need, slack, verdict } = slackBetween(endA, startB, a.venue_id === b.venue_id, ctx.transitMin);
     if (gap <= 0) continue; // 防御:重叠必已在冲突组
-    const need = a.venue_id !== b.venue_id ? ctx.transitMin : 0;
-    const slack = gap - need;
-    if (slack >= OK_SLACK) continue;
+    if (verdict === "ok") continue;
 
-    const bad = slack < 0;
+    const bad = verdict === "bad";
     const endATxt = fmtEndClock(endA);
     // 「已弃映后」= 有谈段且本场选了放弃 —— **不能**拿 endA 与官方 end_time 裸比:
     // 映后时长可配置,配置值 ≠ 官方槽位余量时会把「参加」误判成「已弃」(见 gv.ts 文件头)
@@ -551,12 +547,216 @@ function scaleText(node: HTMLElement, basePx: number, scale: number, lineHeight 
   node.style.lineHeight = lineHeight;
 }
 
-/** 方形元素(档位色点)等比缩 —— 只缩字号不会让它变小,矮行里就成了一枚突兀的大圆点 */
-function scaleBox(node: HTMLElement, basePx: number, scale: number): void {
-  if (Math.abs(scale - 1) < 1e-3) return;
-  const px = `${+(basePx * scale).toFixed(2)}px`;
-  node.style.width = px;
-  node.style.height = px;
+/* ---------------- 卡片状态模型(全量构建 / 就地复用 共用) ----------------
+ * 2026-09-11(PLAN-20260911004000):网格改为「几何不变则就地 patch」——
+ * 点选 / 改档位 / 冲突 / 紧转场 / 时间筛选都只重刷状态,不再重建整棵 DOM。
+ * 为此把原先内联在 `appendCard` 里的状态判定抽成**纯描述符** `cardStateOf()`:
+ *   · 两条路径(构建 / patch)读同一份描述符 → 不可能漂移;
+ *   · 描述符不碰 DOM → 可在 node 环境单测(见 tests/grid-state.test.ts)。
+ * ⚠ **几何不在描述符里**:位置 / 宽高 / 字号只在构建期算一次,复用路径不碰它们
+ *   (几何变了就必须全量重建,见 `gridGeometryKey()`)。 */
+
+/** 卡片基底类(几何与文字以外的一切;复用路径**不重置**它) */
+const CARD_BASE_CLS =
+  "group absolute bg-card rounded-5 px-[7px] pb-1 pt-[5px] overflow-hidden cursor-pointer " +
+  "flex flex-col gap-px transition-[box-shadow,border-color] duration-[120ms] ease-in-out " +
+  "hover:shadow-[var(--shadow-hover)] hover:z-[2]";
+
+/** 谈块基底类 */
+const TALK_BASE_CLS =
+  "absolute overflow-hidden cursor-pointer select-none flex flex-col items-center justify-center gap-[1px] rounded-5";
+
+/** ⓘ 按钮的恒定部分 */
+const INFO_BASE_CLS =
+  "absolute top-[3px] right-[3px] border-0 bg-transparent text-muted text-11 py-px px-[3px] rounded-4 " +
+  "hover:text-biff-ink hover:bg-[var(--biff-red-tint-3)]";
+/** ⓘ 的两种可见性变体:另一方案的卡始终半可见(不随 hover 出现) */
+const INFO_ALWAYS_CLS = "opacity-40";
+const INFO_HOVER_CLS =
+  "opacity-0 transition-opacity duration-100 group-hover:opacity-[0.85] group-focus-within:opacity-[0.85]";
+
+/** 状态类「词表」—— patch 时按词表**差分**切换,而不是整串赋 className。
+ *  ⚠ 整串赋 className 会连瞬态类一起抹掉:`hl-card` / `hl-row`(hover 联动)、
+ *    `flash-locate`(定位闪烁 3s)、`panning`(拖拽中)。那三类由别处加、别处摘。 */
+const CARD_STATE_VOCAB = [
+  "border",
+  "border-line",
+  "hover:border-line-strong",
+  "border-2",
+  "border-conf",
+  "in-conf",
+  "in-plan",
+  "in-other",
+] as const;
+const TALK_STATE_VOCAB = [
+  "border",
+  "border-line",
+  "border-2",
+  "border-conf",
+  "border-dashed",
+  "in-conf",
+  "in-plan",
+  "in-other",
+  "gv-talk-off",
+] as const;
+/** 文字色调词表(身份行 CODE / 时间、片名、谈块两行共用) */
+const TONE_VOCAB = ["text-muted", "text-ink", "text-ink-2", "text-conf"] as const;
+/** 档位星标的颜色词表 */
+const PRI_VOCAB = [PRI_TEXT.must, PRI_TEXT.maybe, PRI_TEXT.wild] as const;
+
+/** 按词表切换一组状态类(先全摘、再全加;不在词表里的类原样保留)。
+ *  ⚠ 词表条目与 `wanted` **都允许是多类字符串**,内部按空白拆成 token 再交给 classList ——
+ *    `classList.remove("a b")` 会抛 `InvalidCharacterError`(踩过:ⓘ 的可见性变体是两段多类字符串,
+ *    一旦抛出,整个微任务广播中断 → 网格状态静默不更新)。 */
+function setVocab(node: HTMLElement, vocab: readonly string[], wanted: string): void {
+  for (const group of vocab) for (const c of group.split(" ")) if (c) node.classList.remove(c);
+  for (const c of wanted.split(" ")) if (c) node.classList.add(c);
+}
+
+/** GV 谈块的状态描述符 */
+export interface TalkState {
+  /** 是否参加映后谈 */
+  on: boolean;
+  /** 谈块状态类 */
+  stateCls: string;
+  /** 主标签文案(参加且在行程中 → 带 ✓) */
+  label: string;
+  /** 谈段区间文案 */
+  range: string;
+  /** 是否被时间筛选淡化 */
+  dim: boolean;
+  /** hover 说明 */
+  tip: string;
+}
+
+/** 网格卡的状态描述符(**不含几何**) */
+export interface CardState {
+  /** 待选(未选入任一方案且不冲突)—— 文字降一档灰阶 */
+  isIdle: boolean;
+  isConflict: boolean;
+  inCurrent: boolean;
+  inOther: boolean;
+  /** 整卡状态类(按 CARD_STATE_VOCAB 组合) */
+  stateCls: string;
+  /** 时间筛选:该场不在所选小时段内 → 淡化 */
+  dim: boolean;
+  /** 档位星标(undefined = 不显示) */
+  star: Priority | undefined;
+  /** 另一方案角标(undefined = 不显示) */
+  otherGroup: Group | undefined;
+  /** 冲突 ⚠(与 isConflict 同源,单独列出便于 patch 直接 toggle) */
+  warn: boolean;
+  /** GV 谈块(undefined = 该场无谈段,不建块也不 patch) */
+  talk: TalkState | undefined;
+}
+
+/** 计算某场次在网格上的**全部状态**(纯函数:只读 ctx,不碰 DOM、不改入参)。
+ *  这是网格卡状态的唯一真源 —— 构建路径与 patch 路径都必须走它。 */
+export function cardStateOf(s: Screening, ctx: GridCtx): CardState {
+  const start = hmsToMin(s.start_time);
+  const end = hmsToMin(s.end_time);
+  const talk = gvTalkMin(s);
+  const talkOn = (ctx.gvTalkOf?.(s.code) ?? true) && talk > 0;
+  const slot = ctx.slots.get(s.code);
+  const isConflict = Boolean(ctx.conflictCodes?.has(s.code));
+  const inCurrent = Boolean(slot && slot.group === ctx.group);
+  const inOther = Boolean(slot && slot.group !== ctx.group);
+  // 待选(未选中且没选在另一方案):画布灰底上的白卡 —— 极淡边框 + 中灰文字,视为「待激活容器」;
+  // hover 时描边加深(叠既有 shadow-hover 投影 + hl-card 红晕),文字不恢复墨色(激活靠点选后的整卡底色)。
+  const isIdle = !isConflict && !inCurrent && !inOther;
+  // 时间筛选:非选中小时段的场次淡化(槽位整段含谈判定)
+  const dim = ctx.hourFilter != null && !(start < (ctx.hourFilter + 1) * 60 && end > ctx.hourFilter * 60);
+
+  let stateCls: string;
+  if (isConflict) {
+    // 完全冲突(时间重叠,无法同看):红底 in-conf + 2px 红框,红标题 + ⚠;与绿/黄同一整卡底色语法
+    stateCls = "border-2 border-conf in-conf";
+  } else {
+    stateCls = isIdle ? "border border-line hover:border-line-strong" : "border border-line";
+    if (inCurrent) stateCls += " in-plan"; // 已选 = 绿底(优先级不参与网格染色 — 见行程行 seg)
+    else if (inOther) stateCls += " in-other";
+  }
+
+  let talkState: TalkState | undefined;
+  if (talk > 0) {
+    // 状态外观:冲突沿用红(整场都在冲突区);已选且参加 → 同 in-plan 绿 = 两张一起选中;
+    // 放弃映后谈 → gv-talk-off 灰虚线淡出(块仍占槽位,只表示"我不参加")
+    let cls: string;
+    if (isConflict) cls = "border-2 border-conf in-conf";
+    else if (inCurrent && talkOn) cls = "border border-line in-plan";
+    else if (inOther && talkOn) cls = "border border-line in-other";
+    else if (!talkOn) cls = "border border-dashed border-line gv-talk-off";
+    else cls = "border border-line";
+    talkState = {
+      on: talkOn,
+      stateCls: cls,
+      label: talkOn && inCurrent ? `✓ 映后 ${talk}′` : `映后 ${talk}′`,
+      range: talkTimeRange(s),
+      dim,
+      tip: talkTip(s, talk, talkOn, inCurrent),
+    };
+  }
+
+  return {
+    isIdle,
+    isConflict,
+    inCurrent,
+    inOther,
+    stateCls,
+    dim,
+    star: ctx.wishOf?.(s),
+    otherGroup: inOther ? slot!.group : undefined,
+    warn: isConflict,
+    talk: talkState,
+  };
+}
+
+/** 档位星标:切换颜色 + 显隐 + 说明(构建 / patch 共用) */
+function applyStar(star: HTMLElement, p: Priority | undefined): void {
+  setVocab(star, PRI_VOCAB, p ? PRI_TEXT[p] : PRI_TEXT.wild);
+  star.classList.toggle("is-hidden", !p);
+  if (p) star.dataset.tip = `我的选片 · ${PRI_LABEL[p]}(在「我的选片」卡片 / 行程行可改,或点这里去总览)`;
+  else delete star.dataset.tip;
+}
+
+/** 把状态描述符落到**已存在**的卡片 DOM 上(几何 / 文字内容不动) */
+function applyCardState(card: HTMLElement, st: CardState): void {
+  setVocab(card, CARD_STATE_VOCAB, st.stateCls);
+  card.classList.toggle("hour-dim", st.dim);
+  const codeB = card.querySelector<HTMLElement>('[data-card-code="1"]');
+  const timeSpan = card.querySelector<HTMLElement>(".card-time");
+  const ttl = card.querySelector<HTMLElement>('[data-card-title="1"]');
+  const star = card.querySelector<HTMLElement>('[data-wish="1"]');
+  const grp = card.querySelector<HTMLElement>('[data-grp="1"]');
+  const warn = card.querySelector<HTMLElement>('[data-warn="1"]');
+  const info = card.querySelector<HTMLElement>("[data-info]");
+  if (codeB) setVocab(codeB, TONE_VOCAB, st.isIdle ? "text-muted" : "text-ink");
+  if (timeSpan) setVocab(timeSpan, TONE_VOCAB, st.isIdle ? "text-ink-2" : "text-ink");
+  if (ttl) setVocab(ttl, TONE_VOCAB, st.isConflict ? "text-conf" : st.isIdle ? "text-ink-2" : "");
+  if (star) applyStar(star, st.star);
+  if (grp) {
+    grp.classList.toggle("is-hidden", !st.otherGroup);
+    if (st.otherGroup) grp.textContent = st.otherGroup;
+  }
+  if (warn) warn.classList.toggle("is-hidden", !st.warn);
+  if (info) setVocab(info, [INFO_ALWAYS_CLS, INFO_HOVER_CLS], st.inOther ? INFO_ALWAYS_CLS : INFO_HOVER_CLS);
+}
+
+/** 把谈块状态落到**已存在**的谈块 DOM 上(几何 / 斜纹底不动) */
+function applyTalkState(talkEl: HTMLElement, st: CardState): void {
+  if (!st.talk) return;
+  setVocab(talkEl, TALK_STATE_VOCAB, st.talk.stateCls);
+  talkEl.classList.toggle("hour-dim", st.talk.dim);
+  talkEl.dataset.tip = st.talk.tip;
+  const rng = talkEl.querySelector<HTMLElement>('[data-talk-range="1"]');
+  if (rng) setVocab(rng, TONE_VOCAB, st.isIdle ? "text-muted" : "text-ink-2");
+  const lab = talkEl.querySelector<HTMLElement>('[data-talk-label="1"]');
+  if (lab) {
+    setVocab(lab, TONE_VOCAB, st.isIdle ? "text-ink-2" : "text-ink");
+    lab.classList.toggle("line-through", !st.talk.on);
+    lab.classList.toggle("text-muted", !st.talk.on);
+    lab.textContent = st.talk.label;
+  }
 }
 
 function appendCard(
@@ -569,32 +769,13 @@ function appendCard(
   const start = hmsToMin(s.start_time);
   const end = hmsToMin(s.end_time);
   const talk = gvTalkMin(s); // GV 映后谈分钟(全局默认 + 单场覆写;0 = 不拆,普通整卡)
-  const talkOn = (ctx.gvTalkOf?.(s.code) ?? true) && talk > 0;
-  const slot = ctx.slots.get(s.code);
-  const isConflict = Boolean(ctx.conflictCodes?.has(s.code));
-  const inCurrent = Boolean(slot && slot.group === ctx.group);
-  const inOther = Boolean(slot && slot.group !== ctx.group);
-  // 待选(未选中且没选在另一方案):画布灰底上的白卡 —— 极淡边框 + 中灰文字,视为「待激活容器」;
-  // hover 时描边加深(叠既有 shadow-hover 投影 + hl-card 红晕),文字不恢复墨色(激活靠点选后的整卡底色)。
-  const isIdle = !isConflict && !inCurrent && !inOther;
+  const st = cardStateOf(s, ctx); // 状态唯一真源(与 patchGridStates 共用)
+  const { isIdle, isConflict, inOther } = st;
   const { rowH, insetY, fontScale, showBadges } = ctx.row; // 纵向行几何(由行高倍率派生)
 
-  // 基底 + 选中 / 冲突 / 其他方案 等状态组合在构造时一次算完(JS 后续不需 toggle)
-  const parts: string[] = ["group"];
-  parts.push(
-    "absolute bg-card rounded-[5px] px-[7px] pb-1 pt-[5px] overflow-hidden cursor-pointer flex flex-col gap-px transition-[box-shadow,border-color] duration-[120ms] ease-in-out hover:shadow-[var(--shadow-hover)] hover:z-[2]"
-  );
-  if (isConflict) {
-    // 完全冲突(时间重叠,无法同看):红底 in-conf + 2px 红框,红标题 + ⚠;与绿/黄同一整卡底色语法
-    parts.push("border-2 border-conf in-conf");
-  } else {
-    parts.push(isIdle ? "border border-line hover:border-line-strong" : "border border-line");
-    if (inCurrent) parts.push("in-plan"); // 已选 = 绿底(优先级不参与网格染色 — 见行程行 seg)
-    else if (inOther) parts.push("in-other");
-  }
-
-  const card = el("div", parts.join(" "));
+  const card = el("div", `${CARD_BASE_CLS} ${st.stateCls}`);
   card.dataset.code = s.code;
+  card.dataset.card = "1"; // 复用路径的选择器锚点
   // GV 拆分:主卡只画「正片段」(结束=正片末),谈段由右侧紧贴的 talk 块承接 → 视觉两张拼接
   const cardEnd = talk > 0 ? filmEndMin(s) : end;
   card.style.left = `${(start - axisStart) * pxPerMin + 2}px`;
@@ -608,23 +789,21 @@ function appendCard(
   card.style.paddingRight = `${+(7 * fontScale).toFixed(2)}px`;
 
   // 时间筛选:非选中小时段的场次淡化(hour-dim),保留上下文与 hover 可读(槽位整段含谈判定)
-  if (ctx.hourFilter != null) {
-    const inHour = start < (ctx.hourFilter + 1) * 60 && end > ctx.hourFilter * 60;
-    if (!inHour) card.classList.add("hour-dim");
-  }
+  if (st.dim) card.classList.add("hour-dim");
 
   // 身份行:CODE + 起止时间(排片核心信息,时间升格加墨;时间 span 独立便于 fitTimeTexts 量测降级,
   // 窄卡放不下完整 "09:00–10:40" 时由挂载后实测降级为只显开始时间,完整时间移入 hover —— 绝不硬裁)。
   // E1:pr-[20px] 把行尾让给右上角标(ⓘ 右 3~18px / ⚠ 右 22px+),角标悬浮于预留空白,不遮挡时间文本。
-  const t1 = el("span", "flex items-center gap-[3px] text-[12px] text-muted whitespace-nowrap overflow-hidden pr-[20px]");
+  const t1 = el("span", "flex items-center gap-[3px] text-12 text-muted whitespace-nowrap overflow-hidden pr-[20px]");
   // 待选卡:CODE / 时间降一档灰阶(text-muted / text-ink-2);已选/冲突/另一方案仍用墨色(text-ink)
-  const codeB = el("b", `shrink-0 text-[12px] ${isIdle ? "text-muted" : "text-ink"}`, s.code);
+  const codeB = el("b", `shrink-0 text-12 ${isIdle ? "text-muted" : "text-ink"}`, s.code);
+  codeB.dataset.cardCode = "1";
   codeB.dataset.tip = codeTip(s.code);
   // GV 拆分卡只显「正片段」区间(谈段由右侧拼接块自述);跨午夜两端带「次日」标记
   const cardRange = talk > 0 ? fmtMinRangeMin(start, filmEndMin(s)) : fmtMinRange(s.start_time, s.end_time);
   const timeSpan = el(
     "span",
-    `card-time shrink-0 text-[12px] font-semibold tabular-nums ${isIdle ? "text-ink-2" : "text-ink"}`,
+    `card-time shrink-0 text-12 font-semibold tabular-nums ${isIdle ? "text-ink-2" : "text-ink"}`,
     cardRange
   );
   timeSpan.dataset.full = cardRange;
@@ -641,76 +820,78 @@ function appendCard(
   // D2 重排:顺序 = 身份行(CODE+时间)→ 中文片名 → 英文名 → 徽章流沉底。
   // 徽章流不再横插在时间与片名之间 —— 宽卡下单行放下,不再 wrap 挤压标题区;
   // mt-auto 把徽章贴到卡底,与标题区形成天然分组。信息零删除,各徽章 data-tip 悬停即示义。
-  const zh = titleFor(s, ctx.mappingOf(s.code));
-  const ttlCls = `text-[13px] font-bold truncate flex-1 min-w-0${
+  const zh = displayTitle(s, ctx.mappingOf(s.code)?.title_cn);
+  const ttlCls = `text-13 font-bold truncate flex-1 min-w-0${
     isConflict ? " text-conf" : isIdle ? " text-ink-2" : ""
   }`;
-  // 「我的选片」档位色点(7px):标题行最前 —— 与红绿灯整卡底色正交,一眼看出"这是我标的必看/随缘"
-  const wishP = ctx.wishOf?.(s);
+  // 「我的选片」档位 **★ 星标**:标题行最前 —— 与红绿灯整卡底色正交,一眼看出"这是我标的必看/备选/随缘"。
+  // 2026-09-10 改(用户反馈「甘特图的星星图案也要大一点 现在不是很明显」):
+  //   · 7px 圆点 → **15px ★**(基准;随行高等比缩,与标题 13px 同一缩放口径)
+  //   · 与「我的选片」卡片右上角的 ★、行程行的 ★ 同款同色(见 pick.ts::PRI_TEXT / wishIcon)
+  //   ⚠ 用 `leading-none` 压住行盒:15px 星标的行盒若按 1.45 行高会到 21.75px,
+  //     比标题(13×1.45 = 18.85px)还高 → 把标题行撑高、卡片多行排版被挤。
   const ttlRow = el("span", "flex items-center gap-[4px] min-w-0");
-  if (wishP) {
-    const dot = el("span", `shrink-0 w-[7px] h-[7px] rounded-full ${PRI_DOT_BG[wishP]}`);
-    dot.dataset.tip = `我的选片 · ${PRI_LABEL[wishP]}(在「我的选片」可总览/取消)`;
-    // 色点是**方盒**(w/h 写死 7px):只缩字号它不会变小,矮行里就成了一枚突兀的大圆点 → 走 scaleBox
-    scaleBox(dot, 7, fontScale);
-    ttlRow.appendChild(dot);
-  }
+  // ★ 恒建、按档位显隐(is-hidden):复用路径要能「打标后星标当场出现」而不重建卡片。
+  // `text-15` 是**基准**字号(100% 档);`scaleText` 在 100% 时早退不写内联值,
+  // 所以基准必须落在类名里 —— 否则星标会继承卡片的基准字号,比标题还小。
+  const star = el("span", "shrink-0 leading-none text-15", "★");
+  star.dataset.wish = "1";
+  scaleText(star, 15, fontScale, "1");
+  applyStar(star, st.star);
+  ttlRow.appendChild(star);
   const ttl = el("span", ttlCls, zh); // 13px:卡片内最大一号字,缩放基准
+  ttl.dataset.cardTitle = "1";
   scaleText(ttl, 13, fontScale);
   ttlRow.appendChild(ttl);
-  const sub = el("span", "text-[11px] text-muted truncate", s.title_en !== zh ? s.title_en : `${s.duration_min}min`);
+  const sub = el("span", "text-11 text-muted truncate", s.title_en !== zh ? s.title_en : `${s.duration_min}min`);
   scaleText(sub, 11, fontScale);
   card.append(ttlRow, sub);
 
   // 徽章行:等级 → 字幕 → 特性(GV/首映…) → 页码 → 片长。无任何徽章(理论仅 mock 缺字段)时不创建,避免空行。
   // 缩放与门控两件事都在这里:
-  //  ① 缩放走 `zoom`(**布局级**)而不是 font-size —— 章体是 legend.ts 的显式 `text-[9.5px]`,
+  //  ① 缩放走 `zoom`(**布局级**)而不是 font-size —— 章体是 legend.ts 的显式 `text-10`,
   //     父级 font-size **不级联**下去;而 `zoom` 连子元素显式 px 一起缩(章高 17.78px → 90% 档 16.68px)。
   //     不缩的话那枚固定高的章在 83px 行里会把卡片顶破(四行只剩 0.79px 余量)。
   //  ② `rowH < 80`(55 / 70% 两档)整行不画:四行实在装不下,最先舍信息量最低的它 ——
   //     等级 / 字幕 / GV / 页码 / 片长在 ⓘ 弹层与 hover 提示里都还在,不是信息删除。
-  if (
-    showBadges &&
-    (s.rating || s.subs?.length || typeof s.page === "number" || screeningBadgeKeys(s).length)
-  ) {
-    const bdgRow = el("span", "mt-auto flex gap-[3px] flex-wrap items-center leading-none");
-    appendMetaRow(bdgRow, s);
-    bdgRow.appendChild(durChip(s.duration_min));
+  if (showBadges && hasBadges(s)) {
+    // 徽章行走**模板缓存**(legend.ts::metaRowFor):同一场次只逐枚构造一次,之后 clone
+    const bdgRow = metaRowFor(s);
     if (Math.abs(fontScale - 1) >= 1e-3) bdgRow.style.zoom = `${+fontScale.toFixed(3)}`;
     card.appendChild(bdgRow);
   }
 
   // ⓘ 详情钮:in-other 卡片不随 hover 出现 → opacity-40 始终;其它 opacity-0 + group-hover/group-focus-within 触发
-  const infoCls = inOther
-    ? "absolute top-[3px] right-[3px] border-0 bg-transparent text-muted text-[11px] py-px px-[3px] rounded-[4px] opacity-40 hover:text-biff hover:bg-[var(--biff-red-tint-3)]"
-    : "absolute top-[3px] right-[3px] border-0 bg-transparent text-muted text-[11px] py-px px-[3px] rounded-[4px] opacity-0 transition-opacity duration-100 group-hover:opacity-[0.85] group-focus-within:opacity-[0.85] hover:text-biff hover:bg-[var(--biff-red-tint-3)]";
-  const infoBtn = el("button", infoCls, "ⓘ");
+  const infoBtn = el("button", `${INFO_BASE_CLS} ${inOther ? INFO_ALWAYS_CLS : INFO_HOVER_CLS}`, "ⓘ");
   infoBtn.dataset.info = s.code;
   infoBtn.dataset.tip = "影片资料 / 豆瓣";
   scaleText(infoBtn, 11, fontScale); // 绝对定位、不影响行高,但缩了才与整卡同一比例
   card.appendChild(infoBtn);
 
-  // 两个角标也是「卡片的一部分」→ 同倍率缩(绝对定位,不影响行高预算)
-  if (inOther) {
-    const grpTag = el(
-      "span",
-      "absolute left-[3px] top-[2px] text-[9px] font-bold text-muted border border-line rounded-[3px] px-[2px]",
-      slot!.group
-    );
-    scaleText(grpTag, 9, fontScale);
-    card.appendChild(grpTag);
-  }
-  if (isConflict) {
-    const warn = el("span", "absolute right-[22px] top-[2px] text-[11px] text-conf", "⚠");
-    scaleText(warn, 11, fontScale);
-    card.appendChild(warn);
-  }
+  // 两个角标也是「卡片的一部分」→ 同倍率缩(绝对定位,不影响行高预算)。
+  // 同样恒建 + 显隐:复用路径要能当场出现 / 消失(旧版按条件 append,复用就得重建)。
+  const grpTag = el(
+    "span",
+    "absolute left-[3px] top-[2px] text-9 font-bold text-muted border border-line rounded-3 px-[2px]",
+    st.otherGroup ?? ""
+  );
+  grpTag.dataset.grp = "1";
+  grpTag.classList.toggle("is-hidden", !st.otherGroup);
+  scaleText(grpTag, 9, fontScale);
+  card.appendChild(grpTag);
+
+  const warn = el("span", "absolute right-[22px] top-[2px] text-11 text-conf", "⚠");
+  warn.dataset.warn = "1";
+  warn.classList.toggle("is-hidden", !st.warn);
+  scaleText(warn, 11, fontScale);
+  card.appendChild(warn);
 
   tracks.appendChild(card);
 
   // ---- GV 映后谈块(拼接卡右侧;talk=0 不创建)----
   if (talk > 0) {
-    const talkEl = el("div");
+    const talkSt = st.talk!; // talk > 0 ⇒ 必有谈块状态(cardStateOf 保证)
+    const talkEl = el("div", `${TALK_BASE_CLS} ${talkSt.stateCls}`);
     talkEl.dataset.code = s.code; // 双向 hover 联动(与正片卡同高亮);点击经 [data-talk] 分支拦截
     talkEl.dataset.talk = "1";
     // 几何:紧贴正片卡右缘(无间隙拼接),右缘与整场槽位右缘对齐
@@ -720,20 +901,8 @@ function appendCard(
     talkEl.style.width = `${talk * pxPerMin}px`;
     talkEl.style.height = `${rowH - insetY * 2}px`;
 
-    // 状态外观:冲突沿用红(整场都在冲突区);已选且参加 → 同 in-plan 绿 = 两张一起选中;
-    // 放弃映后谈 → gv-talk-off 灰虚线淡出(块仍占槽位,只表示"我不参加")
-    const stateTokens: string[] = [];
-    if (isConflict) stateTokens.push("border-2 border-conf in-conf");
-    else if (inCurrent && talkOn) stateTokens.push("border border-line in-plan");
-    else if (inOther && talkOn) stateTokens.push("border border-line in-other");
-    else if (!talkOn) stateTokens.push("border border-dashed border-line gv-talk-off");
-    else stateTokens.push("border border-line");
-    talkEl.className =
-      "absolute overflow-hidden cursor-pointer select-none flex flex-col items-center justify-center gap-[1px] rounded-[5px] " +
-      stateTokens.join(" ");
-
     // 谈段斜纹底(透明层,不抢父级背景色,优先级染色/紧张底色仍整块生效)
-    const hatch = el("span", "absolute inset-0 pointer-events-none rounded-[5px]");
+    const hatch = el("span", "absolute inset-0 pointer-events-none rounded-5");
     hatch.style.backgroundImage =
       "repeating-linear-gradient(-45deg, color-mix(in srgb, var(--color-ink) 6%, transparent) 0 5px, transparent 5px 10px)";
     talkEl.appendChild(hatch);
@@ -741,31 +910,91 @@ function appendCard(
     // 未选中(待选)时谈块与正片卡同一「待激活」灰阶,避免两张拼接卡文字一深一浅
     const rng = el(
       "span",
-      `relative text-[8.5px] tabular-nums leading-[1.2] whitespace-nowrap ${isIdle ? "text-muted" : "text-ink-2"}`,
-      talkTimeRange(s)
+      `relative text-9 tabular-nums leading-[1.2] whitespace-nowrap ${isIdle ? "text-muted" : "text-ink-2"}`,
+      talkSt.range
     );
+    rng.dataset.talkRange = "1";
     const lab = el(
       "span",
-      `relative text-[9px] font-bold whitespace-nowrap leading-[1.3] ${isIdle ? "text-ink-2" : "text-ink"}`,
-      talkOn && inCurrent ? `✓ 映后 ${talk}′` : `映后 ${talk}′`
+      `relative text-9 font-bold whitespace-nowrap leading-[1.3] ${isIdle ? "text-ink-2" : "text-ink"}`,
+      talkSt.label
     );
-    if (!talkOn) lab.classList.add("text-muted", "line-through");
+    lab.dataset.talkLabel = "1";
+    if (!talkSt.on) lab.classList.add("text-muted", "line-through");
     // 谈块两行自带 leading-[1.2] / [1.3] → 原样传给 scaleText(否则会被默认的 1.45 顶掉、块变高)
     scaleText(rng, 8.5, fontScale, "1.2");
     scaleText(lab, 9, fontScale, "1.3");
     talkEl.append(rng, lab);
 
-    talkEl.dataset.tip = talkTip(s, talk, talkOn, inCurrent);
+    talkEl.dataset.tip = talkSt.tip;
     // 时间筛选联动:与正片卡同一套 hour-dim(谈段同样淡化,状态语言一致)
-    if (ctx.hourFilter != null) {
-      const inHour = start < (ctx.hourFilter + 1) * 60 && end > ctx.hourFilter * 60;
-      if (!inHour) talkEl.classList.add("hour-dim");
-    }
+    if (talkSt.dim) talkEl.classList.add("hour-dim");
     tracks.appendChild(talkEl);
     return { card, talkEl };
   }
 
   return { card, talkEl: null };
+}
+
+/** 网格「几何签名」—— 只由**影响卡片位置 / 宽高 / 字号 / 轴界**的输入构成。
+ *  相同 ⇒ 结构可整体复用,只需 `patchGridStates()` 重刷状态;
+ *  不同 ⇒ 必须 `buildGrid()` 全量重建(换日期 / 缩放 / 改映后时长)。
+ *
+ *  ⚠ 为什么用「内容签名」而不是「修订号」:几何输入散落在 Screening(起止 / 片长 / 是否 GV)
+ *    与 GV 配置(全局默认 + 逐场覆写)两处 —— 用修订号就得**每处改动都记得 bump**,
+ *    漏一次就是「卡片尺寸与数据不一致」的静默错位。内容签名不需要任何人记得。
+ *    代价是 O(当日场次数) 的字符串拼装(几百字符),远低于重建数百个 DOM 节点。 */
+export function gridGeometryKey(cat: Catalog, date: string, pxPerMin: number, rowH: number): string {
+  let acc = `${date}|${pxPerMin.toFixed(4)}|${rowH}|`;
+  for (const s of cat.schedule.screenings) {
+    if (s.date !== date) continue;
+    // duration_min 决定正片末(GV 拆分卡主卡的宽度),gvTalkMin 决定谈块宽度与轴末 —— 都必须在签名里
+    acc += `${s.code}:${s.start_time}:${s.end_time}:${s.duration_min}:${s.is_gv ? gvTalkMin(s) : 0};`;
+  }
+  return acc;
+}
+
+/** 就地重刷整张网格的**状态**(几何不动)。
+ *  用于「几何签名未变」的变更:点选 / 移出 / 改档位 / 冲突变化 / 紧转场变化 / 时间筛选 / 方案切换。
+ *
+ *  ⚠ **必须先清掉上一轮的内联紧张底色**:`markTightPairs` 写的是
+ *    `style.setProperty("background", …, "important")`,不清不会自己消失 ——
+ *    漏了这步,「不再紧张」的卡会残留黄底(经典 diff bug,且不报错、不报类型错)。
+ *  同理它覆写的 `dataset.tip`(完整算式)也要先删,否则旧算式会继续挂在卡上。 */
+export function patchGridStates(grid: HTMLElement, ctx: GridCtx, date: string): void {
+  const cards = grid.querySelectorAll<HTMLElement>('[data-card="1"]');
+  const talkByCode = new Map<string, HTMLElement>();
+  for (const t of grid.querySelectorAll<HTMLElement>('[data-talk="1"]')) {
+    const c = t.dataset.code;
+    if (c) talkByCode.set(c, t);
+  }
+
+  // 1) 清上一轮紧张标记(内联底色 + 覆写的 tip)
+  for (const card of cards) {
+    card.style.removeProperty("background");
+    delete card.dataset.tip;
+  }
+
+  // 2) 逐卡重算状态并落地;谈块同轮处理(状态只算一次)
+  const cardEls = new Map<string, HTMLElement>();
+  const talkEls = new Map<string, HTMLElement>();
+  for (const card of cards) {
+    const code = card.dataset.code;
+    const s = code ? ctx.cat.byCode.get(code) : undefined;
+    if (!code || !s) continue;
+    const st = cardStateOf(s, ctx);
+    applyCardState(card, st);
+    cardEls.set(code, card);
+    const talkEl = talkByCode.get(code);
+    if (talkEl && st.talk) {
+      talkEl.style.removeProperty("background");
+      applyTalkState(talkEl, st);
+      talkEls.set(code, talkEl);
+    }
+  }
+
+  // 3) 紧转场重标(内部写内联底色 + tip)
+  markTightPairs(ctx, date, cardEls, talkEls);
 }
 
 /** 映后谈块 hover 说明(按当前状态切换文案;第 1 行标题 = 谈段区间,其余分点) */

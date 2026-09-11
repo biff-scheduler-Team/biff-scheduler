@@ -22,7 +22,6 @@
   --biff-red-soft: #fdecec;
   --biff-red-line: #f3c3c7;
   --biff-red-tint: #fdf0f1;
-  --biff-red-tint-2: #fef3f4;
   --biff-red-tint-3: #fbecec;
   --biff-selection: #ffe1e3;
 
@@ -30,17 +29,20 @@
   --status-danger: var(--biff-red);
   --status-ok: #2f9e44;
   --status-tight: #e6a800; /* 紧转场黄(网格「时间紧张」整卡底色源色) */
-  --amber-soft: #f5c16a;
 
-  /* 档位(必看 / 备选 / 随缘)—— 冷色系:蓝 / 紫 / 灰蓝。
-     与红绿灯底色(红/黄/绿)整族错开 —— 甘特色点正是画在这三种底色卡上,同色系会互相吃掉。
-     行程行优先级 seg 与「我的选片」色点同源(见 pick.ts)。 */
+  /* 档位(必看 / 备选 / 随缘)—— 冷色系:蓝 / **品红** / 灰蓝。
+     与红绿灯底色(红/黄/绿)整族错开 —— 甘特星标正是画在这三种底色卡上,同色系会互相吃掉。
+     行程行 ★ 与「我的选片」卡片 ★ 同源(见 pick.ts 的 PRI_TEXT / wishIcon)。
+     ⚠ 2026-09-10 备选 `#7e22ce`(紫)→ **`#a21caf`(品红)**:旧蓝(#1d4ed8,色相 224°)与紫(272°)
+     只差 48°,在 7px 色点 / 12px 星标这种尺寸下几乎分不出(用户反馈「蓝色和紫色很相似」)。
+     品红色相 294° —— 距蓝 70°、距冲突红(#ce1e36,351°)57°,小尺寸下也能一眼分开;
+     且 `#a21caf` 对白字对比度 6.2:1(PRI_BG_ON 的 seg 选中态需要),`#c026d3` 只有 4.2:1 偏弱。 */
   --pri-must: #1d4ed8;
-  --pri-maybe: #7e22ce;
+  --pri-maybe: #a21caf;
   --pri-wild: #64748b;
   /* 档位 Tag 浅底(统一微圆角标签:浅底 + 同族深字,见 pick.ts 的 PRI_TAG) */
   --pri-must-soft: #e9eefc;
-  --pri-maybe-soft: #f4eafc;
+  --pri-maybe-soft: #fae8fc;
   --pri-wild-soft: #eef1f5;
 
   /* 观影等级(2025 Schedule Guide 图例色系:ALL 绿 / 12 橙 / 15 红 / 19 深红) */
@@ -56,6 +58,10 @@
      三个徽章同色不同重(实心 → 实线描边 → 虚线描边),见 badges.ts 的 BADGE_DEFS。 */
   --ev-teal: #0f766e;
   --ev-teal-soft: #e6f2f0;
+  /* 青绿**实底**(Talk / 联映章):必须与 `--ev-teal` 分开 —— 后者是「文字色」,
+     暗色下会提亮成 #5eead4,拿去当底就把白字吃掉了(白底白字)。
+     实底两套主题都用深青绿,保证 --text-on-brand 白字 ≥5:1。 */
+  --ev-teal-solid: #0f766e;
 
   /* 中性面 */
   --bg-page: #f4f4f5;
@@ -84,6 +90,12 @@
   --text-disabled: #adb5bd;
   --text-on-brand: #ffffff;
 
+  /* 「墨实底」面 —— 实心深色块专用(选中胶囊 / 抽屉 tab / CODE 章 / GV 章 / 「方案 N」章)。
+     ⚠ **不可**复用 `--text-primary`(即 `bg-ink`):它在暗色下被提亮成 #ececf1,
+     这些块又是 `text-on-brand`(白字) → 白底白字看不清。
+     这里两套主题都保持「深底 + 白字」的语义,暗色下只把底抬离页面/卡片底色(见文件末尾 dark 块)。 */
+  --ink-solid: #111111;
+
   /* 旧名别名(供旧 var() 引用零改动) */
   --bg: var(--bg-page);
   --panel: var(--bg-card);
@@ -98,19 +110,42 @@
   --gv: var(--text-primary);
   --conf: var(--status-danger);
 
-  /* 圆角 / 阴影 / 字阶 / 字体 */
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius: var(--radius-md);
+  /* ---- 字阶 / 圆角阶梯(2026-09-10 起真正生效,见 PLAN-20260910235000)----
+     **值命名**(`--fs-12` = 12px / `--r-8` = 8px):CSS 自定义属性名不允许 `.`,
+     故半像素做不成 token;值命名同时避开 Tailwind 默认字号名(xs/sm/base/lg/xl/2xl)
+     与圆角名(xs/sm/md/lg/xl/2xl),不会悄悄改掉别人的语义。
+     字面值放这里、由 `@theme` 映射为 `text-N` / `rounded-N`(与颜色 token 同一套「:root 字面值 → @theme 映射」写法)。
+     ⚠ 只映射字号、**不设** `--text-N--line-height`:utility 只写 font-size,行高照旧继承(与旧 `text-[Npx]` 逐字等价)。 */
+  --fs-9: 9px;
+  --fs-10: 10px;
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-15: 15px;
+  --fs-16: 16px;
+  --fs-18: 18px;
+  --r-2: 2px;
+  --r-3: 3px;
+  --r-4: 4px;
+  --r-5: 5px;
+  --r-6: 6px;
+  --r-7: 7px;
+  --r-8: 8px;
+  --r-9: 9px;
+  --r-10: 10px;
+  --r-12: 12px;
+
+  /* 品牌红的「文字」用途 —— 浅色下与 --biff-red 同值(零视觉变化);
+     暗色下提亮(见文件末尾 dark 块),因为 #ce1e36 作为文字压在暗底上只有 ~3.6:1。
+     ⚠ 实底用途(bg-biff / 渐变 / bg-biff-muted)继续用 --biff-red:白字对比度靠它保证。 */
+  --biff-red-ink: var(--biff-red);
+
+  /* 阴影 / 字体 */
   --shadow-card: 0 1px 2px rgb(17 17 17 / 5%), 0 1px 4px rgb(17 17 17 / 7%);
   --shadow-hover: 0 2px 8px rgb(17 17 17 / 13%);
   --shadow-modal: 0 20px 50px rgb(0 0 0 / 22%);
   --shadow: var(--shadow-card);
-  --text-2xs: 11px;
-  --text-xs: 12px;
-  --text-sm: 13px;
-  --text-md: 14px;
   --font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
 }
 
@@ -124,7 +159,6 @@
   --color-biff-soft: var(--biff-red-soft);
   --color-biff-line: var(--biff-red-line);
   --color-biff-tint: var(--biff-red-tint);
-  --color-biff-tint-2: var(--biff-red-tint-2);
   --color-biff-tint-3: var(--biff-red-tint-3);
   --color-ink: var(--text-primary);
   --color-ink-2: var(--text-secondary);
@@ -133,6 +167,8 @@
   --color-faint: var(--text-faint);
   --color-disabled: var(--text-disabled);
   --color-on-brand: var(--text-on-brand);
+  /* 实心深色块(bg-ink-solid / border-ink-solid)—— 两套主题都是深底 + 白字,见 :root 注释 */
+  --color-ink-solid: var(--ink-solid);
   --color-page: var(--bg-page);
   --color-card: var(--bg-card);
   --color-hover: var(--bg-hover);
@@ -151,8 +187,9 @@
   --color-pri-wild-soft: var(--pri-wild-soft);
   --color-ok: var(--status-ok);
   --color-tight: var(--status-tight);
-  --color-conf: var(--biff-red);
-  --color-amber-soft: var(--amber-soft);
+  /* 冲突红:走 --conf(= --status-danger)而非 --biff-red —— 暗色下单独提亮,
+     让 text-conf / border-conf / in-conf 一起跟随(实底按钮不受影响) */
+  --color-conf: var(--conf);
   --color-rate-all: var(--rate-all);
   --color-rate-all-soft: var(--rate-all-soft);
   --color-rate-12: var(--rate-12);
@@ -161,6 +198,32 @@
   --color-rate-19-soft: var(--rate-19-soft);
   --color-ev-teal: var(--ev-teal);
   --color-ev-teal-soft: var(--ev-teal-soft);
+  /* 青绿实底(白字)—— 不走会提亮的 --ev-teal,见 :root 注释 */
+  --color-ev-teal-solid: var(--ev-teal-solid);
+
+  /* 品牌红的「文字」色(暗色下提亮);实底仍走 --color-biff */
+  --color-biff-ink: var(--biff-red-ink);
+
+  /* 字阶 / 圆角阶梯(值命名 —— `text-12` = 12px / `rounded-8` = 8px,见 :root 注释) */
+  --text-9: var(--fs-9);
+  --text-10: var(--fs-10);
+  --text-11: var(--fs-11);
+  --text-12: var(--fs-12);
+  --text-13: var(--fs-13);
+  --text-14: var(--fs-14);
+  --text-15: var(--fs-15);
+  --text-16: var(--fs-16);
+  --text-18: var(--fs-18);
+  --radius-2: var(--r-2);
+  --radius-3: var(--r-3);
+  --radius-4: var(--r-4);
+  --radius-5: var(--r-5);
+  --radius-6: var(--r-6);
+  --radius-7: var(--r-7);
+  --radius-8: var(--r-8);
+  --radius-9: var(--r-9);
+  --radius-10: var(--r-10);
+  --radius-12: var(--r-12);
 }
 
 /* ---- base reset & element defaults ---- */
@@ -242,12 +305,16 @@
   background: color-mix(in srgb, var(--color-conf) 14%, var(--color-card)) !important;
 }
 
-/* 另一方案的选中(虚线 / 灰) */
+/* 另一方案的选中(虚线 / 灰)
+   ⚠ `background` 必须 !important:本类在产物里的源序**早于** `.bg-card`(实测 ~10096 vs ~12626),
+   而卡片类名里恒有 `bg-card`(grid.ts::appendCard),二者同为单类选择器 (0,1,0) → 靠后者胜。
+   缺了 !important 时这里的灰底是**死代码**(卡实际渲染成白底,只剩虚线框与 A/B 角标可辨)。
+   口径与 in-plan / in-conf / slot-hit 一致。 */
 @utility in-other {
   border-style: dashed;
   border-color: var(--color-line);
   opacity: 0.9;
-  background: var(--color-in-other);
+  background: var(--color-in-other) !important;
 }
 
 /* 放弃映后谈的 GV 谈块:块仍占槽位(表示该段物理存在),灰虚线已由 grid 端内联类给出,
@@ -322,4 +389,129 @@ main.is-picker-open {
 @utility scrollbar-none {
   scrollbar-width: none;
   &::-webkit-scrollbar { display: none; }
+}
+
+/* ================= 暗色模式(亮色 / 暗色 / 跟随系统)=================
+   2026-09-10 加(PLAN-20260910235000);2026-09-11 改为**三态可切换**。实现方式:**只覆盖 token**,
+   零 utility 改动 —— 全站颜色都经 `@theme` → `var(--token)` 两级解析,覆盖 :root 字面值即全局生效。
+   ⚠ 必须写在 `:root` / `@theme` 之后(同权重靠源序取胜;本文件里的规则又都在 Tailwind 的
+   `@layer utilities` 之外,故也压得住 utility)。
+
+   ★ 选择器口径(唯一入口 = `<html data-theme>`):
+     · `data-theme="dark"` → 下面这块;`data-theme="light"` → 不动 token(即 :root 的亮色值)。
+     · **「跟随系统」不在 CSS 里判**:`src/theme.ts` 用 matchMedia 把系统深浅色**解析成 light / dark**
+       再落到 `data-theme` —— 三态共用同一套选择器,不必把整块暗色 token 抄两遍(媒体查询一份 +
+       显式暗色一份)。首屏由 index.html 的 <head> 内联脚本先落一次,避免闪白。
+     ⚠ **不要退回 `@media (prefers-color-scheme: dark)`**:那会让「用户显式选亮色」被系统暗色覆盖。
+
+   取色按 WCAG AA(小字 4.5:1);**实底品牌红 `--biff-red` 刻意不变** —— 白字按钮靠它保对比度,
+   作为文字的红改走 `--biff-red-ink`(`text-biff-ink`)。 */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* 品牌:实底不变,浅底族转深,文字色提亮 */
+  --biff-red-ink: #ff6b7d;
+  --biff-red-soft: #3a1418;
+  --biff-red-line: #5c2128;
+  --biff-red-tint: #2b1215;
+  --biff-red-tint-3: #331518;
+  --biff-selection: #4c1a21;
+
+  /* 红绿灯(绿=已选 / 黄=紧张 / 红=冲突):深底上提亮前景 */
+  --status-danger: #ff6b7d;
+  --status-ok: #4ade80;
+  --status-tight: #fbbf24;
+
+  /* 档位(蓝 / 品红 / 灰蓝):前景提亮 + 浅底转深 */
+  --pri-must: #7aa2ff;
+  --pri-maybe: #e879f9;
+  --pri-wild: #a8b3c4;
+  --pri-must-soft: #1b2547;
+  --pri-maybe-soft: #3c1a45;
+  --pri-wild-soft: #232a33;
+
+  /* 观影等级 */
+  --rate-all: #6ee7a0;
+  --rate-all-soft: #14301f;
+  --rate-12: #fdba74;
+  --rate-12-soft: #3a2413;
+  --rate-19: #fca5a5;
+  --rate-19-soft: #3a1a1e;
+
+  /* 特别节目(青绿) */
+  --ev-teal: #5eead4;
+  --ev-teal-soft: #12312e;
+
+  /* 中性面 */
+  --bg-page: #101114;
+  --bg-card: #1a1c20;
+  --bg-hover: #22252a;
+  --bg-hover-soft: #262a30;
+  --bg-raised: #2a2e35;
+  --bg-raised-hover: #343941;
+  --bg-in-other: #1d2025;
+  /* 「墨实底」面:与实底品牌红同理**不跟随文字色提亮** —— 只从 #111 抬到
+     比 --bg-card(#1a1c20)/--bg-raised(#2a2e35) 更亮一档的灰,白字对比度 ~8:1,
+     且仍读得出「这是一块实心底」。 */
+  --ink-solid: #4a5058;
+  --topbar-bg: rgb(16 17 20 / 92%);
+  --overlay-bg: rgb(0 0 0 / 62%);
+  --toast-bg: rgb(38 41 47 / 96%);
+
+  /* 描边(强 → 极细) */
+  --border-strong: #4a5058;
+  --border-default: #343a42;
+  --border-soft: #2a2f36;
+  --border-faint: #23272d;
+
+  /* 文本(主 → 最弱);--text-on-brand 保持 #fff */
+  --text-primary: #ececf1;
+  --text-secondary: #b9bec7;
+  --text-muted: #9aa0a9;
+  --text-meta: #7d838d;
+  --text-faint: #6b717b;
+  --text-disabled: #565c66;
+
+  /* 阴影:深底上加深,否则卡片浮不起来 */
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 45%), 0 1px 4px rgb(0 0 0 / 35%);
+  --shadow-hover: 0 2px 8px rgb(0 0 0 / 55%);
+  --shadow-modal: 0 20px 50px rgb(0 0 0 / 65%);
+}
+
+/* 显式亮色:与 :root 同值(只声明 color-scheme,让表单控件 / 滚动条也走浅色)。
+   必须存在 —— 用户选「亮色」时系统可能是暗的,data-theme="light" 要能压住浏览器默认的暗色 UI。 */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+/* ================= 移动端(≤768px):列表优先 =================
+   2026-09-10 加(PLAN-20260910235000)。断点 768 与 `library.ts::isMobileDrawer()` 逐字一致。
+   「默认打开抽屉」的逻辑在 `main.ts::boot()`(需要 JS 才能开);这里只做纯样式收口。 */
+@media (max-width: 768px) {
+  /* 网格面板内距收窄:390px 视口下 14px×2 太奢侈 */
+  #grid-wrap {
+    padding: 10px;
+  }
+}
+
+/* 触屏没有 hover:`ui.ts::ICON_BTN` 的常态 `opacity-45` 在触屏上等于「一直半隐身」,
+   这里直接拉满 —— 只覆盖透明度,不动布局 / 不改 markup。 */
+@media (hover: none) {
+  .ui-icon-btn {
+    opacity: 1;
+  }
+}
+
+/* ================= 列表渲染优化(2026-09-11,PLAN-20260911000705)=================
+   `content-visibility: auto` = 浏览器跳过**视口外**元素的布局与绘制(原生版虚拟化),
+   250 行影片库 / 我的选片在手机上不再一次性铺开。
+   `contain-intrinsic-size: auto 92px` 给未渲染元素一个占位高度,`auto` 关键字会**记住上次渲染尺寸**
+   → 展开 / 折叠场次行后不会跳。
+   ⚠ **只加在抽屉列表行上,不加甘特卡**:网格的反向定位靠 `centerCardX` 读 `offsetLeft/offsetWidth`,
+     未渲染元素的尺寸是估算值 → 居中会算错。完整虚拟化另立一轮(见 PLAN §4)。
+   选择器:`#picker-drawer [data-key]` 精确命中 `filmRow`(`item.dataset.key = n.key`),
+   场次行用的是 `data-code`,不受影响。 */
+#picker-drawer [data-key] {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 92px;
 }

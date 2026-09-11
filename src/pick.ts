@@ -1,10 +1,14 @@
-// 选片打标(wish)共享层 —— 三档顺序 / 色类 / 分段控件构造。
-// 「影片库」行内三选、「我的选片」总览、影片详情弹层 共用同一套档位语义与视觉,
+// 选片打标(wish)共享层 —— 三档顺序 / 色类 / ★ 星标控件构造。
+// 「影片库」卡片、「我的行程」行程卡、影片资料弹层 共用同一套档位语义与视觉,
 // 避免多处各写一份 must/maybe/wild 文案与色类(Tailwind v4 只生成源码完整出现的类)。
+// ⚠ 2026-09-10 起**档位控件统一为 ★ 星标**(`wishIcon`):原「必看|备选|随缘」三段 seg
+//   (`buildWishSeg` + `PRI_BG_ON`)在最后一处调用点(影片资料弹层)也改用 ★ 后**已删** ——
+//   需求原话「不要在影片资料中标记必看/备选/随缘,需要和我的行程里面一样,直接在卡片上标记等级」。
 //
-// 三档配色 = 冷色系(蓝 `--pri-must` / 紫 `--pri-maybe` / 灰蓝 `--pri-wild`):
-// 色点画在甘特卡上,而卡底是红绿灯(绿=已选 / 黄=时间紧张 / 红=冲突),
+// 三档配色 = 冷色系(蓝 `--pri-must` / **品红** `--pri-maybe` / 灰蓝 `--pri-wild`):
+// ★ 画在甘特卡上,而卡底是红绿灯(绿=已选 / 黄=时间紧张 / 红=冲突),
 // 故档位整族搬离红黄绿 —— 与底色正交才能一眼看出「是不是我想看的」。
+// ⚠ 备选 2026-09-10 由紫 `#7e22ce` 改品红 `#a21caf`:旧蓝紫只差 48° 色相,小尺寸下分不出(见 style.css)。
 
 import type { Priority } from "./types";
 import { el } from "./util";
@@ -18,22 +22,13 @@ export const WISH_ORDER: [Priority, string][] = [
 
 export const PRI_LABEL: Record<Priority, string> = { must: "必看", maybe: "备选", wild: "随缘" };
 
-/** seg / 章 on 态完整字面量(勿改回动态拼接) */
-export const PRI_BG_ON: Record<Priority, string> = {
-  must: "bg-pri-must text-on-brand",
-  maybe: "bg-pri-maybe text-on-brand",
-  wild: "bg-pri-wild text-on-brand",
-};
+/** 档位排序权重(必看 → 备选 → 随缘)—— 列表排序 / 打包排序 / 抢票顺位**共用**,勿各写一份。
+ *  未设档位(null)不在表内:调用方按需回退(如 `WISH_ORDER.length`)。 */
+export const PRI_RANK: Record<Priority, number> = { must: 0, maybe: 1, wild: 2 };
 
-/** 档位小色点(甘特卡标题行前的打标标记)完整字面量 */
-export const PRI_DOT_BG: Record<Priority, string> = {
-  must: "bg-pri-must",
-  maybe: "bg-pri-maybe",
-  wild: "bg-pri-wild",
-};
-
-/** 档位纯文字色 —— 只给「不足以放一枚 Tag」的极小字用(如评分分项说明)。
- *  常规场景请用 priTag():档位以统一微圆角 Tag 呈现,别再以纯文本混进标题里。 */
+/** 档位纯文字色 —— ★ 星标(wishIcon / 甘特卡)与极小字(评分分项说明)共用。
+ *  常规「档位」文字场景请用 priTag():以统一微圆角 Tag 呈现,别以纯文本混进标题里。
+ *  (`PRI_DOT_BG` 已于 2026-09-10 删除 —— 甘特卡的 7px 色点被 ★ 星标取代,无调用点。) */
 export const PRI_TEXT: Record<Priority, string> = {
   must: "text-pri-must",
   maybe: "text-pri-maybe",
@@ -53,49 +48,11 @@ export const PRI_TAG: Record<Priority, string> = {
 export function priTag(p: Priority, extraCls?: string): HTMLElement {
   return el(
     "span",
-    "inline-flex items-center rounded-[5px] px-[6px] py-px text-[10.5px] font-bold leading-[1.5] whitespace-nowrap " +
+    "inline-flex items-center rounded-5 px-[6px] py-px text-11 font-bold leading-[1.5] whitespace-nowrap " +
       PRI_TAG[p] +
       (extraCls ? " " + extraCls : ""),
     PRI_LABEL[p]
   );
-}
-
-export interface WishSegOpts {
-  /** 当前档位;undefined = 未打标 */
-  cur: Priority | undefined;
-  /** 点击回调:点非同档 = 切到该档;点当前档 = null(取消打标) */
-  onPick: (next: Priority | null) => void;
-  size?: "sm" | "md";
-  /** title 前缀(如「我的选片 · 」) */
-  tipPrefix?: string;
-  extraCls?: string;
-}
-
-/** 三档分段控件(必看/备选/随缘):当前档实心着色,再点同档取消 */
-export function buildWishSeg(o: WishSegOpts): HTMLElement {
-  const sm = o.size !== "md";
-  const seg = el(
-    "div",
-    "inline-flex border border-line rounded-full overflow-hidden bg-card" + (o.extraCls ? " " + o.extraCls : "")
-  );
-  WISH_ORDER.forEach(([p, label], i) => {
-    const on = o.cur === p;
-    const stateCls = on ? PRI_BG_ON[p] : "bg-card text-muted hover:text-ink";
-    const sepCls = i > 0 ? " border-l border-line" : "";
-    const pad = sm ? "px-2 py-[2px] text-[11px]" : "px-[9px] py-[3px] text-[12px]";
-    const b = el(
-      "button",
-      `border-0 ${pad} font-semibold transition-[background,color] duration-[120ms] ease-in-out ${stateCls}${sepCls}`,
-      label
-    );
-    b.dataset.tip = `${o.tipPrefix ?? ""}标为「${label}」${on ? "(再点取消打标)" : " — 供「智能排片」生成行程"}`;
-    b.addEventListener("click", (ev) => {
-      ev.stopPropagation(); // 三选常嵌在可点容器内(影片库行 / 甘特卡),避免顺带触发展开或选中
-      o.onPick(on ? null : p);
-    });
-    seg.appendChild(b);
-  });
-  return seg;
 }
 
 /* ---------- 档位徽章(单枚控件 + 点击弹出小菜单) ----------
@@ -139,7 +96,7 @@ function openWishMenu(anchor: HTMLElement, cur: Priority | null, onPick: (p: Pri
   }
   const menu = el(
     "div",
-    "fixed z-[250] bg-card border border-line rounded-[9px] shadow-[var(--shadow-modal)] p-[4px] min-w-[112px] grid gap-px"
+    "fixed z-[250] bg-card border border-line rounded-9 shadow-[var(--shadow-modal)] p-[4px] min-w-[112px] grid gap-px"
   );
   menu.dataset.wishMenu = anchor.dataset.wishAnchor ?? "";
   const opts: [Priority | null, string][] = [
@@ -150,7 +107,7 @@ function openWishMenu(anchor: HTMLElement, cur: Priority | null, onPick: (p: Pri
     const on = cur === p;
     const b = el(
       "button",
-      `w-full text-left border-0 rounded-[6px] px-[9px] py-[5px] text-[12px] font-semibold whitespace-nowrap ${
+      `w-full text-left border-0 rounded-6 px-[9px] py-[5px] text-12 font-semibold whitespace-nowrap ${
         on ? "bg-raised text-ink" : "bg-transparent text-ink-2 hover:bg-[var(--bg-hover-soft)]"
       }`,
       `${on ? "✓ " : ""}${label}`
@@ -176,11 +133,12 @@ function openWishMenu(anchor: HTMLElement, cur: Priority | null, onPick: (p: Pri
   wishMenuEl = menu;
 }
 
-/* ---------- 档位**图标**(影片行右上角,2026-09-10 加,见 PLAN-20260910184745 §8) ----------
+/* ---------- 档位**图标**(影片行右上角 / 行程卡操作组 / 影片资料弹层,2026-09-10 加,见 PLAN-20260910184745 §8) ----------
  * 需求原话:「移除『必看』按钮…改为一个图标(如⭐),hover 时显示文字」——
  * 带文字的档位徽章 + ⓘ + ✕ 三枚控件挤在片名行里,把片名挤成 0 宽、视觉噪声也大。
  * 现在常态只有**一枚星标**:★ = 已定档(按档位着色)/ ☆ = 未设;文字只走 hover 提示
- * (`data-tip`,与全站 tooltip 同源);点击仍弹**同一个** 必看 / 备选 / 随缘 / 清除 菜单。 */
+ * (`data-tip`,与全站 tooltip 同源);点击仍弹**同一个** 必看 / 备选 / 随缘 / 清除 菜单。
+ * ⚠ 影片资料弹层也用它(`size: "lg"`)—— 三段 seg 的最后一处调用点已于 2026-09-10 换成它。 */
 
 export interface WishIconOpts {
   /** 当前档位;null / undefined = 未设 */
@@ -191,15 +149,23 @@ export interface WishIconOpts {
   tipPrefix?: string;
   /** 稳定锚点(菜单回关判定用),一般传影片 key */
   anchor?: string;
+  /** 尺寸:`md`(默认,20px 盒 / 13px 星 —— 卡片、行程行)/ `lg`(26px 盒 / 18px 星 —— 影片资料弹层:
+   *  弹层里没有卡片底衬托,小星标会显得像装饰,放大会更像一个可点的档位控件) */
+  size?: "md" | "lg";
 }
 
 /** 档位星标 —— 图标化入口,与 wishBadge() 共用同一个弹出菜单(openWishMenu)。 */
 export function wishIcon(o: WishIconOpts): HTMLElement {
   const cur = o.cur ?? null;
+  // ⚠ 两档尺寸都写成**完整字面量**(Tailwind v4 只生成源码里出现的类,勿拼 `w-[${n}px]`)
+  const box =
+    o.size === "lg"
+      ? "w-[26px] h-[26px] rounded-6 text-18"
+      : "w-[20px] h-[20px] rounded-5 text-13";
   const b = el(
     "button",
-    "shrink-0 border-0 bg-transparent p-0 w-[20px] h-[20px] inline-flex items-center justify-center " +
-      "rounded-[5px] text-[13px] leading-none transition-[color,background-color] duration-[120ms] " +
+    `shrink-0 border-0 bg-transparent p-0 ${box} inline-flex items-center justify-center ` +
+      "leading-none transition-[color,background-color] duration-[120ms] " +
       "hover:bg-[var(--bg-hover-soft)] " +
       (cur ? PRI_TEXT[cur] : "text-faint hover:text-ink")
   );

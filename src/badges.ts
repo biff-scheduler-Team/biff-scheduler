@@ -59,7 +59,8 @@ export const BADGE_DEFS: BadgeDef[] = [
       "映后时长可配置:设置里改全局默认,行程行点 ⏱ 逐场覆写\n" +
       "官方提示:场次可能临时变动,部分场次无英文口译",
     // GV 默认外观:实心黑底白字(与历史 .gv-tag 等价)
-    cls: "px-1 py-px text-on-brand bg-ink",
+    // ⚠ 底走 `ink-solid`(不是 `bg-ink`):后者暗色下被提亮成近白 → 白底白字
+    cls: "px-1 py-px text-on-brand bg-ink-solid",
   },
   {
     key: "masterclass",
@@ -72,7 +73,7 @@ export const BADGE_DEFS: BadgeDef[] = [
     label: "首映",
     title: "Premiere · 首映场",
     // 描边 chip 与等级/字幕(KE)同 padding 口径(px-[3px] py-px),文字不压边框
-    cls: "px-[3px] py-px text-biff bg-card border border-biff",
+    cls: "px-[3px] py-px text-biff-ink bg-card border border-biff",
   },
   {
     key: "open_talk",
@@ -98,7 +99,8 @@ export const BADGE_DEFS: BadgeDef[] = [
       "官方 Community BIFF 的 토크 单元 — 主题对谈 / 分享(2025 例:커비북스 图书 · 잇츠시네마 饮食)\n" +
       "与 GV 的区别:GV 是「剧组 / 嘉宾到场」,Talk 是「主题对谈节目」;两者可能同场并存",
     // 实心青绿底 + 白字:与 gv 的实心黑同族,表达「有人到场」
-    cls: "px-1 py-px text-on-brand bg-ev-teal",
+    // ⚠ 底走 `ev-teal-solid`(不是 `bg-ev-teal`):后者暗色下提亮成 #5eead4 → 白底白字
+    cls: "px-1 py-px text-on-brand bg-ev-teal-solid",
   },
   {
     key: "commentary",
@@ -131,31 +133,40 @@ export const BADGE_DEFS: BadgeDef[] = [
       "官方午夜场单元:一个块 = 一张票连看 2~3 部(2025 共 4 块 / 10 部)\n" +
       "格子里只印块名(如 Midnight Passion 1),块内成员片名见详情弹层\n" +
       "注意:成员片的介绍页会把该块 CODE 列为自己的一场 —— 那一条就是这张块票",
-    cls: "px-1 py-px text-on-brand bg-ev-teal",
+    cls: "px-1 py-px text-on-brand bg-ev-teal-solid",
   },
 ];
 
 /** 徽章基础字阶 / 排版(所有变体共享) */
 const BADGE_BASE =
-  "not-italic text-[9.5px] font-extrabold rounded-[3px] leading-[1.4] whitespace-nowrap select-none shrink-0 cursor-help";
+  "not-italic text-10 font-extrabold rounded-3 leading-[1.4] whitespace-nowrap select-none shrink-0 cursor-help";
 
 /* ---------- 统一章(uniform)—— 影片行「场次行」的元数据标签组专用 ----------
  * 需求(PLAN-20260910184745 §8):标签组要**统一高度 / 圆角 / 描边 / 字色(灰)**,只给
  * 「观影等级」留一点强调色边框;GV 等原先的黑底 / 红底实心章在密集的场次行里太吵,统一降为中性描边。
  * ⚠ 只作用于 `appendMetaRow(..., { uniform: true })`(影片行场次行),**网格卡 / 行程行不受影响** ——
  *   那两处的实心 GV 是「扫一眼看到有映后谈」的主信号,不能一起抹平。
- * 字阶 9.5 → 10.5px 并统一 `rounded-[4px] px-[5px] py-[2px]`:原各变体的 padding / 圆角 / 字阶
+ * 字阶 9.5 → 10.5px 并统一 `rounded-4 px-[5px] py-[2px]`:原各变体的 padding / 圆角 / 字阶
  * 互不相同,并排时高度参差(那正是「统一高度和圆角」要修的东西)。 */
 export const UNIFORM_CHIP_BASE =
-  "not-italic text-[10.5px] rounded-[4px] px-[5px] py-[2px] border leading-[1.35] " +
+  "not-italic text-11 rounded-4 px-[5px] py-[2px] border leading-[1.35] " +
   "whitespace-nowrap select-none shrink-0 cursor-help inline-flex items-center";
 /** 中性描边(默认;等级章另走 legend.ts 的强调色描边) */
 export const UNIFORM_CHIP = `${UNIFORM_CHIP_BASE} font-semibold text-ink-2 bg-card border-line`;
 
 const defByKey = new Map(BADGE_DEFS.map((d) => [d.key, d]));
 
-/** 该场次的特性键列表(去重保序:gv 恒在首位,其后按 tags 原序) */
+/** `screeningBadgeKeys` 的缓存 —— 该函数在网格 / 行程 / 影片库 / 弹层里每场次被调用多次。
+ *  键带上**全部输入**(code + is_gv + tags):数据加载后这些字段不再变,但真变了也会自动失效,
+ *  不会像「只按 code 缓存」那样读到脏值。 */
+const badgeKeysCache = new Map<string, string[]>();
+
+/** 该场次的特性键列表(去重保序:gv 恒在首位,其后按 tags 原序)。
+ *  ⚠ 返回的是**共享数组**,调用方只读(全站调用点均为遍历 / 取 length,已复核)。 */
 export function screeningBadgeKeys(s: Screening): string[] {
+  const key = `${s.code}|${s.is_gv ? 1 : 0}|${s.tags?.join(",") ?? ""}`;
+  const hit = badgeKeysCache.get(key);
+  if (hit) return hit;
   const keys: string[] = [];
   const push = (k: string): void => {
     if (!defByKey.has(k)) return; // 未注册的键忽略,向前兼容
@@ -163,6 +174,7 @@ export function screeningBadgeKeys(s: Screening): string[] {
   };
   if (s.is_gv) push("gv");
   for (const t of s.tags ?? []) push(t);
+  badgeKeysCache.set(key, keys);
   return keys;
 }
 

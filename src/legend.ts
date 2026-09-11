@@ -11,7 +11,7 @@ import { BADGE_DEFS, badgeEl, codeTip, DOUBAN_CHIP_TITLE, screeningBadgeKeys, UN
 
 /** 徽章基底(与 badges.ts 同字阶体系;全部字面量 → Tailwind v4 扫描可见) */
 const CHIP_BASE =
-  "not-italic text-[9.5px] font-extrabold rounded-[3px] px-[3px] py-px border leading-[1.45] " +
+  "not-italic text-10 font-extrabold rounded-3 px-[3px] py-px border leading-[1.45] " +
   "whitespace-nowrap select-none shrink-0 cursor-help inline-flex items-center";
 
 /* ---------------- 观影等级 ---------------- */
@@ -43,7 +43,7 @@ export const RATING_DEFS: Record<RatingKey, RateDef> = {
   },
   "15": {
     label: "15",
-    cls: `${CHIP_BASE} text-biff bg-biff-soft border-current`,
+    cls: `${CHIP_BASE} text-biff-ink bg-biff-soft border-current`,
     zh: "15 岁以上",
     kr: "15세이상관람가",
     en: "Under 15 not admitted",
@@ -125,7 +125,7 @@ function chipEl(def: { label: string; cls: string; tip: string }): HTMLElement {
 }
 
 /** 节目册页码的 hover 说明(uniform 与常规两条路径共用,避免文案漂移) */
-function pageTip(page: number): string {
+export function pageTip(page: number): string {
   return `节目册页码 P.${page}\n该场在官方 Ticket Catalogue(节目册)中的页码\n购票 / 翻册对表用`;
 }
 
@@ -150,7 +150,7 @@ export function durChip(min: number, opts?: { boxed?: boolean }): HTMLElement {
 export function doubanChip(rating: number, extraCls?: string): HTMLElement {
   const node = el(
     "span",
-    "inline-block text-[11px] font-bold text-muted border border-line bg-card rounded px-[6px] " +
+    "inline-block text-11 font-bold text-muted border border-line bg-card rounded px-[6px] " +
       "leading-[1.7] select-none whitespace-nowrap cursor-help" + (extraCls ? ` ${extraCls}` : ""),
     `豆 ${rating}`
   );
@@ -162,7 +162,7 @@ export function doubanChip(rating: number, extraCls?: string): HTMLElement {
 
 /** 放映时间字段(加墨 + 等宽数字;与网格卡身份行同款) */
 function timeField(range: string): HTMLElement {
-  const node = el("b", "text-[12.5px] font-semibold tabular-nums whitespace-nowrap cursor-help", range);
+  const node = el("b", "text-13 font-semibold tabular-nums whitespace-nowrap cursor-help", range);
   node.dataset.tip =
     "放映时间 起–止(KST)\n" +
     "GV 映后场的结束时间 = 正片末 + 映后谈时长(正片 + 映后 N′)\n" +
@@ -173,7 +173,7 @@ function timeField(range: string): HTMLElement {
 
 /** 放映 CODE 字段(红字 + 场次编号说明;与网格卡身份行同款) */
 function codeField(code: string): HTMLElement {
-  const node = el("b", "text-[12.5px] text-biff whitespace-nowrap cursor-help", code);
+  const node = el("b", "text-13 text-biff-ink whitespace-nowrap cursor-help", code);
   node.dataset.tip = codeTip(code);
   return node;
 }
@@ -187,7 +187,7 @@ function blankChip(): HTMLElement {
 
 /** 网格底色小色块(与顶栏图例条同款:10px 圆角色块 + 同色描边) */
 function swatch(bg: string, borderCls: string): HTMLElement {
-  const i = el("i", `inline-block w-[10px] h-[10px] rounded-[3px] mr-[5px] align-[-1px] border ${borderCls}`);
+  const i = el("i", `inline-block w-[10px] h-[10px] rounded-3 mr-[5px] align-[-1px] border ${borderCls}`);
   i.style.background = bg;
   return i;
 }
@@ -206,7 +206,7 @@ function labeled(icon: HTMLElement, text: string): HTMLElement {
 const RATING_ACCENT: Record<RatingKey, string> = {
   ALL: "font-bold text-rate-all bg-card border-rate-all",
   "12": "font-bold text-rate-12 bg-card border-rate-12",
-  "15": "font-bold text-biff bg-card border-biff",
+  "15": "font-bold text-biff-ink bg-card border-biff",
   "19": "font-bold text-rate-19 bg-card border-rate-19",
 };
 
@@ -216,6 +216,16 @@ export function uniformChipEl(label: string, tip: string, variant = ""): HTMLEle
   const node = el("i", `${UNIFORM_CHIP_BASE} ${variant || "font-semibold text-ink-2 bg-card border-line"}`, label);
   node.dataset.tip = tip;
   return node;
+}
+
+/** 「观影等级」章(uniform 口径,无等级则 null)—— 行程行元信息**只留这一枚带框章**时用。
+ *  等级是**硬性准入信息**(未满岁不得入场),扫场次时必须一眼看到 → 保框、保强调色;
+ *  其余(影院 / 片长 / 字幕 / 页码)在行程行降为中灰纯文本,减少画面的框框数量。 */
+export function ratingChipEl(s: Screening): HTMLElement | null {
+  const key = s.rating;
+  if (!key || !RATING_DEFS[key]) return null;
+  const def = RATING_DEFS[key];
+  return uniformChipEl(def.label, def.tip, RATING_ACCENT[key]);
 }
 
 /**
@@ -242,6 +252,39 @@ export function appendMetaRow(host: HTMLElement, s: Screening, opts?: { uniform?
   if (typeof s.page === "number" && s.page > 0) {
     host.appendChild(u ? uniformChipEl(`P.${s.page}`, pageTip(s.page)) : pageChip(s.page));
   }
+}
+
+/** 该场是否有任何徽章(等级 / 字幕 / 特性 / 页码)—— 无则整行不建,避免空行 */
+export function hasBadges(s: Screening): boolean {
+  return Boolean(s.rating || s.subs?.length || typeof s.page === "number" || screeningBadgeKeys(s).length);
+}
+
+/** 网格卡「场次徽章行」的模板缓存 —— 按「code + 全部输入字段」键,每次返回 `cloneNode`。
+ *  徽章内容只由 Screening 的静态字段决定(等级 / 字幕 / tags / 页码 / 片长),加载后不再变;
+ *  一张网格卡要造 4~6 枚徽章,而整网格重建时是数百张卡 —— `cloneNode` 比逐枚
+ *  `createElement` + 拼类名字符串便宜得多。
+ *  ⚠ 缓存的是**未缩放**模板:缩放(`style.zoom`)由调用方在 clone 上设,不污染模板;
+ *  ⚠ 模板节点**不入 DOM**(只作 clone 源),否则会被 replaceWith / 移出污染。 */
+const metaRowCache = new Map<string, HTMLElement>();
+
+export function metaRowFor(s: Screening): HTMLElement {
+  const key = [
+    s.code,
+    s.rating ?? "",
+    s.subs?.join(",") ?? "",
+    s.page ?? "",
+    s.duration_min,
+    s.is_gv ? 1 : 0,
+    s.tags?.join(",") ?? "",
+  ].join("|");
+  let tpl = metaRowCache.get(key);
+  if (!tpl) {
+    tpl = el("span", "mt-auto flex gap-[3px] flex-wrap items-center leading-none");
+    appendMetaRow(tpl, s);
+    tpl.appendChild(durChip(s.duration_min));
+    metaRowCache.set(key, tpl);
+  }
+  return tpl.cloneNode(true) as HTMLElement;
 }
 
 /* ---------------- 影院代码 / 分区 ---------------- */
@@ -323,8 +366,8 @@ const VENUE_CODES_2025: { group: string; list: [string, string][] }[] = [
 function guideH(t: string): HTMLElement {
   return el(
     "div",
-    "flex items-center gap-[6px] text-[13.5px] font-bold tracking-[0.01em] mb-[6px] " +
-      "before:content-[''] before:w-[8px] before:h-[8px] before:border-[2.5px] before:border-biff before:rounded-[2px] before:box-border",
+    "flex items-center gap-[6px] text-14 font-bold tracking-[0.01em] mb-[6px] " +
+      "before:content-[''] before:w-[8px] before:h-[8px] before:border-[2.5px] before:border-biff before:rounded-2 before:box-border",
     t
   );
 }
@@ -333,7 +376,7 @@ function mkTable(heads: string[]): { tbl: HTMLTableElement; tbody: HTMLTableSect
   const tbl = el("table", "w-full border-collapse") as HTMLTableElement;
   const thead = document.createElement("thead");
   const hr = document.createElement("tr");
-  hr.className = "text-muted text-[11.5px] font-semibold text-left";
+  hr.className = "text-muted text-12 font-semibold text-left";
   heads.forEach((hd) => {
     const th = document.createElement("th");
     th.className = "py-[4px] pr-2 font-semibold whitespace-nowrap";
@@ -351,7 +394,7 @@ function addRow(tbody: HTMLTableSectionElement, cells: (string | HTMLElement)[])
   tr.className = "border-b border-line-faint align-top";
   cells.forEach((c) => {
     const td = document.createElement("td");
-    td.className = "py-[5px] pr-[10px] text-[12.5px] leading-[1.55]";
+    td.className = "py-[5px] pr-[10px] text-13 leading-[1.55]";
     if (typeof c === "string") td.textContent = c;
     else td.appendChild(c);
     tr.appendChild(td);
@@ -360,13 +403,13 @@ function addRow(tbody: HTMLTableSectionElement, cells: (string | HTMLElement)[])
 }
 
 function note(text: string): HTMLElement {
-  return el("div", "text-muted text-[12px] leading-[1.6]", text);
+  return el("div", "text-muted text-12 leading-[1.6]", text);
 }
 
 function bullet(text: string): HTMLElement {
   return el(
     "li",
-    "pl-[14px] relative text-[12.5px] leading-[1.6] before:content-[''] before:absolute before:left-0 before:top-[7px] before:w-[6px] before:h-[6px] before:bg-biff before:rounded-[1.5px]",
+    "pl-[14px] relative text-13 leading-[1.6] before:content-[''] before:absolute before:left-0 before:top-[7px] before:w-[6px] before:h-[6px] before:bg-biff before:rounded-2",
     text
   );
 }
@@ -384,7 +427,7 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
 
   // ---- 1 字段速读 ----
   body.appendChild(guideH("一格怎么读(示例)"));
-  const demo = el("div", "flex flex-wrap items-center gap-[5px] bg-hover border border-line rounded-[7px] px-[10px] py-[7px]");
+  const demo = el("div", "flex flex-wrap items-center gap-[5px] bg-hover border border-line rounded-7 px-[10px] py-[7px]");
   demo.appendChild(timeField("09:00–10:40"));
   demo.appendChild(codeField("004"));
   demo.appendChild(chipEl(RATING_DEFS["15"]));
@@ -392,7 +435,7 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
   demo.appendChild(badgeEl("gv"));
   demo.appendChild(pageChip(167));
   demo.appendChild(durChip(100, { boxed: true }));
-  demo.appendChild(el("span", "text-[12.5px] text-muted", "Last Samurai Standing · 이쿠사가미: 전쟁의 신"));
+  demo.appendChild(el("span", "text-13 text-muted", "Last Samurai Standing · 이쿠사가미: 전쟁의 신"));
   const sec1 = el("div", "grid gap-1");
   sec1.appendChild(demo);
   {
@@ -451,25 +494,25 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
   {
     const { tbl, tbody } = mkTable(["代码", "影厅(网格行标签 → 官方全名)", "分区"]);
     cat.venues.forEach((v) => {
-      const codeCell = v.code ? chipEl({ label: v.code, cls: `${CHIP_BASE} text-biff bg-biff-soft border-current`, tip: `影院代码 ${v.code} — 2025 届同馆口径(mock),2026 以官网为准` }) : el("span", "text-meta", "—");
+      const codeCell = v.code ? chipEl({ label: v.code, cls: `${CHIP_BASE} text-biff-ink bg-biff-soft border-current`, tip: `影院代码 ${v.code} — 2025 届同馆口径(mock),2026 以官网为准` }) : el("span", "text-meta", "—");
       // 短名 ↔ 全名对照:用户照着网格列里的短名能在这里对回官方全名(否则「BCC Cinema 1」无从溯源)
       const nameCell = el("div", "grid gap-px");
       nameCell.append(
         el("div", "font-semibold text-ink", venueShort(v)),
-        el("div", "text-[11.5px] text-meta", `${v.name}${v.name_kr ? ` · ${v.name_kr}` : ""}`)
+        el("div", "text-12 text-meta", `${v.name}${v.name_kr ? ` · ${v.name_kr}` : ""}`)
       );
       addRow(tbody, [codeCell, nameCell, GROUP_AREA[v.group] ?? "—"]);
     });
     body.appendChild(tbl);
 
     const det = document.createElement("details");
-    det.className = "mt-[4px] border border-line rounded-[8px] px-[10px] py-[6px]";
+    det.className = "mt-[4px] border border-line rounded-8 px-[10px] py-[6px]";
     const sum = document.createElement("summary");
-    sum.className = "cursor-pointer text-[12.5px] font-semibold text-ink-2 select-none hover:text-biff";
+    sum.className = "cursor-pointer text-13 font-semibold text-ink-2 select-none hover:text-biff-ink";
     sum.textContent = "官方日程表代码总表(2025 口径参考 — 点击展开)";
     det.appendChild(sum);
     VENUE_CODES_2025.forEach((g) => {
-      const gHead = el("div", "mt-[6px] mb-[2px] text-[12px] font-bold text-muted", g.group);
+      const gHead = el("div", "mt-[6px] mb-[2px] text-12 font-bold text-muted", g.group);
       const { tbl: t2, tbody: tb2 } = mkTable(["代码", "剧场"]);
       g.list.forEach(([code, name]) => addRow(tb2, [code, name]));
       det.append(gHead, t2);
@@ -485,7 +528,7 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     const lines: [string | HTMLElement, string][] = [
       [
         labeled(swatch("color-mix(in srgb, var(--color-ok) 14%, var(--color-card))", "border-ok"), "绿底 · 已选"),
-        "已加入当前方案(A/B)的场次 — 整卡淡绿底。优先级不染网格卡,请在下方行程行三段 seg 设置(蓝/紫/灰蓝 = 必看/备选/随缘),冲突取舍与抢票顺位按此排",
+        "已加入当前方案(A/B)的场次 — 整卡淡绿底。档位不染网格卡:请在「影片库」卡片 / 行程卡 / 影片资料弹层点 ★ 设置(蓝 = 必看 / 品红 = 备选 / 灰蓝 = 随缘),冲突取舍与抢票顺位按此排",
       ],
       [
         labeled(swatch("color-mix(in srgb, var(--color-tight) 24%, var(--color-card))", "border-tight"), "黄底 · 时间紧张"),
@@ -503,7 +546,7 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     ];
     const ul = el("ul", "grid gap-[3px]");
     lines.forEach(([k, v]) => {
-      const li = el("li", "text-[12.5px] leading-[1.6]");
+      const li = el("li", "text-13 leading-[1.6]");
       if (typeof k === "string") li.textContent = `${k} — ${v}`;
       else li.append(k, document.createTextNode(` — ${v}`));
       ul.appendChild(li);
@@ -517,18 +560,18 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     const ul = el("ul", "grid gap-[3px]");
     [
       ["一部片一条记录", "「我的选片」与「我的行程」是同一份数据的两个视图:按片看是选片清单,按场次看是行程。没有第二份拷贝,两边永远一致"],
-      ["必看 / 备选 / 随缘", "影片行右侧的**档位徽章**(未设时显示「+ 标记」,已定档显示彩色「必看 / 备选 / 随缘」)点击即弹出三档 + 清除 —— 一枚控件代替原来的三段平铺。档位是「影片级」的:改一处,该片所有场次同步(影片资料弹层、行程行的三段 seg 改的也是它)"],
+      ["必看 / 备选 / 随缘", "档位由**一枚 ★ 星标**表达(★ = 已定档,按档位着色;**蓝 = 必看 / 品红 = 备选 / 灰蓝 = 随缘**;☆ = 未设),点击弹出「必看 / 备选 / 随缘 / 清除档位」菜单 —— 三处完全同款:「影片库」卡片右上角、「我的行程」行程卡、影片资料弹层(2026-09-10 起弹层也由三段文字 seg 改为同一枚 ★)。档位是「影片级」的:改一处,该片所有场次同步"],
       ["场次只在一处选", "影片行展开 = 唯一场次列表(两个 tab 同款):每场并排「定位 ▸」(跳到时间轴)与「＋ 加入」(加入后变「✓ 已加入」,再点即移出;这场在另一方案时显示「⇄ 已在 B」);「ⓘ」只开影片资料 + 豆瓣,不再重复列排片"],
-      ["甘特色点", "定档后,甘特卡标题行前出现 7px 圆点(蓝=必看 / 紫=备选 / 灰蓝=随缘)——与整卡红绿灯底色相互独立:底色说「排得怎么样」,色点说「是不是我想看的」。档位刻意用冷色系(蓝/紫/灰蓝),避开底色的红/黄/绿,保证落在任何底色卡上都一眼可辨"],
-      ["顶栏「影片库 · 选片」", "一个按钮 = 左侧滑出的**选片面板**(再点一次 / 面板内「收起 ✕」/ Esc 收起):面板**不遮挡网格**,只是把网格挤窄一点 —— 所以打标、点选场次时始终能看到时间轴上的变化。面板内两个 tab:**影片库**(全部影片:搜索 / 单元筛选)与**我的选片**(展示为主:**日期导航栏**(单行横向滚动,`‹ ›` 左右滚)+ **档位** chips;每行只剩「档位徽章 + N 场 + ⓘ + ✕」)。两个 tab 共用同一套影片行,所以打标 / 图标 / 场次行完全一致;「我的选片」展开只列**已排场次**,并**按日期分节**(节头给「10/21 周三 · N 场」,行内只留时间)"],
+      ["甘特 ★ 档位", "定档后,甘特卡标题行前出现一枚 ★(**蓝=必看 / 品红=备选 / 灰蓝=随缘**,2026-09-10 由 7px 色点改为 15px 星标)——与整卡红绿灯底色相互独立:底色说「排得怎么样」,★ 说「是不是我想看的」。档位刻意用冷色系,避开底色的红/黄/绿;备选由「紫」改「品红」是因为蓝紫只差 48° 色相,小尺寸下分不出。同一枚 ★ 也出现在「影片库」卡片右上角、行程卡与影片资料弹层"],
+      ["顶栏「选片 · 行程」", "一个按钮 = 左侧滑出的**排片面板**(再点一次 / 面板内「收起 ✕」/ Esc 收起):面板**不遮挡网格**,只是把网格挤窄一点 —— 所以打标、点选场次时始终能看到时间轴上的变化。面板内**三个 tab**:· **影片库**(全部影片:搜索 / 单元筛选)· **我的选片**(日期导航栏 + 档位 chips;每行只剩「状态标签 + ⓘ + ✕」;展开只列**已排场次**并按日期分节)· **我的行程**(按日期分组的已排场次,原在主页面下方,2026-09-10 搬入 —— 常驻可见;卡片头与选片卡同款:**片名在上、影片信息行在下**)。三个 tab 共用同一套影片行 / 场次行,打标与图标完全一致"],
       ["我的行程 ✕", "只移出这一场,选片意向保留 —— 该片仍留在「我的选片」里并标注「未排场」,「智能排片」照样会把它排进去"],
       ["智能排片", "**唯一排片通道**(原「本地引擎」已下线)。需你自己填入模型 API Key(DeepSeek / OpenAI / Moonshot / 硅基流动 / 自定义均可),由浏览器直连服务商生成一版建议行程,再选「并入 A / B 方案」(已有场次保留,只追加不冲突的新场次)。可先在「② 排哪几天」收窄日期;一部片都没打标也能排 —— 走「无片单模式」,怎么排看偏好文字。返回结果会本地复检:无效 code、同片多场、时段冲突一律剔除并明示,不信任模型的自我约束"],
       ["API Key 只在本机", "Key 只写入本机浏览器的 localStorage,不上传本站服务器、也不进任何发往本站的请求;排片请求由浏览器直连你填写的服务商。本站不提供也不转售模型服务(用你自己的额度),因此也读不到你的 Key。浏览器本地为明文存储 —— 公用电脑请勿保存,随时可在「设置」或弹层里点「清除 Key」"],
-    ].forEach(([k, v]) => ul.appendChild(el("li", "text-[12.5px] leading-[1.6]", `${k} — ${v}`)));
+    ].forEach(([k, v]) => ul.appendChild(el("li", "text-13 leading-[1.6]", `${k} — ${v}`)));
     body.appendChild(ul);
     body.appendChild(
       note(
-        "档位只有一份,且在影片级 —— 行程行里的三段 seg 改的就是该片的档位(同片多场同步,行内会提示「本片共 N 场」)。「未设」= 只点了场次还没定档:不参与质量分与抢票顺位,也不进智能排片;去「影片库」或弹层补一个档位即可。"
+        "档位只有一份,且在影片级 —— 行程卡里的 ★ 改的就是该片的档位(同片多场同步,提示里会写明「本片共 N 场」)。「未设」= 只点了场次还没定档:不参与质量分与抢票顺位,也不进智能排片;去「影片库」或弹层点 ★ 补一个档位即可。"
       )
     );
   }

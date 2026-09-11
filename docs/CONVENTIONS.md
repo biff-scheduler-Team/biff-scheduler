@@ -42,21 +42,50 @@
   被压住的列表要在返回时刷新计数 → 开它时传 `onReturn`(现仅「智能排片」传 `render`;见下条)。
   列表类 `render()` 拆 `paint()` + 外层保存/恢复 `list.scrollTop`,否则点档位会跳回顶部。
 - **★「影片库 · 我的选片」= 左侧「挤压式抽屉」**(2026-09-10 二次改,`PLAN-20260910184745`;
-  演进:`xl` 弹窗 → 独立页面(`PLAN-20260910182939`)→ 抽屉)。用户对「独立页面」的反馈是「很奇怪」,
+  演进:`xl` 弹窗 → 独立页面(`PLAN-20260910182939`)→ 左侧挤压抽屉(`PLAN-20260910184745`)。用户对「独立页面」的反馈是「很奇怪」,
   **根因不在宽度而在换页打断因果**(① 模态:打标时看不见网格,而打标与选场次本是同一件事的两步;
   ② 不是路由:URL 不变、浏览器后退失效;③ 有去无回;④ 只有「影片库 → 定位 ▸ → 网格」单向)。
   现在 `index.html` 的 `<main>` 是 **flex 行**:`#picker-drawer`(520px,`sticky top-[64px]`,在左)
-  + `#main-col`(`flex-1 min-w-0 grid gap-4`,原有 `#grid-wrap` / `#agenda-wrap` 收在里面)——
-  抽屉打开后网格**完全可见可点**,打标 → 卡片色点当场出现;点选 → 卡片当场变绿。
+  + `#main-col`(`flex-1 min-w-0 grid gap-4`,只剩 `#grid-wrap` —— **2026-09-10 起「我的行程」从 `#agenda-wrap` 搬入抽屉第三个 tab**,
+  见 `PLAN-20260910190916`)—— 抽屉打开后网格**完全可见可点**,打标 → 卡片色点当场出现;点选 → 卡片当场变绿。
   · 开 / 收:给 `main` 加 `.is-picker-open`(容器上限 1280 → 1680,`style.css` 原生规则,
     权重 (0,1,1) 压过 Tailwind 的 `.max-w-\[1280px\]` —— 放宽后宽屏下抽屉尽量少抢网格宽度:
     `1680 − 32 − 520 − 16 = 1112px`,1440 视口下 ≈872px)+ `#picker-drawer` 的 `is-hidden`;
-    出口 = 顶栏按钮(开关)/ 抽屉内「收起 ✕」/ `Esc`(仅无弹层时,与旧口径一致)。
-  · 抽屉内**两个 tab**(`影片库` / `我的选片`):520px 放不下并排双栏,但两 tab 复用同一套
-    `filmRow` / `showRow`,信息密度与原来双栏一致;`pickerTab` 跨开合保持。
-    ⚠ 520 而非更窄:场次行按需求排成**单行阅读流** `[CODE][时间][章组] →→ [操作]`(见下条),400px 排不下。
-    **`render()` 只画当前 tab** —— 抽屉会在用户点选网格时持续存活,若照旧两 tab 都重建,
+    出口 = 顶栏按钮(开关,文案「选片 · 行程」)/ 抽屉内「收起 ✕」/ `Esc`(仅无弹层时,与旧口径一致)。
+  · 抽屉内**三个 tab**(`影片库` / `我的选片` / `我的行程`,`PLAN-20260910190916`):
+    影片库 = 全部影片(搜索 / 单元筛选);我的选片 = 按档位/日期筛选,展开看已排场次;
+    我的行程 = 按日期分组的已排场次(**从主页面下方 2700px 之外搬入,常驻可见**)。
+    520px 放不下并排双栏,但三 tab 复用同一套 `filmRow` / `showRow`,信息密度与原双栏一致;
+    `pickerTab: "lib" | "pick" | "agenda"` 跨开合保持。
+    ⚠ 520 而非更窄:场次行按需求排成**单行阅读流** `[CODE][影院][时间][章组] →→ [操作]`,400px 排不下。
+    **`render()` 只画当前 tab** —— 抽屉会在用户点选网格时持续存活,若照旧三 tab 都重建,
     一次网格点选就要顺手重建 250 行影片库(切 tab 时由 `setTab()` 重画)。
+  · **行程 tab 的渲染走注入**:主页面 `main.ts` 拥有 `conflicts` / `gvTalkOf` / `hourFilter` 等状态,
+    `setAgendaRenderer(buildAgendaHost)` 把 `buildAgendaHost` 闭包注入给抽屉;
+    抽屉 agenda tab 每次重绘时调用,读最新值。`#agenda` 的 id 保留(在 `body.id = "agenda"`),
+    让 `HOVER_SEL = "#grid-scroll [data-code], #agenda [data-code]"` 仍命中。
+  · 摘要行(A 方案 N 场 · ⚠M + 质量分药丸)在 agenda tab 顶部渲染(取代原来的 `#agenda-summary`,已删);
+    「⚠ N」顶栏角标点击 = 打开抽屉(若关着)+ 切到 agenda tab(已在则只切 tab,不开不关)。
+  · 行程日期头 `[data-jump]` → 点击 = **网格切到该日期 + 横向居中到当天最早一场 + 当天行程场次批量闪 3s**
+    (`main.ts::jumpToDate`)。与「定位 ▸」(`jumpToScreening`)共用 `flashScreening()` / `centerCardX()`,
+    区别只在批量:一天的场次一起闪,横向落点取 `start_time` 最早的那场。
+    ⚠ 闪烁必须按 `data-code` **全量取**(`querySelectorAll`)—— 一场 GV 在网格里是**两个**元素
+    (正片卡 + 右侧映后谈块,见 `grid.ts`),只闪第一个会「半张亮」。
+    (历史:曾是抽屉内 `scrollIntoView`,但行程已在抽屉里、目标行本就在视口内 → 等于没反应,故改。)
+  · **行程行 = `row.ts::screeningRow` + `headTitle` / `headSub`**(与「影片库 / 我的选片」场次行同骨架;
+    行程特有内容只经这两个 opt 注入,别的 tab 不传 → 骨架不变)。曾有一版「行程档」(`PLAN-20260910194000`:
+    `title` / `titleExtra` / `plainMeta` 三个 opt,元信息降为纯文本)——**已撤销**,别再引入。
+    卡片头两行(2026-09-10 起,`PLAN-20260910211617`):① `片名 15px 加粗`(选片卡头同款)
+    + `[映后 N′] / A·B / ★ / ✕` 操作组贴右(`acts` 自动 `ml-auto`);
+    ② **影片信息行**「原始片名 · 单元 · 国家 · 年份 · 导演」(`headSub`,11.5px `text-meta` 单行截断,
+    hover 出全文)—— 与选片卡副标题**同源** `util.ts::filmInfoText(filmInfoOf(...))`,文案必须一致。
+    其后是场次行 `[CODE][影院][时间] [片长·等级·字幕·GV·页码]`(三处同一套描边章)。
+    日期**不重复**(`hideDate: true` —— 已按日期分节)。`✕` = `text-faint opacity-40` +
+    `group-hover:opacity-100`(行容器带 `group`;刻意不用 `opacity-0`,触屏无 hover)。
+    **「映后 N′」= 合并胶囊**:点标签 = 含 / 弃(`data-act="gv-talk"`),点数字 = 改本场时长
+    (`data-act="gv-talk-min"`,数字是 `<span>` 不是嵌套 button,`closest("[data-act]")` 天然命中最内层)。
+  · **赶场间隔提级到卡片之间**:`agenda.ts::gapConnector()` —— 浅灰虚线竖轨 + `赶场间隔 Nmin · 跨馆缓冲 Nmin`,
+    三态口径不变(bad 红 / tight 黄 / ok 灰)。当前行自身冲突时不出连接件(冲突提示已占一行)。
   · 列表**不再自带宽高**(`max-h-[min(70vh,860px)]` + `overflow-y-auto` 已删),
     统一由抽屉内的 `panel`(`min-h-0 flex-1 overflow-y-auto`)滚动,避免双滚动条。
   · **网格宽度补偿**:抽屉开 / 收会改网格 `clientWidth`,由 `library.ts` 在
@@ -90,7 +119,7 @@
     `ⓘ` 资料、`✕` 整片移除(仅「我的选片」tab,hover 转 `text-conf`)。
     ⚠ **`★` 只在「影片库」tab**(2026-09-10,`PLAN-20260910192230`):「我的选片」是**已选视图**,
     档位已由「排序(必看→备选→随缘)+ 档位筛选 chips 计数」表达,不再给每行一枚改档控件 ——
-    改档入口是「影片库」卡片 ★ / 任意 tab 的 `ⓘ` 资料弹层档位 seg / 行程行 ★(三处同一份 `store.picks`)。
+    改档入口是「影片库」卡片 ★ / 任意 tab 的 `ⓘ` 资料弹层 ★ / 行程卡 ★(三处同一份 `store.picks`)。
     别再为了「对称」把 ★ 加回 picks tab。
     ⚠ 刻意**不用** `opacity-0`:触屏没有 hover,图标会永远看不见。
     **原设计把「档位徽章 + N 场 + 已排 N 场 + ⓘ + ✕」五枚控件平铺在片名行右侧,把片名挤成 0 宽。**
@@ -101,7 +130,9 @@
   - **元数据章组 = 统一描边**(`appendMetaRow(..., { uniform: true })`):一律
     `badges.ts::UNIFORM_CHIP_BASE` 的中性灰描边(统一高度 / 圆角 / 字阶),**只给观影等级**
     留强调色描边(`legend.ts::RATING_ACCENT`)—— 场次行信息密度高,实心章会喧宾夺主。
-    ⚠ **网格卡 / 行程行不传 `uniform`**,保留各自实心章(那是「一眼看到有映后谈」的主信号)。
+    ⚠ **网格卡不传 `uniform`**,保留实心章(那是「一眼看到有映后谈」的主信号);
+    **行程行走更激进的 `plainMeta`**(2026-09-10,`PLAN-20260910194000`):只留等级一枚描边章
+    (`legend.ts::ratingChipEl`),影院 / 片长 / 字幕 / 页码降为中灰纯文本 + `·`。
   - **操作按钮层级**:`定位 ▸` = **唯一主操作**,去饱和品牌红实底(`--biff-red-muted`,不再是亮红渐变);
     `＋ 加入` / `⇄ 已在 B` = 中性描边次要按钮;`✓ 已加入` = **纯状态标签**(绿勾 + 绿字,无底无框)
     —— 它表达状态,用按钮外形会让人以为是待点的操作。⚠ 但仍**保留可点 = 移出**
@@ -114,22 +145,58 @@
 
 ## 三、数据契约
 
+- **★ 全站零后端:片单只存 localStorage,豆瓣映射只读静态 JSON(2026-09-11,`PLAN-20260911001107`)**:
+  选片 / 排片**不上云** —— `state.ts::commit()` 落盘即完成,没有异步回写;
+  `user_pick` 表与 `/api/pick*`(2026-09-10 退役)、`douban_map` 表与 `/api/mapping*`(2026-09-11 退役)全部删除,
+  `functions/` 与 `migrations/` 目录已不存在 —— **前端不再 fetch 任何后端**。
+  · 豆瓣映射 = `public/douban.json`(离线产物;`data.ts::loadDoubanMappings()` → `state.ts::loadMappings()`
+    在首渲前灌好,避免片名「先英文后中文」跳变);文件留空即「零映射」,弹层 / 影片库走中英文搜索兜底。
+    **页面上不可编辑** —— 要改就重跑离线管线再部署。
+  · 原因:两次「部署换 origin、云端为准」都造成过数据复活 / 覆盖(片单清空被云端覆盖;映射与本地 origin 错位)。
+    **别再把任何用户数据写回云端**。
+  · 清空两个口径别搞混:`clearScreeningSlots()`(只清场次、**保留**选片意向)vs
+    `clearAllPicks()`(选片 + 排片一起删;设置里「清空全部(选片 + 排片)」)。
+  · 旧 key `biff.plan.v1` / `biff.wish.v1` 是**一次性迁移源,迁移后即删**(否则 v2 缺失时旧数据会复活)。
+  · `store.mappingOnline` 与顶栏 `#sync-dot` **已删**(无云端可表)。
 - **单一数据源 `store.picks`**:`Map<filmNodeKey, PickEntry{priority, picks: PickSlot[], note}>`,一部片一条。
-  「我的选片」(按片)与「我的行程」(按场次)是同一份数据的两个视图;档位在**影片级**(行程行三段 seg 改的就是该片档位,
+  「我的选片」(按片)与「我的行程」(按场次)是同一份数据的两个视图;档位在**影片级**(行程卡 ★ 改的就是该片档位,
   同片多场同步,行内提示「本片共 N 场」),`group` 在**场次级**。旧 `wish` + `store.plan`(`user_plan` 表)已废
   —— 不要再写「两层档位互不影响」。派生 `store.slotIndex: Map<code,{key,group}>`;写入经 `state.ts` 私有 `commit()`
-  (本地 → rebuildIndex → notify → 云端 `user_pick` 表);查询走 `slotOf`/`inGroup`/`codesOfGroup`/`priorityOfCode`/`priorityOfKey`。
+  (本地 → rebuildIndex → notify);查询走 `slotOf`/`codesOfGroup`/`priorityOfCode`。
+- **影片信息单一来源 `util.ts::filmInfoOf(cat, s, map)`**(2026-09-10,`PLAN-20260910211617`):
+  返回 `{ zh(片名), names(其余片名), meta(单元 · 国家 · 年份 · 导演), cats(命中的目录条目) }`,
+  `filmInfoText(info)` 给出「原始片名 · 单元 · 国家 · 年份 · 导演」这一行文案。
+  **「影片库 / 我的选片」卡片(`library.ts::buildFilmList` 的 FilmNode)与「我的行程」卡片头
+  (`agenda.ts::buildRow` → `row.ts::headSub`)都调它** —— 原先这套拼装只活在 library.ts 里,
+  行程卡无从取用;两处各写一份必然出现「同一部片在两个视图里片名 / 信息行不一样」。
+  目录命中规则(①目录中文名(无则原始片名)精确命中 ②原始片名 == 排期英文名)必须与 `filmNodeKey` 逐字一致。
 - **移除场次语义**:行程行 ✕(`removeScreening`)= 只删该场,记录保留(仍在「我的选片」,标「未排场」);
   仅当「档位未设 + 无备注 + 最后一场」才整条删。「整片移除」= `removePick(key)`;设置里「清空」= `clearScreeningSlots()`。
 - **影片节点 key 单一来源**:`util.ts` 的 `filmNodeKey(cat, s)`(目录命中 → `cat:<id>`,否则 `sched:<片名小写>`;
   纯目录片 `cat:<f###>`)。影片库合并/智能排片/选片总览/甘特打标全走它。匹配顺序:
   ① `(title_zh || title_orig) === s.title_zh` → `cat:<id>`;② `title_orig === s.title_en` → `cat:<id>`;③ 否则 `sched:<…>`。
-- **选片打标共享层 `src/pick.ts`**:收口三档语义(`WISH_ORDER`/`PRI_LABEL`)、色类(`PRI_BG_ON`/`PRI_DOT_BG`/`PRI_TEXT`)、
-  分段控件 `buildWishSeg()`;打标走 `state.setWish()`。**Tailwind v4 只生成源码里完整字面量出现的类,勿拼 `bg-${p}`**。
-- **档位色 = 冷色专用 token**:`--pri-must #1d4ed8` / `--pri-maybe #7e22ce` / `--pri-wild #64748b`(`@theme` → `--color-pri-*`)。
-  旧别名 `--must/--maybe/--wild`、`--status-wild`/`--status-warning` 已删。原因:档位色点画在红绿灯底色卡上,复用状态色会撞色
-  (红=冲突/黄=时间紧张/绿=已选)。红绿灯色(`--status-*`/`--conf`/`--color-tight`/`--color-ok`)只服务「排得怎么样」;
+- **选片打标共享层 `src/pick.ts`**:收口三档语义(`WISH_ORDER`/`PRI_LABEL`)、色类(`PRI_TAG`/`PRI_TEXT`)、
+  ★ 星标控件 `wishIcon()`(`size: "md" | "lg"`);打标走 `state.setWish()`。**Tailwind v4 只生成源码里完整字面量出现的类,勿拼 `bg-${p}`**。
+  ⚠ 三段 seg(`buildWishSeg` / `WishSegOpts` / `PRI_BG_ON`)已删(2026-09-10,`PLAN-20260910211053`):
+  影片资料弹层是最后一个调用点,它改用 ★ 后整组控件与 `--pri-*-soft` 实底类(`bg-pri-must` 等)再无消费者。
+- **档位色 = 冷色专用 token**:`--pri-must #1d4ed8`(蓝)/ `--pri-maybe **#a21caf**`(品红)/ `--pri-wild #64748b`(灰蓝)
+  (`@theme` → `--color-pri-*`)。旧别名 `--must/--maybe/--wild`、`--status-wild`/`--status-warning` 已删。
+  原因:档位 ★ 画在红绿灯底色卡上,复用状态色会撞色(红=冲突/黄=时间紧张/绿=已选)。
+  红绿灯色(`--status-*`/`--conf`/`--color-tight`/`--color-ok`)只服务「排得怎么样」;
   「偏紧」小字用 `text-tight`;「已选 N」计数章用 `bg-biff`。
+  ⚠ **备选 2026-09-10 由紫 `#7e22ce` 改品红 `#a21caf`**:旧蓝(224°)/ 紫(272°)只差 48° 色相,
+  在 7px 色点 / 12px 星标尺寸下几乎分不出(用户反馈「蓝色和紫色很相似」)。品红 294° ——
+  距蓝 70°、距冲突红(`#ce1e36` 351°)57°,小尺寸也能一眼分开;且对白字对比度 6.2:1
+  (`#c026d3` 只有 4.2:1 —— 该口径来自已删除的 seg 选中态,保留作选色依据)。
+- **档位视觉 = ★ 星标(2026-09-10 统一)**:`pick.ts::PRI_TEXT`(纯色)+ `wishIcon()`(可点,弹档位菜单)。
+  四处同款:**甘特卡标题行前 15px ★** / **「影片库」卡片右上角 20px ★** / **行程卡操作列 ★** /
+  **影片资料弹层 `size: "lg"`(26px 盒 / 18px 星 —— 弹层无卡片底衬托,小星标会像装饰)**。
+  ⚠ 影片资料弹层原为「必看|备选|随缘」三段 seg,2026-09-10 按用户要求换成同一枚 ★
+  (`PLAN-20260910211053`)—— 别再往弹层里加回文字 seg。
+  甘特卡旧版是 **7px 圆点**(`PRI_DOT_BG` + `scaleBox`,均已删)—— 用户反馈「星星图案也要大一点 现在不是很明显」。
+  ⚠ 甘特 ★ 的基准字号必须写进**类名**(`text-[15px]`):`grid.ts::scaleText()` 在 100% 档早退不写内联值,
+  只靠 `scaleText` 会让星标继承卡片基准字号,比标题还小;`leading-none` 压住行盒(15px×1.45 = 21.75px
+  会超过标题的 18.85px,把标题行撑高)。
 - **`subs` = `SubsKey[]`(多值)**:册子 META 会同时印多个(实测 `KE KK` 4 场,语义叠加)。契约 `Screening.subs?: SubsKey[]`,
   未标注 = `null`(**不用空数组**)。**渲染必须走 `legend.ts` 的 `subsKeys()` 归一化** —— 数据源可能仍是标量 `subs`,
   不归一化会 `SUBS_DEFS[array]` → undefined → 字幕章全丢。判空用 `s.subs?.length`。解析器侧逐个 `append` 去重,「未认领 token」非空即 WARN。
@@ -151,7 +218,8 @@
   新增徽章同步补 `ABBR_LINES`(图例「ⓘ 缩写说明」数据源)。`opening`/`closing` 故意不注册。
 - **★ AI 排片 = 浏览器直连,本站永不经手 Key**(2026-09-10 定案,`src/ai.ts` 文件头有完整契约):
   **「智能排片」= AI 单通道**(原「本地引擎」分段已于 2026-09-10 整体下线,见 PLAN-20260910143516)——
-  弹层打开即是 AI 面板;`engine.ts` 现在只剩**排片质量分**(`scorePlanRows`,服务「我的行程」头部药丸)。
+  弹层打开即是 AI 面板;质量分在 **`score.ts`**(`scorePlanRows`,服务「我的行程」头部药丸);
+  面板 UI 在 `ai-panel.ts`、隐藏主 Prompt 在 `ai-prompt.ts`(2026-09-10 拆出,PLAN-20260910232833)。
   AI 模式三件套 `baseUrl / model / key` + 用户偏好全部只落 **独立 LS 键 `biff.ai.v1`**
   (不并入 `biff.settings.v1` —— 「清除 Key」语义干净,也不会被设置序列化顺手带走);
   请求 = `fetch(用户填的 baseURL + "/chat/completions")`,Key **只放 Authorization header**,
@@ -218,7 +286,8 @@
   **任何地方都不得对小时取模**。唯一归一化闸门 = `data.ts::loadCatalog()`(`end <= start` → `minToHms(en + 1440)`)。
   显示一律走 `util.ts` 的 `minToClock`/`fmtEndClock`/`fmtMinRange`/`nextDayTag`(`minToHms` 只供数据层与 ICS,勿直接显示);
   ICS 的 `DTEND` 靠 `Date.UTC` 自动进位。实测 4 场:`008`/`081`/`164`/`244`(23:59 → 次日 05:26~06:04)。
-- **目录片(暂无排期)豆瓣关联**:`f###`(f001…)与排期 3 位 code 互不冲突,同存 `douban_map` 表;影片库节点 key `cat:f###`。
+- **目录片(暂无排期)豆瓣关联**:`f###`(f001…)与排期 3 位 code 互不冲突,同存 `public/douban.json` 的 `mappings`;
+  影片库节点 key `cat:f###`;无映射时该行渲染「豆瓣搜索 ↗」外链(兜底)。
 - **`FilmItem` 契约**(`src/types.ts`):`{ id, unit, remark, title_zh, title_orig, year, rating, rating_count, country, director }`
   —— 10 字段,**无** `runtime_min`/`title_kr`/`codes`。`displayTitle` = `title_zh || mappingTitleCn || title_en`。
   `library.ts::unitKey()` 对未知 unit **回退原字符串**,故英文单元名安全。
@@ -267,16 +336,54 @@
   **唯一例外** = AI 面板 `runBar`:主按钮文案自带步骤号「④ 开始 AI 排片」,保持左对齐以贴合 ①②③④ 步骤流。
   弹层内主按钮落位见 §二「底部主操作右对齐」。
 
+- **★ 字阶 / 圆角 = 值命名阶梯(2026-09-10,`PLAN-20260910235000`)**:`src/style.css` 的 `:root` 存字面值
+  (`--fs-9`…`--fs-18` / `--r-2`…`--r-12`),`@theme` 映射为 **`text-9`…`text-18`** 与 **`rounded-2`…`rounded-12`**。
+  · **值命名是必须的**:CSS 自定义属性名不允许 `.`,半像素做不成 token;值命名同时避开 Tailwind 默认
+    字号名(`xs/sm/base/lg/xl/2xl`)与圆角名(`xs/sm/md/lg/xl/2xl`),不会悄悄改掉别人的语义。
+  · 映射**只给 `font-size`、不设 `--text-N--line-height`** → `text-12` 与旧 `text-[12px]` 逐字等价(行高仍继承)。
+  · 全站已无 `text-[Npx]` / `rounded-[Npx]` 任意值;新增尺寸**必须**先加 token 再用类,别回退成任意值。
+  · 已知取舍:半像素字号已归一到相邻整数档(≤0.5px);`grid.ts` 谈块的 `scaleText(rng, 9, …)` 与
+    `text-9` 类名**必须同源**(类名给 100% 基准、JS 给缩放档),改一处要同时改另一处。
+- **★ 暗色 = 只覆盖 token(跟随系统)**:`style.css` 末尾 `@media (prefers-color-scheme: dark)` 覆写
+  `:root` 的中性面 / 描边 / 文本 / 阴影 / 品牌浅底族 / 语义浅底族 / 前景强调色,并加 `color-scheme: dark`。
+  · **禁止在暗色块里写 utility / 组件规则** —— 全站颜色都经 `@theme` → `var(--token)` 两级解析,覆盖 token 即全局生效。
+  · **品牌红拆两种用途**:`--biff-red`(实底,暗色下**不变** —— 白字按钮靠它保对比度)vs `--biff-red-ink`
+    (`text-biff-ink`,暗色下提亮:`#ce1e36` 作为文字压在暗底上只有 ~3.6:1、压在 `bg-biff-soft` 上仅 ~2.4:1)。
+    改品牌红相关类名前先想清楚是「实底」还是「文字」。
+  · `--color-conf` 走 `var(--conf)`(= `--status-danger`)而非 `var(--biff-red)` —— 暗色下只覆写
+    `--status-danger` 就能让 `text-conf` / `border-conf` / `in-conf` 一起提亮。
+  · 取色已过 WCAG 自检:暗色下 `text-meta` 4.47:1、`text-faint` 3.47:1 —— **比浅色基线(2.81 / 2.4)更好**。
+- **★ 窄屏(≤768px)= 列表优先**:`library.ts::isMobileDrawer()`(断点与 `style.css` 的
+  `@media (max-width: 768px)` **逐字一致**)→ `main.ts::boot()` 默认 `openFilmPicker()`,网格降级为次级入口;
+  顶栏按钮文案由 `updatePickerLabel()` 随开 / 收切成「时间轴 ▸」↔「列表 · 行程」。
+  · 现有三档断点:**768**(列表优先,JS + CSS)、**1099**(抽屉全宽 + `#main-col` 隐藏)、**720**(顶栏折行)。
+  · 触屏没有 hover:`ui.ts::ICON_BTN` 带 `ui-icon-btn` 钩子,`@media (hover: none)` 把常态 45% 拉满 ——
+    新加「常态淡显、hover 才显现」的图标按钮**必须**挂这个类。
+- **★ 共享 UI 类名 = `ui.ts`**:按钮(`BTN_PRIMARY` / `BTN_PRIMARY_LG` / `BTN_ABORT` / `BTN_MINI` /
+  `BTN_DISABLED` / `BTN_GO` / `NAV_BTN`)、图标钮(`ICON_BTN`)、tab(`TAB_ON`/`TAB_OFF`)、段按钮(`SEG_ON`/`SEG_OFF`)、
+  缩放控件(`ZBTN`/`ZMID`/`ZFIT`)、工厂(`buttonEl` / `iconButton`);胶囊 chip 在 `chips.ts`(`PILL_*` / `BAR_*`)。
+  **别再往业务文件里写一份新的按钮字面量** —— 同一视觉两套字面量正是「暗色 / 移动端漏改」的根源。
+- **★ `extraCls` 只放布局 / 变体(2026-09-11,`PLAN-20260911000705`)**:`ui.ts::buttonEl` / `iconButton`、
+  `pick.ts::priTag`、`row.ts::metaChipRow`、`legend.ts::doubanChip` 的追加类参数,**只允许**
+  间距(`ml-auto`)、对齐、`hover:` / `disabled:` 等变体、`tabular-nums` 这类无冲突工具类。
+  · **不要**用它覆盖字号 / 颜色 / 背景 / 圆角 —— 基础串是该视觉的唯一来源,覆盖它违反「同一视觉只有一份定义」;
+    且同类冲突谁生效取决于 Tailwind 产出顺序(**不可预期**)。需要新视觉 → 改基础串本身。
+  · 曾试过 tailwind-merge 自动消解:实测 **gzip +9.7KB 而全站 0 个调用点**传入该参数 → 已撤。
+    注意它**也解决不了** `style.css` 的 `@utility + !important` 补丁 —— 那是自定义 utility 与
+    Tailwind 生成类之间的**层序**问题(且 `in-plan` 这类自定义类 tailwind-merge 并不识别),与 extraCls 无关。
+- **★ 单元测试是构建门禁(2026-09-11)**:`npm run build` = `typecheck && lint && test && vite build`。
+  测试只覆盖**纯函数**(`conflict` / `gv` / `ics` / `ai` 解析 / `util` / `score` / 类名合并)——
+  DOM 交互仍走既有无头验收流程。**改这些口径必须同步改对应测试**;
+  发现实现与注释相左时,**断言写「当前实际行为」并在注释里记明分歧**(范例:`tests/conflict.test.ts`
+  的 `transitFor` 死参数),不要为了让测试变绿去改实现。
+
 ## 五、基础设施 / 工具
 
-- **D1 / SQLite 改列约束只能重建表**:SQLite 不支持 `ALTER TABLE … ALTER COLUMN … DROP NOT NULL`。
-  走「`CREATE TABLE x_new` → `INSERT INTO x_new SELECT` → `DROP TABLE x` → `RENAME TO x` → 重建索引」,先 `DROP TABLE IF EXISTS x_new` 兜重跑。
-  改完**先本地 sqlite 跑 0001 + 全部新迁移**确认旧行保留/索引重建/旁表无影响,再 `npm run migrate:remote`。
-- **wrangler 必须在沙箱外跑**:沙箱内到 `api.cloudflare.com` fetch failed。`d1 migrations list/apply`、`pages deploy`、
-  `d1 execute --remote` 一律加 `dangerouslyDisableSandbox`。`npx wrangler d1 execute <db> --remote --json --command "…"`
-  是核对线上表结构/数据最快手段(输出用 python 解 JSON)。
-- **改 D1 契约三件套顺序**:迁移(改库) → 部署(Functions + 前端) → `curl` 打线上 `/api/...` 端到端探针
-  (**用不存在的 code 探针,探完 DELETE,别污染真实数据**)。
+- **D1 已退役(2026-09-11,`PLAN-20260911001107`)**:`douban_map` / `user_pick` / `user_plan` 三张表、
+  `functions/`、`migrations/`、`wrangler.toml` 的 `[[d1_databases]]`、`package.json::migrate:remote` 全部删除。
+  改数据不再需要迁移 —— 静态 JSON(`public/*.json`)改了重新 `npm run deploy` 即可。**别再引入 D1 / Functions**。
+- **wrangler 必须在沙箱外跑**:沙箱内到 `api.cloudflare.com` fetch failed。`pages deploy` 一律加
+  `dangerouslyDisableSandbox`;本地预览 `wrangler pages dev dist`(纯静态)无此问题。
 - **`tools/extract_schedule.py`**(BIFF 适配层):排期表 = 官方册子 **p9–p16**(旋转 90° 的表格)。
   与电影节无关的通用逻辑已抽到 **`tools/festival_common.py`**(以 `LayoutSpec` / `MetaSyntax` 注入差异);
   新增电影节时复制适配层、替换场馆表与 token 正则即可,输出契约对齐 `src/types.ts`。

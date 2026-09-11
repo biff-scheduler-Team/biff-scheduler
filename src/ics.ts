@@ -2,7 +2,8 @@
 
 import type { Catalog, Group, Mapping, PickEntry, Priority, Screening } from "./types";
 import { effEndHms, gvTalkMin } from "./gv";
-import { esc, fmtMinRange } from "./util";
+import { PRI_LABEL } from "./pick";
+import { displayTitle, fmtMinRange } from "./util";
 
 /** 导出用的「一场已选」行:方案 / 场次来自场次级,档位 / 备注来自影片级(唯一数据源的投影) */
 export interface PickRow {
@@ -24,24 +25,42 @@ function toUtcStamp(dateIso: string, hhmm: string): string {
   return utc.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, ""); // 20261008T020000Z
 }
 
+/** RFC5545 TEXT 值转义:反斜杠 / 分号 / 逗号 / 换行必须转义,
+ *  否则含逗号的片名或场馆名会被日历解析器拆成多个字段。
+ *  ⚠ 与 HTML 转义无关(旧实现误用 `util.ts::esc`,已移除)。 */
+function icsEsc(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+}
+
+/** iCal 行按 **UTF-8 字节** 限 75 octets 折叠(中文 1 字 = 3 字节 —— 按字符折会超限)。
+ *  折点以**码点**为单位,不会切断代理对(emoji);续行以空格开头,故内容上限 74。 */
 function fold(line: string): string {
-  // iCal 行限 75 octets,超长用 CRLF+空格折叠
-  if (line.length <= 75) return line;
+  const enc = new TextEncoder();
+  if (enc.encode(line).length <= 75) return line;
   const parts: string[] = [];
-  let cur = line;
-  while (cur.length > 0) {
-    parts.push(cur.slice(0, 75));
-    cur = cur.slice(75);
+  let cur = "";
+  let bytes = 0;
+  let limit = 75; // 首行 75 octets;续行前缀空格占 1 → 内容上限 74
+  for (const ch of line) {
+    const n = enc.encode(ch).length;
+    if (bytes + n > limit) {
+      parts.push(cur);
+      cur = "";
+      bytes = 0;
+      limit = 74;
+    }
+    cur += ch;
+    bytes += n;
   }
+  if (cur) parts.push(cur);
   return parts.join("\r\n ");
 }
 
-export const PRIORITY_TAG: Record<Priority, string> = { must: "必看", maybe: "备选", wild: "随缘" };
 /** 未设档位(priority=null)在 ICS 描述里的兜底标签 */
 export const PRIORITY_TAG_UNSET = "未分级";
-/** 档位标签(含未设兜底),供 ICS / 清单等文本出口复用 */
+/** 档位标签(含未设兜底),供 ICS / 清单等文本出口复用 —— 档位文案单一来源 `pick.ts::PRI_LABEL` */
 export function priorityTag(p: Priority | null): string {
-  return p ? PRIORITY_TAG[p] : PRIORITY_TAG_UNSET;
+  return p ? PRI_LABEL[p] : PRIORITY_TAG_UNSET;
 }
 
 export function buildIcs(
@@ -65,7 +84,7 @@ export function buildIcs(
     const s = cat.byCode.get(e.code);
     if (!s) continue;
     const map = mappings.get(e.code);
-    const title = s.title_zh || map?.title_cn || s.title_en;
+    const title = displayTitle(s, map?.title_cn);
     const gv = s.is_gv ? " (GV)" : "";
     const summary = `[${e.code}] ${title}${gv}`;
 
@@ -88,13 +107,13 @@ export function buildIcs(
     lines.push(`DTSTAMP:${toUtcStamp(s.date, "00:00")}`);
     lines.push(`DTSTART:${toUtcStamp(s.date, s.start_time)}`);
     lines.push(`DTEND:${toUtcStamp(s.date, endHms)}`);
-    lines.push(fold(`SUMMARY:${esc(summary)}`));
-    lines.push(fold(`LOCATION:${esc(s.venue_display)}`));
-    lines.push(fold(`DESCRIPTION:${esc(desc.join("\\n"))}`));
+    lines.push(fold(`SUMMARY:${icsEsc(summary)}`));
+    lines.push(fold(`LOCATION:${icsEsc(s.venue_display)}`));
+    lines.push(fold(`DESCRIPTION:${icsEsc(desc.join("\n"))}`));
     lines.push("BEGIN:VALARM");
     lines.push("ACTION:DISPLAY");
     lines.push(`TRIGGER:-PT${alarmMin}M`);
-    lines.push(`DESCRIPTION:${esc(title)} 即将开始`);
+    lines.push(fold(`DESCRIPTION:${icsEsc(title)} 即将开始`)); // 片名长(尤其中文)时会超 75 octets,必须折叠
     lines.push("END:VALARM");
     lines.push("END:VEVENT");
   }

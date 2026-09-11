@@ -1,11 +1,12 @@
-// 静态数据加载:schedule.json / venues.json / films.json(随部署走静态资源)
+// 静态数据加载:schedule.json / venues.json / films.json / douban.json(随部署走静态资源)
 
-import type { Catalog, FilmsFile, Screening, Venue, VenuesFile, ScheduleFile } from "./types";
+import type { Catalog, FilmItem, FilmsFile, Mapping, Screening, Venue, VenuesFile, ScheduleFile } from "./types";
 import { hmsToMin, minToHms } from "./util";
 
 async function loadJson<T>(url: string): Promise<T | null> {
   try {
-    const res = await fetch(url, { cache: "no-cache" });
+    // `default`(而非 `no-cache`):交给 PWA 的 CacheFirst 策略命中预缓存 —— 电影节现场断网也能打开
+    const res = await fetch(url, { cache: "default" });
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {
@@ -13,12 +14,41 @@ async function loadJson<T>(url: string): Promise<T | null> {
   }
 }
 
-export async function loadCatalog(): Promise<Catalog> {
-  const schedule = await loadJson<ScheduleFile>("schedule.json");
-  const venuesFile = await loadJson<VenuesFile>("venues.json");
-  const filmsFile = await loadJson<FilmsFile>("films.json");
+/** 豆瓣映射静态文件 `public/douban.json` —— 2026-09-11 起替代 D1 `douban_map`(见 PLAN-20260911001107)。
+ *  离线跑 `tools/enrich_douban.py` 后把结果填进 `mappings`;留空即「零映射」,全站走中英文搜索兜底。 */
+interface DoubanFile {
+  mappings?: Record<
+    string,
+    { subject_id?: number | null; title_cn?: string | null; douban_url?: string | null }
+  >;
+}
 
-  if (!schedule || !venuesFile) throw new Error("schedule.json / venues.json 加载失败");
+/** 读 douban.json → `Mapping[]`(键 = 排期 code 或 `f###` 目录片 id)。
+ *  文件缺失 / `mappings` 为空 → `[]`(不报错,与 loadJson 同口径)。 */
+export async function loadDoubanMappings(): Promise<Mapping[]> {
+  const file = await loadJson<DoubanFile>("douban.json");
+  const map = file?.mappings;
+  if (!map) return [];
+  return Object.entries(map).map(([code, m]) => ({
+    code,
+    subject_id: m?.subject_id ?? null,
+    title_cn: m?.title_cn ?? null,
+    douban_url: m?.douban_url ?? null,
+  }));
+}
+
+export async function loadCatalog(): Promise<Catalog> {
+  // 三个只读 JSON 互不依赖 → 并行拉取(旧版串行 await 白等两个 RTT)
+  const [schedule, venuesFile, filmsFile] = await Promise.all([
+    loadJson<ScheduleFile>("schedule.json"),
+    loadJson<VenuesFile>("venues.json"),
+    loadJson<FilmsFile>("films.json"),
+  ]);
+
+  // 结构守卫:文件存在但字段缺失(空对象 / 换版漏字段)时**显式报错**,
+  // 而不是让 `schedule.screenings` 为 undefined 在下游崩成难定位的 TypeError。
+  if (!schedule || !Array.isArray(schedule.screenings)) throw new Error("schedule.json 加载失败或格式不正确");
+  if (!venuesFile || !Array.isArray(venuesFile.venues)) throw new Error("venues.json 加载失败或格式不正确");
 
   const venueById = new Map<string, Venue>();
   for (const v of venuesFile.venues) venueById.set(v.id, v);
@@ -29,6 +59,7 @@ export async function loadCatalog(): Promise<Catalog> {
   for (const s of schedule.screenings) {
     const st = hmsToMin(s.start_time);
     const en = hmsToMin(s.end_time);
+    if (!Number.isFinite(st) || !Number.isFinite(en)) continue; // 脏数据:不写回 "NaN:NaN",交由下游原样暴露
     if (en <= st) s.end_time = minToHms(en + 24 * 60);
   }
 
@@ -42,13 +73,34 @@ export async function loadCatalog(): Promise<Catalog> {
   const byCode = new Map<string, Screening>();
   for (const s of schedule.screenings) byCode.set(s.code, s);
 
-  const dates: string[] = [];
-  for (const s of schedule.screenings) {
-    if (!dates.includes(s.date)) dates.push(s.date);
-  }
-  dates.sort();
+  // Set 去重(旧版 `dates.includes` 是 O(n·d));dates 按字典序 = 时间序(YYYY-MM-DD)
+  const dates = [...new Set(schedule.screenings.map((s) => s.date))].sort();
 
-  return { schedule, dates, venues: venuesFile.venues, venueById, byCode, films: filmsFile?.films ?? [] };
+  const films = filmsFile?.films ?? [];
+
+  return { schedule, dates, venues: venuesFile.venues, venueById, byCode, films, ...buildFilmIndex(films) };
+}
+
+/** 影片目录索引:`filmNodeKey` / `filmInfoOf` / `ratingOf` / AI 打包都在按片名线性扫目录
+ *  (O(screenings × films))。这里把「目录中文名(无则原始片名)」与「原始片名」两个命中口径
+ *  预计算成两张 Map,消费方改走 O(1) 查表。生产(loadCatalog)与测试夹具共用本函数。 */
+export function buildFilmIndex(films: FilmItem[]): {
+  filmByZh: Map<string, FilmItem[]>;
+  filmByOrig: Map<string, FilmItem[]>;
+} {
+  const filmByZh = new Map<string, FilmItem[]>();
+  const filmByOrig = new Map<string, FilmItem[]>();
+  const push = (m: Map<string, FilmItem[]>, k: string, f: FilmItem): void => {
+    const arr = m.get(k);
+    if (arr) arr.push(f);
+    else m.set(k, [f]);
+  };
+  for (const f of films) {
+    const zhKey = f.title_zh || f.title_orig;
+    if (zhKey) push(filmByZh, zhKey, f);
+    if (f.title_orig) push(filmByOrig, f.title_orig, f);
+  }
+  return { filmByZh, filmByOrig };
 }
 
 /** 某日各厅的场次,厅顺序按 venues.json 出现顺序(未登记厅排在最后) */

@@ -14,7 +14,7 @@ const TIP_GAP = 14; // 距光标偏移 px
 const EDGE = 8; // 距视口边缘留白 px
 
 const TIP_CLS =
-  "fixed z-[300] tip-card px-[11px] py-[9px] rounded-[9px] text-[12px] leading-[1.55] " +
+  "fixed z-[300] tip-card px-[11px] py-[9px] rounded-9 text-12 leading-[1.55] " +
   "bg-[var(--toast-bg)] text-on-brand pointer-events-none " +
   "shadow-[var(--shadow-modal)] is-hidden";
 
@@ -22,6 +22,9 @@ let tipEl: HTMLDivElement | null = null;
 let cur: HTMLElement | null = null; // 当前触发元素
 let timer: number | undefined;
 let bound = false;
+/** 最近一次指针坐标 —— 延迟显示时用的是「最新」位置,而不是事件快照(80ms 内光标会移动) */
+let lastX = 0;
+let lastY = 0;
 
 function ensure(): HTMLDivElement {
   if (!tipEl) {
@@ -72,9 +75,14 @@ function hide(): void {
   tipEl?.classList.add("is-hidden");
 }
 
-function show(e: PointerEvent): void {
-  const host = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-tip]");
-  if (!host) return;
+/** 供外部主动收起(如打开弹层时)—— 触屏点带 data-tip 的元素会显示提示,
+ *  若该元素同时打开弹层,提示会浮在弹层之上,故开层前先收掉。 */
+export function hideTip(): void {
+  hide();
+}
+
+/** 为某元素显示提示(延迟 TIP_DELAY;坐标取 `lastX/lastY`,调用方负责先更新) */
+function showAt(host: HTMLElement): void {
   if (cur === host && tipEl && !tipEl.classList.contains("is-hidden")) return; // 已在显示,仅挪位置
   cur = host;
   window.clearTimeout(timer);
@@ -82,8 +90,17 @@ function show(e: PointerEvent): void {
     const el = ensure();
     paint(el, host.dataset.tip ?? "");
     el.classList.remove("is-hidden"); // 先显示再量尺寸(offsetWidth/Height 需要可见)
-    place(el, e.clientX, e.clientY);
+    place(el, lastX, lastY);
   }, TIP_DELAY);
+}
+
+/** 指针进入带 data-tip 的元素:记坐标 + 请求显示 */
+function show(e: PointerEvent): void {
+  const host = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-tip]");
+  if (!host) return;
+  lastX = e.clientX;
+  lastY = e.clientY;
+  showAt(host);
 }
 
 function place(el: HTMLDivElement, x: number, y: number): void {
@@ -102,6 +119,8 @@ function place(el: HTMLDivElement, x: number, y: number): void {
 }
 
 function move(e: PointerEvent): void {
+  lastX = e.clientX;
+  lastY = e.clientY;
   if (cur && tipEl && !tipEl.classList.contains("is-hidden")) place(tipEl, e.clientX, e.clientY);
 }
 
@@ -112,6 +131,39 @@ function onOver(e: PointerEvent): void {
 function onOut(e: PointerEvent): void {
   const rel = e.relatedTarget instanceof Node ? (e.relatedTarget as HTMLElement) : null;
   // 移到另一个(或同一 host 内子元素)data-tip 区 → 交给 pointerover 接管更新文本,避免连续徽章间闪烁
+  if (rel?.closest?.("[data-tip]")) return;
+  hide();
+}
+
+/** pointerdown 兜底:
+ *  · 鼠标 → 收起(点击 / 拖动前不让提示残留);
+ *  · 触屏 → 没有 hover,点一下带 data-tip 的元素就**显示**提示(再点别处收起),
+ *    否则全站只存在于 data-tip 的信息(场次数 / 转场算式 / 徽章含义)在触屏上完全不可达。 */
+function onDown(e: PointerEvent): void {
+  if (e.pointerType === "touch") {
+    const host = (e.target as HTMLElement | null)?.closest?.<HTMLElement>("[data-tip]");
+    if (host) {
+      lastX = e.clientX;
+      lastY = e.clientY;
+      showAt(host);
+      return;
+    }
+  }
+  hide();
+}
+
+/** 键盘可达:focus 到带 data-tip 的元素时同样显示(锚在元素左下角) */
+function onFocusIn(e: FocusEvent): void {
+  const host = (e.target as HTMLElement | null)?.closest?.<HTMLElement>("[data-tip]");
+  if (!host) return;
+  const r = host.getBoundingClientRect();
+  lastX = r.left;
+  lastY = r.bottom;
+  showAt(host);
+}
+
+function onFocusOut(e: FocusEvent): void {
+  const rel = e.relatedTarget instanceof Node ? (e.relatedTarget as HTMLElement) : null;
   if (rel?.closest?.("[data-tip]")) return;
   hide();
 }
@@ -127,6 +179,8 @@ export function attachTip(): void {
   document.addEventListener("pointerover", onOver);
   document.addEventListener("pointerout", onOut);
   document.addEventListener("pointermove", move);
-  document.addEventListener("pointerdown", hide, true); // 点击/拖动前收起,避免弹层打开后残留
+  document.addEventListener("pointerdown", onDown, true);
+  document.addEventListener("focusin", onFocusIn);
+  document.addEventListener("focusout", onFocusOut);
   document.addEventListener("scroll", onScroll, true);
 }

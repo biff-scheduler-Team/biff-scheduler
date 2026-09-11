@@ -13,6 +13,13 @@
 
 用法:
   python enrich_douban.py --xlsx <path> --out enriched.json [--limit N] [--delay 4.5]
+  python enrich_douban.py --films-json public/films.json --out enriched.json [--limit N]
+
+数据源(二选一):
+* --xlsx        官方影片信息 xlsx —— 有 xlsx 的年份优先(列名:单元/备注/中文片名/原始片名/
+                年份/评分/评价人数/国家/地区/导演)。
+* --films-json  public/films.json 目录片清单 —— 只有 PDF 产物、拿不到官方 xlsx 的年份走这条
+                (2025 即属此类;字段与 xlsx 一一对应,`remark`/`rating_count` 即「备注」/「评价人数」)。
 """
 import argparse
 import json
@@ -54,14 +61,16 @@ def big_poster(img: str) -> str:
     return BIG_POSTER.sub("/l/", img)
 
 
-def build_queries(c: str, d: str):
+def build_queries(c, d):
+    """检索词列表:原始片名 → 中文片名。
+
+    刻意**只取这两个**,不再拼「原始片名 + 中文片名」的组合串:
+    * 组合串在豆瓣 suggest 上几乎不可能命中(实测),却让每个 miss 多花 2 次请求;
+    * 长跑按 60s/请求计,miss 从 4 次降到 2 次 —— 250 部总时长约省 4 小时(见 PLAN-20260911005911 §5)。
+    """
     qs = []
     for s in (d, c):
         s = norm(s)
-        if s and s not in qs:
-            qs.append(s)
-    joined = [norm(x) for x in (f"{d} {c}", f"{c} {d}") if norm(x)]
-    for s in joined:
         if s and s not in qs:
             qs.append(s)
     return qs
@@ -83,10 +92,13 @@ def score_item(it, c: str, d: str, expect_year):
     return score, year
 
 
-def match_film(c, d, expect_year, delay, max_sleep):
+def match_film(c, d, expect_year, delay):
     qs = build_queries(c, d)
     if not qs:
         return None, "无检索词"
+    # 候选必须显式初始化:否则第一轮 `s > best_score` 就 UnboundLocalError(实测踩过)。
+    best = None
+    best_score = 0.0
   # 只跑一轮(慢速 60s+ 间隔下基本不会限流;miss 行无 douban_id,重跑会自动补)
     for q in qs:
         try:
@@ -142,18 +154,53 @@ def load_rows(xlsx_path):
     return rows
 
 
+def load_rows_from_json(json_path, limit=0):
+    """从 public/films.json(目录片清单)构造与 `load_rows()` **同形状**的行。
+
+    只有 PDF 产物、拿不到官方 xlsx 的年份走这条入口(2025 即属此类)。
+    字段一一对应:`remark` → 备注、`rating_count` → 评价人数;
+    数值字段(year / rating / rating_count)统一转成字符串,与 xlsx 分支口径一致。
+    """
+    with open(json_path, encoding="utf-8") as f:
+        films = json.load(f).get("films", [])
+    if limit:
+        films = films[:limit]
+    rows = []
+    for i, film in enumerate(films, start=1):
+        rows.append({
+            "row": i,
+            "unit": norm(film.get("unit")),
+            "note": norm(film.get("remark")),
+            "title_zh": norm(film.get("title_zh")),
+            "title_orig": norm(film.get("title_orig")),
+            "year": norm(film.get("year")),
+            "rating": norm(film.get("rating")),
+            "voters": norm(film.get("rating_count")),
+            "country": norm(film.get("country")),
+            "director": norm(film.get("director")),
+        })
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--xlsx", required=True)
+    ap.add_argument("--xlsx", help="官方影片信息 xlsx(与 --films-json 二选一)")
+    ap.add_argument("--films-json", help="public/films.json 目录片清单(与 --xlsx 二选一)")
     ap.add_argument("--out", default="enriched.json")
     ap.add_argument("--limit", type=int, default=0, help="只处理前 N 部(调试用)")
-    ap.add_argument("--delay", type=float, default=4.5)
-    ap.add_argument("--max-sleep", type=float, default=15.0)
+    ap.add_argument("--delay", type=float, default=4.5,
+                    help="每个豆瓣请求之间的间隔秒数(长跑建议 60 = 每分钟一次)")
     args = ap.parse_args()
 
-    rows = load_rows(args.xlsx)
-    if args.limit:
-        rows = rows[: args.limit]
+    if bool(args.xlsx) == bool(args.films_json):
+        ap.error("--xlsx 与 --films-json 必须二选一")
+
+    if args.films_json:
+        rows = load_rows_from_json(args.films_json, args.limit)
+    else:
+        rows = load_rows(args.xlsx)
+        if args.limit:
+            rows = rows[: args.limit]
     print(f"共 {len(rows)} 部影片,基础间隔 {args.delay}s")
 
     done = {}
@@ -173,7 +220,7 @@ def main():
             continue
         hit, err = match_film(film["title_zh"], film["title_orig"],
                               int(film["year"]) if film["year"].isdigit() else None,
-                              args.delay, args.max_sleep)
+                              args.delay)
         if hit:
             done[film["row"]] = {**film, **hit}
             stats[hit["confidence"]] += 1
@@ -186,7 +233,9 @@ def main():
         print(f"[{idx}/{len(rows)}] 行{film['row']} {film['title_zh'][:18]} -> {tag}", flush=True)
         with open(args.out, "w", encoding="utf-8") as f:
             json.dump(list(done.values()), f, ensure_ascii=False, indent=1)
-        time.sleep(args.delay * 0.5)  # 行间小停顿
+        # 行间停顿**固定 5s**,不随 --delay 放大 —— 否则 delay=60 时会额外叠加 30s,
+        # 实际节奏变成 90s/部(2026-09-11 跑一晚上时踩过,见 PLAN-20260911005911 §5)。
+        time.sleep(5)
 
     print("\n== 完成 ==", stats)
     miss = [x for x in done.values() if not x.get("douban_id")]

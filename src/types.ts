@@ -129,6 +129,10 @@ export interface Mapping {
   douban_url: string | null;
 }
 
+/** 外观偏好:三态 —— 跟随系统 / 亮色(普通)/ 暗色。
+ *  CSS 只认 `<html data-theme>`,解析与持久化见 `theme.ts`。 */
+export type ThemePref = "system" | "light" | "dark";
+
 export interface Settings {
   alarmMin: number; // .ics 提醒提前量（默认 45）
   transitMin: number; // 跨影院转场缓冲（默认 0，M3 按场馆对覆盖）
@@ -137,6 +141,8 @@ export interface Settings {
   /** GV 映后谈默认时长(分钟)。**单场覆写 `store.gvTalkMinOv[code]` 优先**,缺省用本值;默认 25。
    *  仅 `is_gv` 场次生效;0 = 不拆映后段。口径见 `gv.ts` 文件头(时长可配置,不再从数据推导)。 */
   gvTalkMin: number;
+  /** 外观偏好(未设过 = 跟随系统)。顶栏「外观」按钮三态循环,见 `theme.ts`。 */
+  theme?: ThemePref;
   /** 甘特**整体等比**缩放倍率(1 = 100%,基准行高 92px = `grid.ts::ROW_H`;阶梯 0.55 / 0.7 / 0.9 / 1 / 1.2)。
    *  横向时间刻度与纵向行高共用它,卡片内字号 / 留白 / 徽章行也按同一倍率线性缩。
    *  视图偏好:随设置持久化,但不出现在设置弹层。
@@ -151,4 +157,8 @@ export interface Catalog {
   venueById: Map<string, Venue>;
   byCode: Map<string, Screening>;
   films: FilmItem[]; // 影片目录(可先于排期发布,按 id 与排期 title 关联)
+  /** 目录索引:目录中文名(无中文名则原始片名)→ 条目。`filmNodeKey` / `filmInfoOf` 的命中口径① */
+  filmByZh: Map<string, FilmItem[]>;
+  /** 目录索引:原始片名 → 条目。命中口径②(原始片名 == 排期英文名) */
+  filmByOrig: Map<string, FilmItem[]>;
 }

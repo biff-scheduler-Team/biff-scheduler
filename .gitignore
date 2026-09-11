@@ -12,3 +12,13 @@ dev-dist/
 
 # 临时探针脚本(数据调研用,不进版本库)
 tools/_probe_*.py
+
+# 海报试看用的临时图(正式海报在 public/posters/,**要进版本库** ——
+# 未来走 Cloudflare Git 集成构建,CI 里没有本地文件,海报必须在仓库里)
+data/poster-preview/
+
+# 一次性长跑的脚本与日志(2026 富化夜跑,见 PLAN-20260911005911)
+data/_*
+
+# Python 字节码缓存(离线管线 tools/*.py 运行时产生,不进版本库)
+__pycache__/
