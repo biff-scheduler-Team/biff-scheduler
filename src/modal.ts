@@ -76,15 +76,17 @@ function trapTab(box: HTMLElement, ev: KeyboardEvent): void {
   }
 }
 
-/** 弹层宽度档:`md` 520 / `lg` 640。
- *  **`xl`(1280)已删**(2026-09-10,`PLAN-20260910184745`):它当初只为「影片库 · 我的选片」
- *  的左右双栏弹窗存在,而那块已改为 `<main>` 内的挤压式抽屉 —— 弹层里再无调用点,留着就是死档。
+/** 弹层宽度档:`md` 520 / `lg` 640 / `xl` 880。
+ *  `xl` 是**说明类长文档**专用(2026-09-11 重排「日程表说明」时加回 —— 旧的那个 1280 双栏档
+ *  已随「影片库 · 我的选片」改成挤压式抽屉而删除,这里是新语义、新宽度):字段表 / 影院表
+ *  在 640 下三列挤成一团,880 才让每行有呼吸位。
  *  兼容旧的布尔第三参 —— `true → lg`、`false / 省略 → md`(存量调用点不必改)。 */
-export type ModalSize = "md" | "lg";
+export type ModalSize = "md" | "lg" | "xl";
 
 const MODAL_WIDTH: Record<ModalSize, string> = {
   md: "w-[520px]",
   lg: "w-[640px]",
+  xl: "w-[880px]",
 };
 
 export function openModal(
@@ -197,9 +199,10 @@ interface FilmModalCtx {
  *  三态(2026-09-10 重排层级,见 PLAN-20260910184745 §8):
  *    ① 未加入 = **中性描边次要按钮**(原为红渐变主按钮 —— 红色实底现在让给「定位 ▸」这唯一主操作,
  *       两枚红按钮并排会互相抢眼,分不出主次);
- *    ② 已加入当前方案 = **纯状态标签**(绿勾 + 绿字,无底无框)—— 它表达的是「这场已在方案里」这个
- *       **状态**,用按钮外形会让人以为是待点的操作。⚠ 但仍**保留可点 = 移出**(否则这里就失去了
- *       移除入口),故留 `cursor-pointer` + hover 下划线 + tooltip 明说「点击移出」;
+ *    ② 已加入当前方案 = **绿描边按钮**(绿勾 + 绿字,与「＋ 加入」**等宽**)—— 原先做成无底无框的
+ *       纯状态标签,但那样按钮一窄就把左侧「定位 ▸」顶走(见 `short` 的等宽注释);现改为同宽按钮,
+ *       hover 转红 = 移出。⚠ 仍**保留可点 = 移出**(否则这里就失去了移除入口),
+ *       tooltip 明说「点击移出」;
  *    ③ 已在另一方案 = 中性描边,hover 转红。
  *  ⚠ 文案必须与 toggleScreening() 的真实语义一致:一场只属于一个方案,点「已在 B 方案」的按钮
  *  是**移出**(不是搬运)—— 重绘修好之后按钮会当场翻成「＋ 加入」,再点一次才是改入,
@@ -207,9 +210,13 @@ interface FilmModalCtx {
  *  ⚠ **「加入」不写方案名**(2026-09-10):列表 / 网格整个就是当前方案(A/B 由顶栏切换),
  *  「加入 A 方案」把「你正在看的那一个」重复了一遍 —— 只在**跨方案**那态才点名(「已在 B 方案」),
  *  因为那才是「不在你当前方案里」这条信息本身。
- *  ⚠ `short` = **紧凑标签**(2026-09-11 四改):抽屉里的场次行第 1 行要留宽度给章组,
+ *  ⚠ `short` = **紧凑档**(2026-09-11 四改):抽屉里的场次行第 1 行要留宽度给章组,
  *  故那里只渲染一枚符号(文案全走 `data-tip`)。弹层里有的是地方,继续用 `label`。
- *  两者必须**同源**在这里改,否则抽屉与弹层会显示成两种语义。 */
+ *  两者必须**同源**在这里改,否则抽屉与弹层会显示成两种语义。
+ *  ⚠ **三态必须等宽**(2026-09-11 五改):原先「已加入」是无底无框的纯状态标签,宽度从 ≈32px 掉到
+ *  ≈7px —— 按钮一窄,左侧「定位 ▸」整枚右移,用户刚点完「＋ 加入」就得重新找定位按钮
+ *  (用户原话:「加入方案按钮点击后会变小,然后定位按钮会偏移,请你把对钩也放到按钮里面,
+ *  和 + 号一样大小」)。现在三态共用同一个盒子 + `min-w` + 内容居中,宽度恒定。 */
 export function actState(
   code: string,
   group: string
@@ -217,14 +224,15 @@ export function actState(
   const btn =
     "border rounded-6 px-[9px] py-[3px] text-12 font-bold whitespace-nowrap " +
     "transition-[background-color,border-color,color] duration-[120ms] active:translate-y-px ";
+  /** 抽屉里的**紧凑档** = 同一个盒子 + `min-w` + 内容居中 —— 三态宽度恒定,
+   *  「＋ 加入 ↔ ✓ 已加入」切换时按钮不缩放,左侧「定位 ▸」也就不会偏移。 */
+  const shortCls = btn + "min-w-[36px] inline-flex items-center justify-center ";
   const hit = slotOf(code);
   if (hit?.group === group) {
     return {
       label: "✓ 已加入",
       short: "✓",
-      cls:
-        "border-0 bg-transparent p-0 text-12 font-bold whitespace-nowrap text-ok " +
-        "cursor-pointer underline-offset-2 hover:underline",
+      cls: shortCls + "border-ok bg-card text-ok hover:border-conf hover:text-conf",
       tip: "该场已在当前方案 — 点击移出(影片的选片意向 / 档位不受影响)",
     };
   }
@@ -232,14 +240,14 @@ export function actState(
     return {
       label: `⇄ 已在 ${hit.group}`,
       short: `⇄${hit.group}`,
-      cls: btn + "border-line bg-card text-ink-2 hover:border-biff hover:text-biff-ink",
+      cls: shortCls + "border-line bg-card text-ink-2 hover:border-biff hover:text-biff-ink",
       tip: `该场在 ${hit.group} 方案(不是当前方案)— 一场只能属于一个方案:点击先移出,按钮会翻成「＋ 加入」,再点一次即改入当前方案`,
     };
   }
   return {
     label: "＋ 加入",
     short: "＋",
-    cls: btn + "border-line bg-card text-ink hover:border-biff hover:text-biff-ink",
+    cls: shortCls + "border-line bg-card text-ink hover:border-biff hover:text-biff-ink",
     tip: "把该场加入当前方案",
   };
 }

@@ -2,6 +2,7 @@
 // 全量化:网格 / 卡片 / 标签 / 时间标尺 / 转场紧底色提示 / ⓘ / 冲突旗 / 其他旗 全部 Tailwind utility。
 
 import type { Catalog, Group, Mapping, Priority, Screening } from "./types";
+import type { ConflictResult } from "./conflict";
 import { displayTitle, el, fmtEndClock, fmtMinRange, fmtMinRangeMin, hmsToMin, slackBetween, todayIsoLocal } from "./util";
 import { screeningsByVenue } from "./data";
 import { codeTip } from "./badges";
@@ -143,6 +144,8 @@ export interface GridCtx {
   group: Group;
   mappingOf: (code: string) => Mapping | undefined; // 豆瓣映射(回填中文名)
   conflictCodes: Set<string> | undefined; // 当日、当前方案冲突 code
+  /** 当日、当前方案冲突 pair(与 conflictCodes 同源)—— 卡片 hover 说明 + 跨行连线都读它 */
+  conflictPairs?: [string, string][];
   transitMin: number; // 跨馆转场缓冲(1a 余量判定)
   /** GV 映后谈是否参加(全局默认 + 单场覆写解析后):决定正片/整场拆分、紧转场按哪段结束算 */
   gvTalkOf: (code: string) => boolean;
@@ -210,8 +213,13 @@ export function buildGrid(ctx: GridCtx, date: string): HTMLElement {
   // 未选中的白卡落在灰底上才有轮廓(旧版画布无底色 → 透出面板白,与卡片「白底叠白底」)。
   const scroll = el("div", "overflow-x-auto pb-[6px] cursor-grab bg-page rounded-8");
   scroll.dataset.grid = "1"; // 复用路径的锚点标记(见 main.ts::renderGrid / patchGridStates)
-  const min = el("div", "w-max min-w-full");
+  const min = el("div", "relative w-max min-w-full");
   min.style.width = `${totalW}px`;
+  // 冲突连线层(见 drawConflictLinks):覆盖整个画布、`pointer-events-none`,且**是首个子节点** ——
+  // 先画即落在行 / 卡片**之下**,连线只从两张冲突卡之间的空白处露出,不会糊在文字上。
+  const linkLayer = el("div", "absolute inset-0 pointer-events-none");
+  linkLayer.dataset.confLinks = "1";
+  min.appendChild(linkLayer);
 
   // 时间标尺(ruler):底部强描边与场馆行分隔。粘性列空占位(动态轴首根整点标签左锚定画在轨道内,
   // 替代旧「9:00 放粘性列」的写法 —— 轴界不再固定 9 点,只有当日首场那一格需要贴左)。
@@ -644,10 +652,31 @@ export interface CardState {
   star: Priority | undefined;
   /** 另一方案角标(undefined = 不显示) */
   otherGroup: Group | undefined;
-  /** 冲突 ⚠(与 isConflict 同源,单独列出便于 patch 直接 toggle) */
+  /** 冲突角标(与 isConflict 同源,单独列出便于 patch 直接 toggle) */
   warn: boolean;
+  /** 冲突卡的 hover 说明(列出每一个冲突对方;undefined = 不冲突) */
+  conflictTip: string | undefined;
   /** GV 谈块(undefined = 该场无谈段,不建块也不 patch) */
   talk: TalkState | undefined;
+}
+
+/** 冲突卡的 hover 说明:逐个列出与之时间重叠的场次(CODE + 片名 + 时段 + 影厅)。
+ *  这是「两张冲突卡隔着几十行、高亮也照不到对方」时最直接的信息兜底 —— 不用滚到对面就知道撞的是谁。 */
+function conflictTipOf(s: Screening, ctx: GridCtx, isConflict: boolean): string | undefined {
+  if (!isConflict || !ctx.conflictPairs?.length) return undefined;
+  const others = ctx.conflictPairs
+    .filter(([a, b]) => a === s.code || b === s.code)
+    .map(([a, b]) => (a === s.code ? b : a));
+  if (others.length === 0) return undefined;
+  const lines = others.map((c) => {
+    const o = ctx.cat.byCode.get(c);
+    if (!o) return c;
+    const zh = displayTitle(o, ctx.mappingOf(c)?.title_cn);
+    const v = ctx.cat.venueById.get(o.venue_id);
+    const vTxt = v ? v.code ?? v.id.toUpperCase() : o.venue_display;
+    return `${c}《${zh}》${o.start_time.slice(0, 5)}–${o.end_time.slice(0, 5)} · ${vTxt}`;
+  });
+  return ["时间重叠 — 与下列场次无法同时观看", ...lines].join("\n");
 }
 
 /** 计算某场次在网格上的**全部状态**(纯函数:只读 ctx,不碰 DOM、不改入参)。
@@ -707,6 +736,7 @@ export function cardStateOf(s: Screening, ctx: GridCtx): CardState {
     star: ctx.wishOf?.(s),
     otherGroup: inOther ? slot!.group : undefined,
     warn: isConflict,
+    conflictTip: conflictTipOf(s, ctx, isConflict),
     talk: talkState,
   };
 }
@@ -739,6 +769,8 @@ function applyCardState(card: HTMLElement, st: CardState): void {
     if (st.otherGroup) grp.textContent = st.otherGroup;
   }
   if (warn) warn.classList.toggle("is-hidden", !st.warn);
+  // 冲突说明:patch 路径上一步已清空所有卡片的 tip,这里按状态重新挂上(非冲突卡保持无 tip)
+  if (st.conflictTip) card.dataset.tip = st.conflictTip;
   if (info) setVocab(info, [INFO_ALWAYS_CLS, INFO_HOVER_CLS], st.inOther ? INFO_ALWAYS_CLS : INFO_HOVER_CLS);
 }
 
@@ -880,11 +912,16 @@ function appendCard(
   scaleText(grpTag, 9, fontScale);
   card.appendChild(grpTag);
 
-  const warn = el("span", "absolute right-[22px] top-[2px] text-11 text-conf", "⚠");
+  // 冲突角标 = **实心红点**(取代旧 ⚠ 字形 —— 用户明确不要 emoji)。位置与右上角 ⓘ 并列,
+  // 直径随行高等比缩(与卡片内其他组件同一缩放口径);颜色与整卡红底 / 红框同族。
+  const dot = +(7 * fontScale).toFixed(2);
+  const warn = el("span", "absolute right-[22px] top-[3px] rounded-full bg-conf pointer-events-none");
   warn.dataset.warn = "1";
+  warn.style.width = `${dot}px`;
+  warn.style.height = `${dot}px`;
   warn.classList.toggle("is-hidden", !st.warn);
-  scaleText(warn, 11, fontScale);
   card.appendChild(warn);
+  if (st.conflictTip) card.dataset.tip = st.conflictTip;
 
   tracks.appendChild(card);
 
@@ -954,6 +991,63 @@ export function gridGeometryKey(cat: Catalog, date: string, pxPerMin: number, ro
   return acc;
 }
 
+/** 冲突**跨行连线**:把同一冲突组的两张卡用一条红色虚线连起来(落在两卡时间重叠段的中点)。
+ *
+ *  为什么需要它:甘特图一行 = 一个影厅,29 行一屏根本放不下。冲突的两张卡常常一张在最上面、
+ *  一张在最下面 —— 现有的 hover 高亮只能亮「看得见的那一张」,用户不知道对面在哪(原话:
+ *  「我选了一个最下方的冲突,这样高亮我也看不到最上面的」)。连线的两端画在两张卡**相邻的那条边**
+ *  (上卡的底边 → 下卡的顶边),中间穿过空白行;即使对面在屏幕外,也能顺着线看出「往上/往下还有一张」。
+ *
+ *  ⚠ 必须在**挂载后**调用:行高 / 卡片位置全部实测(`getBoundingClientRect`),不读任何常量 ——
+ *    行高随缩放变、行与行之间还有 1px 分隔线,算出来的坐标迟早会漂。
+ *  ⚠ 连线层是 `min` 的**首个子节点**(见 buildGrid):先画 → 落在行 / 卡片**之下**,
+ *    只从空白处露出,不会糊在卡片文字上。 */
+export function drawConflictLinks(grid: HTMLElement, conflicts: ConflictResult | undefined): void {
+  const min = grid.firstElementChild as HTMLElement | null;
+  const layer = min?.querySelector<HTMLElement>('[data-conf-links="1"]');
+  if (!min || !layer) return;
+  layer.replaceChildren();
+  if (!conflicts || conflicts.pairs.length === 0) return;
+
+  const box = min.getBoundingClientRect();
+  const conf = "var(--color-conf)";
+  for (const [a, b] of conflicts.pairs) {
+    const ca = grid.querySelector<HTMLElement>(`[data-card="1"][data-code="${a}"]`);
+    const cb = grid.querySelector<HTMLElement>(`[data-card="1"][data-code="${b}"]`);
+    if (!ca || !cb) continue; // 有一端不在当前视图(理论不会:冲突双方同属当前方案、同一天)
+    const ra = ca.getBoundingClientRect();
+    const rb = cb.getBoundingClientRect();
+    // 纵向:上卡的**底边** → 下卡的**顶边**(与 a/b 谁先谁后无关)
+    const [topRect, botRect] = ra.top <= rb.top ? [ra, rb] : [rb, ra];
+    const yTop = topRect.bottom - box.top;
+    const yBot = botRect.top - box.top;
+    if (yBot - yTop < 3) continue; // 同一行(理论不会:同影厅不可能同时开两场)
+    // 横向:落在两卡**时间重叠段**的中点;无重叠(防御分支)则退化为两卡中点
+    const xL = Math.max(ra.left, rb.left) - box.left;
+    const xR = Math.min(ra.right, rb.right) - box.left;
+    const x = xR > xL ? (xL + xR) / 2 : ((ra.left + ra.right) / 2 + (rb.left + rb.right) / 2) / 2 - box.left;
+
+    const line = el("span", "absolute pointer-events-none");
+    line.style.left = `${x}px`;
+    line.style.top = `${yTop}px`;
+    line.style.height = `${yBot - yTop}px`;
+    line.style.borderLeft = `1.5px dashed ${conf}`;
+    line.style.opacity = "0.7";
+    layer.appendChild(line);
+    // 两端各一枚实心圆点,把「线头」钉在卡缘上(虚线在浅灰底上偏淡,圆点让它一眼可见)
+    for (const y of [yTop, yBot]) {
+      const cap = el("span", "absolute pointer-events-none rounded-full");
+      cap.style.left = `${x - 2.5}px`;
+      cap.style.top = `${y - 2.5}px`;
+      cap.style.width = "5px";
+      cap.style.height = "5px";
+      cap.style.background = conf;
+      cap.style.opacity = "0.7";
+      layer.appendChild(cap);
+    }
+  }
+}
+
 /** 就地重刷整张网格的**状态**(几何不动)。
  *  用于「几何签名未变」的变更:点选 / 移出 / 改档位 / 冲突变化 / 紧转场变化 / 时间筛选 / 方案切换。
  *
@@ -1002,7 +1096,7 @@ function talkTip(s: Screening, talk: number, talkOn: boolean, inCurrent: boolean
   const endMin = filmEndMin(s) + talk; // 谈段末 = 正片末 + 配置时长(时长可全局改 / 逐场覆写)
   const filmEnd = fmtEndClock(filmEndMin(s));
   const range = `${fmtMinRangeMin(filmEndMin(s), endMin)} 映后谈 ${talk}min(GV 嘉宾到场)`;
-  const howTo = "映后时长可在设置里改默认值,或在行程行点 ⏱ 逐场覆写";
+  const howTo = "映后时长可在设置里改默认值,或在行程行点映后胶囊的数字逐场覆写";
   if (!inCurrent)
     return [
       range,

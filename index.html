@@ -37,8 +37,8 @@
         <button data-g="A" class="border-0 px-3 py-[5px] text-13 bg-biff text-on-brand font-bold transition-colors" data-page-node-id="igz8hMRqGPgZBQAoypOgE5">A 方案</button>
         <button data-g="B" class="border-0 px-3 py-[5px] text-13 bg-card text-ink transition-colors" data-page-node-id="9NGCcOMtLYjVa069U4AMOI">B 方案</button>
       </div>
-      <button id="conflict-badge" class="inline-flex items-center gap-1 bg-biff-soft text-conf border border-biff-line rounded-full px-[10px] py-1 font-bold text-13 is-hidden" data-tip="查看冲突(打开抽屉 → 「我的行程」tab)" data-page-node-id="RJefHA9WlqGw0kZVvRysCv">⚠ <span id="conflict-count" data-page-node-id="IGFxWEo1sH0PHuxOOfOuDL">0</span></button>
-      <button id="library-btn" class="inline-flex items-center gap-[5px] border rounded-6 px-[14px] py-[6px] text-13 font-bold bg-card text-ink border-line hover:opacity-90" data-tip="打开左侧「选片 · 行程」抽屉(**不遮挡网格**,只是把网格挤窄一点 —— 打标 / 点选场次时始终看得到时间轴)&#10;面板内三个 tab(2026-09-10 加第三个,见 PLAN-20260910190916):&#10;  · **影片库**:全部影片(搜索 / 单元筛选)&#10;  · **我的选片**:按日期与档位筛选、看已排场次、定位、整片移除&#10;  · **我的行程**:按日期分组的已排场次(从主页面 #agenda-wrap 搬入,sticky 常驻可见)&#10;再点本按钮 / 面板内「收起 ✕」/ Esc = 收起&#10;⚠ 行程非空时进入页面会自动滑出(停在「我的行程」);在时间轴上点选一场也会滑出&#10;⚠ 拖面板**右缘**可调宽窄(双击复位 520px),宽度会被记住" data-page-node-id="1ONdB6TvcdouJmTHgyyGFI"><span id="picker-btn-label">选片 · 行程</span><span id="picker-count" class="is-hidden inline-flex items-center justify-center min-w-[16px] h-[16px] px-[4px] rounded-full text-11 font-extrabold text-on-brand bg-biff tabular-nums" data-page-node-id="Zq3rNv8Hs2KdPmWx5tLbAy">0</span></button>
+      <button id="conflict-badge" class="inline-flex items-center gap-1 bg-biff-soft text-conf border border-biff-line rounded-full px-[10px] py-1 font-bold text-13 is-hidden" data-tip="查看冲突(打开抽屉 → 「我的行程」tab)" data-page-node-id="RJefHA9WlqGw0kZVvRysCv">冲突 <span id="conflict-count" data-page-node-id="IGFxWEo1sH0PHuxOOfOuDL">0</span></button>
+      <button id="library-btn" class="inline-flex items-center gap-[5px] border rounded-6 px-[14px] py-[6px] text-13 font-bold bg-card text-ink border-line hover:opacity-90" data-tip="打开左侧「选片 · 行程」抽屉(**不遮挡网格**,只是把网格挤窄一点 —— 打标 / 点选场次时始终看得到时间轴)&#10;面板内三个 tab:&#10;  · **影片库**:全部影片(搜索 / 单元筛选)&#10;  · **我的选片**:按日期与档位筛选、看已排场次、定位、整片移除&#10;  · **我的行程**:按日期分组的已排场次(常驻可见)&#10;再点本按钮 / 面板内「收起 ✕」/ Esc = 收起&#10;行程非空时进入页面会自动滑出(停在「我的行程」);在时间轴上点选一场也会滑出&#10;拖面板**右缘**可调宽窄(双击复位 520px),宽度会被记住" data-page-node-id="1ONdB6TvcdouJmTHgyyGFI"><span id="picker-btn-label">选片 · 行程</span><span id="picker-count" class="is-hidden inline-flex items-center justify-center min-w-[16px] h-[16px] px-[4px] rounded-full text-11 font-extrabold text-on-brand bg-biff tabular-nums" data-page-node-id="Zq3rNv8Hs2KdPmWx5tLbAy">0</span></button>
       <div class="relative" data-export-wrap data-page-node-id="YGSIVmyFXJStGVbISCHllt">
         <button id="export-btn" class="border-0 rounded-6 px-[14px] py-[6px] text-13 font-bold text-on-brand bg-[linear-gradient(135deg,var(--biff-red)_0%,var(--biff-red-2)_100%)] hover:brightness-[1.05]" data-page-node-id="oHHWF16AQsUPtLManq0BXV">导出 .ics</button>
         <div id="export-menu" class="absolute right-0 top-[calc(100%+6px)] bg-card border border-line rounded-10 shadow-[var(--shadow)] p-[6px] min-w-[150px] z-[60] is-hidden" data-page-node-id="610rEVYENiLYRHZZtixo5u">
@@ -52,9 +52,9 @@
            选中态类名由 main.ts::renderThemeSeg 按 ui.ts 的 SEG_ON / SEG_OFF 渲染(与顶栏 A/B 方案同一视觉语言)。
            初渲默认把「系统」画成选中(偏好 = 未设 / system 的最常见情形);若用户存的是亮或暗,boot 后立即纠正。 -->
       <div id="theme-switch" class="inline-flex border border-line rounded-7 overflow-hidden" data-page-node-id="th3meSw1tch0000000001">
-        <button data-theme-pref="system" class="border-0 px-3 py-[5px] text-13 transition-colors bg-biff text-on-brand font-bold" data-tip="跟随系统外观 —— 随 macOS / Windows / 手机的深浅色自动切换" data-page-node-id="th3meSeg00000000000001">◐ 系统</button>
-        <button data-theme-pref="light" class="border-0 px-3 py-[5px] text-13 transition-colors bg-card text-ink" data-tip="固定亮色(普通模式)—— 不随系统变化" data-page-node-id="th3meSeg00000000000002">☀ 亮色</button>
-        <button data-theme-pref="dark" class="border-0 px-3 py-[5px] text-13 transition-colors bg-card text-ink" data-tip="固定暗色 —— 不随系统变化" data-page-node-id="th3meSeg00000000000003">☾ 暗色</button>
+        <button data-theme-pref="system" class="border-0 px-3 py-[5px] text-13 transition-colors bg-biff text-on-brand font-bold" data-tip="跟随系统外观 —— 随 macOS / Windows / 手机的深浅色自动切换" data-page-node-id="th3meSeg00000000000001">系统</button>
+        <button data-theme-pref="light" class="border-0 px-3 py-[5px] text-13 transition-colors bg-card text-ink" data-tip="固定亮色(普通模式)—— 不随系统变化" data-page-node-id="th3meSeg00000000000002">亮色</button>
+        <button data-theme-pref="dark" class="border-0 px-3 py-[5px] text-13 transition-colors bg-card text-ink" data-tip="固定暗色 —— 不随系统变化" data-page-node-id="th3meSeg00000000000003">暗色</button>
       </div>
       <button id="settings-btn" class="border rounded-6 px-[14px] py-[6px] text-13 font-bold bg-card text-ink border-line hover:opacity-90" data-tip="设置" data-page-node-id="npgS1fAjwczprzv5iPoZCC">设置</button>
     </div>
@@ -91,8 +91,19 @@
     <div id="main-col" class="relative flex-1 min-w-0 grid gap-4" data-page-node-id="mc0MainCol0000000000000">
       <section id="grid-wrap" class="bg-card border border-line rounded-8 p-[14px] min-w-0" data-page-node-id="UDVmNHtxaQ8LBW4RMKAvxQ">
         <div id="date-chips" class="flex gap-[6px] flex-wrap mb-[10px]" data-page-node-id="laZc2XY6YE1UCNZfyxjzDd"></div>
-        <div class="flex items-baseline justify-between mb-[10px] gap-2 flex-wrap" data-page-node-id="PqNAkzpjzbBJlBwKEjdAsA">
-          <h2 id="grid-date-title" class="m-0 text-15 inline-flex items-center gap-2 tracking-[0.01em] before:content-[''] before:w-[9px] before:h-[9px] before:border-[2.5px] before:border-biff before:rounded-2 before:box-border" data-page-node-id="kVKn3UBCFUzWJU8RoDz9sY"></h2>
+        <!-- 标题行:左 = 日期标题 + 图例条(2026-09-11 由网格下方搬到标题右侧),右 = 场次数 + 甘特缩放。
+             图例悬停说明:data-tip 用 &#10; 分行 —— 第 1 行作标题,其余逐条分点(渲染见 src/tip.ts) -->
+        <div class="flex items-baseline justify-between mb-[10px] gap-x-4 gap-y-2 flex-wrap" data-page-node-id="PqNAkzpjzbBJlBwKEjdAsA">
+          <div class="flex items-baseline gap-x-[14px] gap-y-2 flex-wrap min-w-0" data-page-node-id="grdTitleRow000000001">
+            <h2 id="grid-date-title" class="m-0 text-15 inline-flex items-center gap-2 tracking-[0.01em] before:content-[''] before:w-[9px] before:h-[9px] before:border-[2.5px] before:border-biff before:rounded-2 before:box-border" data-page-node-id="kVKn3UBCFUzWJU8RoDz9sY"></h2>
+            <div class="flex flex-wrap gap-[14px] text-12 text-muted items-center" data-page-node-id="eoDeBqVCujSXPrOYWZ8vQn">
+              <span data-tip="已选 — 已加入当前方案(A / B)&#10;整卡淡绿底,与「时间紧张」的淡黄底互斥"><i class="inline-block w-[10px] h-[10px] rounded-3 mr-[5px] align-[-1px] border border-ok" style="background:color-mix(in srgb, var(--color-ok) 14%, var(--color-card))"></i>已选</span>
+              <span data-tip="时间紧张 — 同方案相邻两场衔接偏紧&#10;间隔小于转场缓冲,或余量不足 15min&#10;两张卡整卡淡黄底;hover 卡片看完整算式"><i class="inline-block w-[10px] h-[10px] rounded-3 mr-[5px] align-[-1px] border border-tight" style="background:color-mix(in srgb, var(--color-tight) 24%, var(--color-card))"></i>时间紧张</span>
+              <span class="text-conf font-semibold inline-flex items-center" data-tip="完全冲突 — 同方案内两场放映时间重叠&#10;无法同时观看:整卡红底红框 + 右上角红点;两张卡若不在相邻影厅,会有一条红色虚线把它们的重叠时段连起来(不用来回滚动找对方)"><i class="inline-block w-[8px] h-[8px] rounded-full mr-[5px] align-[-1px] bg-conf"></i>完全冲突</span>
+              <span data-tip="我的选片档位 ★&#10;蓝 = 必看 · 品红 = 备选 · 灰蓝 = 随缘(冷色系,与红绿灯底色正交)&#10;在「影片库」/「我的选片」打标后,甘特卡标题行前出现 ★&#10;点顶栏「选片 · 行程」切到「我的选片」/「我的行程」tab 可总览"><span class="text-pri-must text-13 leading-none">★</span><span class="text-pri-maybe text-13 leading-none ml-[3px]">★</span><span class="text-pri-wild text-13 leading-none ml-[3px] mr-[5px]">★</span>我的选片</span>
+              <span id="abbr-help" class="cursor-help hover:text-biff-ink">ⓘ 日程表说明</span>
+            </div>
+          </div>
           <div class="flex items-center gap-[10px] flex-wrap ml-auto" data-page-node-id="kBcNFUpgEoVRTM8QgnhJcf">
             <span id="grid-count" class="text-muted text-13 font-normal" data-page-node-id="0uH3GMPDbJxAhH6NhgVuDc"></span>
             <!-- 甘特缩放:− / + 沿缩放阶梯走(横向时间刻度与纵向行高一起缩,卡片组件同倍率线性缩),
@@ -102,14 +113,6 @@
           </div>
         </div>
         <div id="grid-scroll" data-page-node-id="5FkgLrGnq0fDbM1jPTN9XE"></div>
-        <!-- 图例悬停说明:data-tip 用 &#10; 分行 —— 第 1 行作标题,其余逐条分点(渲染见 src/tip.ts) -->
-        <div class="flex flex-wrap gap-[14px] mt-[10px] text-12 text-muted items-center" data-page-node-id="eoDeBqVCujSXPrOYWZ8vQn">
-          <span data-tip="已选 — 已加入当前方案(A / B)&#10;整卡淡绿底,与「时间紧张」的淡黄底互斥"><i class="inline-block w-[10px] h-[10px] rounded-3 mr-[5px] align-[-1px] border border-ok" style="background:color-mix(in srgb, var(--color-ok) 14%, var(--color-card))"></i>已选</span>
-          <span data-tip="时间紧张 — 同方案相邻两场衔接偏紧&#10;间隔小于转场缓冲,或余量不足 15min&#10;两张卡整卡淡黄底;hover 卡片看完整算式"><i class="inline-block w-[10px] h-[10px] rounded-3 mr-[5px] align-[-1px] border border-tight" style="background:color-mix(in srgb, var(--color-tight) 24%, var(--color-card))"></i>时间紧张</span>
-          <span class="text-conf font-semibold" data-tip="完全冲突 — 同方案内两场放映时间重叠&#10;无法同时观看:整卡红底红框 + ⚠">⚠ 完全冲突</span>
-          <span data-tip="我的选片档位 ★(2026-09-10 起由 7px 色点改 15px 星标)&#10;蓝 = 必看 · 品红 = 备选 · 灰蓝 = 随缘(冷色系,与红绿灯底色正交)&#10;在「影片库」/「我的选片」打标后,甘特卡标题行前出现 ★&#10;点顶栏「选片 · 行程」切到「我的选片」/「我的行程」tab 可总览"><span class="text-pri-must text-13 leading-none">★</span><span class="text-pri-maybe text-13 leading-none ml-[3px]">★</span><span class="text-pri-wild text-13 leading-none ml-[3px] mr-[5px]">★</span>我的选片</span>
-          <span id="abbr-help" class="cursor-help hover:text-biff-ink">ⓘ 日程表说明</span>
-        </div>
       </section>
       <!-- 「我的行程」已于 2026-09-10 搬进选片抽屉的第三个 tab(`PLAN-20260910190916`),不再占主页面位置。 -->
     </div>

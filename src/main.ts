@@ -29,6 +29,7 @@ import {
 } from "./state";
 import {
   buildGrid,
+  drawConflictLinks,
   fitTimeTexts,
   fitZoomLevel,
   axisStartFor,
@@ -334,6 +335,7 @@ function renderGrid(opts: { force?: boolean } = {}): void {
     group: store.group,
     mappingOf: (c) => store.mappings.get(c),
     conflictCodes: conf?.codeSet,
+    conflictPairs: conf?.pairs,
     transitMin: store.settings.transitMin,
     gvTalkOf,
     wishOf: (s) => store.picks.get(filmNodeKey(cat, s))?.priority ?? undefined,
@@ -353,6 +355,7 @@ function renderGrid(opts: { force?: boolean } = {}): void {
     key === lastGridKey
   ) {
     patchGridStates(host, ctx, currentDate);
+    drawConflictLinks(host, conf); // 冲突组变化 → 跨行连线随之重画(挂载后实测,不读常量)
     renderGridMeta();
     return;
   }
@@ -380,6 +383,7 @@ function renderGrid(opts: { force?: boolean } = {}): void {
   lastGridDate = currentDate;
   lastGridKey = key;
   fitTimeTexts(grid); // 挂载后量测:窄卡时间文本降级,绝不截断
+  drawConflictLinks(grid, conf); // 挂载后量测:把同一冲突组的两张卡跨行连起来(隔着几十行也看得见)
   renderGridMeta();
 }
 
@@ -601,6 +605,13 @@ function bindEvents(): void {
       return;
     }
 
+    // 行程冲突行的 CODE 胶囊 → 在网格里定位到冲突对方(跨影厅时不用来回滚动找)
+    const jumpCode = t.closest<HTMLElement>("[data-jump-code]");
+    if (jumpCode) {
+      jumpToScreening(jumpCode.dataset.jumpCode!);
+      return;
+    }
+
     // 行程日期头「在网格中查看这一天」-> 网格切到该日期 + 当天行程场次卡片批量闪烁 3s。
     // (原先是抽屉内 `scrollIntoView` —— 行程已在抽屉里、目标行本就在视口内,等于没反应,故改为切网格。)
     const jump = t.closest<HTMLElement>("[data-jump]");
@@ -710,7 +721,19 @@ function centerCardX(scroll: HTMLElement, card: HTMLElement): void {
   });
 }
 
-/** 页面滚到排片面板(顶部被吸顶栏盖住的部分留出)—— jumpToScreening / jumpToDate 共用 */
+/** 纵向把某张卡滚到**视口中央** —— 与 `centerCardX`(横向)对称的「定位」落点口径。
+ *  网格 29 厅 × 92px ≈ 2670px,只滚到网格顶部的话目标影厅往往还在视口外(用户反馈:
+ *  「只有左右的位置上是对的,上下的位置还需要再滑动」),故单场定位必须**同时**管纵向。
+ *  居中而非贴顶:目标行上下都留有上下文;顶栏 sticky 64px 在居中位置之上,不会遮住卡片。
+ *  ⚠ `#grid-scroll` 只负责横向滚动,纵向由**页面**承担 —— 故这里滚 `window` 而不是容器。 */
+function centerCardY(card: HTMLElement): void {
+  const r = card.getBoundingClientRect();
+  const top = window.scrollY + r.top - (window.innerHeight - r.height) / 2;
+  window.scrollTo({ top: Math.max(top, 0), behavior: "smooth" });
+}
+
+/** 页面滚到排片面板(顶部被吸顶栏盖住的部分留出)—— **仅 `jumpToDate`(定位「整天」)使用**:
+ *  它要展示的是当天全部场次,故停在网格顶部;单场定位改走 `centerCardY` 纵向居中到该影厅行。 */
 function scrollGridTop(): void {
   const wrap = document.getElementById("grid-wrap");
   if (!wrap) return;
@@ -743,13 +766,17 @@ function jumpToScreening(code: string): void {
   // 再定位 B」每次都要重新打开抽屉(正是「有去无回」那条老毛病)。网格变窄由下面的居中逻辑自然
   // 吸收:`scroll.clientWidth` 已是挤压后的宽度,卡片照样居中。
   gotoDate(s.date);
-  scrollGridTop();
-  // 等两帧布局稳定后:横向滚到卡片 + 带底色闪烁 3s(1s × 3)
+  // 等两帧布局稳定后:横向居中 + **纵向居中到该影厅行** + 带底色闪烁 3s(1s × 3)。
+  // ⚠ 纵向不能在切日期前滚(那时网格还是旧日期的高度,量出来的 rect 作废),故一并放进 afterLayout。
   afterLayout(() => {
     const scroll = document.getElementById("grid-scroll");
     const card = scroll?.querySelector<HTMLElement>(`[data-code="${code}"]`);
-    if (!scroll || !card) return;
+    if (!scroll || !card) {
+      scrollGridTop(); // 兜底:卡片没找到时至少把网格带进视口
+      return;
+    }
     centerCardX(scroll, card);
+    centerCardY(card);
     flashScreening(scroll, code); // 正片卡 + 映后谈块一起闪
   });
 }
@@ -863,7 +890,7 @@ async function boot(): Promise<void> {
   const abbrHelp = document.getElementById("abbr-help");
   if (abbrHelp) {
     abbrHelp.dataset.tip = `${abbrTooltip()}\n点击打开完整说明总览(字段 / 等级 / 字幕 / 影院代码)`;
-    abbrHelp.addEventListener("click", () => openModal("排片表说明 · 图例总览", buildGuideBody(cat), true));
+    abbrHelp.addEventListener("click", () => openModal("日程表说明 · 字段与图例", buildGuideBody(cat), "xl"));
   }
   renderAll();
   // 窄屏(≤768px)**列表优先**:首次进入直接打开抽屉,网格降级为次级入口 ——

@@ -17,17 +17,14 @@
 //      · 操作组**永远在第 1 行右缘**(外层只有两个格子,它没地方可去);
 //      · 「身份 + 章组」自己流式折行 —— 第 1 行先被填满,装不下的章组逐枚折到第 2 行**左对齐**。
 //    效果(520px 档):
-//      `[001][BT] 9/17 18:00–22:19 · 139min · 15 · KE · P.43  [GV]   [定位 ▸][＋]`
-//      └────────── 第 1 行(事实纯文本 + 特殊节目章 + 操作)──────────┘
+//      `[001] | [BT] | 9/17 周三 18:00–22:19 | [139min] | [15][GV]   [定位 ▸][＋加入]`
+//      `[KE][P.43]`                       ← 只在真的装不下时才出现,且左对齐、不右漂
 //
-// ③ **事实信息走纯文本,描边章只留给「这场不一样」**(五改,对齐 BIFF 官方册子的影片页)。
-//    册子的元信息行是 `Korea | 2025 | 86min | DCP | color/b&w` —— **一个框都没有**;
-//    框只出现在右上角那枚 `WP`(World Premiere)。我们此前把片长 / 等级 / 字幕 / 页码
-//    全做成描边章,五枚 ≈190px,把抽屉 520px 的第 1 行吃光 → 折行。
-//    现在:事实(片长 / 等级 / 字幕 / 页码)= 纯文本 + `·` 分隔(≈120px;等级保留强调色,
-//    因为「未满岁不得入场」是硬性准入信息);特殊节目(GV / 首映 / 大师班…)= 徽章。
-//    另外日期只印 `9/21`(册子同款,不带星期),星期进 tooltip。
-//    见 `legend.ts::appendMetaRow` 的 `factsAsText` 分支(五改唯一实现点)。
+// ---- 2026-09-11 六改:场次行**分组 + 分隔符** ----
+// 信息按 `CODE | 影厅 | 日期 时间 | 总时长 | 图标组` 分组,组间插一条 1px 淡灰竖线。
+// 用户原话:「现在的图标 / 按钮都需要分隔符,不然图标的大小会影响排版」—— 没有分隔符时,
+// 宽度不一的章挤在同一条 6px 间距里,读不出分组边界。分隔符是**组内末项**(`group` + `sepEl`),
+// 跟着组走,不会孤立在折行后的行首;图标组仍**直接进流容器**(不套容器),保留「填满第 1 行」的折行。
 //
 // ⚠ 章组**不用固定 3 列等宽网格**:短章(15 / KE)只占自身宽度却要占满 1/3 列,章与章之间
 //   会出现大片空白(用户反馈「图标之间都有空隙」)。它是 `flex flex-wrap` + 4px 间距。
@@ -132,6 +129,24 @@ const ACTS_CLS = "col-start-2 row-start-1 flex items-center gap-[6px] shrink-0";
 /** 追加行(行程 = 冲突提示)—— 独占下一行整宽 */
 const EXTRA_CLS = "col-span-2 row-start-2";
 
+/** 组间**分隔符**(1px 细竖线,淡灰)—— 场次行按 `CODE | 影厅 | 日期 时间 | 总时长 | 图标组` 分组。
+ *  用户要求(2026-09-11 六改):「图标 / 按钮之间都需要分隔符,不然图标的大小会影响排版」。
+ *  ⚠ 分隔符由调用方作为**组内末项**传入(见 `group`)—— 独立成一个 flex item 的话,
+ *    折行时会被甩到下一行行首,变成一条悬空的竖线。 */
+function sepEl(): HTMLElement {
+  const node = el("span", "shrink-0 inline-block w-px h-[10px] bg-line-strong");
+  node.setAttribute("aria-hidden", "true");
+  return node;
+}
+
+/** 场次行的**信息组** —— 组内 5px 间距 + `nowrap`(组不拆行),`shrink-0` 与旧 `when` 同口径。
+ *  ⚠ 分隔符(`sepEl()`)是**组的末项**:跟着这一组一起折行,不会孤零零落到下一行行首。 */
+function group(items: HTMLElement[]): HTMLElement {
+  const g = el("div", "flex items-center gap-[5px] shrink-0 whitespace-nowrap");
+  for (const it of items) g.appendChild(it);
+  return g;
+}
+
 /** CODE 章(11px 黑块白字)—— 场次身份的第一元素,三处同款 */
 export function codeChip(code: string): HTMLElement {
   const node = el(
@@ -142,6 +157,10 @@ export function codeChip(code: string): HTMLElement {
   node.dataset.tip = codeTip(code);
   return node;
 }
+
+/** 片长说明(hover)—— 网格卡 / 行程行 / 选片行同一份文案 */
+const durTip = (min: number): string =>
+  `片长 ${min} 分钟(正片,不含映后谈)\nGV 场另有映后谈 — 时长可配置(设置里改全局默认,行程行逐场覆写)`;
 
 export interface ScreeningRowOpts {
   s: Screening;
@@ -161,6 +180,9 @@ export interface ScreeningRowOpts {
   cardCls?: string;
   /** 操作组 —— 有 `headTitle` 时贴**卡片头右缘**,否则贴**场次行第 1 行右缘** */
   acts?: HTMLElement;
+  /** **行程卡**(传了 `headTitle`)专用的**场次行右缘**操作组:卡头右缘已由 `acts` 占,
+   *  故「定位 ▸」这类要跟场次走的操作落在场次行第 2 格(与「我的选片」的定位入口同落位)。 */
+  rowActs?: HTMLElement;
   /** 追加行(行程 = 冲突提示);`null` = 无 */
   extra?: HTMLElement | null;
 }
@@ -175,37 +197,44 @@ export function screeningRow(o: ScreeningRowOpts): HTMLElement {
   // ---- 第 1 格:身份 + 章组的**流式容器** ----
   const flow = el("div", FLOW_CLS);
 
-  // 身份对(CODE + 影院章) + 日期 + 时间 —— 一枚整体(`shrink-0`),不会被拆到两行
   const venue = cat.venueById.get(s.venue_id);
   const vCode = venue ? venue.code ?? venue.id.toUpperCase() : s.venue_display;
   const { label, weekday } = dateInfo(s.date);
-  const when = el("div", "flex items-center gap-[5px] shrink-0 tabular-nums whitespace-nowrap");
-  when.appendChild(codeChip(s.code));
-  when.appendChild(
-    uniformChipEl(vCode, venue ? venueTip(venue) : s.venue_display, "font-extrabold text-ink-2 bg-card border-line")
-  );
-  // 日期:册子口径 —— 只印 `9/21`(册子是 `Sep 21`),**不带星期**;星期进 tooltip。
-  // 省下的 ≈26px 是抽屉 520px 下「事实行不折行」的关键余量之一。
-  if (!o.hideDate) {
-    const d = el("span", "text-11 text-meta", label);
-    d.dataset.tip = `${label} ${weekday}`;
-    when.appendChild(d);
-  }
-  when.appendChild(
-    el("span", "text-12 font-semibold text-ink", o.timeText ?? fmtMinRange(s.start_time, s.end_time))
-  );
-  flow.appendChild(when);
 
-  // ---- 事实信息(片长 / 等级 / 字幕 / 页码)—— **直接进流容器**:
-  //      逐项参与折行,第 1 行先被填满;套一层容器就变成「整组一起折」,第 1 行右侧会被浪费。
-  //      `factsAsText` = 册子口径:纯文本 + `·` 分隔,描边章只留给特殊节目(见 legend.ts) ----
-  appendMetaRow(flow, s, { uniform: true, factsAsText: true });
+  // ---- 信息分组(2026-09-11 六改):`CODE | 影厅 | 日期 时间 | 总时长 | 图标组` ----
+  //  用户要求:「图标 / 按钮之间都需要分隔符,不然图标的大小会影响排版」。
+  //  ⚠ 分隔符是**组内末项**(见 `group` / `sepEl`)—— 跟着这一组折行,不会孤零零落到下一行行首。
+  flow.appendChild(group([codeChip(s.code), sepEl()]));
+  flow.appendChild(
+    group([
+      uniformChipEl(vCode, venue ? venueTip(venue) : s.venue_display, "font-extrabold text-ink-2 bg-card border-line"),
+      sepEl(),
+    ])
+  );
+  const timeGroup: HTMLElement[] = [];
+  if (!o.hideDate) timeGroup.push(el("span", "text-11 text-meta", `${label} ${weekday}`));
+  // 「开始–结束」是**一枚整体**(`tabular-nums` + 组 `nowrap`):时间被拆到两行就失去意义
+  timeGroup.push(
+    el("span", "text-12 font-semibold text-ink tabular-nums", o.timeText ?? fmtMinRange(s.start_time, s.end_time))
+  );
+  timeGroup.push(sepEl());
+  flow.appendChild(group(timeGroup));
+  flow.appendChild(group([uniformChipEl(`${s.duration_min}min`, durTip(s.duration_min)), sepEl()]));
+
+  // ---- 图标组(等级 / 字幕 / GV / 页码)—— **直接进流容器**:
+  //      逐枚参与折行,第 1 行先被填满;若套一层容器就变成「整组一起折」,第 1 行右侧会被浪费 ----
+  appendMetaRow(flow, s, { uniform: true });
   line.appendChild(flow);
 
   // ---- 操作组:有卡片头 → 挂到卡片头右缘;否则挂场次行**第 1 行右缘**(见 SHOW_ROW_CLS 注释) ----
   if (o.acts && !isCard) {
     o.acts.classList.add(...ACTS_CLS.split(" "));
     line.appendChild(o.acts);
+  }
+  // 行程卡:卡头右缘给了 `acts`(映后 / A / ★ / ✕),场次行右缘留给 `rowActs`(「定位 ▸」)
+  if (o.rowActs && isCard) {
+    o.rowActs.classList.add(...ACTS_CLS.split(" "));
+    line.appendChild(o.rowActs);
   }
   if (o.extra) {
     o.extra.classList.add(...EXTRA_CLS.split(" "));

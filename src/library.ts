@@ -366,7 +366,7 @@ function ensurePickerResizer(): void {
 
   const grip = el("div");
   grip.id = "picker-resizer";
-  grip.dataset.tip = "拖动调整面板宽度\n· 最小 520px(到下限即卡住)\n· 双击复位为 520px";
+  grip.dataset.tip = "拖动调整面板宽度\n· 最小 520px\n· 双击复位为 520px";
   grip.setAttribute("role", "separator");
   grip.setAttribute("aria-label", "拖动调整选片面板宽度");
   grip.setAttribute("aria-orientation", "vertical");
@@ -731,18 +731,20 @@ export function openFilmPicker(ctx: LibraryCtx): void {
     // ⚠ 2026-09-11 四改:抽屉里的场次行第 1 行要**把宽度留给章组**(用户原话:「图标换行太多了
     //   明明右边有空间也不往右延展」),故这两枚都收窄:定位走 `BTN_GO_SM`(紧凑档),
     //   加入态只渲染**符号**(`actState().short`,文案全走 `data-tip`)—— 两枚合计省 ≈40px。
+    // ⚠ 2026-09-11 五改:加入态三态**等宽**(`actState().short` 自带 `min-w` + 内容居中)——
+    //   否则「＋ 加入 → ✓ 已加入」按钮变窄,会把这枚「定位 ▸」往右顶,用户刚点完就得重新找。
     const acts = el("div", "flex items-center gap-[6px] shrink-0");
     const go = el("button", BTN_GO_SM, "定位 ▸");
     go.dataset.libGo = s.code;
     go.dataset.tip = "跳到该影厅时间轴位置";
     // 加入/移出方案 —— 唯一场次列表在这里(弹层已不再重复列场次),与「定位 ▸」并排:
     // 想跳到时间轴看就点定位,想直接排进方案就点右侧三态控件,不必再开弹层。
-    // 三态文案/配色由 modal.ts::actState 单源给出(已加入 = 状态标签而非按钮)。
+    // 三态文案/配色由 modal.ts::actState 单源给出(已加入 = 与「＋ 加入」等宽的绿描边按钮)。
     const act = el("button", "", "");
     act.dataset.libToggle = s.code;
     act.dataset.film = filmNodeKey(ctx.cat, s);
     const st0 = actState(s.code, ctx.group);
-    act.textContent = st0.short; // 紧凑符号;完整语义在 tip 与卡片底色(已选 = 绿底)上
+    act.textContent = st0.short; // 紧凑符号(等宽盒子);完整语义在 tip 与卡片底色(已选 = 绿底)上
     act.className = st0.cls;
     act.dataset.tip = st0.tip;
     acts.append(go, act);
@@ -960,7 +962,7 @@ export function openFilmPicker(ctx: LibraryCtx): void {
         : "切到我的选片(按档位 / 日期筛选,展开看已排场次)";
     agendaTab.dataset.tip =
       which === "agenda"
-        ? "当前:我的行程(按日期分组的已排场次;PLAN-20260910190916 搬入)"
+        ? "当前:我的行程(按日期分组的已排场次)"
         : "切到我的行程(按日期分组的已排场次)";
     // agenda tab 由 renderAgenda() 直接 replaceChildren(因为 panel 是 agendaRenderer 一次性产物)
     if (which === "agenda") renderAgenda();

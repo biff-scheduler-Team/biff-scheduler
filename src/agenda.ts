@@ -9,11 +9,13 @@
 //   │  The Chronology of Water · cons · France · 2025 · ASSAYAS     │ ← 影片信息行
 //   │ [001][BT] 9/17 周三 18:00–20:39                              │ ← 场次行第 1 层:身份 + 操作
 //   │ [139min][15][KE][P.43]                                       │ ← 场次行第 2 层:章组
-//   │ ⚠ 与 042 重叠(仅冲突行)                                       │
+//   │ 与 [042] [098] 时间重叠(仅冲突行;CODE 可点 → 定位对方)       │
 //   └──────────────────────────────────────────────────────────────┘
 //          ┊ 赶场间隔 119min · 跨馆缓冲 15min ┊                     ← 卡片**之间**:虚线竖轨连接件
 // 卡片头的第 1 列(折叠箭头)在行程卡上是**空占位** —— 故片名左缘与影片卡严格对齐。
 // 行程特有内容只收两处:① 卡片头右缘的操作组(映后胶囊 / A / ★ / ✕);② 追加行(冲突提示)。
+// 冲突追加行**只印 CODE**(不印片名):片名一截断就分不清是哪部,CODE 唯一且最短;
+// 每枚 CODE 可点 → 网格里定位到对方;片名 / 时间 / 影厅在 hover 提示里(信息零删除)。
 // 日期不重复(已按日分组,传 `hideDate: true`);转场间隔在卡片之间的虚线连接件上(卡片内不再出现)。
 // (曾按 `PLAN-20260910194000` 做过「片名置顶 + 元信息灰文本」的**行程档**,元信息部分已撤销;
 //  片名置顶保留 —— 但改为**卡片头**形态(与选片卡「片名行」同款),而非行内主视觉。)
@@ -24,6 +26,7 @@ import { effEndMin, filmEndMin, gvTalkMin } from "./gv";
 import { gvTalkMinOv, setPriorityOfCode, store } from "./state";
 import { CARD_SHELL_CLS, CARD_SHELL_CONF_CLS, screeningRow } from "./row";
 import { wishIcon } from "./pick";
+import { BTN_GO_SM } from "./ui";
 import type { ConflictResult } from "./conflict";
 
 export interface AgendaCtx {
@@ -92,12 +95,13 @@ export function buildAgenda(ctx: AgendaCtx): HTMLElement {
     title.dataset.tip = "在网格中查看这一天(切到该日期 + 当天场次批量闪烁)";
     title.appendChild(el("span", "text-16 font-bold text-ink group-hover:text-biff-ink", `${label} ${weekday}`));
     title.appendChild(el("span", "text-13 font-semibold text-muted", `${list.length} 场`));
+    // 日期头的冲突摘要:实心红点 + 「N 处时间重叠」(取代旧 ⚠ 字形 —— 用户不要 emoji)
     const conf = ctx.conflicts.get(date);
-    const headBadge = el(
-      "span",
-      "text-13 text-conf font-semibold",
-      conf && conf.pairs.length ? `⚠ ${conf.pairs.length} 处重叠` : ""
-    );
+    const headBadge = el("span", "inline-flex items-center gap-[5px] text-13 text-conf font-semibold");
+    if (conf && conf.pairs.length) {
+      headBadge.appendChild(el("i", "inline-block w-[8px] h-[8px] rounded-full bg-conf"));
+      headBadge.appendChild(el("span", "", `${conf.pairs.length} 处时间重叠`));
+    }
     head.append(title, headBadge);
     section.appendChild(head);
 
@@ -152,6 +156,7 @@ function buildRow(
     hideDate: true,
     timeText: `${s.start_time}–${endHms}`,
     acts: buildActs(ctx, s, group, priority, slotCount, talk),
+    rowActs: locateBtn(s),
     extra: buildConf(ctx, s, entryConf, conf),
   });
 
@@ -249,8 +254,21 @@ function buildActs(
   return acts;
 }
 
-/** 行程行的**追加行**(仅冲突行有,`extra`):冲突对方 CODE + 片名。
- *  片名本体已提到卡片头(`headTitle`),本行只剩冲突;
+/** 行程卡的**场次行右缘**主操作「定位 ▸」—— 与「我的选片」同款(点 = 网格切到该日期 + 居中 + 闪烁)。
+ *  走 `data-jump-code` 复用 `main.ts` 既有委托(`jumpToScreening`),不需要新增事件分支。
+ *  ⚠ 落**场次行**而非卡片头:卡头右缘已被行程特有的映后 / A / ★ / ✕ 占满(≈160px),
+ *    而场次行第 2 格本是空的 —— 且这与「我的选片」的定位入口**同落位**(都在场次行右缘)。 */
+function locateBtn(s: Screening): HTMLElement {
+  const b = el("button", BTN_GO_SM, "定位 ▸");
+  b.dataset.jumpCode = s.code;
+  b.dataset.tip = "在网格中定位本场(切到该日期,横向居中并闪烁高亮)";
+  return b;
+}
+
+/** 行程行的**追加行**(仅冲突行有,`extra`):列出与之时间重叠的对方 —— 每枚是一颗**可点的 CODE 胶囊**。
+ *  为什么用 CODE 而不是片名:① 片名长,截断后几部片长得一模一样(用户明确否掉「Life of Ho…」这种);
+ *  ② CODE 是全局唯一、最短的身份;③ 胶囊可点 = 直接在网格里定位到对方(跨影厅也不用来回找)。
+ *  片名 / 时间 / 影厅全部收进 hover 提示,信息零删除。
  *  转场间隔不在卡内(提级到卡片之间的连接件,见 gapConnector)。 */
 function buildConf(
   ctx: AgendaCtx,
@@ -262,8 +280,33 @@ function buildConf(
   const others = conf.pairs
     .filter(([a, b]) => a === s.code || b === s.code)
     .map(([a, b]) => (a === s.code ? b : a));
-  const names = others.map((c) => `${c} ${titleOf(ctx, c)}`).join("、");
-  return el("div", "flex items-center gap-[6px] text-11 text-conf font-semibold", `⚠ 与 ${names} 重叠`);
+  if (others.length === 0) return null;
+  const row = el("div", "flex items-center gap-[5px] flex-wrap text-11 text-conf font-semibold");
+  row.appendChild(el("span", "", "与"));
+  for (const c of others) row.appendChild(confCodeChip(ctx, c));
+  row.appendChild(el("span", "", "时间重叠"));
+  return row;
+}
+
+/** 冲突对方的 CODE 胶囊(点击 = 在网格中定位到该场;hover 看片名 / 时间 / 影厅) */
+function confCodeChip(ctx: AgendaCtx, code: string): HTMLElement {
+  const b = el(
+    "button",
+    "border border-conf rounded-4 px-[5px] py-px text-11 font-extrabold text-conf bg-card " +
+      "hover:bg-biff-tint transition-colors duration-[120ms] cursor-pointer leading-[1.5]",
+    code
+  );
+  b.dataset.jumpCode = code;
+  const o = ctx.cat.byCode.get(code);
+  if (!o) {
+    b.dataset.tip = `在网格中定位 ${code}`;
+    return b;
+  }
+  const zh = displayTitle(o, ctx.mappings.get(code)?.title_cn);
+  const v = ctx.cat.venueById.get(o.venue_id);
+  const vTxt = v ? v.code ?? v.id.toUpperCase() : o.venue_display;
+  b.dataset.tip = `在网格中定位 ${code}《${zh}》\n${o.start_time.slice(0, 5)}–${o.end_time.slice(0, 5)} · ${vTxt}(点此跳转)`;
+  return b;
 }
 
 /** 相邻两场之间的**赶场间隔**连接件(2026-09-10 提级:原在卡片内右下角,极易被漏掉)。
@@ -293,7 +336,7 @@ function gapConnector(ctx: AgendaCtx, prev: Screening, s: Screening): HTMLElemen
   if (v === "bad") {
     stateCls = "text-conf font-extrabold";
     verdict = "不足";
-    txt += " ⚠ 赶不上";
+    txt += " · 赶不上";
   } else if (v === "tight") {
     stateCls = "text-tight font-bold";
     verdict = "偏紧";
@@ -304,11 +347,4 @@ function gapConnector(ctx: AgendaCtx, prev: Screening, s: Screening): HTMLElemen
     : `同馆相邻:上一场 ${prev.code} 至 ${prevEnd} 结束 · 间隔 ${gap}min(余量 ${gap}min)`;
   wrap.appendChild(label);
   return wrap;
-}
-
-function titleOf(ctx: AgendaCtx, code: string): string {
-  const s = ctx.cat.byCode.get(code);
-  if (!s) return "";
-  const zh = displayTitle(s, ctx.mappings.get(code)?.title_cn);
-  return zh.length > 10 ? zh.slice(0, 10) + "…" : zh;
 }

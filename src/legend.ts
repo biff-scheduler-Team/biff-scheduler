@@ -1,6 +1,8 @@
 // 排片表「字段徽章 + 图例总览」单源模块(2025 官方 Schedule Guide 口径;2026 mock/待官方替换)
 //  - 等级 / 字幕 / 节目册页码 等小徽章:随卡片/行程/影片库/详情弹层渲染,每枚带 data-tip 即时说明
 //  - 「ⓘ 日程表说明」总览弹层内容(字段速读 / 等级 / 字幕 / 徽章 / 影院代码 / 网格图例 / 特别提示)
+//    2026-09-11 重排:每段收进「分区卡片」(标题条 + 内容区),示例区画成一张模拟网格卡,
+//    表格改细线 + 行 hover,弹层宽度走 modal.ts 的 `xl`(880px)。
 // 场馆名两层口径:紧凑层(甘特影厅列 / 影片库截断行)走 venues.json 的 `short` 短名,
 // 详情层(hover tooltip / 本弹层表 / ICS LOCATION)给英文全名 + 韩名。
 // 官方影院代码(BT/B1/C1/L2…)不单独当行标签,放行首 chip + 悬停说明。
@@ -142,7 +144,7 @@ export function durChip(min: number, opts?: { boxed?: boolean }): HTMLElement {
     ? `${CHIP_BASE} text-meta bg-card border-line`
     : `${CHIP_BASE} text-meta bg-transparent border-transparent px-[2px]`;
   const node = el("i", cls, `${min}'`);
-  node.dataset.tip = `片长 ${min} 分钟\n正片时长(不含映后谈)\nGV 场另有映后谈 — 时长可配置(设置里改全局默认,行程行 ⏱ 逐场覆写),可在卡片 / 行程里单独放弃`;
+  node.dataset.tip = `片长 ${min} 分钟\n正片时长(不含映后谈)\nGV 场另有映后谈 — 时长可配置(设置里改全局默认,行程行映后胶囊逐场覆写),可在卡片 / 行程里单独放弃`;
   return node;
 }
 
@@ -166,7 +168,7 @@ function timeField(range: string): HTMLElement {
   node.dataset.tip =
     "放映时间 起–止(KST)\n" +
     "GV 映后场的结束时间 = 正片末 + 映后谈时长(正片 + 映后 N′)\n" +
-    "映后时长可配置:设置里改全局默认,行程行点 ⏱ 逐场覆写\n" +
+    "映后时长可配置:设置里改全局默认,行程行点映后胶囊的数字逐场覆写\n" +
     "该段可在卡片 / 行程单独放弃 — 放弃后按正片结束算转场";
   return node;
 }
@@ -192,9 +194,10 @@ function swatch(bg: string, borderCls: string): HTMLElement {
   return i;
 }
 
-/** 图例行左键:色块 / 徽章 + 文字标签(整块作 key,行尾统一接「 — 说明」) */
+/** 图例行左键:色块 / 徽章 + 文字标签(整块作 key;与右侧说明分列,见 buildGuideBody §6)。
+ *  `shrink-0` 必须留 —— 作为 flex item 时,长说明会把 key 挤到折行,图例就不成列了。 */
 function labeled(icon: HTMLElement, text: string): HTMLElement {
-  const span = el("span", "inline-flex items-center");
+  const span = el("span", "inline-flex items-center shrink-0");
   span.append(icon, document.createTextNode(text));
   return span;
 }
@@ -209,22 +212,6 @@ const RATING_ACCENT: Record<RatingKey, string> = {
   "15": "font-bold text-biff-ink bg-card border-biff",
   "19": "font-bold text-rate-19 bg-card border-rate-19",
 };
-
-/** 观影等级在 **纯文本模式** 下的强调色(无框,只靠字色 + 字重)。
- *  册子口径(2026-09-11 五改):事实信息不用框,但「未满岁不得入场」是**硬性准入信息**,
- *  扫场次时必须一眼看到 —— 故框去掉,强调色留下。 */
-const RATING_TEXT: Record<RatingKey, string> = {
-  ALL: "font-bold text-rate-all",
-  "12": "font-bold text-rate-12",
-  "15": "font-bold text-biff-ink",
-  "19": "font-bold text-rate-19",
-};
-
-/** 片长说明(hover)—— 网格卡 / 行程行 / 选片行同一份文案。
- *  (原在 `row.ts`;五改移到这里:「事实纯文本」模式由 `appendMetaRow` 直接产出片长,
- *   文案必须与调用方同源,不能各写一份。) */
-export const durTip = (min: number): string =>
-  `片长 ${min} 分钟(正片,不含映后谈)\nGV 场另有映后谈 — 时长可配置(设置里改全局默认,行程行逐场覆写)`;
 
 /** 统一章 DOM(uniform 模式):默认中性灰描边;`variant` 换配色 / 字重(等级走强调色描边)。
  *  导出给影片行场次行自建「影院代码 / 时长」两枚章用 —— 保证与 appendMetaRow 那组**同一套**尺寸 / 圆角。 */
@@ -252,51 +239,14 @@ export function ratingChipEl(s: Screening): HTMLElement | null {
  * 全部降为中性灰描边、只给观影等级留强调色 —— 场次行信息密度高,实心章会喧宾夺主。
  * 网格卡 / 行程行**不传**该选项,保留各自的实心章(那是「一眼看到有映后谈」的主信号)。
  */
-export function appendMetaRow(
-  host: HTMLElement,
-  s: Screening,
-  opts?: { uniform?: boolean; factsAsText?: boolean }
-): void {
+export function appendMetaRow(host: HTMLElement, s: Screening, opts?: { uniform?: boolean }): void {
   const u = opts?.uniform === true;
-  const rateKey = s.rating && RATING_DEFS[s.rating] ? s.rating : null;
-
-  // ---- ★ 册子口径(2026-09-11 五改):事实信息走**纯文本 + `·` 分隔**,不用描边章 ----
-  // 册子那一行是 `Korea | 2025 | 86min | DCP | color/b&w`,**一个框都没有**;
-  // 框只留给「这场不一样」的特殊节目徽章(册子右上角那枚 `WP`)。
-  // 收益不只是好看:五枚描边章 ≈190px,纯文本 ≈120px —— 抽屉 520px 下这是**能否不折行**的分水岭。
-  if (opts?.factsAsText === true) {
-    const parts: { label: string; tip: string; cls: string }[] = [
-      // 片长:册子把 `86min` 放在事实行首位,这里同序
-      { label: `${s.duration_min}min`, tip: durTip(s.duration_min), cls: "" },
-    ];
-    if (rateKey) {
-      const def = RATING_DEFS[rateKey];
-      parts.push({ label: def.label, tip: def.tip, cls: RATING_TEXT[rateKey] });
-    }
-    // 字幕标识可同时多个(官方叠加印,如 KE KK)→ 逐个成项;归一化见 subsKeys()
-    for (const k of subsKeys(s.subs)) {
-      const def = SUBS_DEFS[k];
-      parts.push({ label: def.label, tip: def.tip, cls: "" });
-    }
-    if (typeof s.page === "number" && s.page > 0) {
-      parts.push({ label: `P.${s.page}`, tip: pageTip(s.page), cls: "" });
-    }
-    parts.forEach((p, i) => {
-      if (i > 0) host.appendChild(el("span", "text-11 text-faint", "·")); // 分隔符 = 册子的 `|`
-      const span = el("span", `text-11 ${p.cls || "text-meta"}`, p.label);
-      span.dataset.tip = p.tip; // 纯文本也不能丢 hover 释义
-      host.appendChild(span);
-    });
-    // 特殊节目(场次特性)仍走徽章 —— 徽章是**稀缺资源**,只标「这场不一样」
-    for (const k of screeningBadgeKeys(s)) host.appendChild(badgeEl(k, u ? { uniform: true } : undefined));
-    return;
-  }
-
-  // ---- 默认:统一描边章流(网格卡 / 行程卡 / 弹层继续用这套) ----
-  if (rateKey) {
+  const rateKey = s.rating;
+  if (rateKey && RATING_DEFS[rateKey]) {
     const def = RATING_DEFS[rateKey];
     host.appendChild(u ? uniformChipEl(def.label, def.tip, RATING_ACCENT[rateKey]) : chipEl(def));
   }
+  // 字幕标识可同时多个(官方叠加印,如 KE KK)→ 逐个成章;归一化见 subsKeys()
   for (const k of subsKeys(s.subs)) {
     const def = SUBS_DEFS[k];
     host.appendChild(u ? uniformChipEl(def.label, def.tip) : chipEl(def));
@@ -415,24 +365,51 @@ const VENUE_CODES_2025: { group: string; list: [string, string][] }[] = [
   },
 ];
 
-/** 小标题(红方块标记,与面板 h2 同一视觉语言) */
-function guideH(t: string): HTMLElement {
+/* ---- 排版积木(2026-09-11 重排)----
+ *  旧版是「小标题 + 裸表格」一路直排,7 段挤在 640px 里毫无层级;
+ *  现在每段收进一张**分区卡片**(标题条 + 内容区),弹层加宽到 `xl`(见 modal.ts::MODAL_WIDTH),
+ *  表格 / 图例 / 提示各自有独立内距与描边 —— 读起来像一本小册子,而不是一堆裸文本。 */
+
+/** 分区卡片:标题条(红方块 + 中文标题 + 英文副题)+ 内容区。
+ *  红方块走**真实 span** 而非 `before:` 伪元素 —— 伪元素类名必须写全字面量才进构建产物,
+ *  真实节点既好维护又能被 Tailwind 直接扫到。 */
+function guideSection(title: string, sub: string, content: HTMLElement): HTMLElement {
+  const sec = el("section", "rounded-10 border border-line bg-card overflow-hidden");
+  const head = el("div", "flex items-center gap-[7px] px-[12px] py-[8px] bg-hover border-b border-line");
+  head.appendChild(el("span", "shrink-0 w-[8px] h-[8px] border-[2.5px] border-biff rounded-2 box-border"));
+  head.appendChild(el("h4", "m-0 text-14 font-bold tracking-[0.01em]", title));
+  if (sub) head.appendChild(el("span", "text-11 font-semibold text-meta tracking-[0.02em]", sub));
+  const inner = el("div", "px-[12px] py-[10px]");
+  inner.appendChild(content);
+  sec.append(head, inner);
+  return sec;
+}
+
+/** 顶部提示条(浅红底 + 左侧红竖条)—— 与卡片拉开距离,一眼知道「这是前言」 */
+function guideCallout(text: string): HTMLElement {
   return el(
     "div",
-    "flex items-center gap-[6px] text-14 font-bold tracking-[0.01em] mb-[6px] " +
-      "before:content-[''] before:w-[8px] before:h-[8px] before:border-[2.5px] before:border-biff before:rounded-2 before:box-border",
-    t
+    "border border-biff-line border-l-[3px] border-l-biff bg-biff-tint rounded-9 " +
+      "px-[12px] py-[9px] text-12 leading-[1.65] text-ink-2",
+    text
   );
+}
+
+/** 窄屏兜底:表格可能比弹层宽 → 包一层横向滚动,不撑破卡片 */
+function scrollBox(node: HTMLElement): HTMLElement {
+  const box = el("div", "overflow-x-auto");
+  box.appendChild(node);
+  return box;
 }
 
 function mkTable(heads: string[]): { tbl: HTMLTableElement; tbody: HTMLTableSectionElement } {
   const tbl = el("table", "w-full border-collapse") as HTMLTableElement;
   const thead = document.createElement("thead");
   const hr = document.createElement("tr");
-  hr.className = "text-muted text-12 font-semibold text-left";
+  hr.className = "text-meta text-11 font-bold tracking-[0.04em] text-left";
   heads.forEach((hd) => {
     const th = document.createElement("th");
-    th.className = "py-[4px] pr-2 font-semibold whitespace-nowrap";
+    th.className = "py-[5px] pr-2 font-bold whitespace-nowrap border-b border-line";
     th.textContent = hd;
     hr.appendChild(th);
   });
@@ -444,10 +421,10 @@ function mkTable(heads: string[]): { tbl: HTMLTableElement; tbody: HTMLTableSect
 
 function addRow(tbody: HTMLTableSectionElement, cells: (string | HTMLElement)[]): void {
   const tr = document.createElement("tr");
-  tr.className = "border-b border-line-faint align-top";
+  tr.className = "border-b border-line-faint last:border-b-0 align-top transition-colors hover:bg-hover";
   cells.forEach((c) => {
     const td = document.createElement("td");
-    td.className = "py-[5px] pr-[10px] text-13 leading-[1.55]";
+    td.className = "py-[6px] pr-[10px] text-13 leading-[1.55]";
     if (typeof c === "string") td.textContent = c;
     else td.appendChild(c);
     tr.appendChild(td);
@@ -455,47 +432,62 @@ function addRow(tbody: HTMLTableSectionElement, cells: (string | HTMLElement)[])
   tbody.appendChild(tr);
 }
 
+/** 分区内的小字补充说明 */
 function note(text: string): HTMLElement {
-  return el("div", "text-muted text-12 leading-[1.6]", text);
+  return el("div", "mt-[9px] text-12 leading-[1.65] text-muted", text);
 }
 
+/** 要点条目(红点标记) */
 function bullet(text: string): HTMLElement {
   return el(
     "li",
-    "pl-[14px] relative text-13 leading-[1.6] before:content-[''] before:absolute before:left-0 before:top-[7px] before:w-[6px] before:h-[6px] before:bg-biff before:rounded-2",
+    "relative pl-[15px] text-13 leading-[1.65] " +
+      "before:content-[''] before:absolute before:left-[2px] before:top-[8px] before:w-[5px] before:h-[5px] before:bg-biff before:rounded-2",
     text
   );
 }
 
 /** 总览弹层主体(点击「ⓘ 日程表说明」打开;main.ts 装配) */
 export function buildGuideBody(cat: Catalog): HTMLElement {
-  const body = el("div", "grid gap-[16px]");
+  const body = el("div", "grid gap-[12px]");
 
-  // ---- 顶部提示 ----
+  // ---- 前言 ----
   body.appendChild(
-    note(
-      "字段与代码口径参考 2025 第 30 届 BIFF 官网 Schedule Guide;本排期仍为 MOCK,2026 真实排期(9/11 发布)接入后内容自动更新。悬停任意小徽章即看即时解释;本页为总览。"
+    guideCallout(
+      "字段与代码口径参考 2025 第 30 届 BIFF 官网 Schedule Guide;本排期仍为 MOCK,2026 真实排期(9/11 发布)接入后内容自动更新。悬停任意小徽章即看即时解释,本页为总览。"
     )
   );
 
   // ---- 1 字段速读 ----
-  body.appendChild(guideH("一格怎么读(示例)"));
-  const demo = el("div", "flex flex-wrap items-center gap-[5px] bg-hover border border-line rounded-7 px-[10px] py-[7px]");
-  demo.appendChild(timeField("09:00–10:40"));
-  demo.appendChild(codeField("004"));
-  demo.appendChild(chipEl(RATING_DEFS["15"]));
-  demo.appendChild(chipEl(SUBS_DEFS.KE));
-  demo.appendChild(badgeEl("gv"));
-  demo.appendChild(pageChip(167));
-  demo.appendChild(durChip(100, { boxed: true }));
-  demo.appendChild(el("span", "text-13 text-muted", "Last Samurai Standing · 이쿠사가미: 전쟁의 신"));
-  const sec1 = el("div", "grid gap-1");
-  sec1.appendChild(demo);
   {
+    const wrap = el("div", "grid gap-[10px]");
+    wrap.appendChild(el("div", "text-12 text-meta", "下面是一张网格卡的完整字段 —— 悬停任意字段 / 徽章看即时解释。"));
+    // 示例做成**一张模拟网格卡**(身份行 + 徽章行),而不是一条平铺的内联流:
+    // 读图例的人先在网格里见过这张卡,这里长得一样才对得上号。
+    const demo = el(
+      "div",
+      "grid gap-[6px] rounded-8 border border-line bg-card shadow-[var(--shadow-card)] px-[11px] py-[9px]"
+    );
+    const identity = el("div", "flex items-center gap-[8px] flex-wrap");
+    identity.append(
+      timeField("09:00–10:40"),
+      codeField("004"),
+      el("span", "text-13 font-semibold text-ink-2", "Last Samurai Standing · 이쿠사가미: 전쟁의 신")
+    );
+    const chips = el("div", "flex items-center gap-[5px] flex-wrap");
+    chips.append(
+      chipEl(RATING_DEFS["15"]),
+      chipEl(SUBS_DEFS.KE),
+      badgeEl("gv"),
+      pageChip(167),
+      durChip(100, { boxed: true })
+    );
+    demo.append(identity, chips);
+    wrap.appendChild(demo);
     // 「元素」列一律渲染真节点(章 / 字段),不再写纯文本 —— 纯文本既没有章的外形,
     // 也没有 data-tip,tip.ts 的文档级委托命不中 → 表现为「只有 GV 有悬停」。
     const { tbl, tbody } = mkTable(["元素", "含义"]);
-    addRow(tbody, [timeField("09:00–10:40"), "放映时间(起–止,KST)。GV 映后场的结束时间 = 正片末 + 映后谈时长(正片 + 映后 N′),该段在卡片上单独可弃:放弃后按正片结束算转场。映后时长可配置:设置里给全局默认(默认 25 分钟),行程行点 ⏱ 可逐场覆写(留空 = 跟随默认)。跨午夜场(如通宵马拉松)按 24+ 时制显示为「23:59–次日 05:35」,时间轴同步外扩到次日并在 24:00 处画跨日分隔线"]);
+    addRow(tbody, [timeField("09:00–10:40"), "放映时间(起–止,KST)。GV 映后场的结束时间 = 正片末 + 映后谈时长(正片 + 映后 N′),该段在卡片上单独可弃:放弃后按正片结束算转场。映后时长可配置:设置里给全局默认(默认 25 分钟),行程行点映后胶囊的数字可逐场覆写(留空 = 跟随默认)。跨午夜场(如通宵马拉松)按 24+ 时制显示为「23:59–次日 05:35」,时间轴同步外扩到次日并在 24:00 处画跨日分隔线"]);
     addRow(tbody, [codeField("004"), "放映 CODE — 本场唯一场次编号;同片多场各异,对表 / 抢票以此为准"]);
     addRow(tbody, [chipEl(RATING_DEFS["15"]), "观影等级 — 未满对应年龄不得入场(下节表)"]);
     addRow(tbody, [chipEl(SUBS_DEFS.KE), "字幕 / 对白标识(下节表);格内空白 = 未标注(英字 + 韩语对白)"]);
@@ -503,23 +495,21 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     addRow(tbody, [durChip(100, { boxed: true }), "正片时长(分钟)"]);
     addRow(tbody, [pageChip(167), "官方节目册 Ticket Catalogue 页码 — 翻册找该场信息 / 票务说明"]);
     addRow(tbody, ["片名", "官方排期表原样:英文片名 + 韩文片名(本工具额外附中文名)"]);
-    sec1.appendChild(tbl);
+    wrap.appendChild(scrollBox(tbl));
+    body.appendChild(guideSection("一格怎么读", "SAMPLE", wrap));
   }
-  body.appendChild(sec1);
 
   // ---- 2 观影等级 ----
-  body.appendChild(guideH("观影等级 Ratings"));
   {
     const { tbl, tbody } = mkTable(["标识", "中文", "한국어", "准入"]);
     (Object.keys(RATING_DEFS) as RatingKey[]).forEach((k) => {
       const d = RATING_DEFS[k];
       addRow(tbody, [chipEl(d), d.zh, d.kr, d.en]);
     });
-    body.appendChild(tbl);
+    body.appendChild(guideSection("观影等级", "RATINGS", scrollBox(tbl)));
   }
 
   // ---- 3 字幕 / 对白标识 ----
-  body.appendChild(guideH("字幕 / 对白标识 Subtitles"));
   {
     const { tbl, tbody } = mkTable(["标识", "官方英文(2025)", "中文"]);
     (Object.keys(SUBS_DEFS) as SubsKey[]).forEach((k) => {
@@ -527,24 +517,25 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
       addRow(tbody, [chipEl(d), d.en, d.zh]);
     });
     addRow(tbody, [blankChip(), SUBS_UNMARKED.en, SUBS_UNMARKED.zh]);
-    body.appendChild(tbl);
+    body.appendChild(guideSection("字幕 / 对白标识", "SUBTITLES", scrollBox(tbl)));
   }
 
   // ---- 4 场次特性徽章 ----
-  body.appendChild(guideH("场次特性徽章"));
   {
+    const wrap = el("div", "grid gap-0");
     const { tbl, tbody } = mkTable(["徽章", "含义"]);
     BADGE_DEFS.forEach((d) => {
       const chip = badgeEl(d.key);
       addRow(tbody, [chip, d.title]);
     });
-    body.appendChild(tbl);
-    body.appendChild(note("GV 徽章为实心黑(默认)。GV 场在网格里拆成「正片 + 映后谈」两张拼接卡:默认一起选中,点映后块或行程行开关可单独放弃(只选正片);放弃后该场按正片结束算转场/冲突/.ics 导出,该段仍留在时间轴上以虚线灰块示意「物理存在但我不参加」。**映后谈时长可配置**:设置里给全局默认(默认 25 分钟,改它 = 谈段长度与有效结束全链路跟着变),行程行点 ⏱ 可逐场覆写(留空 = 跟随默认;设 0 = 本场不拆映后段)。"));
+    wrap.appendChild(scrollBox(tbl));
+    wrap.appendChild(note("GV 徽章为实心黑(默认)。GV 场在网格里拆成「正片 + 映后谈」两张拼接卡:默认一起选中,点映后块或行程行开关可单独放弃(只选正片);放弃后该场按正片结束算转场/冲突/.ics 导出,该段仍留在时间轴上以虚线灰块示意「物理存在但我不参加」。**映后谈时长可配置**:设置里给全局默认(默认 25 分钟,改它 = 谈段长度与有效结束全链路跟着变),行程行点映后胶囊的数字可逐场覆写(留空 = 跟随默认;设 0 = 本场不拆映后段)。"));
+    body.appendChild(guideSection("场次特性徽章", "BADGES", wrap));
   }
 
   // ---- 5 影院与代码 ----
-  body.appendChild(guideH("影院与官方代码"));
   {
+    const wrap = el("div", "grid gap-0");
     const { tbl, tbody } = mkTable(["代码", "影厅(网格行标签 → 官方全名)", "分区"]);
     cat.venues.forEach((v) => {
       const codeCell = v.code ? chipEl({ label: v.code, cls: `${CHIP_BASE} text-biff-ink bg-biff-soft border-current`, tip: `影院代码 ${v.code} — 2025 届同馆口径(mock),2026 以官网为准` }) : el("span", "text-meta", "—");
@@ -556,25 +547,27 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
       );
       addRow(tbody, [codeCell, nameCell, GROUP_AREA[v.group] ?? "—"]);
     });
-    body.appendChild(tbl);
+    wrap.appendChild(scrollBox(tbl));
 
     const det = document.createElement("details");
-    det.className = "mt-[4px] border border-line rounded-8 px-[10px] py-[6px]";
+    det.className = "mt-[10px] border border-line rounded-8 bg-hover overflow-hidden";
     const sum = document.createElement("summary");
     sum.className = "cursor-pointer text-13 font-semibold text-ink-2 select-none hover:text-biff-ink";
     sum.textContent = "官方日程表代码总表(2025 口径参考 — 点击展开)";
     det.appendChild(sum);
+    const detBody = el("div", "px-[10px] pb-[8px]");
     VENUE_CODES_2025.forEach((g) => {
       const gHead = el("div", "mt-[6px] mb-[2px] text-12 font-bold text-muted", g.group);
       const { tbl: t2, tbody: tb2 } = mkTable(["代码", "剧场"]);
       g.list.forEach(([code, name]) => addRow(tb2, [code, name]));
-      det.append(gHead, t2);
+      detBody.append(gHead, t2);
     });
-    body.appendChild(det);
+    det.appendChild(detBody);
+    wrap.appendChild(det);
+    body.appendChild(guideSection("影院与官方代码", "VENUES", wrap));
   }
 
   // ---- 6 网格图例(红绿灯底色:已选 / 时间紧张 / 完全冲突) ----
-  body.appendChild(guideH("网格与行程图例"));
   {
     // 行首一律真节点:三种底色用网格卡同色色块(色值取自 style.css in-plan / TIGHT_BG / in-conf),
     // GV 用卡面同款徽章,豆瓣用影片库同款章 —— 不写成文字,读图例即读卡面。
@@ -589,50 +582,56 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
       ],
       [
         labeled(swatch("color-mix(in srgb, var(--color-conf) 14%, var(--color-card))", "border-conf"), "红底 · 完全冲突"),
-        "同方案(A 或 B)内两场放映时间重叠,无法同时观看 — 整卡红底 + 红框 + ⚠;hover 联动高亮整个冲突组",
+        "同方案(A 或 B)内两场放映时间重叠,无法同时观看 — 整卡红底 + 红框 + 右上角红点;两张卡不在相邻影厅时,会有一条红色虚线把重叠时段连起来;hover 联动高亮整个冲突组",
       ],
       [
         badgeEl("gv"),
-        "Guest Visit 嘉宾映后 — 默认连映后谈一起选(两张拼接卡同亮),可在映后块/行程单独放弃,放弃后按正片结束算转场;映后时长可配置(设置里改默认值,行程行 ⏱ 逐场覆写)",
+        "Guest Visit 嘉宾映后 — 默认连映后谈一起选(两张拼接卡同亮),可在映后块/行程单独放弃,放弃后按正片结束算转场;映后时长可配置(设置里改默认值,行程行映后胶囊逐场覆写)",
       ],
       [doubanChip(8.5), "豆瓣用户评分(满分 10 分,仅影片库 / 详情出现)"],
     ];
-    const ul = el("ul", "grid gap-[3px]");
+    const ul = el("ul", "grid gap-[7px]");
     lines.forEach(([k, v]) => {
-      const li = el("li", "text-13 leading-[1.6]");
-      if (typeof k === "string") li.textContent = `${k} — ${v}`;
-      else li.append(k, document.createTextNode(` — ${v}`));
+      // 行首 key 与说明分列(key 不折行、说明左对齐成一条竖线),比「key — 说明」内联更好扫读
+      const li = el("li", "flex items-start gap-[8px] text-13 leading-[1.6]");
+      if (typeof k === "string") li.appendChild(el("b", "shrink-0 font-semibold", k));
+      else li.appendChild(k);
+      li.appendChild(el("span", "min-w-0", v));
       ul.appendChild(li);
     });
-    body.appendChild(ul);
+    body.appendChild(guideSection("网格与行程图例", "GRID LEGEND", ul));
   }
 
   // ---- 7 我的选片(唯一数据源)----
-  body.appendChild(guideH("我的选片"));
   {
-    const ul = el("ul", "grid gap-[3px]");
+    const wrap = el("div", "grid gap-0");
+    const ul = el("ul", "grid gap-[7px]");
     [
       ["一部片一条记录", "「我的选片」与「我的行程」是同一份数据的两个视图:按片看是选片清单,按场次看是行程。没有第二份拷贝,两边永远一致"],
-      ["必看 / 备选 / 随缘", "档位由**一枚 ★ 星标**表达(★ = 已定档,按档位着色;**蓝 = 必看 / 品红 = 备选 / 灰蓝 = 随缘**;☆ = 未设),点击弹出「必看 / 备选 / 随缘 / 清除档位」菜单 —— 三处完全同款:「影片库」卡片右上角、「我的行程」行程卡、影片资料弹层。档位是「影片级」的:改一处,该片所有场次同步"],
+      ["必看 / 备选 / 随缘", "档位由**一枚 ★ 星标**表达(★ = 已定档,按档位着色;**蓝 = 必看 / 品红 = 备选 / 灰蓝 = 随缘**;☆ = 未设),点击弹出「必看 / 备选 / 随缘 / 清除档位」菜单 —— 三处完全同款:「影片库」卡片右上角、「我的行程」行程卡、影片资料弹层(2026-09-10 起弹层也由三段文字 seg 改为同一枚 ★)。档位是「影片级」的:改一处,该片所有场次同步"],
       ["场次只在一处选", "影片行展开 = 唯一场次列表(两个 tab 同款):每场并排「定位 ▸」(跳到时间轴)与「＋ 加入」(加入后变「✓ 已加入」,再点即移出;这场在另一方案时显示「⇄ 已在 B」);「ⓘ」只开影片资料 + 豆瓣,不再重复列排片"],
-      ["甘特 ★ 档位", "定档后,甘特卡标题行前出现一枚 ★(**蓝=必看 / 品红=备选 / 灰蓝=随缘**)——与整卡红绿灯底色相互独立:底色说「排得怎么样」,★ 说「是不是我想看的」。档位刻意用冷色系,避开底色的红/黄/绿。同一枚 ★ 也出现在「影片库」卡片右上角、行程卡与影片资料弹层"],
-      ["顶栏「选片 · 行程」", "一个按钮 = 左侧滑出的**排片面板**(再点一次 / 面板内「收起 ✕」/ Esc 收起):面板**不遮挡网格**,只是把网格挤窄一点 —— 所以打标、点选场次时始终能看到时间轴上的变化。面板内**三个 tab**:· **影片库**(全部影片:搜索 / 单元筛选)· **我的选片**(日期导航栏 + 档位 chips;每行只剩「状态标签 + ⓘ + ✕」;展开只列**已排场次**并按日期分节)· **我的行程**(按日期分组的已排场次,常驻可见;卡片头与选片卡同款:**片名在上、影片信息行在下**)。三个 tab 共用同一套影片行 / 场次行,打标与图标完全一致"],
+      ["甘特 ★ 档位", "定档后,甘特卡标题行前出现一枚 ★(**蓝=必看 / 品红=备选 / 灰蓝=随缘**,2026-09-10 由 7px 色点改为 15px 星标)——与整卡红绿灯底色相互独立:底色说「排得怎么样」,★ 说「是不是我想看的」。档位刻意用冷色系,避开底色的红/黄/绿;备选由「紫」改「品红」是因为蓝紫只差 48° 色相,小尺寸下分不出。同一枚 ★ 也出现在「影片库」卡片右上角、行程卡与影片资料弹层"],
+      ["顶栏「选片 · 行程」", "一个按钮 = 左侧滑出的**排片面板**(再点一次 / 面板内「收起 ✕」/ Esc 收起):面板**不遮挡网格**,只是把网格挤窄一点 —— 所以打标、点选场次时始终能看到时间轴上的变化。面板内**三个 tab**:· **影片库**(全部影片:搜索 / 单元筛选)· **我的选片**(日期导航栏 + 档位 chips;每行只剩「状态标签 + ⓘ + ✕」;展开只列**已排场次**并按日期分节)· **我的行程**(按日期分组的已排场次,原在主页面下方,2026-09-10 搬入 —— 常驻可见;卡片头与选片卡同款:**片名在上、影片信息行在下**)。三个 tab 共用同一套影片行 / 场次行,打标与图标完全一致"],
       ["我的行程 ✕", "只移出这一场,选片意向保留 —— 该片仍留在「我的选片」里并标注「未排场」,「智能排片」照样会把它排进去"],
-      ["智能排片", "**唯一排片通道**。需你自己填入模型 API Key(DeepSeek / OpenAI / Moonshot / 硅基流动 / 自定义均可),由浏览器直连服务商生成一版建议行程,再选「并入 A / B 方案」(已有场次保留,只追加不冲突的新场次)。可先在「② 排哪几天」收窄日期;一部片都没打标也能排 —— 走「无片单模式」,怎么排看偏好文字。返回结果会本地复检:无效 code、同片多场、时段冲突一律剔除并明示,不信任模型的自我约束"],
+      ["智能排片", "**唯一排片通道**(原「本地引擎」已下线)。需你自己填入模型 API Key(DeepSeek / OpenAI / Moonshot / 硅基流动 / 自定义均可),由浏览器直连服务商生成一版建议行程,再选「并入 A / B 方案」(已有场次保留,只追加不冲突的新场次)。可先在「② 排哪几天」收窄日期;一部片都没打标也能排 —— 走「无片单模式」,怎么排看偏好文字。返回结果会本地复检:无效 code、同片多场、时段冲突一律剔除并明示,不信任模型的自我约束"],
       ["API Key 只在本机", "Key 只写入本机浏览器的 localStorage,不上传本站服务器、也不进任何发往本站的请求;排片请求由浏览器直连你填写的服务商。本站不提供也不转售模型服务(用你自己的额度),因此也读不到你的 Key。浏览器本地为明文存储 —— 公用电脑请勿保存,随时可在「设置」或弹层里点「清除 Key」"],
-    ].forEach(([k, v]) => ul.appendChild(el("li", "text-13 leading-[1.6]", `${k} — ${v}`)));
-    body.appendChild(ul);
-    body.appendChild(
+    ].forEach(([k, v]) => {
+      const li = el("li", "text-13 leading-[1.65]");
+      li.append(el("b", "font-semibold text-ink", k), document.createTextNode(` — ${v}`));
+      ul.appendChild(li);
+    });
+    wrap.appendChild(ul);
+    wrap.appendChild(
       note(
         "档位只有一份,且在影片级 —— 行程卡里的 ★ 改的就是该片的档位(同片多场同步,提示里会写明「本片共 N 场」)。「未设」= 只点了场次还没定档:不参与质量分与抢票顺位,也不进智能排片;去「影片库」或弹层点 ★ 补一个档位即可。"
       )
     );
+    body.appendChild(guideSection("我的选片", "MY PICKS", wrap));
   }
 
   // ---- 8 特别提示 ----
-  body.appendChild(guideH("特别提示"));
   {
-    const ul = el("ul", "grid gap-[5px]");
+    const ul = el("ul", "grid gap-[7px]");
     ul.appendChild(
       bullet("开闭幕:开幕式 + 开幕影片通常在首日于 BIFF Theatre(露天剧场)举行;闭幕场放映「釜山奖(Busan Award)」获奖作 — 均为 2025 届口径,2026 以官网为准。")
     );
@@ -648,7 +647,7 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     ul.appendChild(
       bullet("咨询电话 1666-9177(2025 届官方客服;2026 以官网更新为准)。")
     );
-    body.appendChild(ul);
+    body.appendChild(guideSection("特别提示", "NOTES", ul));
   }
 
   return body;
