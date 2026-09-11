@@ -210,6 +210,22 @@ const RATING_ACCENT: Record<RatingKey, string> = {
   "19": "font-bold text-rate-19 bg-card border-rate-19",
 };
 
+/** 观影等级在 **纯文本模式** 下的强调色(无框,只靠字色 + 字重)。
+ *  册子口径(2026-09-11 五改):事实信息不用框,但「未满岁不得入场」是**硬性准入信息**,
+ *  扫场次时必须一眼看到 —— 故框去掉,强调色留下。 */
+const RATING_TEXT: Record<RatingKey, string> = {
+  ALL: "font-bold text-rate-all",
+  "12": "font-bold text-rate-12",
+  "15": "font-bold text-biff-ink",
+  "19": "font-bold text-rate-19",
+};
+
+/** 片长说明(hover)—— 网格卡 / 行程行 / 选片行同一份文案。
+ *  (原在 `row.ts`;五改移到这里:「事实纯文本」模式由 `appendMetaRow` 直接产出片长,
+ *   文案必须与调用方同源,不能各写一份。) */
+export const durTip = (min: number): string =>
+  `片长 ${min} 分钟(正片,不含映后谈)\nGV 场另有映后谈 — 时长可配置(设置里改全局默认,行程行逐场覆写)`;
+
 /** 统一章 DOM(uniform 模式):默认中性灰描边;`variant` 换配色 / 字重(等级走强调色描边)。
  *  导出给影片行场次行自建「影院代码 / 时长」两枚章用 —— 保证与 appendMetaRow 那组**同一套**尺寸 / 圆角。 */
 export function uniformChipEl(label: string, tip: string, variant = ""): HTMLElement {
@@ -236,14 +252,51 @@ export function ratingChipEl(s: Screening): HTMLElement | null {
  * 全部降为中性灰描边、只给观影等级留强调色 —— 场次行信息密度高,实心章会喧宾夺主。
  * 网格卡 / 行程行**不传**该选项,保留各自的实心章(那是「一眼看到有映后谈」的主信号)。
  */
-export function appendMetaRow(host: HTMLElement, s: Screening, opts?: { uniform?: boolean }): void {
+export function appendMetaRow(
+  host: HTMLElement,
+  s: Screening,
+  opts?: { uniform?: boolean; factsAsText?: boolean }
+): void {
   const u = opts?.uniform === true;
-  const rateKey = s.rating;
-  if (rateKey && RATING_DEFS[rateKey]) {
+  const rateKey = s.rating && RATING_DEFS[s.rating] ? s.rating : null;
+
+  // ---- ★ 册子口径(2026-09-11 五改):事实信息走**纯文本 + `·` 分隔**,不用描边章 ----
+  // 册子那一行是 `Korea | 2025 | 86min | DCP | color/b&w`,**一个框都没有**;
+  // 框只留给「这场不一样」的特殊节目徽章(册子右上角那枚 `WP`)。
+  // 收益不只是好看:五枚描边章 ≈190px,纯文本 ≈120px —— 抽屉 520px 下这是**能否不折行**的分水岭。
+  if (opts?.factsAsText === true) {
+    const parts: { label: string; tip: string; cls: string }[] = [
+      // 片长:册子把 `86min` 放在事实行首位,这里同序
+      { label: `${s.duration_min}min`, tip: durTip(s.duration_min), cls: "" },
+    ];
+    if (rateKey) {
+      const def = RATING_DEFS[rateKey];
+      parts.push({ label: def.label, tip: def.tip, cls: RATING_TEXT[rateKey] });
+    }
+    // 字幕标识可同时多个(官方叠加印,如 KE KK)→ 逐个成项;归一化见 subsKeys()
+    for (const k of subsKeys(s.subs)) {
+      const def = SUBS_DEFS[k];
+      parts.push({ label: def.label, tip: def.tip, cls: "" });
+    }
+    if (typeof s.page === "number" && s.page > 0) {
+      parts.push({ label: `P.${s.page}`, tip: pageTip(s.page), cls: "" });
+    }
+    parts.forEach((p, i) => {
+      if (i > 0) host.appendChild(el("span", "text-11 text-faint", "·")); // 分隔符 = 册子的 `|`
+      const span = el("span", `text-11 ${p.cls || "text-meta"}`, p.label);
+      span.dataset.tip = p.tip; // 纯文本也不能丢 hover 释义
+      host.appendChild(span);
+    });
+    // 特殊节目(场次特性)仍走徽章 —— 徽章是**稀缺资源**,只标「这场不一样」
+    for (const k of screeningBadgeKeys(s)) host.appendChild(badgeEl(k, u ? { uniform: true } : undefined));
+    return;
+  }
+
+  // ---- 默认:统一描边章流(网格卡 / 行程卡 / 弹层继续用这套) ----
+  if (rateKey) {
     const def = RATING_DEFS[rateKey];
     host.appendChild(u ? uniformChipEl(def.label, def.tip, RATING_ACCENT[rateKey]) : chipEl(def));
   }
-  // 字幕标识可同时多个(官方叠加印,如 KE KK)→ 逐个成章;归一化见 subsKeys()
   for (const k of subsKeys(s.subs)) {
     const def = SUBS_DEFS[k];
     host.appendChild(u ? uniformChipEl(def.label, def.tip) : chipEl(def));
@@ -560,12 +613,12 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     const ul = el("ul", "grid gap-[3px]");
     [
       ["一部片一条记录", "「我的选片」与「我的行程」是同一份数据的两个视图:按片看是选片清单,按场次看是行程。没有第二份拷贝,两边永远一致"],
-      ["必看 / 备选 / 随缘", "档位由**一枚 ★ 星标**表达(★ = 已定档,按档位着色;**蓝 = 必看 / 品红 = 备选 / 灰蓝 = 随缘**;☆ = 未设),点击弹出「必看 / 备选 / 随缘 / 清除档位」菜单 —— 三处完全同款:「影片库」卡片右上角、「我的行程」行程卡、影片资料弹层(2026-09-10 起弹层也由三段文字 seg 改为同一枚 ★)。档位是「影片级」的:改一处,该片所有场次同步"],
+      ["必看 / 备选 / 随缘", "档位由**一枚 ★ 星标**表达(★ = 已定档,按档位着色;**蓝 = 必看 / 品红 = 备选 / 灰蓝 = 随缘**;☆ = 未设),点击弹出「必看 / 备选 / 随缘 / 清除档位」菜单 —— 三处完全同款:「影片库」卡片右上角、「我的行程」行程卡、影片资料弹层。档位是「影片级」的:改一处,该片所有场次同步"],
       ["场次只在一处选", "影片行展开 = 唯一场次列表(两个 tab 同款):每场并排「定位 ▸」(跳到时间轴)与「＋ 加入」(加入后变「✓ 已加入」,再点即移出;这场在另一方案时显示「⇄ 已在 B」);「ⓘ」只开影片资料 + 豆瓣,不再重复列排片"],
-      ["甘特 ★ 档位", "定档后,甘特卡标题行前出现一枚 ★(**蓝=必看 / 品红=备选 / 灰蓝=随缘**,2026-09-10 由 7px 色点改为 15px 星标)——与整卡红绿灯底色相互独立:底色说「排得怎么样」,★ 说「是不是我想看的」。档位刻意用冷色系,避开底色的红/黄/绿;备选由「紫」改「品红」是因为蓝紫只差 48° 色相,小尺寸下分不出。同一枚 ★ 也出现在「影片库」卡片右上角、行程卡与影片资料弹层"],
-      ["顶栏「选片 · 行程」", "一个按钮 = 左侧滑出的**排片面板**(再点一次 / 面板内「收起 ✕」/ Esc 收起):面板**不遮挡网格**,只是把网格挤窄一点 —— 所以打标、点选场次时始终能看到时间轴上的变化。面板内**三个 tab**:· **影片库**(全部影片:搜索 / 单元筛选)· **我的选片**(日期导航栏 + 档位 chips;每行只剩「状态标签 + ⓘ + ✕」;展开只列**已排场次**并按日期分节)· **我的行程**(按日期分组的已排场次,原在主页面下方,2026-09-10 搬入 —— 常驻可见;卡片头与选片卡同款:**片名在上、影片信息行在下**)。三个 tab 共用同一套影片行 / 场次行,打标与图标完全一致"],
+      ["甘特 ★ 档位", "定档后,甘特卡标题行前出现一枚 ★(**蓝=必看 / 品红=备选 / 灰蓝=随缘**)——与整卡红绿灯底色相互独立:底色说「排得怎么样」,★ 说「是不是我想看的」。档位刻意用冷色系,避开底色的红/黄/绿。同一枚 ★ 也出现在「影片库」卡片右上角、行程卡与影片资料弹层"],
+      ["顶栏「选片 · 行程」", "一个按钮 = 左侧滑出的**排片面板**(再点一次 / 面板内「收起 ✕」/ Esc 收起):面板**不遮挡网格**,只是把网格挤窄一点 —— 所以打标、点选场次时始终能看到时间轴上的变化。面板内**三个 tab**:· **影片库**(全部影片:搜索 / 单元筛选)· **我的选片**(日期导航栏 + 档位 chips;每行只剩「状态标签 + ⓘ + ✕」;展开只列**已排场次**并按日期分节)· **我的行程**(按日期分组的已排场次,常驻可见;卡片头与选片卡同款:**片名在上、影片信息行在下**)。三个 tab 共用同一套影片行 / 场次行,打标与图标完全一致"],
       ["我的行程 ✕", "只移出这一场,选片意向保留 —— 该片仍留在「我的选片」里并标注「未排场」,「智能排片」照样会把它排进去"],
-      ["智能排片", "**唯一排片通道**(原「本地引擎」已下线)。需你自己填入模型 API Key(DeepSeek / OpenAI / Moonshot / 硅基流动 / 自定义均可),由浏览器直连服务商生成一版建议行程,再选「并入 A / B 方案」(已有场次保留,只追加不冲突的新场次)。可先在「② 排哪几天」收窄日期;一部片都没打标也能排 —— 走「无片单模式」,怎么排看偏好文字。返回结果会本地复检:无效 code、同片多场、时段冲突一律剔除并明示,不信任模型的自我约束"],
+      ["智能排片", "**唯一排片通道**。需你自己填入模型 API Key(DeepSeek / OpenAI / Moonshot / 硅基流动 / 自定义均可),由浏览器直连服务商生成一版建议行程,再选「并入 A / B 方案」(已有场次保留,只追加不冲突的新场次)。可先在「② 排哪几天」收窄日期;一部片都没打标也能排 —— 走「无片单模式」,怎么排看偏好文字。返回结果会本地复检:无效 code、同片多场、时段冲突一律剔除并明示,不信任模型的自我约束"],
       ["API Key 只在本机", "Key 只写入本机浏览器的 localStorage,不上传本站服务器、也不进任何发往本站的请求;排片请求由浏览器直连你填写的服务商。本站不提供也不转售模型服务(用你自己的额度),因此也读不到你的 Key。浏览器本地为明文存储 —— 公用电脑请勿保存,随时可在「设置」或弹层里点「清除 Key」"],
     ].forEach(([k, v]) => ul.appendChild(el("li", "text-13 leading-[1.6]", `${k} — ${v}`)));
     body.appendChild(ul);

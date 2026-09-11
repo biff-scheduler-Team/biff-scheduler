@@ -17,8 +17,17 @@
 //      · 操作组**永远在第 1 行右缘**(外层只有两个格子,它没地方可去);
 //      · 「身份 + 章组」自己流式折行 —— 第 1 行先被填满,装不下的章组逐枚折到第 2 行**左对齐**。
 //    效果(520px 档):
-//      `[001][BT] 9/17 周三 18:00–22:19 [139min][15][GV]        [定位 ▸][＋加入]`
-//      `[KE][P.43]`                       ← 只在真的装不下时才出现,且左对齐、不右漂
+//      `[001][BT] 9/17 18:00–22:19 · 139min · 15 · KE · P.43  [GV]   [定位 ▸][＋]`
+//      └────────── 第 1 行(事实纯文本 + 特殊节目章 + 操作)──────────┘
+//
+// ③ **事实信息走纯文本,描边章只留给「这场不一样」**(五改,对齐 BIFF 官方册子的影片页)。
+//    册子的元信息行是 `Korea | 2025 | 86min | DCP | color/b&w` —— **一个框都没有**;
+//    框只出现在右上角那枚 `WP`(World Premiere)。我们此前把片长 / 等级 / 字幕 / 页码
+//    全做成描边章,五枚 ≈190px,把抽屉 520px 的第 1 行吃光 → 折行。
+//    现在:事实(片长 / 等级 / 字幕 / 页码)= 纯文本 + `·` 分隔(≈120px;等级保留强调色,
+//    因为「未满岁不得入场」是硬性准入信息);特殊节目(GV / 首映 / 大师班…)= 徽章。
+//    另外日期只印 `9/21`(册子同款,不带星期),星期进 tooltip。
+//    见 `legend.ts::appendMetaRow` 的 `factsAsText` 分支(五改唯一实现点)。
 //
 // ⚠ 章组**不用固定 3 列等宽网格**:短章(15 / KE)只占自身宽度却要占满 1/3 列,章与章之间
 //   会出现大片空白(用户反馈「图标之间都有空隙」)。它是 `flex flex-wrap` + 4px 间距。
@@ -134,10 +143,6 @@ export function codeChip(code: string): HTMLElement {
   return node;
 }
 
-/** 片长说明(hover)—— 网格卡 / 行程行 / 选片行同一份文案 */
-const durTip = (min: number): string =>
-  `片长 ${min} 分钟(正片,不含映后谈)\nGV 场另有映后谈 — 时长可配置(设置里改全局默认,行程行逐场覆写)`;
-
 export interface ScreeningRowOpts {
   s: Screening;
   cat: Catalog;
@@ -179,16 +184,22 @@ export function screeningRow(o: ScreeningRowOpts): HTMLElement {
   when.appendChild(
     uniformChipEl(vCode, venue ? venueTip(venue) : s.venue_display, "font-extrabold text-ink-2 bg-card border-line")
   );
-  if (!o.hideDate) when.appendChild(el("span", "text-11 text-meta", `${label} ${weekday}`));
+  // 日期:册子口径 —— 只印 `9/21`(册子是 `Sep 21`),**不带星期**;星期进 tooltip。
+  // 省下的 ≈26px 是抽屉 520px 下「事实行不折行」的关键余量之一。
+  if (!o.hideDate) {
+    const d = el("span", "text-11 text-meta", label);
+    d.dataset.tip = `${label} ${weekday}`;
+    when.appendChild(d);
+  }
   when.appendChild(
     el("span", "text-12 font-semibold text-ink", o.timeText ?? fmtMinRange(s.start_time, s.end_time))
   );
   flow.appendChild(when);
 
-  // ---- 章组(片长 + 等级 / 字幕 / GV / 页码)—— **直接进流容器**:
-  //      逐枚参与折行,第 1 行先被填满;若套一层容器就变成「整组一起折」,第 1 行右侧会被浪费 ----
-  flow.appendChild(uniformChipEl(`${s.duration_min}min`, durTip(s.duration_min)));
-  appendMetaRow(flow, s, { uniform: true });
+  // ---- 事实信息(片长 / 等级 / 字幕 / 页码)—— **直接进流容器**:
+  //      逐项参与折行,第 1 行先被填满;套一层容器就变成「整组一起折」,第 1 行右侧会被浪费。
+  //      `factsAsText` = 册子口径:纯文本 + `·` 分隔,描边章只留给特殊节目(见 legend.ts) ----
+  appendMetaRow(flow, s, { uniform: true, factsAsText: true });
   line.appendChild(flow);
 
   // ---- 操作组:有卡片头 → 挂到卡片头右缘;否则挂场次行**第 1 行右缘**(见 SHOW_ROW_CLS 注释) ----
