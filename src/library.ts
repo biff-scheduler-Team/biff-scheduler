@@ -288,21 +288,59 @@ export function setPickerTab(tab: "lib" | "pick" | "agenda"): void {
   if (pickerRender) pickerRender();
 }
 
-/** 显示抽屉:给 main 加 `.is-picker-open`(容器上限 1280 → 1680,见 style.css),
- *  再摘掉 `is-collapsed`(宽度 0 → `--picker-w`,即**从左缘向右滑出**),并通知 main 侧重绘网格。 */
-function showPickerDrawer(): void {
-  document.querySelector("main")?.classList.add("is-picker-open");
-  document.getElementById("picker-drawer")?.classList.remove("is-collapsed");
+/** 抽屉宽度过渡结束后的挂起点(见 notifyAfterWidthTransition) */
+let toggleEndHandler: ((ev: TransitionEvent) => void) | null = null;
+let toggleNotifyTimer: number | undefined;
+
+/** 真正执行「开 / 收之后的重绘」:摘监听 + 清兜底定时器 + 回调 main 侧 */
+function fireToggleNotify(): void {
+  const drawer = document.getElementById("picker-drawer");
+  if (drawer && toggleEndHandler) drawer.removeEventListener("transitionend", toggleEndHandler);
+  toggleEndHandler = null;
+  if (toggleNotifyTimer !== undefined) {
+    window.clearTimeout(toggleNotifyTimer);
+    toggleNotifyTimer = undefined;
+  }
   pickerToggleHandler?.();
 }
 
-/** 收起抽屉(宽度缩回 0 —— 网格恢复原宽,同样要通知 main 侧重绘) */
+/** 等**宽度过渡结束**再通知 main 侧重绘网格(2026-09-11,PLAN-20260911140342)。
+ *  旧版在开 / 收的**当帧**就 `pickerToggleHandler()`,而 `renderGrid` 里的横向锚点读的是那一刻的
+ *  `clientWidth` —— 动画结束时视口宽度已经变了,「保持视口 / 居中」就会偏一点(拖动调宽尤其明显)。
+ *  ⚠ 必须有兜底定时器:`transitionend` 在「宽度恰好没变 / 元素不可见 / 系统开了减少动效」时**不会触发**。
+ *  ⚠ 连续开 / 收:每次调用都摘掉上一次的监听与定时器,只认最后一次。 */
+function notifyAfterWidthTransition(): void {
+  const drawer = document.getElementById("picker-drawer");
+  if (!drawer) {
+    pickerToggleHandler?.();
+    return;
+  }
+  if (toggleEndHandler) drawer.removeEventListener("transitionend", toggleEndHandler);
+  toggleEndHandler = (ev: TransitionEvent): void => {
+    // 过渡含 width / margin-right / padding / border-width / opacity —— 只认 width
+    if (ev.target === drawer && ev.propertyName === "width") fireToggleNotify();
+  };
+  drawer.addEventListener("transitionend", toggleEndHandler);
+  if (toggleNotifyTimer !== undefined) window.clearTimeout(toggleNotifyTimer);
+  toggleNotifyTimer = window.setTimeout(fireToggleNotify, 400); // 过渡 240ms + 余量
+}
+
+/** 显示抽屉:给 main 加 `.is-picker-open`(容器上限 1280 → 1680,见 style.css),
+ *  再摘掉 `is-collapsed`(宽度 0 → `--picker-w`,即**从左缘向右滑出**);
+ *  网格等过渡结束再重绘(见 notifyAfterWidthTransition)。 */
+function showPickerDrawer(): void {
+  document.querySelector("main")?.classList.add("is-picker-open");
+  document.getElementById("picker-drawer")?.classList.remove("is-collapsed");
+  notifyAfterWidthTransition();
+}
+
+/** 收起抽屉(宽度缩回 0 —— 网格恢复原宽,同样等过渡结束再重绘) */
 export function closePickerDrawer(): void {
   if (!isPickerDrawerOpen()) return;
   pickerRender = null;
   document.querySelector("main")?.classList.remove("is-picker-open");
   document.getElementById("picker-drawer")?.classList.add("is-collapsed");
-  pickerToggleHandler?.();
+  notifyAfterWidthTransition();
 }
 
 /* ---------- 拖拽调宽(手柄绝对定位在抽屉右缘,样式见 style.css 的 `#picker-resizer`) ---------- */
@@ -327,16 +365,19 @@ function pickerResizer(host: HTMLElement): HTMLElement {
     const onMove = (e: PointerEvent): void => applyPickerW(e.clientX - left);
     const onUp = (e: PointerEvent): void => {
       if (grip.hasPointerCapture(e.pointerId)) grip.releasePointerCapture(e.pointerId);
-      grip.classList.remove("is-dragging");
-      host.classList.remove("is-resizing");
       grip.removeEventListener("pointermove", onMove);
       grip.removeEventListener("pointerup", onUp);
       grip.removeEventListener("pointercancel", onUp);
+      // ⚠ 先把最终宽度落定(**仍在 is-resizing 里 → 无过渡**),再摘类:否则松手瞬间会补一段
+      //   从「拖拽中的值」到「钳制后的值」的动画,手感像被弹一下。
       const w = clampPickerW(e.clientX - left);
       applyPickerW(w);
       savePickerW(w);
+      grip.classList.remove("is-dragging");
+      host.classList.remove("is-resizing");
       // 宽度定了才通知 main 侧重绘一次网格(拖拽中逐帧重绘代价高;网格内部画布是定宽,
-      // 只有外层 `overflow-x-auto` 视口在变,不重排也不会有渲染错误)。
+      // 只有外层 `overflow-x-auto` 视口在变,不重排也不会有渲染错误)。此处**不必**等 transitionend
+      // —— 上面已在「关过渡」状态下把宽度定死,不会再有过渡发生。
       pickerToggleHandler?.();
     };
     grip.addEventListener("pointermove", onMove);

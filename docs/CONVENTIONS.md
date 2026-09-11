@@ -109,6 +109,10 @@
   · **网格宽度补偿**:抽屉开 / 收会改网格 `clientWidth`,由 `library.ts` 在
     `showPickerDrawer()` / `closePickerDrawer()` 内回调 `main.ts` 注入的 `setPickerToggleHandler(fn)`
     (`boot` 里注册 `() => renderGrid()`);横向锚点靠既有 `pendingAnchor` / `gridAnchor` 机制保住。
+    ⚠ **2026-09-11:这个回调推迟到 `width` 过渡结束**(`notifyAfterWidthTransition()`,带 400ms 兜底定时器
+    —— `transitionend` 在「宽度恰好没变 / 元素不可见 / 系统开了减少动效」时不触发)。
+    旧版在开 / 收**当帧**就重绘,而锚点读的是那一刻的 `clientWidth`,动画结束时视口已变 → 「保持视口」会偏。
+    拖拽调宽**不走**这条路径(松手前已在 `.is-resizing` 关过渡的状态下定死宽度,直接同步回调)。
     **`main.ts::renderAll()` 的「页面打开时早退」已删** —— 网格不再被 `display:none`,`clientWidth=0` 的前提不存在了。
   · 「定位 ▸」这类出口**只 `closeAllModals()`,不收起抽屉**(2026-09-10 定案):抽屉是
     `#main-col` 的 **flex 兄弟节点**而非浮层,网格卡片永远不会被它挡住,故无「必须收起」的理由;
