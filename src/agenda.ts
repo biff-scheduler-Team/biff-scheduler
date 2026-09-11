@@ -17,6 +17,8 @@
 //   **方案 = 「每个冲突组各取一场」的所有组合**(`plans.ts::buildPlanSet` 枚举 + 逐套校验无冲突)。
 //   顶部的「方案对比」把这些方案**全部**并列摆出来,按顺位成本排序(都取首选的排最前),
 //   每张卡只列差异场次(共同场次每套都一样,列 N 遍是噪声)。
+//   **同一部片在一套方案里只留一场**(2026-09-11 三改,`PLAN-20260911230500`):行程里留着
+//   「同一部片的两天场次」是抢票备选,不该让「最优先」那套变成同一部片看两遍(见 `plans.ts` 文件头)。
 //   **顺位卡走绿框 OK**(不是红框警报):顺位接手之后重叠已不是错误状态,见 `buildConflictGroup` 文件头。
 //
 // ⚠ 档位(必看 / 备选 / 随缘)已于 2026-09-11 整体删除 —— 它在冲突场景里的作用被「拖动顺位」
@@ -508,7 +510,7 @@ function buildPlanCompare(ctx: AgendaCtx): HTMLElement | null {
     el(
       "span",
       "text-11 text-muted",
-      "每个冲突组各取一场 → 每一套都无冲突;按顺位成本排序(都取首选的排最前)"
+      "每个冲突组各取一场 → 每一套都无冲突;同一部片只保留一场;按顺位成本排序(都取首选的排最前)"
     )
   );
   wrap.appendChild(head);
@@ -516,6 +518,20 @@ function buildPlanCompare(ctx: AgendaCtx): HTMLElement | null {
   const row = el("div", "flex gap-[8px] overflow-x-auto pb-[2px]");
   ps.options.forEach((opt, i) => row.appendChild(planCard(ctx, opt, i)));
   wrap.appendChild(row);
+
+  // 同片去重的账要交代清楚 —— 否则「为什么只有 3 套」会变成新的疑问(见 plans.ts 文件头)
+  if (ps.droppedSameFilm > 0) {
+    const note = el(
+      "div",
+      "text-11 text-muted",
+      `已剔除 ${ps.droppedSameFilm} 套「同一部片排了两场」的组合 —— ` +
+        "行程里的同片多场是抢票备选,每套方案只保留其中一场"
+    );
+    note.dataset.tip =
+      "同一部片在一套方案里只能出现一次;\n" +
+      "被剔除的是那些「两个冲突组分别选中了同一部片的两天场次」的组合";
+    wrap.appendChild(note);
+  }
 
   if (ps.truncated) {
     wrap.appendChild(

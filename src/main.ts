@@ -64,6 +64,7 @@ import { closePickerDrawer, ensurePickerOpen, isMobileDrawer, isPickerDrawerOpen
 import { openSettings, openTalkMinModal } from "./settings";
 import { initTheme, isThemePref, setThemePref, themePref } from "./theme";
 import { copyShareText } from "./share";
+import { openPosterModal } from "./poster-panel";
 import { downloadBackup } from "./backup";
 import { openImportBackupModal } from "./backup-panel";
 import { toast } from "./toast";
@@ -82,6 +83,7 @@ let plans: PlanSet = {
   total: 0,
   truncated: false,
   broken: new Set(),
+  droppedSameFilm: 0,
 };
 /** 甘特时间筛选:点击时间轴整点置为对应小时;null = 不过滤(切日期/再点/重置均清除) */
 let hourFilter: number | null = null;
@@ -172,12 +174,19 @@ function computeAllConflicts(): Map<string, ConflictResult> {
 
 /** 顺位 → N 套方案(见 `plans.ts`)。**与 `conflicts` 同轮派生** —— 两者必须同源,
  *  否则「拖动顺位」之后方案对比会与冲突红标对不上。
- *  组内兜底排序键只取**开始时刻**:冲突组按 `date` 分桶,组内必然同一天(见 plans.ts 文件头)。 */
+ *  组内兜底排序键只取**开始时刻**:冲突组按 `date` 分桶,组内必然同一天(见 plans.ts 文件头)。
+ *  影片 key 走 `filmKeyOfCode`(与网格 / 影片库 / 详情弹层同一口径)—— 同一套方案里同片只留一场。 */
 function computePlanSet(): PlanSet {
-  return buildPlanSet(allCodes(), conflicts, rankOf, (code) => {
-    const s = cat.byCode.get(code);
-    return s ? hmsToMin(s.start_time) : 0;
-  });
+  return buildPlanSet(
+    allCodes(),
+    conflicts,
+    rankOf,
+    (code) => {
+      const s = cat.byCode.get(code);
+      return s ? hmsToMin(s.start_time) : 0;
+    },
+    filmKeyOfCode
+  );
 }
 
 function totalConflictPairs(): number {
@@ -712,11 +721,12 @@ function bindEvents(): void {
     }
     const ex = t.closest<HTMLElement>("#export-menu button");
     if (ex) {
-      // 菜单统一在这里收起:四项里有三项自己会关(exportIcs / copyShareText / 本处),
+      // 菜单统一在这里收起:只有 exportIcs / copyShareText 会自己关,其余(含分享图片)靠本行,
       // 重复 add 同一类是幂等的,换来的是「新加一项忘了关菜单」这个坑不必再记。
       document.getElementById("export-menu")!.classList.add("is-hidden");
       const which = ex.dataset.which;
       if (which === "SHARE") copyShareText(cat, gvTalkOf);
+      else if (which === "POSTER") openPosterModal(cat, gvTalkOf);
       else if (which === "BACKUP") downloadBackup();
       else if (which === "RESTORE") openImportBackupModal();
       else exportIcs();

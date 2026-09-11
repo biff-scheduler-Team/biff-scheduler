@@ -3,8 +3,8 @@
 > 定位:自用釜山电影节排片工具 —— 解析官方 Ticket Catalogue → 可视化选片排期 → 冲突检测 → 导出 .ics → 一键跳豆瓣。
 > 栈:Cloudflare Pages(**纯静态**)+ Vite + TS(无框架)+ Tailwind v4(增量双轨)+ 静态 JSON。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-11(**接入豆瓣官方 API → `public/douban.json` 从空表变 82 部实映射**,见 `docs/plans/PLAN-20260911223200.md`;
-> 上一轮 = 拖动顺位 = N 套方案 + 删除档位,更早 = 日期口径统一为 OCT 写法 + 选片日期多选)。
+> 最后更新:2026-09-11(**方案对比:同一部片只留一场 —— 同片多场不再被当成两个独立槽位**,见 `docs/plans/PLAN-20260911230500.md`;
+> 上一轮 = 接入豆瓣官方 API(82 部实映射),更早 = 拖动顺位 = N 套方案 + 删除档位 / 日期口径统一为 OCT 写法)。
 
 ---
 
@@ -24,6 +24,12 @@
   改用匿名的 `search/suggestion`(+`mix_suggest_subjects` 兜底);② 详情口也会 **IP 级风控**
   (`code=1309 subject_ip_rate_limit`)—— 此时检索仍返回 200,**极易被误记成「豆瓣没有这部片」**,
   故 `{103,1005,1309}` 定为风控码,命中即停轮保进度。本轮产出 **82 部 / 355 键**全 `high`(剩余 164 部待风控解除后续跑)
+- **方案对比:同一部片只留一场(2026-09-11,`PLAN-20260911230500`)**:用户报「最优先」那套里出现
+  `027+071` 两场《峡湾》—— 027 / 071 是**同一部片**、分属两个冲突组、各自又都是组内顺位 1,
+  枚举把「同片多场」当成了两个互相独立的槽位。`plans.ts::buildPlanSet()` 增 `filmKeyOf` 注入
+  (走 `util.ts::filmNodeKey`,与影片库 / 详情弹层同口径):一套方案里出现两部同片即**剔除**
+  (记账 `droppedSameFilm`,方案对比区据此交代「为什么少了一套」);兜底 = 全判死时退回不去重结果。
+  单测 **98 → 102**
 - **拖动顺位 = N 套方案 + 删除档位(2026-09-11,`PLAN-20260911223000`)**:
   「我的行程」的冲突组**顺位卡**(**绿框 = 已处理好,不是警报**)内可**拖动排序**(卡片头第 1 列的 `⠿` 把手),
   顺序即**抢票顺位 = 偏好次序**;**顺位不决定分组** —— **方案 = 「每个冲突组各取一场」的所有组合**,
@@ -132,7 +138,7 @@
   biff.picks.v2(选片+排片,唯一数据源) / biff.settings.v1 / biff.gvtalk*.v1
 ```
 
-**前端模块(src/,28 文件 + `style.css`)**:`main.ts` 装配+统一事件委托｜`state.ts` 全局 store + localStorage 持久化(**片单只存本地**)+ subscribe 订阅｜`grid.ts` 排片网格｜`agenda.ts` 行程列表(绿框顺位卡拖动排序 + 方案对比)｜`library.ts` 影片库+我的选片(抽屉)｜`settings.ts` 设置弹层｜`share.ts` 分享文案｜`modal.ts` 弹层栈｜`row.ts` 场次行骨架｜`conflict.ts` 纯函数冲突检测｜`plans.ts` 顺位 + 冲突组 → 全部无冲突方案(纯函数)｜`score.ts` 行程质量分｜`ics.ts` 导出｜`gv.ts` 映后口径｜`badges.ts`/`legend.ts` 徽章与图例｜`ui.ts` 按钮/tab/缩放控件类名与工厂｜`chips.ts`/`form.ts`/`toast.ts` 共享 UI 片段｜`data.ts` JSON 加载(含豆瓣映射)｜`tip.ts` 悬停提示｜`types.ts`/`util.ts`/`style.css`
+**前端模块(src/,28 文件 + `style.css`)**:`main.ts` 装配+统一事件委托｜`state.ts` 全局 store + localStorage 持久化(**片单只存本地**)+ subscribe 订阅｜`grid.ts` 排片网格｜`agenda.ts` 行程列表(绿框顺位卡拖动排序 + 方案对比)｜`library.ts` 影片库+我的选片(抽屉)｜`settings.ts` 设置弹层｜`share.ts` 分享文案｜`modal.ts` 弹层栈｜`row.ts` 场次行骨架｜`conflict.ts` 纯函数冲突检测｜`plans.ts` 顺位 + 冲突组 → 全部无冲突方案(纯函数;同一部片只留一场)｜`score.ts` 行程质量分｜`ics.ts` 导出｜`gv.ts` 映后口径｜`badges.ts`/`legend.ts` 徽章与图例｜`ui.ts` 按钮/tab/缩放控件类名与工厂｜`chips.ts`/`form.ts`/`toast.ts` 共享 UI 片段｜`data.ts` JSON 加载(含豆瓣映射)｜`tip.ts` 悬停提示｜`types.ts`/`util.ts`/`style.css`
 
 > 2026-09-10 结构收口(PLAN-20260910232833):`library.ts` 1784→928、`main.ts` 1137→786;
 > 设置 / 抢票清单 / 质量分各自独立成文件;片名链 / 档位权重 / chip 类名 / 日期切段 / 时间标签收口到单一来源;补 `eslint` 门禁。
@@ -213,6 +219,9 @@ public/douban.json = {
   **方案 = 「每个冲突组各取一场」的所有组合**(∪ 共同场次),`plans.ts::buildPlanSet()` 枚举 + **逐套校验**;
   组与组之间按定义没有冲突边 ⇒ 任意组合天然不重叠(校验是「证据」,性质是「论证」)。
   顺位唯一用途 = 给方案排序:**成本 = Σ 各组所选顺位的和**,越小越优先。
+  **同一部片在一套方案里只留一场**(2026-09-11 三改,`PLAN-20260911230500`)——
+  行程里的同片多场是**抢票备选**,不是两个独立槽位;出现两部同片的组合直接剔除(`droppedSameFilm`)。
+  ⚠ 边界:去重只作用在 picks 之间 —— 共同场次与某个 pick 同片时仍会重复,修它要先定义谁让路(未做)。
   选片 i 实际时段 = [start_i, end_i](end 已含 GV)
 - 允许明知冲突强加,但始终视觉标红;`OK_SLACK = 15`(util.ts)为转场余量阈值,agenda 三态(gapNote ok/tight/bad)与 grid gap-bar 共用
 - **顺位(抢票次序)是场次级**:`state.ts::rankOf: Map<code, number>`,独立键 `biff.ranks.v1`;

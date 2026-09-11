@@ -40,7 +40,7 @@ import { toast } from "./toast";
 const DIVIDER = "━━━━━━━━━━━━";
 
 /** GV 标记:有谈段 → 含 / 弃两态;`is_gv` 但谈段配成 0 → 只标 GV。非 GV 场返回空串。 */
-function gvMark(s: Screening, talkOn: boolean): string {
+export function gvMark(s: Screening, talkOn: boolean): string {
   if (gvTalkMin(s) > 0) return talkOn ? "GV 含映后谈" : "GV 仅正片";
   return s.is_gv ? "GV" : "";
 }
@@ -60,6 +60,41 @@ function dateHead(iso: string, count: number): string {
   return `【${label} ${weekday} · ${count} 场】`;
 }
 
+/** 已选场次 → 「带场次的已排行」,按 **日期 → 开场时间** 排序。
+ *  ⚠ 排序放在这里(而不是留给调用方):日期分节头与日期区间都依赖「已排序」,
+ *  少一个调用点忘了排序就产出错乱文案 —— 分享文案(`buildShareText`)与分享图片(`poster.ts`)共用本函数。
+ *  排期里已不存在的 code(换版)静默跳过。 */
+export function orderedPickRows(
+  cat: Catalog,
+  entries: PickRow[]
+): { e: PickRow; s: Screening }[] {
+  return entries
+    .map((e) => ({ e, s: cat.byCode.get(e.code) }))
+    .filter((r): r is { e: PickRow; s: Screening } => Boolean(r.s))
+    .sort((a, b) => a.s.date.localeCompare(b.s.date) || a.s.start_time.localeCompare(b.s.start_time));
+}
+
+/** 概要:场次数 / 影片数 / 日期区间文本(空输入 → null)。
+ *  分享文案与分享图片的「共 N 场 / M 部 · 日期区间」必须同源,否则两处出口会各印一个数。 */
+export interface ShareSummary {
+  count: number;
+  films: number;
+  range: string;
+}
+
+export function shareSummary(
+  cat: Catalog,
+  rows: { e: PickRow; s: Screening }[]
+): ShareSummary | null {
+  if (rows.length === 0) return null;
+  const films = new Set(rows.map((r) => filmNodeKey(cat, r.s))).size;
+  const first = rows[0].s.date;
+  const last = rows[rows.length - 1].s.date;
+  const range =
+    first === last ? dateInfo(first).label : `${dateInfo(first).label}–${dateInfo(last).label}`;
+  return { count: rows.length, films, range };
+}
+
 /** 生成分享文案(纯函数,便于单测)。
  *
  *  排序在函数内做(**按日期 → 开场时间**):分节头与日期区间都依赖「已排序」,
@@ -71,21 +106,14 @@ export function buildShareText(
   mappings: Map<string, Mapping>,
   talkOf: (code: string) => boolean
 ): string {
-  const rows = entries
-    .map((e) => ({ e, s: cat.byCode.get(e.code) }))
-    .filter((r): r is { e: PickRow; s: Screening } => Boolean(r.s))
-    .sort((a, b) => a.s.date.localeCompare(b.s.date) || a.s.start_time.localeCompare(b.s.start_time));
-  if (rows.length === 0) return "";
+  const rows = orderedPickRows(cat, entries);
+  const sum = shareSummary(cat, rows);
+  if (!sum) return "";
 
   const fest = cat.schedule.festival;
-  const films = new Set(rows.map((r) => filmNodeKey(cat, r.s))).size;
-  const first = rows[0].s.date;
-  const last = rows[rows.length - 1].s.date;
-  const range = first === last ? dateInfo(first).label : `${dateInfo(first).label}–${dateInfo(last).label}`;
-
   const lines: string[] = [
     `🎬 ${fest.name} ${fest.year} 看片计划`,
-    `📅 ${range} · 共 ${rows.length} 场 / ${films} 部`,
+    `📅 ${sum.range} · 共 ${sum.count} 场 / ${sum.films} 部`,
     DIVIDER,
   ];
 
