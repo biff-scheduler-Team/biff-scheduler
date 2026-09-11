@@ -14,7 +14,7 @@ import { VitePWA } from "vite-plugin-pwa";
 // 更彻底的做法是把 57MB 海报迁到 R2 / 独立静态域,dist 只留 <300KB 产物(见 PLAN 备注)。
 process.env.CODEBUDDY_SAFE_DELETE_BULK_THRESHOLD = "5000";
 
-// 构建产物输出到 dist/（wrangler pages 部署目录）；public/ 下的
+// 构建产物输出到 dist/（wrangler.toml [assets] 部署目录）；public/ 下的
 // schedule.json / venues.json 会被 vite 原样拷贝进 dist 根目录。
 export default defineConfig({
   base: "./",

@@ -61,7 +61,7 @@ npm run dev          # 本地开发服务器（Vite）
 npm run typecheck    # tsc --noEmit
 npm run test         # vitest run（78 条纯函数口径单测）
 npm run build        # typecheck + lint + test + vite build
-npm run preview      # 构建后用 wrangler 起本地 Pages 环境（纯静态）
+npm run preview      # 构建后用 wrangler dev 起本地 Worker 静态资源环境（纯静态）
 ```
 
 > **无后端**：豆瓣映射是静态文件 `public/douban.json`（随部署进 `dist`），片单只落 `localStorage`
@@ -289,10 +289,10 @@ npm run typecheck           # tsc --noEmit
 npm run lint                # eslint src tests
 npm run test                # vitest run（78 条纯函数口径单测）
 npm run build               # typecheck + lint + test + vite build
-npm run preview             # 构建 + wrangler pages dev dist（纯静态）
+npm run preview             # 构建 + wrangler dev（纯静态）
 
-# 部署（首次需先创建 Pages 项目）
-npm run deploy              # 构建 + wrangler pages deploy dist --branch production
+# 部署（Workers 静态资源，配置见 wrangler.toml [assets]；推 main 也会触发 Cloudflare Git 构建）
+npm run deploy              # 构建 + wrangler deploy
 ```
 
 **改代码前建议先读**：[`docs/CONVENTIONS.md`](./docs/CONVENTIONS.md)（数据契约 / 弹层交互 / 渲染约定 / 基础设施踩坑）与 [`PLAN.md`](./PLAN.md)（当前状态与决策记录）。

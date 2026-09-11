@@ -1,8 +1,14 @@
 name = "biff-scheduler"
 compatibility_date = "2026-09-09"
-pages_build_output_dir = "./dist"
 
-# 纯静态部署(2026-09-11,PLAN-20260911001107):D1 已整体退役 ——
+# 纯静态 Worker(2026-09-11):Cloudflare Git 构建跑的是 `npx wrangler deploy`(Workers 流程),
+# 旧的 `pages_build_output_dir` 会让它误判成 Pages 项目、又找不到入口 → 部署失败。
+# 改用 Workers 静态资源:无 `main`,dist/ 整目录直出。
+# `single-page-application` 对齐 Pages 的默认行为(没有 404.html 时未知路径回落到 index.html)。
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+
+# D1 已整体退役(PLAN-20260911001107)——
 # 豆瓣映射改由静态产物 `public/douban.json` 承载,片单只落浏览器 localStorage。
-# 故本文件**不再有任何绑定**(无 d1_databases / 无 functions 路由),
-# `wrangler pages deploy dist` 不需要任何后端资源。
+# 故本文件**不再有任何绑定**(无 d1_databases / 无 Worker 脚本),部署不需要任何后端资源。

@@ -2,7 +2,7 @@
   "name": "biff-scheduler",
   "version": "0.1.0",
   "private": true,
-  "description": "BIFF 电影节排片工具 - Cloudflare Pages 纯静态 + Vite/TS",
+  "description": "BIFF 电影节排片工具 - Cloudflare Workers 纯静态 + Vite/TS",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,8 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "npm run typecheck && npm run lint && npm run test && vite build",
-    "preview": "npm run build && wrangler pages dev dist",
-    "deploy": "npm run build && wrangler pages deploy dist --project-name biff-scheduler --branch production --commit-dirty=true"
+    "preview": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
