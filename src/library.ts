@@ -780,7 +780,7 @@ export function openFilmPicker(ctx: LibraryCtx, tab?: "lib" | "pick" | "agenda")
     const cat0 = n.cats[0];
     // 副标题:原始片名 + 单元 · 国家 · 年份 · 导演(排版走共享常量 `CARD_SUB_CLS`)
     const subBits = [...n.names, n.meta].filter(Boolean);
-    // 状态标签:场次计数 + 已排计数**合并成一枚**(原为两枚描边胶囊)——
+    // 状态标签:场次计数 + 已排计数**合并成一枚**(原为两枚描边标签)——
     // 浅红底深红字 = 「这枚数字和我的行程有关」,而不是又一个可点的按钮。
     const status = el("div", "flex items-center gap-[6px] flex-wrap pt-[1px]");
     const tagCls =

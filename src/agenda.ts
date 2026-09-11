@@ -188,7 +188,7 @@ function buildRow(
   s: Screening,
   opts: { inConflictGroup?: boolean; rank?: number } = {}
 ): HTMLElement {
-  // GV 映后谈:放弃(或 talk=0 不拆)时本行有效区间 = 正片末;参加 = 槽位末。开关在「映后」胶囊上。
+  // GV 映后谈:放弃(或 talk=0 不拆)时本行有效区间 = 正片末;参加 = 槽位末。开关在「映后」标签上。
   const talk = gvTalkMin(s);
   const talkOn = talk > 0 ? ctx.gvTalkOf(s.code) : true;
   const endHms = fmtEndClock(effEndMin(s, talkOn)); // 跨午夜 → "次日 05:35"
@@ -416,7 +416,7 @@ function attachRankDrag(box: HTMLElement): void {
   }
 }
 
-/** 行程卡的**卡片头右缘操作组**(`acts`):①「映后 N′」合并胶囊(点标签 = 含/弃,点数字 = 改本场时长);
+/** 行程卡的**卡片头右缘操作组**(`acts`):①「映后 N′」合并标签(点标签 = 含/弃,点数字 = 改本场时长);
  *  ② 顺位徽章(**仅冲突组内的行**);③ ✕ 移出(极淡,卡 hover 才完全显现)。
  *  ⚠ 三枚都是**行程特有**的操作 —— 位置对齐选片卡「片名行右上角图标组」,`ml-auto` 贴右。 */
 function buildActs(
@@ -428,7 +428,7 @@ function buildActs(
 ): HTMLElement {
   const acts = el("div", "flex items-center gap-[6px] shrink-0");
 
-  // ---- ① 映后:一枚胶囊同时表达「含/弃」与「本场时长」(旧版是 ⏱ N′ + ✓含映后 两枚正交胶囊) ----
+  // ---- ① 映后:一枚标签同时表达「含/弃」与「本场时长」(旧版是 ⏱ N′ + ✓含映后 两枚正交标签) ----
   //  含 = 浅绿底绿字(与网格「已选 / 谈段」同一套 ok 色);弃 = 中性灰 + 删除线。
   //  ⚠ 时长覆写入口收在**数字**上(span 而非嵌套 button,HTML 合法):点击目标经
   //    `closest("[data-act]")` 命中最内层 → main.ts 走 `gv-talk-min` 小弹层;点标签其余部分 = 含/弃。
@@ -439,7 +439,7 @@ function buildActs(
     const offCls = "border border-line bg-card text-muted line-through";
     const tag = el(
       "button",
-      `rounded-full px-[8px] py-[1px] text-11 font-semibold whitespace-nowrap transition-colors hover:border-biff ${talkOn ? onCls : offCls}`
+      `rounded-5 px-[8px] py-[1px] text-11 font-semibold whitespace-nowrap transition-colors hover:border-biff ${talkOn ? onCls : offCls}`
     );
     tag.dataset.act = "gv-talk";
     tag.appendChild(document.createTextNode(talkOn ? "映后 " : "弃映后 "));

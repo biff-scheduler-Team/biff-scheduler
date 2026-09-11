@@ -3,7 +3,7 @@
 //  - 「ⓘ 日程表说明」总览弹层内容(字段速读 / Schedule Guide 三栏 / 徽章 / 影院代码 / 网格图例 / Notice)
 //    2026-09-11 重排:每段收进「分区卡片」(标题条 + 内容区),示例区画成一张模拟网格卡,
 //    表格改细线 + 行 hover,弹层宽度走 modal.ts 的 `xl`(880px)。
-//    同日二次对齐官方新版:等级 / 字幕 / 特性章改**彩底白字实心胶囊**,图例改为官方
+//    同日二次对齐官方新版:等级 / 字幕 / 特性章改**彩底白字实心色块**,图例改为官方
 //    「Ratings | Subtitle | Information」三栏,末尾「特别提示」改为官方 Notice 素圆点列表。
 // 场馆名两层口径:紧凑层(甘特影厅列 / 影片库截断行)走 venues.json 的 `short` 短名,
 // 详情层(hover tooltip / 本弹层表 / ICS LOCATION)给英文全名 + 韩名。
@@ -158,7 +158,7 @@ export function durChip(min: number, opts?: { boxed?: boolean }): HTMLElement {
     ? `${CHIP_BASE} text-meta bg-card border-line`
     : `${CHIP_BASE} text-meta bg-transparent border-transparent px-[2px]`;
   const node = el("i", cls, `${min}'`);
-  node.dataset.tip = `片长 ${min} 分钟\n正片时长(不含映后谈)\nGV 场另有映后谈 — 时长可配置(设置里改全局默认,行程行映后胶囊逐场覆写),可在卡片 / 行程里单独放弃`;
+  node.dataset.tip = `片长 ${min} 分钟\n正片时长(不含映后谈)\nGV 场另有映后谈 — 时长可配置(设置里改全局默认,行程行映后标签逐场覆写),可在卡片 / 行程里单独放弃`;
   return node;
 }
 
@@ -182,7 +182,7 @@ function timeField(range: string): HTMLElement {
   node.dataset.tip =
     "放映时间 起–止(KST)\n" +
     "GV 映后场的结束时间 = 正片末 + 映后谈时长(正片 + 映后 N′)\n" +
-    "映后时长可配置:设置里改全局默认,行程行点映后胶囊的数字逐场覆写\n" +
+    "映后时长可配置:设置里改全局默认,行程行点映后标签的数字逐场覆写\n" +
     "该段可在卡片 / 行程单独放弃 — 放弃后按正片结束算转场";
   return node;
 }
@@ -525,7 +525,7 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
     // 「元素」列一律渲染真节点(章 / 字段),不再写纯文本 —— 纯文本既没有章的外形,
     // 也没有 data-tip,tip.ts 的文档级委托命不中 → 表现为「只有 GV 有悬停」。
     const { tbl, tbody } = mkTable(["元素", "含义"]);
-    addRow(tbody, [timeField("09:00–10:40"), "放映时间(起–止,KST)。GV 映后场的结束时间 = 正片末 + 映后谈时长(正片 + 映后 N′),该段在卡片上单独可弃:放弃后按正片结束算转场。映后时长可配置:设置里给全局默认(默认 25 分钟),行程行点映后胶囊的数字可逐场覆写(留空 = 跟随默认)。跨午夜场(如通宵马拉松)按 24+ 时制显示为「23:59–次日 05:35」,时间轴同步外扩到次日并在 24:00 处画跨日分隔线"]);
+    addRow(tbody, [timeField("09:00–10:40"), "放映时间(起–止,KST)。GV 映后场的结束时间 = 正片末 + 映后谈时长(正片 + 映后 N′),该段在卡片上单独可弃:放弃后按正片结束算转场。映后时长可配置:设置里给全局默认(默认 25 分钟),行程行点映后标签的数字可逐场覆写(留空 = 跟随默认)。跨午夜场(如通宵马拉松)按 24+ 时制显示为「23:59–次日 05:35」,时间轴同步外扩到次日并在 24:00 处画跨日分隔线"]);
     addRow(tbody, [codeField("004"), "放映 CODE — 本场唯一场次编号;同片多场各异,对表 / 抢票以此为准"]);
     addRow(tbody, [chipEl(RATING_DEFS["15"]), "观影等级 — 未满对应年龄不得入场(下节表)"]);
     addRow(tbody, [chipEl(SUBS_DEFS.KE), "字幕 / 对白标识(下节表);格内空白 = 未标注(英字 + 韩语对白)"]);
@@ -582,7 +582,7 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
       addRow(tbody, [chip, d.title]);
     });
     wrap.appendChild(scrollBox(tbl));
-    wrap.appendChild(note("GV 徽章为实心紫(对齐官方新版 Information 列)。GV 场在网格里拆成「正片 + 映后谈」两张拼接卡:默认一起选中,点映后块或行程行开关可单独放弃(只选正片);放弃后该场按正片结束算转场/冲突/.ics 导出,该段仍留在时间轴上以虚线灰块示意「物理存在但我不参加」。**映后谈时长可配置**:设置里给全局默认(默认 25 分钟,改它 = 谈段长度与有效结束全链路跟着变),行程行点映后胶囊的数字可逐场覆写(留空 = 跟随默认;设 0 = 本场不拆映后段)。"));
+    wrap.appendChild(note("GV 徽章为实心紫(对齐官方新版 Information 列)。GV 场在网格里拆成「正片 + 映后谈」两张拼接卡:默认一起选中,点映后块或行程行开关可单独放弃(只选正片);放弃后该场按正片结束算转场/冲突/.ics 导出,该段仍留在时间轴上以虚线灰块示意「物理存在但我不参加」。**映后谈时长可配置**:设置里给全局默认(默认 25 分钟,改它 = 谈段长度与有效结束全链路跟着变),行程行点映后标签的数字可逐场覆写(留空 = 跟随默认;设 0 = 本场不拆映后段)。"));
     body.appendChild(guideSection("场次特性徽章", "BADGES", wrap));
   }
 
@@ -645,7 +645,7 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
       ],
       [
         badgeEl("gv"),
-        "Guest Visit 嘉宾映后 — 默认连映后谈一起选(两张拼接卡同亮),可在映后块/行程单独放弃,放弃后按正片结束算转场;映后时长可配置(设置里改默认值,行程行映后胶囊逐场覆写)",
+        "Guest Visit 嘉宾映后 — 默认连映后谈一起选(两张拼接卡同亮),可在映后块/行程单独放弃,放弃后按正片结束算转场;映后时长可配置(设置里改默认值,行程行映后标签逐场覆写)",
       ],
       [doubanChip(8.5), "豆瓣用户评分(满分 10 分,仅影片库 / 详情出现)"],
     ];

@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-09-11T14:31:11+00:00",
+ "generated_at": "2026-09-11T16:44:06+00:00",
  "source": "豆瓣 Frodo API(/api/v2/search/subjects + /api/v2/movie/{id})。键 = 影片 id(f###)或场次 code,**带 title_en 自证**(见 tools/prune_douban.py)。生成脚本:tools/build_douban_map.py",
  "mappings": {
   "001": {
@@ -612,6 +612,26 @@
    "rating_count": 466,
    "confidence": "high"
   },
+  "069": {
+   "subject_id": 34954059,
+   "title_cn": "九庙上天堂",
+   "douban_url": "https://movie.douban.com/subject/34954059/",
+   "title_en": "9 Temples to Heaven",
+   "year": "2026",
+   "rating": 6.7,
+   "rating_count": 445,
+   "confidence": "high"
+  },
+  "070": {
+   "subject_id": 36942635,
+   "title_cn": "皎洁深宵之月",
+   "douban_url": "https://movie.douban.com/subject/36942635/",
+   "title_en": "In the Clear Moonlit Dusk",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "071": {
    "subject_id": 37168181,
    "title_cn": "峡湾",
@@ -622,6 +642,36 @@
    "rating_count": 1028,
    "confidence": "high"
   },
+  "072": {
+   "subject_id": 38212533,
+   "title_cn": "剃刀",
+   "douban_url": "https://movie.douban.com/subject/38212533/",
+   "title_en": "Shaving",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "073": {
+   "subject_id": 37806528,
+   "title_cn": "我的母亲",
+   "douban_url": "https://movie.douban.com/subject/37806528/",
+   "title_en": "IBUKU",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "074": {
+   "subject_id": 38246675,
+   "title_cn": "漫漫长夜",
+   "douban_url": "https://movie.douban.com/subject/38246675/",
+   "title_en": "Long Long Night",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "076": {
    "subject_id": 37247236,
    "title_cn": "理智与情感",
@@ -630,6 +680,26 @@
    "year": "2026",
    "rating": null,
    "rating_count": null,
+   "confidence": "high"
+  },
+  "077": {
+   "subject_id": 37384452,
+   "title_cn": "Ghost／夜的尽头",
+   "douban_url": "https://movie.douban.com/subject/37384452/",
+   "title_en": "ghost – end of night",
+   "year": "2027",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "079": {
+   "subject_id": 37494774,
+   "title_cn": "我爱的男人",
+   "douban_url": "https://movie.douban.com/subject/37494774/",
+   "title_en": "The Man I Love",
+   "year": "2026",
+   "rating": 5.4,
+   "rating_count": 247,
    "confidence": "high"
   },
   "080": {
@@ -650,6 +720,16 @@
    "year": "2026",
    "rating": 6.4,
    "rating_count": 270,
+   "confidence": "high"
+  },
+  "082": {
+   "subject_id": 25977027,
+   "title_cn": "小姐",
+   "douban_url": "https://movie.douban.com/subject/25977027/",
+   "title_en": "The Handmaiden",
+   "year": "2016",
+   "rating": 8.6,
+   "rating_count": 594019,
    "confidence": "high"
   },
   "083": {
@@ -682,6 +762,36 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "086": {
+   "subject_id": 37105480,
+   "title_cn": "人人都爱比尔·埃文斯",
+   "douban_url": "https://movie.douban.com/subject/37105480/",
+   "title_en": "Everybody Digs Bill Evans",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "087": {
+   "subject_id": 38197594,
+   "title_cn": "‌寓勇于凡‌",
+   "douban_url": "https://movie.douban.com/subject/38197594/",
+   "title_en": "Not a Hero",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "088": {
+   "subject_id": 37273184,
+   "title_cn": "爆炸性物种",
+   "douban_url": "https://movie.douban.com/subject/37273184/",
+   "title_en": "Too Many Beasts",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "089": {
    "subject_id": 36847425,
    "title_cn": "可能的爱情",
@@ -690,6 +800,16 @@
    "year": "2026",
    "rating": null,
    "rating_count": null,
+   "confidence": "high"
+  },
+  "090": {
+   "subject_id": 37487816,
+   "title_cn": "故土",
+   "douban_url": "https://movie.douban.com/subject/37487816/",
+   "title_en": "Fatherland",
+   "year": "2026",
+   "rating": 7.6,
+   "rating_count": 3254,
    "confidence": "high"
   },
   "091": {
@@ -702,11 +822,51 @@
    "rating_count": 398,
    "confidence": "high"
   },
+  "092": {
+   "subject_id": 35740374,
+   "title_cn": "告知信",
+   "douban_url": "https://movie.douban.com/subject/35740374/",
+   "title_en": "Yellow Letters",
+   "year": "2026",
+   "rating": 6.8,
+   "rating_count": 1044,
+   "confidence": "high"
+  },
+  "093": {
+   "subject_id": 36553887,
+   "title_cn": "欢迎来到朵莉之家",
+   "douban_url": "https://movie.douban.com/subject/36553887/",
+   "title_en": "Welcome to Dolly′s House",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "094": {
+   "subject_id": 38415392,
+   "title_cn": "革命的预演",
+   "douban_url": "https://movie.douban.com/subject/38415392/",
+   "title_en": "Rehearsals for a Revolution",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "095": {
    "subject_id": 37269580,
    "title_cn": "温柔的怪物",
    "douban_url": "https://movie.douban.com/subject/37269580/",
    "title_en": "Gentle Monster",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "096": {
+   "subject_id": 36481235,
+   "title_cn": "行走之人",
+   "douban_url": "https://movie.douban.com/subject/36481235/",
+   "title_en": "La Gradiva",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -752,11 +912,91 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "101": {
+   "subject_id": 36976760,
+   "title_cn": "神之子",
+   "douban_url": "https://movie.douban.com/subject/36976760/",
+   "title_en": "Ben′imana",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "102": {
    "subject_id": 35256138,
    "title_cn": "郑家牧场",
    "douban_url": "https://movie.douban.com/subject/35256138/",
    "title_en": "Cattle Run",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "105": {
+   "subject_id": 36948305,
+   "title_cn": "救赎",
+   "douban_url": "https://movie.douban.com/subject/36948305/",
+   "title_en": "Salvation",
+   "year": "2026",
+   "rating": 6.4,
+   "rating_count": 567,
+   "confidence": "high"
+  },
+  "106": {
+   "subject_id": 38633758,
+   "title_cn": "树老归根",
+   "douban_url": "https://movie.douban.com/subject/38633758/",
+   "title_en": "Revolving Lanterns",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "107": {
+   "subject_id": 38633750,
+   "title_cn": "临终耳语",
+   "douban_url": "https://movie.douban.com/subject/38633750/",
+   "title_en": "The Soul Whisperer",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "108": {
+   "subject_id": 37149367,
+   "title_cn": "谎言生活",
+   "douban_url": "https://movie.douban.com/subject/37149367/",
+   "title_en": "Big Little Things",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "109": {
+   "subject_id": 35972827,
+   "title_cn": "人鱼海洋",
+   "douban_url": "https://movie.douban.com/subject/35972827/",
+   "title_en": "Titanic Ocean",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "110": {
+   "subject_id": 1292048,
+   "title_cn": "蓝白红三部曲之蓝",
+   "douban_url": "https://movie.douban.com/subject/1292048/",
+   "title_en": "Three Colours: Blue",
+   "year": "1993",
+   "rating": 8.5,
+   "rating_count": 164804,
+   "confidence": "high"
+  },
+  "111": {
+   "subject_id": 38569887,
+   "title_cn": "借过一下",
+   "douban_url": "https://movie.douban.com/subject/38569887/",
+   "title_en": "Let Us Through, Dear Ancestors",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -782,6 +1022,16 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "114": {
+   "subject_id": 36690639,
+   "title_cn": "苦涩的圣诞节",
+   "douban_url": "https://movie.douban.com/subject/36690639/",
+   "title_en": "Bitter Christmas",
+   "year": "2026",
+   "rating": 6.7,
+   "rating_count": 2599,
+   "confidence": "high"
+  },
   "115": {
    "subject_id": 37211136,
    "title_cn": "贝德福德公园",
@@ -792,11 +1042,31 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "116": {
+   "subject_id": 37499678,
+   "title_cn": "Föa",
+   "douban_url": "https://movie.douban.com/subject/37499678/",
+   "title_en": "Föa - Once Upon A Future",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "117": {
    "subject_id": 35503140,
    "title_cn": "悲伤女孩",
    "douban_url": "https://movie.douban.com/subject/35503140/",
    "title_en": "Sad Girlz",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "119": {
+   "subject_id": 37447589,
+   "title_cn": "优秀卒子",
+   "douban_url": "https://movie.douban.com/subject/37447589/",
+   "title_en": "A Good Little Soldier",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -842,11 +1112,31 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "125": {
+   "subject_id": 38211634,
+   "title_cn": "私事公审",
+   "douban_url": "https://movie.douban.com/subject/38211634/",
+   "title_en": "About an Intimate Matter",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "126": {
    "subject_id": 35745636,
    "title_cn": "菲律宾女孩",
    "douban_url": "https://movie.douban.com/subject/35745636/",
    "title_en": "Filipiñana",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "127": {
+   "subject_id": 35700981,
+   "title_cn": "在浪中",
+   "douban_url": "https://movie.douban.com/subject/35700981/",
+   "title_en": "In Waves",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -900,6 +1190,26 @@
    "year": "2026",
    "rating": 6.5,
    "rating_count": 466,
+   "confidence": "high"
+  },
+  "133": {
+   "subject_id": 37490923,
+   "title_cn": "长冬",
+   "douban_url": "https://movie.douban.com/subject/37490923/",
+   "title_en": "A Long Winter",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "134": {
+   "subject_id": 35765242,
+   "title_cn": "茫然女王",
+   "douban_url": "https://movie.douban.com/subject/35765242/",
+   "title_en": "Queen at Sea",
+   "year": "2026",
+   "rating": 8.1,
+   "rating_count": 1960,
    "confidence": "high"
   },
   "135": {
@@ -990,6 +1300,16 @@
    "year": "2026",
    "rating": null,
    "rating_count": null,
+   "confidence": "high"
+  },
+  "144": {
+   "subject_id": 34954059,
+   "title_cn": "九庙上天堂",
+   "douban_url": "https://movie.douban.com/subject/34954059/",
+   "title_en": "9 Temples to Heaven",
+   "year": "2026",
+   "rating": 6.7,
+   "rating_count": 445,
    "confidence": "high"
   },
   "145": {
@@ -1172,6 +1492,16 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "169": {
+   "subject_id": 35700981,
+   "title_cn": "在浪中",
+   "douban_url": "https://movie.douban.com/subject/35700981/",
+   "title_en": "In Waves",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "172": {
    "subject_id": 38184919,
    "title_cn": "回声室",
@@ -1182,11 +1512,201 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "173": {
+   "subject_id": 37296242,
+   "title_cn": "平行故事",
+   "douban_url": "https://movie.douban.com/subject/37296242/",
+   "title_en": "Parallel Tales",
+   "year": "2026",
+   "rating": 6.2,
+   "rating_count": 331,
+   "confidence": "high"
+  },
+  "174": {
+   "subject_id": 36660162,
+   "title_cn": "我们的救赎",
+   "douban_url": "https://movie.douban.com/subject/36660162/",
+   "title_en": "A Man of His Time",
+   "year": "2026",
+   "rating": 6.5,
+   "rating_count": 236,
+   "confidence": "high"
+  },
+  "176": {
+   "subject_id": 38553810,
+   "title_cn": "最初的告别",
+   "douban_url": "https://movie.douban.com/subject/38553810/",
+   "title_en": "After the Song",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "178": {
+   "subject_id": 36948305,
+   "title_cn": "救赎",
+   "douban_url": "https://movie.douban.com/subject/36948305/",
+   "title_en": "Salvation",
+   "year": "2026",
+   "rating": 6.4,
+   "rating_count": 567,
+   "confidence": "high"
+  },
+  "179": {
+   "subject_id": 38212533,
+   "title_cn": "剃刀",
+   "douban_url": "https://movie.douban.com/subject/38212533/",
+   "title_en": "Shaving",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "180": {
    "subject_id": 37333129,
    "title_cn": "佐藤总是",
    "douban_url": "https://movie.douban.com/subject/37333129/",
    "title_en": "Satoko Always",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "181": {
+   "subject_id": 37806528,
+   "title_cn": "我的母亲",
+   "douban_url": "https://movie.douban.com/subject/37806528/",
+   "title_en": "IBUKU",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "182": {
+   "subject_id": 38246675,
+   "title_cn": "漫漫长夜",
+   "douban_url": "https://movie.douban.com/subject/38246675/",
+   "title_en": "Long Long Night",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "183": {
+   "subject_id": 36976760,
+   "title_cn": "神之子",
+   "douban_url": "https://movie.douban.com/subject/36976760/",
+   "title_en": "Ben′imana",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "184": {
+   "subject_id": 37447589,
+   "title_cn": "优秀卒子",
+   "douban_url": "https://movie.douban.com/subject/37447589/",
+   "title_en": "A Good Little Soldier",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "185": {
+   "subject_id": 37496381,
+   "title_cn": "夜店小子",
+   "douban_url": "https://movie.douban.com/subject/37496381/",
+   "title_en": "Club Kid",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "186": {
+   "subject_id": 37291549,
+   "title_cn": "米诺陶",
+   "douban_url": "https://movie.douban.com/subject/37291549/",
+   "title_en": "Minotaur",
+   "year": "2026",
+   "rating": 7.0,
+   "rating_count": 470,
+   "confidence": "high"
+  },
+  "187": {
+   "subject_id": 1291569,
+   "title_cn": "大都会",
+   "douban_url": "https://movie.douban.com/subject/1291569/",
+   "title_en": "Metropolis",
+   "year": "2001",
+   "rating": 8.1,
+   "rating_count": 38682,
+   "confidence": "high"
+  },
+  "188": {
+   "subject_id": 37248336,
+   "title_cn": "穆兰",
+   "douban_url": "https://movie.douban.com/subject/37248336/",
+   "title_en": "Moulin",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "189": {
+   "subject_id": 36575610,
+   "title_cn": "未知",
+   "douban_url": "https://movie.douban.com/subject/36575610/",
+   "title_en": "The Unknown",
+   "year": "2026",
+   "rating": 5.9,
+   "rating_count": 199,
+   "confidence": "high"
+  },
+  "190": {
+   "subject_id": 35350806,
+   "title_cn": "阿嘎日",
+   "douban_url": "https://movie.douban.com/subject/35350806/",
+   "title_en": "AGAAR",
+   "year": "2030",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "192": {
+   "subject_id": 38633759,
+   "title_cn": "跨国罪业：战争遗忘录",
+   "douban_url": "https://movie.douban.com/subject/38633759/",
+   "title_en": "ACROSS: Anatomy of the Forgotten War",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "193": {
+   "subject_id": 38634383,
+   "title_cn": "权镇圭：艺术家的生命",
+   "douban_url": "https://movie.douban.com/subject/38634383/",
+   "title_en": "A Life of an Artist: Kwon Jinkyu",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "194": {
+   "subject_id": 38634386,
+   "title_cn": "金允信不在美术馆",
+   "douban_url": "https://movie.douban.com/subject/38634386/",
+   "title_en": "Kim Yun Shin Punches In",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "196": {
+   "subject_id": 36553887,
+   "title_cn": "欢迎来到朵莉之家",
+   "douban_url": "https://movie.douban.com/subject/36553887/",
+   "title_en": "Welcome to Dolly′s House",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -1232,6 +1752,16 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "203": {
+   "subject_id": 38633758,
+   "title_cn": "树老归根",
+   "douban_url": "https://movie.douban.com/subject/38633758/",
+   "title_en": "Revolving Lanterns",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "205": {
    "subject_id": 37522944,
    "title_cn": "蔷薇之锁",
@@ -1257,6 +1787,26 @@
    "title_cn": "感谢你能来",
    "douban_url": "https://movie.douban.com/subject/38424781/",
    "title_en": "Thanks for Coming",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "211": {
+   "subject_id": 36690639,
+   "title_cn": "苦涩的圣诞节",
+   "douban_url": "https://movie.douban.com/subject/36690639/",
+   "title_en": "Bitter Christmas",
+   "year": "2026",
+   "rating": 6.7,
+   "rating_count": 2599,
+   "confidence": "high"
+  },
+  "212": {
+   "subject_id": 35972827,
+   "title_cn": "人鱼海洋",
+   "douban_url": "https://movie.douban.com/subject/35972827/",
+   "title_en": "Titanic Ocean",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -1322,11 +1872,51 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "230": {
+   "subject_id": 37273184,
+   "title_cn": "爆炸性物种",
+   "douban_url": "https://movie.douban.com/subject/37273184/",
+   "title_en": "Too Many Beasts",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "231": {
+   "subject_id": 37149367,
+   "title_cn": "谎言生活",
+   "douban_url": "https://movie.douban.com/subject/37149367/",
+   "title_en": "Big Little Things",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "232": {
    "subject_id": 38212538,
    "title_cn": "智人",
    "douban_url": "https://movie.douban.com/subject/38212538/",
    "title_en": "Sapiens",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "233": {
+   "subject_id": 38197594,
+   "title_cn": "‌寓勇于凡‌",
+   "douban_url": "https://movie.douban.com/subject/38197594/",
+   "title_en": "Not a Hero",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "234": {
+   "subject_id": 37490923,
+   "title_cn": "长冬",
+   "douban_url": "https://movie.douban.com/subject/37490923/",
+   "title_en": "A Long Winter",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -1372,6 +1962,16 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "247": {
+   "subject_id": 38415392,
+   "title_cn": "革命的预演",
+   "douban_url": "https://movie.douban.com/subject/38415392/",
+   "title_en": "Rehearsals for a Revolution",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "248": {
    "subject_id": 36990574,
    "title_cn": "宛如星辰的你",
@@ -1402,6 +2002,16 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "252": {
+   "subject_id": 38569887,
+   "title_cn": "借过一下",
+   "douban_url": "https://movie.douban.com/subject/38569887/",
+   "title_en": "Let Us Through, Dear Ancestors",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "254": {
    "subject_id": 36879472,
    "title_cn": "爪哇四季",
@@ -1420,6 +2030,16 @@
    "year": "2026",
    "rating": 4.9,
    "rating_count": 2505,
+   "confidence": "high"
+  },
+  "257": {
+   "subject_id": 36481235,
+   "title_cn": "行走之人",
+   "douban_url": "https://movie.douban.com/subject/36481235/",
+   "title_en": "La Gradiva",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
    "confidence": "high"
   },
   "260": {
@@ -1462,6 +2082,16 @@
    "rating_count": 21411,
    "confidence": "high"
   },
+  "272": {
+   "subject_id": 1291569,
+   "title_cn": "大都会",
+   "douban_url": "https://movie.douban.com/subject/1291569/",
+   "title_en": "Metropolis",
+   "year": "2001",
+   "rating": 8.1,
+   "rating_count": 38682,
+   "confidence": "high"
+  },
   "273": {
    "subject_id": 38351570,
    "title_cn": "你心中的火",
@@ -1492,6 +2122,16 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "282": {
+   "subject_id": 37105480,
+   "title_cn": "人人都爱比尔·埃文斯",
+   "douban_url": "https://movie.douban.com/subject/37105480/",
+   "title_en": "Everybody Digs Bill Evans",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "286": {
    "subject_id": 38184919,
    "title_cn": "回声室",
@@ -1502,11 +2142,51 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "287": {
+   "subject_id": 37487816,
+   "title_cn": "故土",
+   "douban_url": "https://movie.douban.com/subject/37487816/",
+   "title_en": "Fatherland",
+   "year": "2026",
+   "rating": 7.6,
+   "rating_count": 3254,
+   "confidence": "high"
+  },
   "288": {
    "subject_id": 37667487,
    "title_cn": "橘子味的婚礼",
    "douban_url": "https://movie.douban.com/subject/37667487/",
    "title_en": "Orange-Flavoured Wedding",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "290": {
+   "subject_id": 38211634,
+   "title_cn": "私事公审",
+   "douban_url": "https://movie.douban.com/subject/38211634/",
+   "title_en": "About an Intimate Matter",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "291": {
+   "subject_id": 37806528,
+   "title_cn": "我的母亲",
+   "douban_url": "https://movie.douban.com/subject/37806528/",
+   "title_en": "IBUKU",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "304": {
+   "subject_id": 38633759,
+   "title_cn": "跨国罪业：战争遗忘录",
+   "douban_url": "https://movie.douban.com/subject/38633759/",
+   "title_en": "ACROSS: Anatomy of the Forgotten War",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -1562,6 +2242,16 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "319": {
+   "subject_id": 38633750,
+   "title_cn": "临终耳语",
+   "douban_url": "https://movie.douban.com/subject/38633750/",
+   "title_en": "The Soul Whisperer",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "324": {
    "subject_id": 37019225,
    "title_cn": "彼此的日夜",
@@ -1587,6 +2277,16 @@
    "title_cn": "光阴",
    "douban_url": "https://movie.douban.com/subject/38392854/",
    "title_en": "Time and Tide",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "332": {
+   "subject_id": 38634386,
+   "title_cn": "金允信不在美术馆",
+   "douban_url": "https://movie.douban.com/subject/38634386/",
+   "title_en": "Kim Yun Shin Punches In",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -1622,6 +2322,16 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "341": {
+   "subject_id": 35350806,
+   "title_cn": "阿嘎日",
+   "douban_url": "https://movie.douban.com/subject/35350806/",
+   "title_en": "AGAAR",
+   "year": "2030",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "342": {
    "subject_id": 36191127,
    "title_cn": "燃烧的巨人",
@@ -1637,6 +2347,46 @@
    "title_cn": "雌犬",
    "douban_url": "https://movie.douban.com/subject/37537045/",
    "title_en": "La Perra",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "344": {
+   "subject_id": 38553810,
+   "title_cn": "最初的告别",
+   "douban_url": "https://movie.douban.com/subject/38553810/",
+   "title_en": "After the Song",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "345": {
+   "subject_id": 38197594,
+   "title_cn": "‌寓勇于凡‌",
+   "douban_url": "https://movie.douban.com/subject/38197594/",
+   "title_en": "Not a Hero",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "346": {
+   "subject_id": 38569887,
+   "title_cn": "借过一下",
+   "douban_url": "https://movie.douban.com/subject/38569887/",
+   "title_en": "Let Us Through, Dear Ancestors",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "347": {
+   "subject_id": 37248336,
+   "title_cn": "穆兰",
+   "douban_url": "https://movie.douban.com/subject/37248336/",
+   "title_en": "Moulin",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -1662,6 +2412,16 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "354": {
+   "subject_id": 38633758,
+   "title_cn": "树老归根",
+   "douban_url": "https://movie.douban.com/subject/38633758/",
+   "title_en": "Revolving Lanterns",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "357": {
    "subject_id": 37077011,
    "title_cn": "温柔以待",
@@ -1682,6 +2442,26 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "361": {
+   "subject_id": 35700981,
+   "title_cn": "在浪中",
+   "douban_url": "https://movie.douban.com/subject/35700981/",
+   "title_en": "In Waves",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "363": {
+   "subject_id": 37494774,
+   "title_cn": "我爱的男人",
+   "douban_url": "https://movie.douban.com/subject/37494774/",
+   "title_en": "The Man I Love",
+   "year": "2026",
+   "rating": 5.4,
+   "rating_count": 247,
+   "confidence": "high"
+  },
   "369": {
    "subject_id": 38351570,
    "title_cn": "你心中的火",
@@ -1697,6 +2477,16 @@
    "title_cn": "佐藤总是",
    "douban_url": "https://movie.douban.com/subject/37333129/",
    "title_en": "Satoko Always",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "376": {
+   "subject_id": 36553887,
+   "title_cn": "欢迎来到朵莉之家",
+   "douban_url": "https://movie.douban.com/subject/36553887/",
+   "title_en": "Welcome to Dolly′s House",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -1720,6 +2510,26 @@
    "year": "2026",
    "rating": 7.7,
    "rating_count": 1028,
+   "confidence": "high"
+  },
+  "387": {
+   "subject_id": 37806528,
+   "title_cn": "我的母亲",
+   "douban_url": "https://movie.douban.com/subject/37806528/",
+   "title_en": "IBUKU",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "388": {
+   "subject_id": 37296242,
+   "title_cn": "平行故事",
+   "douban_url": "https://movie.douban.com/subject/37296242/",
+   "title_en": "Parallel Tales",
+   "year": "2026",
+   "rating": 6.2,
+   "rating_count": 331,
    "confidence": "high"
   },
   "391": {
@@ -1752,6 +2562,16 @@
    "rating_count": 52025,
    "confidence": "high"
   },
+  "403": {
+   "subject_id": 35350806,
+   "title_cn": "阿嘎日",
+   "douban_url": "https://movie.douban.com/subject/35350806/",
+   "title_en": "AGAAR",
+   "year": "2030",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "406": {
    "subject_id": 36473054,
    "title_cn": "雾中的大象",
@@ -1780,6 +2600,26 @@
    "year": "2025",
    "rating": null,
    "rating_count": null,
+   "confidence": "high"
+  },
+  "413": {
+   "subject_id": 36660162,
+   "title_cn": "我们的救赎",
+   "douban_url": "https://movie.douban.com/subject/36660162/",
+   "title_en": "A Man of His Time",
+   "year": "2026",
+   "rating": 6.5,
+   "rating_count": 236,
+   "confidence": "high"
+  },
+  "415": {
+   "subject_id": 37291549,
+   "title_cn": "米诺陶",
+   "douban_url": "https://movie.douban.com/subject/37291549/",
+   "title_en": "Minotaur",
+   "year": "2026",
+   "rating": 7.0,
+   "rating_count": 470,
    "confidence": "high"
   },
   "418": {
@@ -1812,11 +2652,41 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "426": {
+   "subject_id": 38553810,
+   "title_cn": "最初的告别",
+   "douban_url": "https://movie.douban.com/subject/38553810/",
+   "title_en": "After the Song",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "430": {
    "subject_id": 35524365,
    "title_cn": "由内而外：彼得·卒姆托的建筑",
    "douban_url": "https://movie.douban.com/subject/35524365/",
    "title_en": "From Inside Out - The Architecture of Peter Zumthor",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "431": {
+   "subject_id": 38415392,
+   "title_cn": "革命的预演",
+   "douban_url": "https://movie.douban.com/subject/38415392/",
+   "title_en": "Rehearsals for a Revolution",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "432": {
+   "subject_id": 38634383,
+   "title_cn": "权镇圭：艺术家的生命",
+   "douban_url": "https://movie.douban.com/subject/38634383/",
+   "title_en": "A Life of an Artist: Kwon Jinkyu",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -1830,6 +2700,16 @@
    "year": "2026",
    "rating": 8.2,
    "rating_count": 310,
+   "confidence": "high"
+  },
+  "438": {
+   "subject_id": 37499678,
+   "title_cn": "Föa",
+   "douban_url": "https://movie.douban.com/subject/37499678/",
+   "title_en": "Föa - Once Upon A Future",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
    "confidence": "high"
   },
   "439": {
@@ -1892,6 +2772,46 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "451": {
+   "subject_id": 36690639,
+   "title_cn": "苦涩的圣诞节",
+   "douban_url": "https://movie.douban.com/subject/36690639/",
+   "title_en": "Bitter Christmas",
+   "year": "2026",
+   "rating": 6.7,
+   "rating_count": 2599,
+   "confidence": "high"
+  },
+  "452": {
+   "subject_id": 35740374,
+   "title_cn": "告知信",
+   "douban_url": "https://movie.douban.com/subject/35740374/",
+   "title_en": "Yellow Letters",
+   "year": "2026",
+   "rating": 6.8,
+   "rating_count": 1044,
+   "confidence": "high"
+  },
+  "453": {
+   "subject_id": 38197594,
+   "title_cn": "‌寓勇于凡‌",
+   "douban_url": "https://movie.douban.com/subject/38197594/",
+   "title_en": "Not a Hero",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "456": {
+   "subject_id": 38634386,
+   "title_cn": "金允信不在美术馆",
+   "douban_url": "https://movie.douban.com/subject/38634386/",
+   "title_en": "Kim Yun Shin Punches In",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "457": {
    "subject_id": 35653114,
    "title_cn": "赤贫镇",
@@ -1932,6 +2852,26 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "464": {
+   "subject_id": 38212533,
+   "title_cn": "剃刀",
+   "douban_url": "https://movie.douban.com/subject/38212533/",
+   "title_en": "Shaving",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "465": {
+   "subject_id": 38633750,
+   "title_cn": "临终耳语",
+   "douban_url": "https://movie.douban.com/subject/38633750/",
+   "title_en": "The Soul Whisperer",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "467": {
    "subject_id": 37233337,
    "title_cn": "疯癫老人日记",
@@ -1952,11 +2892,51 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "469": {
+   "subject_id": 35765242,
+   "title_cn": "茫然女王",
+   "douban_url": "https://movie.douban.com/subject/35765242/",
+   "title_en": "Queen at Sea",
+   "year": "2026",
+   "rating": 8.1,
+   "rating_count": 1960,
+   "confidence": "high"
+  },
   "470": {
    "subject_id": 37247236,
    "title_cn": "理智与情感",
    "douban_url": "https://movie.douban.com/subject/37247236/",
    "title_en": "Sense and Sensibility",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "472": {
+   "subject_id": 36660162,
+   "title_cn": "我们的救赎",
+   "douban_url": "https://movie.douban.com/subject/36660162/",
+   "title_en": "A Man of His Time",
+   "year": "2026",
+   "rating": 6.5,
+   "rating_count": 236,
+   "confidence": "high"
+  },
+  "474": {
+   "subject_id": 37487816,
+   "title_cn": "故土",
+   "douban_url": "https://movie.douban.com/subject/37487816/",
+   "title_en": "Fatherland",
+   "year": "2026",
+   "rating": 7.6,
+   "rating_count": 3254,
+   "confidence": "high"
+  },
+  "479": {
+   "subject_id": 37105480,
+   "title_cn": "人人都爱比尔·埃文斯",
+   "douban_url": "https://movie.douban.com/subject/37105480/",
+   "title_en": "Everybody Digs Bill Evans",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -1972,11 +2952,41 @@
    "rating_count": 310,
    "confidence": "high"
   },
+  "483": {
+   "subject_id": 37494774,
+   "title_cn": "我爱的男人",
+   "douban_url": "https://movie.douban.com/subject/37494774/",
+   "title_en": "The Man I Love",
+   "year": "2026",
+   "rating": 5.4,
+   "rating_count": 247,
+   "confidence": "high"
+  },
   "484": {
    "subject_id": 37104948,
    "title_cn": "不择手段",
    "douban_url": "https://movie.douban.com/subject/37104948/",
    "title_en": "By Any Means",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "485": {
+   "subject_id": 36575610,
+   "title_cn": "未知",
+   "douban_url": "https://movie.douban.com/subject/36575610/",
+   "title_en": "The Unknown",
+   "year": "2026",
+   "rating": 5.9,
+   "rating_count": 199,
+   "confidence": "high"
+  },
+  "487": {
+   "subject_id": 38633759,
+   "title_cn": "跨国罪业：战争遗忘录",
+   "douban_url": "https://movie.douban.com/subject/38633759/",
+   "title_en": "ACROSS: Anatomy of the Forgotten War",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -2022,6 +3032,16 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "500": {
+   "subject_id": 34954059,
+   "title_cn": "九庙上天堂",
+   "douban_url": "https://movie.douban.com/subject/34954059/",
+   "title_en": "9 Temples to Heaven",
+   "year": "2026",
+   "rating": 6.7,
+   "rating_count": 445,
+   "confidence": "high"
+  },
   "504": {
    "subject_id": 36614615,
    "title_cn": "钢铁男孩",
@@ -2037,6 +3057,16 @@
    "title_cn": "贝德福德公园",
    "douban_url": "https://movie.douban.com/subject/37211136/",
    "title_en": "Bedford Park",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "512": {
+   "subject_id": 38553810,
+   "title_cn": "最初的告别",
+   "douban_url": "https://movie.douban.com/subject/38553810/",
+   "title_en": "After the Song",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -2112,6 +3142,16 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "537": {
+   "subject_id": 38569887,
+   "title_cn": "借过一下",
+   "douban_url": "https://movie.douban.com/subject/38569887/",
+   "title_en": "Let Us Through, Dear Ancestors",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "538": {
    "subject_id": 37365391,
    "title_cn": "周日之后",
@@ -2132,11 +3172,31 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "540": {
+   "subject_id": 38634383,
+   "title_cn": "权镇圭：艺术家的生命",
+   "douban_url": "https://movie.douban.com/subject/38634383/",
+   "title_en": "A Life of an Artist: Kwon Jinkyu",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "545": {
    "subject_id": 36191127,
    "title_cn": "燃烧的巨人",
    "douban_url": "https://movie.douban.com/subject/36191127/",
    "title_en": "The Burning Giants",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "547": {
+   "subject_id": 37496381,
+   "title_cn": "夜店小子",
+   "douban_url": "https://movie.douban.com/subject/37496381/",
+   "title_en": "Club Kid",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -2182,6 +3242,16 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "557": {
+   "subject_id": 38246675,
+   "title_cn": "漫漫长夜",
+   "douban_url": "https://movie.douban.com/subject/38246675/",
+   "title_en": "Long Long Night",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "558": {
    "subject_id": 1307897,
    "title_cn": "回忆三部曲",
@@ -2202,6 +3272,16 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "561": {
+   "subject_id": 36575610,
+   "title_cn": "未知",
+   "douban_url": "https://movie.douban.com/subject/36575610/",
+   "title_en": "The Unknown",
+   "year": "2026",
+   "rating": 5.9,
+   "rating_count": 199,
+   "confidence": "high"
+  },
   "562": {
    "subject_id": 37168181,
    "title_cn": "峡湾",
@@ -2210,6 +3290,16 @@
    "year": "2026",
    "rating": 7.7,
    "rating_count": 1028,
+   "confidence": "high"
+  },
+  "563": {
+   "subject_id": 37296242,
+   "title_cn": "平行故事",
+   "douban_url": "https://movie.douban.com/subject/37296242/",
+   "title_en": "Parallel Tales",
+   "year": "2026",
+   "rating": 6.2,
+   "rating_count": 331,
    "confidence": "high"
   },
   "567": {
@@ -2262,6 +3352,16 @@
    "rating_count": 224,
    "confidence": "high"
   },
+  "575": {
+   "subject_id": 36948305,
+   "title_cn": "救赎",
+   "douban_url": "https://movie.douban.com/subject/36948305/",
+   "title_en": "Salvation",
+   "year": "2026",
+   "rating": 6.4,
+   "rating_count": 567,
+   "confidence": "high"
+  },
   "582": {
    "subject_id": 33455100,
    "title_cn": "朵拉",
@@ -2280,6 +3380,16 @@
    "year": "2026",
    "rating": null,
    "rating_count": null,
+   "confidence": "high"
+  },
+  "589": {
+   "subject_id": 34954059,
+   "title_cn": "九庙上天堂",
+   "douban_url": "https://movie.douban.com/subject/34954059/",
+   "title_en": "9 Temples to Heaven",
+   "year": "2026",
+   "rating": 6.7,
+   "rating_count": 445,
    "confidence": "high"
   },
   "592": {
@@ -2312,6 +3422,16 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "596": {
+   "subject_id": 37384452,
+   "title_cn": "Ghost／夜的尽头",
+   "douban_url": "https://movie.douban.com/subject/37384452/",
+   "title_en": "ghost – end of night",
+   "year": "2027",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "597": {
    "subject_id": 35653114,
    "title_cn": "赤贫镇",
@@ -2320,6 +3440,16 @@
    "year": "2026",
    "rating": null,
    "rating_count": null,
+   "confidence": "high"
+  },
+  "600": {
+   "subject_id": 35765242,
+   "title_cn": "茫然女王",
+   "douban_url": "https://movie.douban.com/subject/35765242/",
+   "title_en": "Queen at Sea",
+   "year": "2026",
+   "rating": 8.1,
+   "rating_count": 1960,
    "confidence": "high"
   },
   "605": {
@@ -2352,6 +3482,16 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "610": {
+   "subject_id": 36481235,
+   "title_cn": "行走之人",
+   "douban_url": "https://movie.douban.com/subject/36481235/",
+   "title_en": "La Gradiva",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "611": {
    "subject_id": 37148241,
    "title_cn": "懦夫",
@@ -2360,6 +3500,26 @@
    "year": "2026",
    "rating": 7.2,
    "rating_count": 398,
+   "confidence": "high"
+  },
+  "613": {
+   "subject_id": 37248336,
+   "title_cn": "穆兰",
+   "douban_url": "https://movie.douban.com/subject/37248336/",
+   "title_en": "Moulin",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "614": {
+   "subject_id": 37291549,
+   "title_cn": "米诺陶",
+   "douban_url": "https://movie.douban.com/subject/37291549/",
+   "title_en": "Minotaur",
+   "year": "2026",
+   "rating": 7.0,
+   "rating_count": 470,
    "confidence": "high"
   },
   "615": {
@@ -2382,12 +3542,32 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "620": {
+   "subject_id": 36976760,
+   "title_cn": "神之子",
+   "douban_url": "https://movie.douban.com/subject/36976760/",
+   "title_en": "Ben′imana",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "623": {
    "subject_id": 36919887,
    "title_cn": "洋基冠军",
    "douban_url": "https://movie.douban.com/subject/36919887/",
    "title_en": "Campeón Gabacho",
    "year": "2025",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "626": {
+   "subject_id": 35700981,
+   "title_cn": "在浪中",
+   "douban_url": "https://movie.douban.com/subject/35700981/",
+   "title_en": "In Waves",
+   "year": "2026",
    "rating": null,
    "rating_count": null,
    "confidence": "high"
@@ -2472,6 +3652,16 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "646": {
+   "subject_id": 35700981,
+   "title_cn": "在浪中",
+   "douban_url": "https://movie.douban.com/subject/35700981/",
+   "title_en": "In Waves",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "647": {
    "subject_id": 35641228,
    "title_cn": "野马九号",
@@ -2502,6 +3692,16 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "652": {
+   "subject_id": 37499678,
+   "title_cn": "Föa",
+   "douban_url": "https://movie.douban.com/subject/37499678/",
+   "title_en": "Föa - Once Upon A Future",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "654": {
    "subject_id": 36652425,
    "title_cn": "初次尝到寂寞",
@@ -2522,11 +3722,41 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "660": {
+   "subject_id": 35972827,
+   "title_cn": "人鱼海洋",
+   "douban_url": "https://movie.douban.com/subject/35972827/",
+   "title_en": "Titanic Ocean",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "667": {
    "subject_id": 38633748,
    "title_cn": "In Winter",
    "douban_url": "https://movie.douban.com/subject/38633748/",
    "title_en": "In Winter",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "668": {
+   "subject_id": 38211634,
+   "title_cn": "私事公审",
+   "douban_url": "https://movie.douban.com/subject/38211634/",
+   "title_en": "About an Intimate Matter",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "671": {
+   "subject_id": 37149367,
+   "title_cn": "谎言生活",
+   "douban_url": "https://movie.douban.com/subject/37149367/",
+   "title_en": "Big Little Things",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -2578,6 +3808,16 @@
    "douban_url": "https://movie.douban.com/subject/37233337/",
    "title_en": "Diary of a Mad Old Man",
    "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "683": {
+   "subject_id": 37384452,
+   "title_cn": "Ghost／夜的尽头",
+   "douban_url": "https://movie.douban.com/subject/37384452/",
+   "title_en": "ghost – end of night",
+   "year": "2027",
    "rating": null,
    "rating_count": null,
    "confidence": "high"
@@ -2652,11 +3892,81 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "694": {
+   "subject_id": 37496381,
+   "title_cn": "夜店小子",
+   "douban_url": "https://movie.douban.com/subject/37496381/",
+   "title_en": "Club Kid",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "698": {
+   "subject_id": 37490923,
+   "title_cn": "长冬",
+   "douban_url": "https://movie.douban.com/subject/37490923/",
+   "title_en": "A Long Winter",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "699": {
+   "subject_id": 37273184,
+   "title_cn": "爆炸性物种",
+   "douban_url": "https://movie.douban.com/subject/37273184/",
+   "title_en": "Too Many Beasts",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "700": {
+   "subject_id": 38212533,
+   "title_cn": "剃刀",
+   "douban_url": "https://movie.douban.com/subject/38212533/",
+   "title_en": "Shaving",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "702": {
+   "subject_id": 37447589,
+   "title_cn": "优秀卒子",
+   "douban_url": "https://movie.douban.com/subject/37447589/",
+   "title_en": "A Good Little Soldier",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "703": {
+   "subject_id": 38246675,
+   "title_cn": "漫漫长夜",
+   "douban_url": "https://movie.douban.com/subject/38246675/",
+   "title_en": "Long Long Night",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "706": {
    "subject_id": 37386979,
    "title_cn": "午间餐",
    "douban_url": "https://movie.douban.com/subject/37386979/",
    "title_en": "Midday Meal",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "711": {
+   "subject_id": 36553887,
+   "title_cn": "欢迎来到朵莉之家",
+   "douban_url": "https://movie.douban.com/subject/36553887/",
+   "title_en": "Welcome to Dolly′s House",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -2702,11 +4012,31 @@
    "rating_count": null,
    "confidence": "high"
   },
+  "724": {
+   "subject_id": 36942635,
+   "title_cn": "皎洁深宵之月",
+   "douban_url": "https://movie.douban.com/subject/36942635/",
+   "title_en": "In the Clear Moonlit Dusk",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
   "725": {
    "subject_id": 37224574,
    "title_cn": "魂淡",
    "douban_url": "https://movie.douban.com/subject/37224574/",
    "title_en": "Bucking Fastard",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "728": {
+   "subject_id": 38569887,
+   "title_cn": "借过一下",
+   "douban_url": "https://movie.douban.com/subject/38569887/",
+   "title_en": "Let Us Through, Dear Ancestors",
    "year": "2026",
    "rating": null,
    "rating_count": null,
@@ -3342,6 +4672,316 @@
    "rating_count": 466,
    "confidence": "high"
   },
+  "f064": {
+   "subject_id": 34954059,
+   "title_cn": "九庙上天堂",
+   "douban_url": "https://movie.douban.com/subject/34954059/",
+   "title_en": "9 Temples to Heaven",
+   "year": "2026",
+   "rating": 6.7,
+   "rating_count": 445,
+   "confidence": "high"
+  },
+  "f065": {
+   "subject_id": 36942635,
+   "title_cn": "皎洁深宵之月",
+   "douban_url": "https://movie.douban.com/subject/36942635/",
+   "title_en": "In the Clear Moonlit Dusk",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f066": {
+   "subject_id": 38212533,
+   "title_cn": "剃刀",
+   "douban_url": "https://movie.douban.com/subject/38212533/",
+   "title_en": "Shaving",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f067": {
+   "subject_id": 37806528,
+   "title_cn": "我的母亲",
+   "douban_url": "https://movie.douban.com/subject/37806528/",
+   "title_en": "IBUKU",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f068": {
+   "subject_id": 38246675,
+   "title_cn": "漫漫长夜",
+   "douban_url": "https://movie.douban.com/subject/38246675/",
+   "title_en": "Long Long Night",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f069": {
+   "subject_id": 37384452,
+   "title_cn": "Ghost／夜的尽头",
+   "douban_url": "https://movie.douban.com/subject/37384452/",
+   "title_en": "ghost – end of night",
+   "year": "2027",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f071": {
+   "subject_id": 37494774,
+   "title_cn": "我爱的男人",
+   "douban_url": "https://movie.douban.com/subject/37494774/",
+   "title_en": "The Man I Love",
+   "year": "2026",
+   "rating": 5.4,
+   "rating_count": 247,
+   "confidence": "high"
+  },
+  "f072": {
+   "subject_id": 25977027,
+   "title_cn": "小姐",
+   "douban_url": "https://movie.douban.com/subject/25977027/",
+   "title_en": "The Handmaiden",
+   "year": "2016",
+   "rating": 8.6,
+   "rating_count": 594019,
+   "confidence": "high"
+  },
+  "f073": {
+   "subject_id": 37105480,
+   "title_cn": "人人都爱比尔·埃文斯",
+   "douban_url": "https://movie.douban.com/subject/37105480/",
+   "title_en": "Everybody Digs Bill Evans",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f074": {
+   "subject_id": 38197594,
+   "title_cn": "‌寓勇于凡‌",
+   "douban_url": "https://movie.douban.com/subject/38197594/",
+   "title_en": "Not a Hero",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f075": {
+   "subject_id": 37273184,
+   "title_cn": "爆炸性物种",
+   "douban_url": "https://movie.douban.com/subject/37273184/",
+   "title_en": "Too Many Beasts",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f076": {
+   "subject_id": 37487816,
+   "title_cn": "故土",
+   "douban_url": "https://movie.douban.com/subject/37487816/",
+   "title_en": "Fatherland",
+   "year": "2026",
+   "rating": 7.6,
+   "rating_count": 3254,
+   "confidence": "high"
+  },
+  "f077": {
+   "subject_id": 35740374,
+   "title_cn": "告知信",
+   "douban_url": "https://movie.douban.com/subject/35740374/",
+   "title_en": "Yellow Letters",
+   "year": "2026",
+   "rating": 6.8,
+   "rating_count": 1044,
+   "confidence": "high"
+  },
+  "f078": {
+   "subject_id": 36553887,
+   "title_cn": "欢迎来到朵莉之家",
+   "douban_url": "https://movie.douban.com/subject/36553887/",
+   "title_en": "Welcome to Dolly′s House",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f079": {
+   "subject_id": 38415392,
+   "title_cn": "革命的预演",
+   "douban_url": "https://movie.douban.com/subject/38415392/",
+   "title_en": "Rehearsals for a Revolution",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f080": {
+   "subject_id": 36481235,
+   "title_cn": "行走之人",
+   "douban_url": "https://movie.douban.com/subject/36481235/",
+   "title_en": "La Gradiva",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f081": {
+   "subject_id": 36976760,
+   "title_cn": "神之子",
+   "douban_url": "https://movie.douban.com/subject/36976760/",
+   "title_en": "Ben′imana",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f083": {
+   "subject_id": 36948305,
+   "title_cn": "救赎",
+   "douban_url": "https://movie.douban.com/subject/36948305/",
+   "title_en": "Salvation",
+   "year": "2026",
+   "rating": 6.4,
+   "rating_count": 567,
+   "confidence": "high"
+  },
+  "f084": {
+   "subject_id": 38633758,
+   "title_cn": "树老归根",
+   "douban_url": "https://movie.douban.com/subject/38633758/",
+   "title_en": "Revolving Lanterns",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f085": {
+   "subject_id": 38633750,
+   "title_cn": "临终耳语",
+   "douban_url": "https://movie.douban.com/subject/38633750/",
+   "title_en": "The Soul Whisperer",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f086": {
+   "subject_id": 37149367,
+   "title_cn": "谎言生活",
+   "douban_url": "https://movie.douban.com/subject/37149367/",
+   "title_en": "Big Little Things",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f087": {
+   "subject_id": 35972827,
+   "title_cn": "人鱼海洋",
+   "douban_url": "https://movie.douban.com/subject/35972827/",
+   "title_en": "Titanic Ocean",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f088": {
+   "subject_id": 1292048,
+   "title_cn": "蓝白红三部曲之蓝",
+   "douban_url": "https://movie.douban.com/subject/1292048/",
+   "title_en": "Three Colours: Blue",
+   "year": "1993",
+   "rating": 8.5,
+   "rating_count": 164804,
+   "confidence": "high"
+  },
+  "f089": {
+   "subject_id": 38569887,
+   "title_cn": "借过一下",
+   "douban_url": "https://movie.douban.com/subject/38569887/",
+   "title_en": "Let Us Through, Dear Ancestors",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f090": {
+   "subject_id": 36690639,
+   "title_cn": "苦涩的圣诞节",
+   "douban_url": "https://movie.douban.com/subject/36690639/",
+   "title_en": "Bitter Christmas",
+   "year": "2026",
+   "rating": 6.7,
+   "rating_count": 2599,
+   "confidence": "high"
+  },
+  "f091": {
+   "subject_id": 37499678,
+   "title_cn": "Föa",
+   "douban_url": "https://movie.douban.com/subject/37499678/",
+   "title_en": "Föa - Once Upon A Future",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f092": {
+   "subject_id": 37447589,
+   "title_cn": "优秀卒子",
+   "douban_url": "https://movie.douban.com/subject/37447589/",
+   "title_en": "A Good Little Soldier",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f093": {
+   "subject_id": 38211634,
+   "title_cn": "私事公审",
+   "douban_url": "https://movie.douban.com/subject/38211634/",
+   "title_en": "About an Intimate Matter",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f094": {
+   "subject_id": 35700981,
+   "title_cn": "在浪中",
+   "douban_url": "https://movie.douban.com/subject/35700981/",
+   "title_en": "In Waves",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f095": {
+   "subject_id": 37490923,
+   "title_cn": "长冬",
+   "douban_url": "https://movie.douban.com/subject/37490923/",
+   "title_en": "A Long Winter",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f096": {
+   "subject_id": 35765242,
+   "title_cn": "茫然女王",
+   "douban_url": "https://movie.douban.com/subject/35765242/",
+   "title_en": "Queen at Sea",
+   "year": "2026",
+   "rating": 8.1,
+   "rating_count": 1960,
+   "confidence": "high"
+  },
   "f097": {
    "subject_id": 38424575,
    "title_cn": "依然灿烂地",
@@ -3547,6 +5187,126 @@
    "title_cn": "午间餐",
    "douban_url": "https://movie.douban.com/subject/37386979/",
    "title_en": "Midday Meal",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f121": {
+   "subject_id": 37296242,
+   "title_cn": "平行故事",
+   "douban_url": "https://movie.douban.com/subject/37296242/",
+   "title_en": "Parallel Tales",
+   "year": "2026",
+   "rating": 6.2,
+   "rating_count": 331,
+   "confidence": "high"
+  },
+  "f122": {
+   "subject_id": 36660162,
+   "title_cn": "我们的救赎",
+   "douban_url": "https://movie.douban.com/subject/36660162/",
+   "title_en": "A Man of His Time",
+   "year": "2026",
+   "rating": 6.5,
+   "rating_count": 236,
+   "confidence": "high"
+  },
+  "f124": {
+   "subject_id": 38553810,
+   "title_cn": "最初的告别",
+   "douban_url": "https://movie.douban.com/subject/38553810/",
+   "title_en": "After the Song",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f126": {
+   "subject_id": 37496381,
+   "title_cn": "夜店小子",
+   "douban_url": "https://movie.douban.com/subject/37496381/",
+   "title_en": "Club Kid",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f127": {
+   "subject_id": 37291549,
+   "title_cn": "米诺陶",
+   "douban_url": "https://movie.douban.com/subject/37291549/",
+   "title_en": "Minotaur",
+   "year": "2026",
+   "rating": 7.0,
+   "rating_count": 470,
+   "confidence": "high"
+  },
+  "f128": {
+   "subject_id": 1291569,
+   "title_cn": "大都会",
+   "douban_url": "https://movie.douban.com/subject/1291569/",
+   "title_en": "Metropolis",
+   "year": "2001",
+   "rating": 8.1,
+   "rating_count": 38682,
+   "confidence": "high"
+  },
+  "f129": {
+   "subject_id": 37248336,
+   "title_cn": "穆兰",
+   "douban_url": "https://movie.douban.com/subject/37248336/",
+   "title_en": "Moulin",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f130": {
+   "subject_id": 36575610,
+   "title_cn": "未知",
+   "douban_url": "https://movie.douban.com/subject/36575610/",
+   "title_en": "The Unknown",
+   "year": "2026",
+   "rating": 5.9,
+   "rating_count": 199,
+   "confidence": "high"
+  },
+  "f131": {
+   "subject_id": 35350806,
+   "title_cn": "阿嘎日",
+   "douban_url": "https://movie.douban.com/subject/35350806/",
+   "title_en": "AGAAR",
+   "year": "2030",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f133": {
+   "subject_id": 38633759,
+   "title_cn": "跨国罪业：战争遗忘录",
+   "douban_url": "https://movie.douban.com/subject/38633759/",
+   "title_en": "ACROSS: Anatomy of the Forgotten War",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f134": {
+   "subject_id": 38634383,
+   "title_cn": "权镇圭：艺术家的生命",
+   "douban_url": "https://movie.douban.com/subject/38634383/",
+   "title_en": "A Life of an Artist: Kwon Jinkyu",
+   "year": "2026",
+   "rating": null,
+   "rating_count": null,
+   "confidence": "high"
+  },
+  "f135": {
+   "subject_id": 38634386,
+   "title_cn": "金允信不在美术馆",
+   "douban_url": "https://movie.douban.com/subject/38634386/",
+   "title_en": "Kim Yun Shin Punches In",
    "year": "2026",
    "rating": null,
    "rating_count": null,

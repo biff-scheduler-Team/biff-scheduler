@@ -42,7 +42,7 @@
   --rate-19-soft: #f7eaec;
 
   /* ---- 官方新版 Schedule Guide **实底**配色(2026-09-11)----
-     官网排期页把等级 / 字幕 / 场次特性都画成「彩底 + 白字」的实心胶囊,这里照搬。
+     官网排期页把等级 / 字幕 / 场次特性都画成「彩底 + 白字」的实心标签,这里照搬。
      ⚠ 必须与上面的 `--rate-*`(文字色)分开:后者暗色下会提亮,拿去当底会吃掉白字。
      ⚠ 12 档官方是亮黄(#f0b429 那类),白字对比度只有 ~2:1 → 压深一档到 #c07a00(≈3.6:1),
        仍是同一色相、仍读得出「黄 = 12」,但小字号下看得清。 */
@@ -95,7 +95,7 @@
   --text-disabled: #adb5bd;
   --text-on-brand: #ffffff;
 
-  /* 「墨实底」面 —— 实心深色块专用(选中胶囊 / 抽屉 tab / CODE 章 / GV 章 / 「方案 N」章)。
+  /* 「墨实底」面 —— 实心深色块专用(选中标签 / 抽屉 tab / CODE 章 / GV 章 / 「方案 N」章)。
      ⚠ **不可**复用 `--text-primary`(即 `bg-ink`):它在暗色下被提亮成 #ececf1,
      这些块又是 `text-on-brand`(白字) → 白底白字看不清。
      这里两套主题都保持「深底 + 白字」的语义,暗色下只把底抬离页面/卡片底色(见文件末尾 dark 块)。 */
@@ -465,7 +465,7 @@
   transition: background 120ms ease, opacity 120ms ease;
 }
 
-/* 抓手图标:竖直居中的小胶囊 + 三枚圆点(纯 CSS,不依赖字体)→ 用户一眼知道这里能拖 */
+/* 抓手图标:竖直居中的小标签 + 三枚圆点(纯 CSS,不依赖字体)→ 用户一眼知道这里能拖 */
 #picker-resizer .picker-knob {
   position: absolute;
   top: 50%;
@@ -476,7 +476,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 7px;
+  border-radius: 4px;
   background: var(--bg-card);
   border: 1px solid var(--border-default);
   box-shadow: var(--shadow-card);

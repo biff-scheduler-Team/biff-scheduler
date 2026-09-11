@@ -383,7 +383,7 @@ function buildRulerTicks(
       "button",
       "absolute top-[1px] border-0 bg-transparent px-[5px] py-[1px] tabular-nums text-11 font-bold rounded-4 transition-colors cursor-pointer " +
         (isFirst ? "left-0 text-left" : "-translate-x-1/2 ") +
-        // hover 底用 bg-card(白药丸)而非 bg-hover(#fafafa)—— 画布已是浅灰底,再 hover 成更浅色等于没反馈
+        // hover 底用 bg-card(白块)而非 bg-hover(#fafafa)—— 画布已是浅灰底,再 hover 成更浅色等于没反馈
         (on ? "bg-biff text-on-brand" : "text-ink-2 hover:bg-card hover:text-biff-ink"),
       label
     );
@@ -1083,7 +1083,7 @@ function talkTip(s: Screening, talk: number, talkOn: boolean, inCurrent: boolean
   const endMin = filmEndMin(s) + talk; // 谈段末 = 正片末 + 配置时长(时长可全局改 / 逐场覆写)
   const filmEnd = fmtEndClock(filmEndMin(s));
   const range = `${fmtMinRangeMin(filmEndMin(s), endMin)} 映后谈 ${talk}min(GV 嘉宾到场)`;
-  const howTo = "映后时长可在设置里改默认值,或在行程行点映后胶囊的数字逐场覆写";
+  const howTo = "映后时长可在设置里改默认值,或在行程行点映后标签的数字逐场覆写";
   if (!inCurrent)
     return [
       range,

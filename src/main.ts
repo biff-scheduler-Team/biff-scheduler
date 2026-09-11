@@ -406,7 +406,7 @@ function renderGridMeta(): void {
     const hh = String(hourFilter).padStart(2, "0");
     const pill = el(
       "button",
-      "ml-[8px] border border-biff bg-biff-soft text-biff-ink rounded-full px-[8px] py-px text-12 font-bold align-middle cursor-pointer hover:bg-biff-line whitespace-nowrap",
+      "ml-[8px] border border-biff bg-biff-soft text-biff-ink rounded-5 px-[8px] py-px text-12 font-bold align-middle cursor-pointer hover:bg-biff-line whitespace-nowrap",
       `只看 ${hh}:00 段 · 取消`
     );
     pill.dataset.clearHour = "1";
@@ -544,12 +544,12 @@ function renderGrid(opts: { force?: boolean } = {}): void {
 }
 
 // 2026-09-10 起「我的行程」从主页面 #agenda-wrap 搬到选片抽屉的第三个 tab(`PLAN-20260910190916`):
-//  原 `renderAgenda()`(把 `buildAgenda` 挂到 `#agenda`、写 `#agenda-summary`、追加质量分药丸)
+//  原 `renderAgenda()`(把 `buildAgenda` 挂到 `#agenda`、写 `#agenda-summary`、追加质量分标签)
 //  全部迁到下方的 `buildAgendaHost()`,由 `setAgendaRenderer()` 注入给抽屉,抽屉内 agenda tab
 //  每次重绘时调用。主页面不再有 `#agenda-wrap` / `#agenda-summary` / `#agenda` 挂载点。
 
 /** 「我的行程」抽屉 agenda tab 的**注入渲染函数**(2026-09-10,`PLAN-20260910190916`):
- *  - 摘要行(N 场 · M 处冲突 + 质量分药丸)替代原来的 `#agenda-summary`(被删)
+ *  - 摘要行(N 场 · M 处冲突 + 质量分标签)替代原来的 `#agenda-summary`(被删)
  *  - 行程 body = `buildAgenda(...)`,保留 `id="agenda"` 以让 `HOVER_SEL` 仍然命中。
  *  - 每次抽屉 agenda tab 重绘时调用,读 main 的 `conflicts` / `plans` / `gvTalkOf` / `currentDate` / `hourFilter` 闭包值。 */
 function buildAgendaHost(): HTMLElement {
@@ -571,7 +571,7 @@ function buildAgendaHost(): HTMLElement {
   if (totalKrw > 0) {
     const cost = el(
       "span",
-      "inline-flex items-center border border-line rounded-full bg-card px-[8px] leading-[1.7] text-12 font-extrabold tabular-nums text-ink-2 whitespace-nowrap cursor-help",
+      "inline-flex items-center border border-line rounded-5 bg-card px-[8px] leading-[1.7] text-12 font-extrabold tabular-nums text-ink-2 whitespace-nowrap cursor-help",
       `票 ${formatKrw(totalKrw)}`
     );
     cost.dataset.tip =
@@ -580,7 +580,7 @@ function buildAgendaHost(): HTMLElement {
       "不含折扣(老人 / 残障 / 退伍军人可减 ₩3,000,需证件);以购票页实付为准";
     sum.appendChild(cost);
   }
-  // 质量分药丸(P0-2:仅展示,不改排序)
+  // 质量分标签(P0-2:仅展示,不改排序)
   const rows: ScoredRow[] = [];
   for (const code of picked) {
     const s = cat.byCode.get(code);
@@ -590,7 +590,7 @@ function buildAgendaHost(): HTMLElement {
     const sc = scorePlanRows(rows, store.settings.transitMin, OK_SLACK, (s) => effEndMin(s, gvTalkOf(s.code)));
     const pill = el(
       "span",
-      "inline-flex items-center border border-line rounded-full bg-card px-[8px] leading-[1.7] text-12 font-extrabold tabular-nums text-ink-2 whitespace-nowrap cursor-default hover:border-biff hover:text-biff-ink",
+      "inline-flex items-center border border-line rounded-5 bg-card px-[8px] leading-[1.7] text-12 font-extrabold tabular-nums text-ink-2 whitespace-nowrap cursor-default hover:border-biff hover:text-biff-ink",
       `分 ${sc.total}`
     );
     pill.dataset.tip =
@@ -768,7 +768,7 @@ function bindEvents(): void {
       return;
     }
 
-    // 行程冲突行的 CODE 胶囊 → 在网格里定位到冲突对方(跨影厅时不用来回滚动找)
+    // 行程冲突行的 CODE 标签 → 在网格里定位到冲突对方(跨影厅时不用来回滚动找)
     const jumpCode = t.closest<HTMLElement>("[data-jump-code]");
     if (jumpCode) {
       jumpToScreening(jumpCode.dataset.jumpCode!);

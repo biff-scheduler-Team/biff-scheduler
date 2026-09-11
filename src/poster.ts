@@ -237,7 +237,7 @@ function fitTracked(
   return out ? `${out}…` : "…";
 }
 
-/** GV 标记胶囊(时间右侧) */
+/** GV 标记块(时间右侧) */
 function drawGvChip(ctx: CanvasRenderingContext2D, text: string, x: number, baseline: number): void {
   ctx.font = font(18, 700);
   const w = ctx.measureText(text).width + 20;
