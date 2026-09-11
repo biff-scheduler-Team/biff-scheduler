@@ -1,16 +1,22 @@
 # BIFF 排片工具(BIFF Scheduler)— 项目活文档
 
 > 定位:自用釜山电影节排片工具 —— 解析官方 Ticket Catalogue → 可视化选片排期 → 冲突检测 → 导出 .ics → 一键跳豆瓣。
-> 栈:Cloudflare Pages(**纯静态**)+ Vite + TS(无框架)+ Tailwind v4(增量双轨)+ 静态 JSON。
+> 栈:Cloudflare Workers 静态资源(**纯静态**,线上 = https://biff.lcandy.co,推 main 自动部署)+ Vite + TS(无框架)+ Tailwind v4(增量双轨)+ 静态 JSON。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-11(**分享图片(行程图)—— 导出菜单从此有「文案 / 图片」两个分享类型**,见 `docs/plans/PLAN-20260911231000.md`;
-> 上一轮 = 方案对比:同一部片只留一场,更早 = 接入豆瓣官方 API(82 部实映射)/ 拖动顺位 = N 套方案 + 删除档位)。
+> 最后更新:2026-09-11(**部署口径修正:线上 = https://biff.lcandy.co,推 `main` 即自动部署(Workers Builds);Pages 直传作废**,见 `docs/plans/PLAN-20260911233000.md`;
+> 上一轮 = 分享图片(行程图),更早 = 方案对比:同一部片只留一场 / 接入豆瓣官方 API(82 部实映射) / 拖动顺位 = N 套方案)。
 
 ---
 
 ## 0. 当前状态快照(2026-09-11)
 
 **✅ 已完成(已部署,线上可访问)**
+- **部署口径修正(2026-09-11,`PLAN-20260911233000`)**:线上 = **https://biff.lcandy.co**
+  (Cloudflare **Workers** 静态资源,CF 账号 `62cbe67b…`),**推 `main` 即触发 Workers Builds 自动部署**
+  (GitHub 上可见 `Workers Builds: biff-scheduler` 检查,`2e1007d / 81d5f12 / 71f0394` 连续 success);
+  旧的 **Pages 项目 `biff-scheduler.pages.dev`**(账号 `c591765d…`,本机 wrangler 默认登录的那个)
+  **已不在访问链路上** —— `wrangler pages deploy` / `npm run deploy` 直传作废(判别方式与坑见 §9.2);
+  README(线上徽章 / 快速开始 / 技术栈 / 部署段 / skill 表)、`docs/CONVENTIONS.md`(部署纪律)、本文件相关说明已同步
 - **分享图片(行程图)(2026-09-11,`PLAN-20260911231000`)**:导出菜单新增**第二个分享类型** ——
   「分享文案(纯文本)」旁并列「分享图片(行程图)」。`src/poster.ts`(模型 + 几何 + canvas 绘制)与
   `src/poster-panel.ts`(预览弹层 + 复制图片 / 下载 PNG)分层,后者才 import `modal.ts`(前者可 node 单测)。
@@ -55,7 +61,7 @@
   **影片库接入同一份状态**(`src/filters.ts` 单一模块,网格铺开三行 / 抽屉可折叠);控件是**圆角矩形**(不是胶囊)
 - **海报(2026-09-11)**:`films.json` 的 `poster` 按豆瓣 subject_id 对齐 `public/posters/` 的本地图(**174/250**);
   影片库卡片 44×62 缩略图 + 资料弹层 124×175 大图;缺图不留空列(见 `PLAN-20260911170000`)
-- 脚手架:Vite+TS 无框架;部署目录 `dist/`(wrangler `pages_build_output_dir = "./dist"`);**纯静态**(functions + D1 已于 2026-09-11 退役)
+- 脚手架:Vite+TS 无框架;部署目录 `dist/`(wrangler.toml `[assets] directory = "./dist"`);**纯静态**(functions + D1 已于 2026-09-11 退役)
 - 核心排片:自研 CSS Grid 网格(影院×时间)、点选加入行程、时间重叠红标(冲突组 + 跨行连线)
 - 行程视图:自研议程列表(按日分组;冲突组折叠成**绿框顺位卡**,**拖动排顺位 → N 套方案并列对比**)—— 不用 FullCalendar(见 §2 决策)
 - 导出:`.ics`(UTC、GV 场次时长已含 +25min);分享文案复制(贴微信)
@@ -134,7 +140,7 @@
 
 ```
 离线管线(本机,非部署):Catalogue PDF → tools/extract_schedule.py → schedule.json / venues.json / films.json / douban.json(检入仓库)
-在线应用(Cloudflare Pages,**纯静态**):
+在线应用(Cloudflare Workers 静态资源,**纯静态**):
   dist/(Vite 产物)
   ├ schedule.json(只读排期)
   ├ venues.json(只读场馆)
@@ -270,7 +276,7 @@ public/douban.json = {
 - Transit Matrix(P1-5):venues.json 增 `transit_min` 邻接对 + `data.ts transitFor(a,b)` 查表(未配对 fallback settings.transitMin);设置面板可编辑表格 —— conflict/engine 零改动
 - **豆瓣映射续跑(2026-09-11 起,`PLAN-20260911223200`)**:`public/douban.json` 已落 **82 部 / 355 键**;
   剩 164 部等 IP 风控解除后续跑 —— `python3 tools/build_douban_map.py --films public/films.json --delay 3`
-  (已完成的自动跳过,风控时脚本自己停),跑完再 `npm run deploy` 一次
+  (已完成的自动跳过,风控时脚本自己停),跑完 `git push` 一次即自动部署
 - 豆瓣海报覆盖率(可选):`enrich_douban.py` 已切官方口(输出形状兼容,`fetch_posters.py` 不用改),
   重跑可把 156/246 往上提;但海报是**慢变量**,不阻塞
 
@@ -298,7 +304,12 @@ public/douban.json = {
 ## 9. 风险与避坑(仍生效)
 
 1. FullCalendar Resource 视图付费 → 网格已自研,别回退
-2. 首次 `pages deploy` 卡非交互 → 先 `pages project create`(wrangler 已配好,勿删)
+2. **部署口径(2026-09-11 修正):线上 = https://biff.lcandy.co(Cloudflare Workers 静态资源,CF 账号 `62cbe67b…`),
+   `git push origin main` → Workers Builds 自动构建上线**。
+   ⚠ **别再 `wrangler pages deploy` 直传** —— 旧 Pages 项目 `biff-scheduler.pages.dev`(账号 `c591765d…`,本机 wrangler 默认登录的那个)
+   **已不在访问链路上**,传上去没人访问;本机 `npm run deploy`(= `wrangler deploy`)也会因「账号里没这个 Worker」而失败。
+   判别谁在服务:Pages 的 HTML 响应带 `access-control-allow-origin` / `referrer-policy` / `content-type: text/html; charset=utf-8`,
+   Workers 静态资源三者都没有(只有 `content-type: text/html` + `cf-cache-status`)
 3. D1 已退役(2026-09-11):~~`d1 execute --command` 只跑第一条 SQL~~ / ~~本地调试别传 `--d1`~~ 两条作废
 4. 豆瓣**网页口**必撞 CAPTCHA / 静默限流 → 已改用**官方 Frodo 口**离线回填(`tools/frodo_client.py` +
    `douban_match.py`,见 `PLAN-20260911223200`);前端仍只做链接跳转(浏览器设不了 UA + 跨域被拦 + 密钥会外泄)。

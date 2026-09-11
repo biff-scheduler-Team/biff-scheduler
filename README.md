@@ -6,9 +6,9 @@
 
 个人自用、单用户、**零服务器成本**。前端无框架手写，数据本地优先，**全站零后端**（纯静态 + 浏览器 `localStorage`）。
 
-[![Deploy](https://img.shields.io/badge/online-biff--scheduler.pages.dev-ce1e36)](https://biff-scheduler.pages.dev)
+[![Deploy](https://img.shields.io/badge/online-biff.lcandy.co-ce1e36)](https://biff.lcandy.co)
 [![Stack](https://img.shields.io/badge/stack-Vite%206%20·%20TypeScript%205%20·%20Tailwind%20v4-3178c6)](https://vitejs.dev/)
-[![Host](https://img.shields.io/badge/host-Cloudflare%20Pages-f38020)](https://pages.cloudflare.com/)
+[![Host](https://img.shields.io/badge/host-Cloudflare%20Workers-f38020)](https://workers.cloudflare.com/)
 [![Tests](https://img.shields.io/badge/tests-vitest-passing-3fb950)](./tests)
 
 > **当前状态**：核心链路（排片网格 / 冲突检测 / 行程 / 选片 / 影片库 / `.ics` 导出 / 豆瓣跳转）均已实现并部署冒烟通过。
@@ -52,7 +52,7 @@
 
 ### 在线使用（已部署）
 
-打开 **https://biff-scheduler.pages.dev** 即可。无需注册、无鉴权；站点已在 `robots.txt` / `<meta name="robots">` 里禁止收录，仅个人自用。
+打开 **https://biff.lcandy.co** 即可。无需注册、无鉴权；站点已在 `robots.txt` / `<meta name="robots">` 里禁止收录，仅个人自用。
 
 ### 本地运行
 
@@ -180,9 +180,9 @@ npm run preview      # 构建后用 wrangler dev 起本地 Worker 静态资源�
 | 主题 | **三态**（跟随系统 / 亮 / 暗） | CSS 只认 `:root[data-theme]`；「跟随系统」由 `theme.ts` 用 `matchMedia` 就地解析 |
 | 测试 | **Vitest** | 纯函数口径单测（24+ 时制 / GV 有效结束 / 冲突 / `.ics` / 网格卡状态），`npm run build` 前置门禁 |
 | 代码质量 | **ESLint 10** + `typescript-eslint` | `npm run lint`，同为构建门禁 |
-| 部署 | **Cloudflare Pages** | **纯静态产物**，全球边缘分发，零服务器成本 |
+| 部署 | **Cloudflare Workers**（静态资源） | **纯静态产物**（`wrangler.toml [assets]`），全球边缘分发，零服务器成本 |
 | 离线 | **PWA**（`vite-plugin-pwa`） | 预缓存产物 + 四个只读 JSON → 现场断网可用；方形 PNG 图标可加到主屏（含 iOS 180） |
-| 运维 | **Wrangler 4** | 本地预览、Pages 部署（**无 D1 / 无 Functions**） |
+| 运维 | **Wrangler 4** | 本地预览、Workers 部署（**无 D1 / 无 Functions**） |
 | 离线管线 | **Python**（stdlib + openpyxl）+ Node 脚本 | 从 **biff.kr 官网排期页**抓 `schedule.json` / `venues.json`，从官方影片信息 **xlsx** 生成 `films.json`；产物检入仓库，**仅在更新数据时需要**，部署链路不依赖它 |
 
 **无障碍与可达性**：弹层 `role=dialog` + focus trap + 焦点归还 + body 滚动锁；toast `aria-live`；tooltip 触屏与键盘可达。
@@ -197,7 +197,7 @@ npm run preview      # 构建后用 wrangler dev 起本地 Worker 静态资源�
     └─ tools/*.py ──► public/schedule.json · venues.json · films.json · douban.json
                       （只读、版本化、可 diff）
 
-在线应用（Cloudflare Pages，纯静态）
+在线应用（Cloudflare Workers 静态资源，纯静态）
   dist/（Vite 构建产物）
   ├─ schedule.json（只读排期）
   ├─ venues.json（只读场馆）
@@ -285,9 +285,18 @@ npm run test                # vitest run（纯函数口径单测）
 npm run build               # typecheck + lint + test + vite build
 npm run preview             # 构建 + wrangler dev（纯静态）
 
-# 部署（Workers 静态资源，配置见 wrangler.toml [assets]；推 main 也会触发 Cloudflare Git 构建）
+# 部署 = git push（唯一常规路径）
+git push origin main        # → Cloudflare Workers Builds 自动构建上线 https://biff.lcandy.co
+
+# 兜底：本机直传（需本机 wrangler 已登录部署账号 62cbe67b…，配置见 wrangler.toml [assets]）
 npm run deploy              # 构建 + wrangler deploy
 ```
+
+> **部署口径（2026-09-11 修正）**：线上 = **Cloudflare Workers** 项目 `biff-scheduler`（账号 `62cbe67b545f2d12c986729ac7ffcee8`），
+> 自定义域 **https://biff.lcandy.co**，由 **GitHub `main` 分支自动构建**（GitHub 上可见 `Workers Builds: biff-scheduler` 检查）。
+> 旧的 **Cloudflare Pages** 项目 `biff-scheduler.pages.dev`（账号 `c591765d…`）**已不在访问链路上**，
+> 不要再 `wrangler pages deploy` 直传 —— 传上去也没有人访问（排查方式：Pages 的 HTML 响应带
+> `access-control-allow-origin` / `referrer-policy` / `content-type: text/html; charset=utf-8` 三个默认头，Workers 静态资源没有）。
 
 **改代码前建议先读**：[`docs/CONVENTIONS.md`](./docs/CONVENTIONS.md)（数据契约 / 弹层交互 / 渲染约定 / 基础设施踩坑）与 [`PLAN.md`](./PLAN.md)（当前状态与决策记录）。
 
@@ -300,7 +309,7 @@ npm run deploy              # 构建 + wrangler deploy
 | Skill | 用途 | 何时触发 |
 |---|---|---|
 | [`biff-catalogue-pdf-to-schedule`](./skills/biff-catalogue-pdf-to-schedule/SKILL.md) | BIFF 官方 Catalogue PDF → `schedule.json` / `venues.json` / `films.json` | 换届、更新排期、导入影片目录 |
-| [`cloudflare-pages-d1-deploy`](./skills/cloudflare-pages-d1-deploy/SKILL.md) | Cloudflare Pages 部署（非交互模式）；**D1 / Functions 已于 2026-09-11 退役，本 skill 只剩静态部署部分** | 首次建站、`npm run deploy` 异常 |
+| [`cloudflare-pages-d1-deploy`](./skills/cloudflare-pages-d1-deploy/SKILL.md) | Cloudflare 部署（非交互模式）；**D1 / Functions 已于 2026-09-11 退役，现役部署 = 推 `main` 触发 Workers Builds**，本 skill 只剩静态产物核对部分 | 首次建站、自动构建异常 |
 | [`parallel-agent-safe-commit`](./skills/parallel-agent-safe-commit/SKILL.md) | 多会话并行时只提交自己的改动（blob 手术 + 隔离 worktree 部署） | 提交前发现工作区有他人在途改动 |
 | [`web-ui-headless-interaction-qa`](./skills/web-ui-headless-interaction-qa/SKILL.md) | playwright-core 无头交互验收（DOM 断言） | 改完交互要证据、部署后验证线上 |
 | [`tailwind-v4-built-css-verify`](./skills/tailwind-v4-built-css-verify/SKILL.md) | 核对 Tailwind v4 类是否真的进了构建产物 | 改完样式确认是否生效 |
@@ -363,7 +372,7 @@ python tools/build_douban_map.py --films public/films.json --out public/douban.j
    · 影片库侧 `public/films.json` 246 部里 **244 部**有中文名（余下 `PARADISE LOST` /
    `Melancholia` 目录里本就没有）。配对口径见 `tools/film_match.py` 文件头。
 
-所以：**clone 下来直接 `npm run build` + `npm run deploy` 就有完整数据**，不需要 Python、不需要 PDF、不需要任何解析步骤。
+所以：**clone 下来直接 `npm run build` 就有完整数据**（推 `main` 即自动部署），不需要 Python、不需要 PDF、不需要任何解析步骤。
 
 ### 什么时候才需要 PDF
 

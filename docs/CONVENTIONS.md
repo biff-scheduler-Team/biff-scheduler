@@ -26,11 +26,17 @@
   → 提交前 `git show HEAD:<file> | grep <自己的标记>` 判断是否已被带上,别重复提交;
   ② **对方 commit 可能漏配套文件**(实测 `pick.ts` 用 `bg-pri-*-soft`,而 `--pri-*-soft` token 只在未提交的 `style.css`
   → 从 HEAD 构建静默丢类)→ 自己的改动落在配套文件里就**整个文件带上**,并在 commit message + 回复里说明多带哪几行。
-- **部署范围**:`npm run deploy` = `vite build`(读磁盘) + 上传 → 工作区任何在途改动都会上线。
+- **部署口径(2026-09-11 修正)**:**常规路径 = `git push origin main`** → Cloudflare **Workers Builds** 自动构建上线
+  **https://biff.lcandy.co**(CF 账号 `62cbe67b545f2d12c986729ac7ffcee8`;GitHub 上能看到 `Workers Builds: biff-scheduler` 检查)。
+  **不要再 `wrangler pages deploy` 直传** —— 旧 Pages 项目 `biff-scheduler.pages.dev`(账号 `c591765d…`)已不在访问链路上,
+  传上去没人访问(判别:Pages 的 HTML 响应带 `access-control-allow-origin` / `referrer-policy` / `content-type: text/html; charset=utf-8`,Workers 静态资源三者都没有)。
+  ⚠ 于是「多会话并行」的风险从「上线在途改动」变成「**把在途改动一起提交推送**」—— 提交前务必按上面的静默确认纪律来。
+- **直传兜底(仅当自动构建坏了)**:本机 `wrangler` 必须先登录**部署账号**(`62cbe67b…`)再 `npm run deploy`
+  (= `vite build`(读磁盘) + 上传 → 工作区任何在途改动都会上线)。
   有并行在途改动**一律走隔离 worktree**(`add --detach` + 软链 `node_modules`,`remove --force` 收尾;**绝不 stash / checkout 对方文件**)。
   macOS `/tmp` 是 `/private/tmp` 软链;沙箱内 `worktree add` 会被回滚 → worktree + 部署一律 `dangerouslyDisableSandbox`、后台跑、日志重定向到 `/tmp/`。
   快照可能「不完整」(依赖只在别人工作区改过)→ **构建后 `grep` 产物确认新 token/类名命中**;线上核对用
-  `curl -sL "https://biff-scheduler.pages.dev/<f>.json?cb=$(date +%s)"`(**必须带 cache-buster**,否则边缘缓存会返回旧版)。
+  `curl -sL "https://biff.lcandy.co/<f>.json?cb=$(date +%s)"`(**必须带 cache-buster**,否则边缘缓存会返回旧版)。
 
 ## 二、弹层交互(`src/modal.ts`)
 
