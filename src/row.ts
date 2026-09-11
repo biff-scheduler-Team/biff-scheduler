@@ -7,7 +7,7 @@
 //   · headTitle —— 卡片头片名(行程):置顶 15px 加粗,与选片卡「片名在上、场次在下」同序;
 //                  有它时 `acts` 贴卡片头右缘(对齐选片卡「片名行右上角图标组」)
 //   · headSub   —— 片名**下方**的影片元信息行(「原始片名 · 单元 · 国家 · 年份 · 导演」),
-//                  与「影片库 / 我的选片」卡片副标题同款(11.5px 次级灰 + 单行截断)
+//                  与「影片库 / 我的选片」卡片副标题同款(12px 次级灰 + **最多两行** `line-clamp-2`)
 //   · acts      —— 右侧操作组(影片库 = 定位 ▸ + 加入态;行程 = 映后 / 方案 / 档位 / 移出)
 //   · extra     —— 追加行(行程 = 冲突提示),自动 basis-full 独占一行
 //   · hideDate  —— 「我的选片」/「我的行程」按日期分节后,日期由节头给出
@@ -82,15 +82,18 @@ export function screeningRow(o: ScreeningRowOpts): HTMLElement {
   if (o.headTitle) {
     const head = el("div", "w-full min-w-0 border-b border-line-faint pb-[6px]");
     const titleRow = el("div", "flex items-center gap-x-[8px] min-w-0");
-    titleRow.appendChild(el("div", "text-15 font-bold text-ink truncate flex-1 min-w-0", o.headTitle));
+    // ⚠ **最多两行**(`line-clamp-2`),不再是单行 `truncate`(2026-09-11,与 `library.ts::filmRow` 同口径):
+    //   行程卡头右侧还挂着操作组(映后 N′ / A / ★ / ✕,≈160px 且 `shrink-0`),它先吃掉宽度,
+    //   剩下的才给片名 —— 单行截断会把长片名挤到只剩几个字;放开两行 = 卡片长高、信息纵向重排。
+    titleRow.appendChild(el("div", "text-15 font-bold text-ink line-clamp-2 flex-1 min-w-0", o.headTitle));
     if (o.acts) {
       o.acts.classList.add("ml-auto");
       titleRow.appendChild(o.acts);
     }
     head.appendChild(titleRow);
-    // 元信息行:与选片卡副标题同款(11.5px 次级灰 / 单行截断 / hover 看全文)
+    // 元信息行:与选片卡副标题同款(12px 次级灰 / 最多两行 / 仍超出时 hover 看全文)
     if (o.headSub) {
-      const sub = el("div", "text-12 text-meta leading-[1.5] truncate mt-[2px]", o.headSub);
+      const sub = el("div", "text-12 text-meta leading-[1.5] line-clamp-2 mt-[2px]", o.headSub);
       sub.dataset.tip = o.headSub;
       head.appendChild(sub);
     }

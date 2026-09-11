@@ -613,18 +613,23 @@ export function openFilmPicker(ctx: LibraryCtx): void {
     const cat0 = n.cats[0];
     const titles = el("div", "grid gap-[3px] min-w-0");
     // 片名行:片名(15px 加粗 + 深黑,与副标题拉开层级)+ 豆瓣章
-    const zhTop = el("div", "flex items-center gap-2 min-w-0");
-    zhTop.appendChild(el("div", "text-15 font-bold text-ink truncate flex-1", n.zh));
+    // ⚠ **最多两行**(`line-clamp-2`),不再是单行 `truncate`(2026-09-11 二改):
+    //   抽屉可拖到 360px,单行省略号会把长片名切得只剩几个字;放开到两行 = 卡片自己长高、
+    //   信息纵向重排,横向就不必硬挤(用户原话:「纵向拉长一些 让信息能够重新布局」)。
+    //   豆瓣章配 `items-start` 贴首行,而不是在两行之间居中(它属于片名,不属于整个块)。
+    const zhTop = el("div", "flex items-start gap-2 min-w-0");
+    zhTop.appendChild(el("div", "text-15 font-bold text-ink line-clamp-2 flex-1", n.zh));
     if (cat0?.rating != null) {
       zhTop.appendChild(doubanChip(cat0.rating)); // 豆瓣章单一来源(legend.ts;豆 = 豆瓣评分)
     }
     titles.appendChild(zhTop);
     // 副标题:原始片名 + 单元 · 国家 · 年份 · 导演 —— 统一次级灰 `text-meta`,不与片名抢戏。
     // 原先分成两行(names 走 text-muted / meta 走 text-meta),合并成一行既省高度、又只有一个灰阶。
+    // ⚠ 同样放开到**两行**(与片名同一口径),`data-tip` 仍在(更长时 hover 看全文)。
     const subBits = [...n.names, n.meta].filter(Boolean);
     if (subBits.length) {
-      const sub = el("div", "text-12 text-meta leading-[1.5] truncate", subBits.join(" · "));
-      sub.dataset.tip = subBits.join(" · "); // 截断时 hover 可读全文
+      const sub = el("div", "text-12 text-meta leading-[1.5] line-clamp-2", subBits.join(" · "));
+      sub.dataset.tip = subBits.join(" · "); // 仍超出两行时 hover 可读全文
       titles.appendChild(sub);
     }
     // 状态标签:场次计数 + 已排计数**合并成一枚**(原为两枚描边胶囊)——

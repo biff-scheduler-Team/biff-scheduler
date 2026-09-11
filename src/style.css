@@ -657,13 +657,15 @@ main:not(.is-picker-open) #picker-resizer {
 /* ================= 列表渲染优化(2026-09-11,PLAN-20260911000705)=================
    `content-visibility: auto` = 浏览器跳过**视口外**元素的布局与绘制(原生版虚拟化),
    250 行影片库 / 我的选片在手机上不再一次性铺开。
-   `contain-intrinsic-size: auto 92px` 给未渲染元素一个占位高度,`auto` 关键字会**记住上次渲染尺寸**
+   `contain-intrinsic-size: auto 116px` 给未渲染元素一个占位高度,`auto` 关键字会**记住上次渲染尺寸**
    → 展开 / 折叠场次行后不会跳。
+   (2026-09-11 二改:92 → 116px。片名 / 副标题由单行 `truncate` 放开为**最多两行** `line-clamp-2`,
+    折叠卡实测高度随之涨约 24px;`auto` 会在首次渲染后自我修正,这个值只是「还没渲染过」时的初估。)
    ⚠ **只加在抽屉列表行上,不加甘特卡**:网格的反向定位靠 `centerCardX` 读 `offsetLeft/offsetWidth`,
      未渲染元素的尺寸是估算值 → 居中会算错。完整虚拟化另立一轮(见 PLAN §4)。
    选择器:`#picker-drawer [data-key]` 精确命中 `filmRow`(`item.dataset.key = n.key`),
    场次行用的是 `data-code`,不受影响。 */
 #picker-drawer [data-key] {
   content-visibility: auto;
-  contain-intrinsic-size: auto 92px;
+  contain-intrinsic-size: auto 116px;
 }

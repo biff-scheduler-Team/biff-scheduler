@@ -148,8 +148,22 @@
   持有开弹层那一刻的引用会读到旧快照,连重绘都会画错(故 `FilmModalCtx.slots` 已删)。
 - **影片卡片信息层级**(2026-09-10 重排,`PLAN-20260910184745` §8;`library.ts::filmRow` / `showRow`):
   - **上半部(影片信息)**:片名 15px 加粗墨黑;副标题(原始片名 · 单元 · 国家 · 年份 · 导演)统一
-    `text-meta` 单行截断;场次计数与已排计数**合并成一枚状态标签** `共 4 场 / 已排 1 场`
+    `text-meta`;场次计数与已排计数**合并成一枚状态标签** `共 4 场 / 已排 1 场`
     (`bg-biff-soft text-biff`,浅红底深红字),**不再用两枚描边胶囊**。
+  - ⚠ **片名 / 副标题 = 最多两行 `line-clamp-2`,不再是单行 `truncate`**(2026-09-11 二改):
+    抽屉可拖到 360px,单行省略号会把长片名切得只剩几个字(用户原话:「卡片会被抽屉截断 …
+    能不能纵向拉长一些 让信息能够重新布局」)。放开两行 = 卡片自己长高、信息纵向重排,
+    横向不必硬挤;`data-tip` 仍保留(两行还放不下时 hover 看全文)。
+    **两处卡片头必须同口径**:`library.ts::filmRow`(影片库 / 我的选片)与
+    `row.ts::screeningRow` 的 `headTitle` / `headSub`(行程卡)。
+    ⚠ 行程卡尤其依赖这一条:卡头右侧操作组(映后 N′ / A / ★ / ✕ ≈160px,`shrink-0`)先吃掉宽度,
+    单行时片名常被挤到只剩几个字。
+    配套:`style.css` 的 `#picker-drawer [data-key]` 占位高度 `contain-intrinsic-size` 92 → 116px。
+  - **共用边界(别搞错)**:三处的**场次行**是唯一一份实现(`row.ts::screeningRow`,影片库 / 我的选片
+    / 我的行程共用,只注入不同的 `acts`);**卡片外壳与卡片头不是共用的** ——
+    `library.ts::filmRow`(可折叠卡片:▶ / 片名区 / 图标组三列 grid)与 `agenda.ts::buildRow`
+    (走 `screeningRow` 的 `headTitle`/`headSub` 分支)是两份实现,只靠字号 / 灰阶对齐。
+    改卡片头排版**两处都要改**。
   - **右上角图标组**(常态 `opacity-45`,`group-hover:opacity-100` 才完全显现 —— 卡片上有 `group`):
     档位 `★`(`pick.ts::wishIcon`,已定档按档位着色 / 未设定 `☆`,文字只走 `data-tip`)、
     `ⓘ` 资料、`✕` 整片移除(仅「我的选片」tab,hover 转 `text-conf`)。
