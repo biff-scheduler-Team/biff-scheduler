@@ -280,10 +280,22 @@
   行程日期头 / 分享文案一律走它 —— **不要再写 `10/8` 这类数字写法**(`dateInfo` 已不再提供数字字段)。
   · 「我的选片」日期筛选 = **多选**(`library.ts::dateSel: Set<string>`,空集 = 全部,再点该天 = 取消该天);
     顶栏日期条仍是**单选导航**(「切到某一天」),两者语义不同,勿合并。
-- **★ 两个「出口」各司其职(2026-09-11)**:`.ics`(`ics.ts`)= 喂日历(机器读);分享文案(`share.ts`)= 按日程读的
-  「**两行一场 + 日期分节**」纯文本(给人看,贴微信)。两者口径同源(有效结束 / `displayTitle` / `venueShort`),
+- **★ 三个「出口」各司其职(2026-09-11)**:`.ics`(`ics.ts`)= 喂日历(机器读);分享文案(`share.ts`)= 按日程读的
+  「**两行一场 + 日期分节**」纯文本(给人看,贴微信);分享图片(`poster.ts` + `poster-panel.ts`)= 同一份行程的
+  **长图**(给人看,发群 / 朋友圈)。三者口径同源(有效结束 / `displayTitle` / `venueShort`),
   **不要再合并成一个「导出」函数** —— 排序口径与信息取舍本就不同。
-  ⚠ 抢票顺位清单(`picklist.ts`,2026-09-11 移除)已下线:导出菜单只留 `.ics` 三项 + 分享文案。
+  · 排序 / 概要的**唯一来源** = `share.ts::orderedPickRows` / `shareSummary`(文案与图片共用 ——
+    各算一份必然出现「共 12 场」vs「共 13 场」);GV 三态文案 = `share.ts::gvMark`。
+  · **分享图是手绘 canvas,不是 html2canvas / 截图**(2026-09-11,`PLAN-20260911231000`):零运行时依赖、
+    不受应用主题 / 抽屉宽度影响、按海报重排信息。故海报**固定深色**(不跟 `data-theme`);
+    逻辑宽 `POSTER_W = 1080` × `SCALE = 2` 超采样,`posterHeight()` 超过 `SCALE_DOWN_H` 回 1×
+    (画布单边上限 32767,超了 `toBlob` **静默出空图**)。
+  · **分层硬约束**:`poster.ts` 在 **import 期一行 DOM 副作用都不许有**(`modal.ts` 一 import 就挂
+    `document` 监听 → node 单测直接崩),弹层 / 剪贴板 / 下载一律放 `poster-panel.ts`
+    (与 `backup.ts` / `backup-panel.ts` 同口径)。
+  · ⚠ 大标题**不能拼节展全名**:2026 版 `festival.name` = "31st Busan International Film Festival",
+    52px 排出来会冲出画布(实测出图被切)。大标题 = 「2026 看片计划」,全名归上方 19px 加宽字距小字行。
+  ⚠ 抢票顺位清单(`picklist.ts`,2026-09-11 移除)已下线:导出菜单只留 `.ics` 三项 + 分享文案 + 分享图片。
   ⚠ 分享文案的**三条微信约束**(改格式时别破坏,见 `share.ts` 文件头):不用 Markdown(微信不渲染)、
   emoji 只做行首标记、每行尽量短(片名单独一行)。复制一律走 `clipboard.ts::copyText`(带 `execCommand` 降级)。
   · 英文名 = **排期官方英文名**(`title_en`;官方只印韩文时由 `data.ts::loadCatalog` 用韩文名兜底),
