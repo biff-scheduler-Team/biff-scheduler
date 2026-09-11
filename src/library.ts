@@ -5,7 +5,7 @@
 import type { Catalog, FilmItem, Group, Mapping, PickEntry, Priority, Screening } from "./types";
 import { catMetaLine, dateInfo, el, filmInfoOf, filmNodeKey, groupByDate, normText } from "./util";
 import { doubanChip } from "./legend";
-import { CARD_SUB_CLS, CARD_TITLE_CLS, SHOW_ROW_CLS, screeningRow } from "./row";
+import { cardHead, SHOW_ROW_CLS, screeningRow } from "./row";
 import { actState } from "./modal";
 import { PILL_IDLE, PILL_ON } from "./chips";
 import { BTN_GO, ICON_BTN, NAV_BTN, TAB_OFF, TAB_ON } from "./ui";
@@ -226,9 +226,13 @@ export function setAgendaRenderer(fn: () => HTMLElement): void {
 /** 宽度持久化键 —— **独立于** `biff.settings.v1`(与 `biff.ai.v1` / `biff.gvtalk.v1` 同口径:
  *  视图偏好不混进设置序列化,清 Key / 重置设置不会顺手把宽度带走)。 */
 const PICKER_W_KEY = "biff.pickerw.v1";
-/** 最小宽度 360:再窄 `filmRow` 的场次行 `[CODE][时间][影院…] → [定位 ▸]` 会折成多行。
- *  ⚠ 它**不是拖拽的硬下限** —— 拖到比它还窄就是「松手即收起」的意图区(见 pickerResizer)。 */
-const PICKER_W_MIN = 360;
+/** 最小宽度 **400**(2026-09-11 三改:360 → 400)。
+ *  这是「**卡片排版仍然成立**」的阈值,不是随手定的数:`row.ts::SHOW_ROW_CLS` 的第 1 层
+ *  = 身份(`[CODE][影院] 日期 时间` ≈200px)+ 操作组(`定位 ▸` + `加入态` ≈120px)+ 间距 8px ≈ 330px,
+ *  加上行内距 24 + 抽屉内距 24 = 378 —— 取 400 留出余量。
+ *  再窄下去第 1 层就放不下、会被抽屉裁掉,所以**到这里就到底了**(见 pickerResizer:
+ *  越过它继续往左拖 = 松手收起抽屉,而不是把卡片挤坏)。 */
+const PICKER_W_MIN = 400;
 /** 上限 800:再宽就比网格还宽,挤压式布局失去意义 */
 const PICKER_W_MAX = 800;
 /** 拖拽的**硬**下限(视觉地板):越过 `PICKER_W_MIN` 后仍可继续拖到这么窄 ——
@@ -545,8 +549,12 @@ export function openFilmPicker(ctx: LibraryCtx): void {
   const pickList = el("div", "grid gap-2 content-start pt-[2px] px-[2px] pb-1 @container");
   pickPane.append(pickStat, pickDateRow, pickChipsRow, pickList);
 
-  /** 滚动面板:抽屉高度固定,当前 tab 的内容在面板内滚动(两个 pane 只有一个是 panel 的子节点) */
-  const panel = el("div", "min-h-0 flex-1 overflow-y-auto");
+  /** 滚动面板:抽屉高度固定,当前 tab 的内容在面板内滚动(两个 pane 只有一个是 panel 的子节点)。
+   *  ⚠ `@container`(`container-type: inline-size`)是**三个 tab 共用的容器查询锚点** ——
+   *  `row.ts::SHOW_ROW_CLS` 靠它决定场次行是「一行」还是「两层」(见该文件头部 ②)。
+   *  一处标记即可覆盖三处:影片库 / 我的选片的列表(它们自己也有 `@container`,就近生效,宽度只差 4px)
+   *  与行程 tab(没有自己的容器 → 落到这里)。 */
+  const panel = el("div", "min-h-0 flex-1 overflow-y-auto @container");
 
   // ---- 视图状态 ----
   /** 影片库 tab 展开态:默认全折叠(目录 250 部,全展开不可用) */
@@ -593,48 +601,14 @@ export function openFilmPicker(ctx: LibraryCtx): void {
     const item = el("div", itemCls);
     item.dataset.key = n.key;
 
-    // ---- 片名行(整行可点 = 展开 / 折叠) ----
-    // 三列:箭头 / 片名区 / 图标组。片名区用 `minmax(0,1fr)` —— `1fr` 的 min-width:auto
-    // 会被长片名撑破,`minmax(0,…)` 才允许它真正缩下去(截断而非溢出)。
-    const head = el(
-      "div",
-      "grid grid-cols-[12px_minmax(0,1fr)_auto] items-start gap-x-[8px] gap-y-[6px] px-3 py-[10px] " +
-        "cursor-pointer select-none hover:bg-hover" +
-        (open ? " border-b border-line-faint" : "")
-    );
-    head.dataset[mode === "picks" ? "pickHead" : "libHead"] = n.key;
-    head.appendChild(
-      el(
-        "span",
-        "text-muted text-10 leading-none pt-[5px] transition-transform duration-150 ease-in-out" +
-          (open ? " rotate-90" : ""),
-        "▶"
-      )
-    );
-
+    // ---- 卡片头(整块可点 = 展开 / 折叠)----
+    // ⚠ 骨架走 `row.ts::cardHead` —— **三处卡片头唯一构造**,与「我的行程」同一套设计语言:
+    //   `[箭头列 12px][片名 + 副标题 + 状态行][右缘图标组]`。
+    //   原先这里自写一份三列栅格、行程卡另写一份,只靠字号 / 灰阶人工对齐 —— 用户反馈
+    //   「电影卡片都是同一个设计语言,不要三套去增加用户的阅读成本」。
     const cat0 = n.cats[0];
-    const titles = el("div", "grid gap-[3px] min-w-0");
-    // 片名行:片名(15px 加粗 + 深黑,与副标题拉开层级)+ 豆瓣章
-    // ⚠ 排版走 `CARD_TITLE_CLS`(`row.ts` 的**共享常量**)—— 与「我的行程」卡片头**同一份定义**,
-    //   不是各写一份字面量;它是**最多两行** `line-clamp-2`,不再是单行 `truncate`:
-    //   抽屉可拖到 360px,单行省略号会把长片名切得只剩几个字;两行 = 卡片自己长高、信息纵向重排,
-    //   横向就不必硬挤(用户原话:「纵向拉长一些 让信息能够重新布局」)。
-    //   豆瓣章配 `items-start` 贴首行,而不是在两行之间居中(它属于片名,不属于整个块)。
-    const zhTop = el("div", "flex items-start gap-2 min-w-0");
-    zhTop.appendChild(el("div", `${CARD_TITLE_CLS} flex-1`, n.zh));
-    if (cat0?.rating != null) {
-      zhTop.appendChild(doubanChip(cat0.rating)); // 豆瓣章单一来源(legend.ts;豆 = 豆瓣评分)
-    }
-    titles.appendChild(zhTop);
-    // 副标题:原始片名 + 单元 · 国家 · 年份 · 导演 —— 统一次级灰 `text-meta`,不与片名抢戏。
-    // 原先分成两行(names 走 text-muted / meta 走 text-meta),合并成一行既省高度、又只有一个灰阶。
-    // ⚠ 排版走 `CARD_SUB_CLS`(同一份共享常量),`data-tip` 仍在(两行还放不下时 hover 看全文)。
+    // 副标题:原始片名 + 单元 · 国家 · 年份 · 导演(排版走共享常量 `CARD_SUB_CLS`)
     const subBits = [...n.names, n.meta].filter(Boolean);
-    if (subBits.length) {
-      const sub = el("div", CARD_SUB_CLS, subBits.join(" · "));
-      sub.dataset.tip = subBits.join(" · "); // 仍超出两行时 hover 可读全文
-      titles.appendChild(sub);
-    }
     // 状态标签:场次计数 + 已排计数**合并成一枚**(原为两枚描边胶囊)——
     // 浅红底深红字 = 「这枚数字和我的行程有关」,而不是又一个可点的按钮。
     const status = el("div", "flex items-center gap-[6px] flex-wrap pt-[1px]");
@@ -678,9 +652,6 @@ export function openFilmPicker(ctx: LibraryCtx): void {
         status.appendChild(a);
       }
     }
-    titles.appendChild(status);
-    head.appendChild(titles);
-
     // ---- 右上角图标组(次要操作:常态极淡, hover 卡片才完全显现) ----
     const icons = el("div", "flex items-center gap-[2px] shrink-0");
     // ① 档位星标(★ 已定档按档位着色 / ☆ 未设;文字走 hover 提示,点击弹同一套菜单)
@@ -719,7 +690,16 @@ export function openFilmPicker(ctx: LibraryCtx): void {
         : "从「我的选片」移除(该片没有已排场次)";
       icons.appendChild(un);
     }
-    head.appendChild(icons);
+    // 三处共用的卡片头:箭头 / 片名 + 副标题 + 状态行 / 右缘图标组
+    const head = cardHead({
+      title: n.zh,
+      titleExtra: cat0?.rating != null ? doubanChip(cat0.rating) : undefined,
+      sub: subBits.length ? subBits.join(" · ") : undefined,
+      status,
+      collapse: { open, attr: mode === "picks" ? "pickHead" : "libHead", value: n.key },
+      divider: open,
+      trailing: icons,
+    });
     item.appendChild(head);
 
     if (!open) return item;

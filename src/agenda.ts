@@ -2,14 +2,17 @@
 // 与「我的选片」同一份数据(store.picks):本视图按场次展开,行内 ★ 改的是**该片档位**(影片级)。
 // 全量化:行程行 / 卡片 / 转场连接件 / 冲突提示 全部 Tailwind utility。
 //
-// 排版(2026-09-10,`PLAN-20260910195000`)—— 与「我的选片」影片卡**同一阅读顺序:片名在上、场次在下**:
+// 排版(2026-09-11 三改:骨架全部收口在 `row.ts::cardHead` / `screeningRow`,与「影片库 /
+// 我的选片」影片卡**同一套设计语言** —— 同一阅读顺序「片名在上、场次在下」,同一卡片头三列栅格):
 //   ┌──────────────────────────────────────────────────────────────┐
-//   │ No Other Choice                        [映后 20′][A][★][✕]    │ ← 卡片头(片名 15px 加粗,选片卡头同款)
-//   │ The Chronology of Water · cons · France · 2025 · ASSAYAS     │ ← 影片信息行(选片卡副标题同款)
-//   │ [001][BT] 18:00–20:39  [139min][15][KE][P.43]               │ ← 场次行(三处统一骨架 + 统一描边章)
-//   │ ⚠ 与 042 重叠(仅冲突行)                                     │
+//   │  No Other Choice                       [映后 20′][A][★][✕]    │ ← 卡片头(cardHead)
+//   │  The Chronology of Water · cons · France · 2025 · ASSAYAS     │ ← 影片信息行
+//   │ [001][BT] 9/17 周三 18:00–20:39                              │ ← 场次行第 1 层:身份 + 操作
+//   │ [139min][15][KE][P.43]                                       │ ← 场次行第 2 层:章组
+//   │ ⚠ 与 042 重叠(仅冲突行)                                       │
 //   └──────────────────────────────────────────────────────────────┘
 //          ┊ 赶场间隔 119min · 跨馆缓冲 15min ┊                     ← 卡片**之间**:虚线竖轨连接件
+// 卡片头的第 1 列(折叠箭头)在行程卡上是**空占位** —— 故片名左缘与影片卡严格对齐。
 // 行程特有内容只收两处:① 卡片头右缘的操作组(映后胶囊 / A / ★ / ✕);② 追加行(冲突提示)。
 // 日期不重复(已按日分组,传 `hideDate: true`);转场间隔在卡片之间的虚线连接件上(卡片内不再出现)。
 // (曾按 `PLAN-20260910194000` 做过「片名置顶 + 元信息灰文本」的**行程档**,元信息部分已撤销;
@@ -19,7 +22,7 @@ import type { Catalog, Group, Mapping, PickEntry, Screening } from "./types";
 import { dateInfo, displayTitle, el, filmInfoOf, filmInfoText, fmtEndClock, hmsToMin, slackBetween } from "./util";
 import { effEndMin, filmEndMin, gvTalkMin } from "./gv";
 import { gvTalkMinOv, setPriorityOfCode, store } from "./state";
-import { SHOW_ROW_CLS, screeningRow } from "./row";
+import { CARD_SHELL_CLS, CARD_SHELL_CONF_CLS, screeningRow } from "./row";
 import { wishIcon } from "./pick";
 import type { ConflictResult } from "./conflict";
 
@@ -112,17 +115,6 @@ export function buildAgenda(ctx: AgendaCtx): HTMLElement {
   return wrap;
 }
 
-/** 行程行容器 —— 与「影片库 / 我的选片」场次行**同一套内距 / 间距**(SHOW_ROW_CLS),
- *  只多出「卡片」外框(边框 / 圆角 / 阴影)+ `group`(✕ 的 hover 显现靠它);冲突行换红框 + 淡红底。 */
-const CARD_BASE =
-  SHOW_ROW_CLS +
-  " group border border-line rounded-8 bg-card shadow-[var(--shadow-card)] " +
-  "transition-[border-color,box-shadow] duration-[120ms] ease-in-out hover:border-line-strong hover:shadow-[var(--shadow-hover)]";
-const CARD_CONF =
-  SHOW_ROW_CLS +
-  " group border border-conf rounded-8 bg-biff-tint shadow-[var(--shadow-card)] " +
-  "transition-[border-color,box-shadow] duration-[120ms] ease-in-out hover:border-line-strong hover:shadow-[var(--shadow-hover)]";
-
 function buildRow(
   ctx: AgendaCtx,
   s: Screening,
@@ -153,7 +145,8 @@ function buildRow(
   const row = screeningRow({
     s,
     cat: ctx.cat,
-    rowCls: entryConf ? CARD_CONF : CARD_BASE,
+    // 卡片外壳(行程卡 = 卡片头 + 场次行,骨架与「影片库 / 我的选片」影片卡同一套 —— 见 row.ts)
+    cardCls: entryConf ? CARD_SHELL_CONF_CLS : CARD_SHELL_CLS,
     headTitle: info.zh,
     headSub: filmInfoText(info),
     hideDate: true,
