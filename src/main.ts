@@ -2,7 +2,7 @@
 // 全量化:仅维护基础骨架(顶栏/面板/弹层根/Toast/底部),所有内部样式由 markup 端 Tailwind utility 表达。
 
 import type { Catalog } from "./types";
-import { OK_SLACK, dateInfo, el, filmNodeKey, hmsToMin, todayIsoLocal } from "./util";
+import { OK_SLACK, dateInfo, el, filmNodeKey, hmsToMin, pickDefaultDate, todayIsoLocal } from "./util";
 import { loadCatalog } from "./data";
 import { computeConflicts, conflictGroupFor, type ConflictResult, type Slot } from "./conflict";
 import { buildPlanSet, type PlanSet } from "./plans";
@@ -45,6 +45,7 @@ import {
   type GridCtx,
 } from "./grid";
 import { buildAgenda } from "./agenda";
+import { buildTimeline } from "./timeline";
 import { abbrTooltip } from "./badges";
 import { attachTip } from "./tip";
 import { buildGuideBody } from "./legend";
@@ -366,6 +367,14 @@ function zoomBtn(label: string, act: string, tip: string, dis: boolean, cls: str
 function renderZoomCtl(): void {
   const host = document.getElementById("zoom-ctl");
   if (!host) return;
+  // ★ 窄屏 = 单日时间线:**整枚缩放控件隐藏** —— 时间线没有「横向刻度」,缩放无意义
+  //   (2026-09-12,PLAN-20260912002532)。隐藏而不是禁用:留着四枚灰按钮只是噪声。
+  if (isMobileDrawer()) {
+    host.classList.add("is-hidden");
+    host.replaceChildren();
+    return;
+  }
+  host.classList.remove("is-hidden");
   const pct = `${Math.round(zoom * 100)}%`;
   const readout = el("span", ZMID, `缩放 ${pct}`);
   readout.dataset.tip =
@@ -423,7 +432,55 @@ function gridKeyNow(): string {
   return `${base}|now:${d.getHours() * 60 + d.getMinutes()}`;
 }
 
+/** 窄屏时间线是否已挂载 —— 切回宽屏 / 跨断点时要作废,让二维网格走全量重建。 */
+let timelineMounted = false;
+
+/** **窄屏(≤768px)的单日纵向时间线** —— 二维网格在手机上不可用(26 厅 × 时间轴),故整块替换。
+ *
+ *  与 `renderGrid` 的分工:那个走「几何签名 → 就地 patch」;时间线**始终全量重建**
+ *  (单日 ≈75 场,重建成本可接受;它也没有「几何未变」这个概念 —— 底色随选片实时变)。
+ *  ⚠ 刻意**不碰** `lastGridDate` / `lastGridKey` / `pendingAnchor` 这些二维网格的模块级状态:
+ *    分支在最前面,宽屏路径逐字未动;`timelineMounted` 只用来告诉 `renderGrid`「二维容器没了」。
+ *  ⚠ 容器 id 仍为 `grid-scroll`、仍带 `data-grid="1"`:既有定位(`jumpToScreening`)、
+ *    闪烁回执(`flashScreening`)、`fitTimeTexts` 等一律照常工作,不需要第二套锚点口径。
+ *  ⚠ **不限高**(二维网格的 `fitGridHeight` 不调用):手机上「页面滚动」比「容器内嵌套滚动」自然,
+ *    限高后还要在一条 390px 宽、内容却是长列表的容器里再滚一次,手势容易打架。 */
+function renderTimeline(): void {
+  const host = document.getElementById("grid-scroll");
+  if (!host) return;
+  const grid = buildTimeline(timelineCtx(), currentDate);
+  grid.id = "grid-scroll";
+  host.replaceWith(grid);
+  grid.style.maxHeight = ""; // 覆盖可能残留的二维网格限高
+  timelineMounted = true;
+  lastGridDate = ""; // 作废二维网格的复用标记(切回宽屏必须全量重建)
+  lastGridKey = "";
+  renderGridMeta();
+}
+
+/** 时间线上下文 —— 与二维网格**同一份**筛选 / 已选 / 冲突(时间线不是第二个视图,是同一个视图的窄屏形态) */
+function timelineCtx() {
+  return {
+    cat,
+    filters,
+    slots: store.slotIndex,
+    gvTalkOf,
+    transitMin: store.settings.transitMin,
+    conflictCodes: conflicts.get(currentDate)?.codeSet,
+  };
+}
+
 function renderGrid(opts: { force?: boolean } = {}): void {
+  // ★ 窄屏 = 单日时间线(2026-09-12,PLAN-20260912002532):整块替换二维网格,分支放在最前。
+  if (isMobileDrawer()) {
+    renderTimeline();
+    return;
+  }
+  if (timelineMounted) {
+    // 刚从窄屏切回宽屏:时间线容器还在,`host.dataset.grid` 也是 "1" —— 必须强制全量重建
+    timelineMounted = false;
+    opts = { force: true };
+  }
   const host = document.getElementById("grid-scroll")!;
   const conf = conflicts.get(currentDate);
   const pxPerMin = PX_PER_MIN * zoom;
@@ -680,7 +737,8 @@ function bindEvents(): void {
         const key = filmKeyOfCode(code);
         if (key) toggleScreening(key, code);
         setGvTalk(code, false);
-        ensurePickerOpen(libraryCtx()); // 新加入 → 抽屉滑出显示行程(2026-09-11)
+        // 新加入 → 抽屉滑出显示行程(2026-09-11);⚠ 窄屏不弹(同上一分支,见 PLAN-20260912002532)
+        if (!isMobileDrawer()) ensurePickerOpen(libraryCtx());
       }
       return;
     }
@@ -692,7 +750,9 @@ function bindEvents(): void {
       if (key) {
         toggleScreening(key, code);
         // 加入(而非移出)行程 → 抽屉滑出显示行程;移出不弹(2026-09-11,PLAN-20260911140342)
-        if (slotOf(code)) ensurePickerOpen(libraryCtx());
+        // ⚠ 窄屏**不弹**:抽屉是全屏覆盖,点一张卡就把人从时间线里拽走(2026-09-12,PLAN-20260912002532)。
+        //   窄屏的卡片底色 / 顶栏计数已是即时回执,要去看列表点顶栏按钮即可。
+        if (!isMobileDrawer() && slotOf(code)) ensurePickerOpen(libraryCtx());
       }
       return;
     }
@@ -800,13 +860,26 @@ function bindEvents(): void {
   );
 
   // 工作台限高随视口变化重算(窗口缩放 / 顶栏折行都会改网格顶边位置);节流到停止 resize 后一次。
+  // ⚠ 窄屏 = 时间线,它**不限高**(见 renderTimeline)→ 这里直接跳过,不要给时间线写 maxHeight。
   let resizeTimer: number | undefined;
   window.addEventListener("resize", () => {
     if (resizeTimer !== undefined) window.clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(() => {
+      if (isMobileDrawer()) return;
       const grid = document.getElementById("grid-scroll");
       if (grid) fitGridHeight(grid);
     }, 120);
+  });
+
+  // ★ 跨断点(宽屏 ↔ 窄屏)重画(2026-09-12,PLAN-20260912002532):
+  //   两个形态是**同一块容器**的两种画法(`#grid-scroll`),不重画就会「网格 ↔ 时间线」混着显示。
+  //   断点值与 `library.ts::isMobileDrawer()` / `style.css` 的 `@media (max-width: 768px)` **逐字一致**。
+  //   ⚠ 桌面自身不受影响:这条监听只在「跨越 768px」时触发一次,不参与任何桌面渲染路径。
+  window.matchMedia("(max-width: 768px)").addEventListener("change", () => {
+    hourFilter = null; // 时间线没有小时筛选;切形态时一并清掉,免得留下一个看不见的筛选
+    renderZoomCtl();
+    renderGrid();
+    updatePickerLabel();
   });
 }
 
@@ -928,6 +1001,12 @@ function jumpToScreening(code: string): void {
   //   浏览器早把「回到左上角」那一帧画出来了,用户看到的是「先跳回顶 / 左,再滑到目标」。
   //   同步定位时浏览器**还没绘制**那个 0 状态,直接落到目标位置,一次到位、零跳变。
   //   ⚠ 容器**复用**(同日定位)时保留平滑动画:起点有意义,滑过去能帮用户建立方位感。
+  // ★ 窄屏:抽屉是**全屏覆盖**,「定位」的语义就是「带我去时间轴」—— 必须先收起抽屉,
+  //   否则定位完了用户眼前还是那份列表,等于没跳(2026-09-12,PLAN-20260912002532)。
+  //   宽屏**不收起**(抽屉是挤压式兄弟节点,网格永远不会被它挡住 —— 见上一条注释);
+  //   `closePickerDrawer()` 触发的 toggleHandler 在窄屏只刷新顶栏文案,不会重建时间线
+  //   (否则下面的滚动与闪烁回执会被随后的重建清掉)。
+  if (isMobileDrawer()) closePickerDrawer();
   const prev = document.getElementById("grid-scroll");
   gotoDate(s.date);
   const scroll = document.getElementById("grid-scroll");
@@ -953,6 +1032,9 @@ function jumpToScreening(code: string): void {
 function jumpToDate(date: string): void {
   // 与 `jumpToScreening` 同一条口径:换日期会**整体重建**网格容器 → 同步定位,不等 rAF,
   // 否则用户先看到「新日期停在左上角」那一帧再滑过去(见 jumpToScreening 的 ★ 注释)。
+  // 窄屏:与 `jumpToScreening` 同一条口径 —— 「在网格中查看这一天」的落点是**时间线**,
+  // 抽屉必须先让开(2026-09-12,PLAN-20260912002532);宽屏不收起。
+  if (isMobileDrawer()) closePickerDrawer();
   const prev = document.getElementById("grid-scroll");
   gotoDate(date);
   const scroll = document.getElementById("grid-scroll");
@@ -1035,7 +1117,10 @@ async function boot(): Promise<void> {
   // 旧版存的可能是横向倍率(如 3 / 0.5)或旧行高倍率,clampZoom 统一钳进 [0.55, 1.2] —— 无需迁移。
   zoom = clampZoom(store.settings.zoom ?? 1);
   cat = await loadCatalog();
-  currentDate = cat.dates[0] ?? "";
+  // ★ 窄屏默认日期 = **今天**(仅当今天落在展期窗口内)—— 手机打开就该看到「今天」,
+  //   而不是展期第一天(2026-09-12,PLAN-20260912002532;用户口径「今天在展期内就用今天」)。
+  //   宽屏维持 `cat.dates[0]`(桌面默认口径刻意未动,需要时另立一轮)。
+  currentDate = pickDefaultDate(cat.dates, todayIsoLocal(), isMobileDrawer());
   // 排片筛选**持久化**恢复(「记住你的选项」)—— 必须在 cat 就绪后:影厅 id 要按当前
   // venues.json 校验(换版后不存在的厅留着会让「空集 = 不过滤」失效,表现为「什么都没了」)。
   loadFilters(filters, new Set(cat.venues.map((v) => v.id)));
@@ -1051,6 +1136,13 @@ async function boot(): Promise<void> {
   // 选片抽屉开 / 收会改变网格可用宽度 → 补一次 renderGrid(横向锚点由 renderGrid 内的
   // pendingAnchor / gridAnchor 机制保住)。放在这里注入,library.ts 不必反向依赖 main。
   setPickerToggleHandler(() => {
+    // ★ 窄屏:抽屉是**全屏覆盖**(`#main-col` 被 `display:none`),开 / 收不改变时间线的任何几何 ——
+    //   重绘只会白刷一条 ≈75 行的列表,还会把滚动位置与「定位」的闪烁回执一起清掉。
+    //   故这里只刷新顶栏文案(2026-09-12,PLAN-20260912002532)。
+    if (isMobileDrawer()) {
+      updatePickerLabel();
+      return;
+    }
     // ★ 2026-09-11:抽屉开合**不再全量重建**。
     //   网格画布是**定宽**的(总宽只由倍率与轴长决定),容器变宽变窄只影响视口 —— 宽度根本不进几何签名。
     //   旧版 `renderGrid({ force: true })` 会让 `replaceWith` 把整棵网格 DOM 重建一遍(视觉上「闪一下」),
@@ -1086,14 +1178,13 @@ async function boot(): Promise<void> {
     abbrHelp.addEventListener("click", () => openModal("日程表说明 · 字段与图例", buildGuideBody(cat), "xl"));
   }
   renderAll();
-  // 窄屏(≤768px)**列表优先**:首次进入直接打开抽屉,网格降级为次级入口 ——
-  // 手机竖屏看二维甘特(29 厅 × 时间轴)在缩放下限下几乎不可用(见 library.ts::isMobileDrawer)。
-  // 落点显式给「影片库」:窄屏首进是**找片**场景(按钮文案也叫「列表 · 行程」),
-  // 与顶栏按钮那条入口(固定「我的选片」)刻意不同 —— 两边都别依赖 `pickerTab` 的初值。
-  if (isMobileDrawer()) openFilmPicker(libraryCtx(), "lib");
+  // ★ 窄屏(≤768px)**不再「列表优先」**(2026-09-12,PLAN-20260912002532):
+  //   主视图 = 单日纵向时间线(`renderTimeline`),抽屉退化为**次级**的「列表 · 行程」视图 ——
+  //   由顶栏按钮进入(全屏,`#main-col` 仍 `display:none`),抽屉内「◀ 时间线」返回。
+  //   旧口径「一打开就全屏影片库」正是用户报的「甘特图被挡住了」(实际是 `#main-col` 被 `display:none`)。
   // 宽屏:行程非空 → 抽屉自动滑出并停在「我的行程」(2026-09-11,PLAN-20260911140342)。
-  // 空行程不弹(进界面就弹一块空面板只会挡网格);收起后除「再点选一场」外不会被重弹。
-  else if (store.picks.size > 0) ensurePickerOpen(libraryCtx(), "agenda");
+  //   空行程不弹(进界面就弹一块空面板只会挡网格);收起后除「再点选一场」外不会被重弹。
+  if (!isMobileDrawer() && store.picks.size > 0) ensurePickerOpen(libraryCtx(), "agenda");
   updatePickerLabel();
   // 顶栏开票倒计时(每秒 tick;无 extras 数据时横幅保持隐藏)
   startTicketTicker(cat.schedule.festival.year);

@@ -43,6 +43,16 @@ export function todayIsoLocal(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** 首屏默认日期(纯函数,便于单测 —— 「今天」在展期内时窗口极短,靠实测覆盖不到)。
+ *  - 窄屏(`mobile = true`):**今天**在 `dates` 内就用今天,否则回落 `dates[0]`(展期外 / 日期缺失);
+ *  - 宽屏:`dates[0]` 恒定(桌面默认口径刻意未动,2026-09-12,PLAN-20260912002532)。
+ *  空数组返回空串(调用方按「排期为空」处理)。 */
+export function pickDefaultDate(dates: string[], today: string, mobile: boolean): string {
+  const first = dates[0] ?? "";
+  if (!mobile || !dates.includes(today)) return first;
+  return today;
+}
+
 /** 分钟 → "HH:MM" **保留 24+ 时制**(1775 → "29:35")。
  *  ⚠️ 这是「跨午夜信息」的载体:供 `data.ts` 归一化回写与 `ics.ts` 的 `toUtcStamp`(靠 `Date.UTC` 自动进位次日)使用。
  *  **面向用户的显示一律走 `minToClock` / `fmtEndClock` / `fmtMinRange`**,否则会印出 "29:35"。 */

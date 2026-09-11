@@ -431,10 +431,30 @@
   · `--color-conf` 走 `var(--conf)`(= `--status-danger`)而非 `var(--biff-red)` —— 暗色下只覆写
     `--status-danger` 就能让 `text-conf` / `border-conf` / `in-conf` 一起提亮。
   · 取色已过 WCAG 自检:暗色下 `text-meta` 4.47:1、`text-faint` 3.47:1 —— **比浅色基线(2.81 / 2.4)更好**。
-- **★ 窄屏(≤768px)= 列表优先**:`library.ts::isMobileDrawer()`(断点与 `style.css` 的
-  `@media (max-width: 768px)` **逐字一致**)→ `main.ts::boot()` 默认 `openFilmPicker()`,网格降级为次级入口;
-  顶栏按钮文案由 `updatePickerLabel()` 随开 / 收切成「时间轴 ▸」↔「列表 · 行程」。
-  · 现有三档断点:**768**(列表优先,JS + CSS)、**1099**(抽屉全宽 + `#main-col` 隐藏)、**720**(顶栏折行)。
+- **★ 窄屏(≤768px)= 单日纵向时间线**(2026-09-12 二改,`PLAN-20260912002532`;一改的「列表优先」已废):
+  `library.ts::isMobileDrawer()`(断点与 `style.css` 的 `@media (max-width: 768px)` **逐字一致**)
+  → `main.ts::renderGrid()` 首行分支到 `renderTimeline()`,用 `src/timeline.ts::buildTimeline()`
+  **整块替换 `#grid-scroll`**;抽屉退化为**次级**的「列表 · 行程」视图(顶栏按钮进入、全屏)。
+  · **为什么换掉「列表优先」**:二维甘特在 390px 竖屏要横滚 4 屏 + 纵滚 26 行,形态本身不可用,
+    当年只好把抽屉当主视图 → 用户报「一打开就是影片库,时间轴被挡住了」(实际是 `#main-col` 被 `display:none`)。
+    时间线给出「手机上可用的时间轴」:一列、按开始时间升序、左缘时间轨 + 每场一张卡。
+  · **形态是「流式列表 + 时间轨」,不是真时间轴**(卡片不按分钟绝对定位):真时间轴要求重叠场次并排分列,
+    390px ÷ 2~3 列 ≈ 130px/列,场次行的「CODE / 影厅 / 时间 / 时长 / 章组」放不下 ——
+    只是把「不可用」从横向搬到纵向。牺牲「时长比例」换可读性。
+  · **零新排版、零新色、零新增事件监听**:每张卡 = `row.ts::screeningRow`(既有唯一构造);
+    底色类组合与 `grid.ts::cardStateOf` 同源(冲突 `border-2 border-conf in-conf` / 已选 `border border-line in-plan`);
+    加入 / 移出 = **整卡点选**,复用 `main.ts` 既有的 `#grid-scroll [data-code]` 委托。
+    **卡片上没有任何按钮**(不要「定位 ▸」也不要「＋/✓」—— 时间线本身就是时间轴)。
+  · **连接件只画在「相邻两场都已选」之间**(赶场间隔 / 重叠),口径同 `agenda.ts::gapConnector`:
+    时间线列的是当天**全部**场次(≈75 场),给任意相邻两场都算间隔是纯噪声。
+  · **不限高**(不调用 `fitGridHeight`)、**不走 patch**(始终全量重建)、**不画跨行连线**、
+    不挂 `data-vrow`(故 `rowAnchor` 自然失效);`#zoom-ctl` 窄屏**隐藏**(没有横向刻度)。
+  · **窄屏默认日期 = 今天**(在展期内时;`util.ts::pickDefaultDate`)—— 宽屏仍是 `dates[0]`。
+  · **PC 零影响是硬约束**(用户 2026-09-12 明确要求):所有新逻辑都挂在 `isMobileDrawer()` 之后,
+    `grid.ts` / `style.css` **一行不改**;`library.ts` 只把「收起 ✕」的文案按断点换成「◀ 时间线」,
+    类名 / 落位逐字不动。改这里时**必须**逐 hunk 复核桌面路径(实测踩过一次:误删
+    `setPickerToggleHandler` 里的 `fitGridHeight(grid)`)。
+  · 现有三档断点:**768**(时间线,JS + CSS)、**1099**(抽屉全宽 + `#main-col` 隐藏)、**720**(顶栏折行)。
   · 触屏没有 hover:`ui.ts::ICON_BTN` 带 `ui-icon-btn` 钩子,`@media (hover: none)` 把常态 45% 拉满 ——
     新加「常态淡显、hover 才显现」的图标按钮**必须**挂这个类。
 - **★ 共享 UI 类名 = `ui.ts`**:按钮(`BTN_PRIMARY` / `BTN_PRIMARY_LG` / `BTN_ABORT` / `BTN_MINI` /

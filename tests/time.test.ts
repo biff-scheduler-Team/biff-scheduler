@@ -2,7 +2,16 @@
 // 轴界 / 卡片宽度 / 排序 / 整点筛选 / 冲突 / ICS 进位全部依赖 `end > start`。
 // 见 `util.ts` 文件头与 `gv.ts` 文件头;PLAN-20260911000705。
 import { describe, expect, it } from "vitest";
-import { dateInfo, fmtEndClock, fmtMinRange, fmtMinRangeMin, hmsToMin, minToClock, minToHms } from "../src/util";
+import {
+  dateInfo,
+  fmtEndClock,
+  fmtMinRange,
+  fmtMinRangeMin,
+  hmsToMin,
+  minToClock,
+  minToHms,
+  pickDefaultDate,
+} from "../src/util";
 
 describe("24+ 时制:分钟 ↔ 时钟字符串", () => {
   it("hmsToMin 不做取模 —— '29:35' = 1775(次日 05:35)", () => {
@@ -64,5 +73,28 @@ describe("dateInfo:本地时区安全解析 + OCT 显示口径", () => {
   it("个位日不补零、月份走英文缩写(勿「顺手」改回 10/5)", () => {
     expect(dateInfo("2026-10-05").label).toBe("OCT 5");
     expect(dateInfo("2026-10-15").label).toBe("OCT 15");
+  });
+});
+
+describe("pickDefaultDate — 首屏默认日期(2026-09-12,PLAN-20260912002532)", () => {
+  const DATES = ["2026-10-06", "2026-10-07", "2026-10-08", "2026-10-15"];
+
+  it("★ 窄屏 + 今天在展期内 → 今天(用户口径「今天在展期内就用今天」)", () => {
+    expect(pickDefaultDate(DATES, "2026-10-08", true)).toBe("2026-10-08");
+  });
+
+  it("窄屏 + 今天不在展期内(展期前 / 展期后)→ 回落展期第一天", () => {
+    expect(pickDefaultDate(DATES, "2026-09-12", true)).toBe("2026-10-06");
+    expect(pickDefaultDate(DATES, "2026-11-01", true)).toBe("2026-10-06");
+  });
+
+  it("宽屏**恒定** dates[0] —— 桌面默认口径不受本轮影响", () => {
+    expect(pickDefaultDate(DATES, "2026-10-08", false)).toBe("2026-10-06");
+    expect(pickDefaultDate(DATES, "2026-10-15", false)).toBe("2026-10-06");
+  });
+
+  it("dates 为空(排期缺失)→ 空串,不抛", () => {
+    expect(pickDefaultDate([], "2026-10-08", true)).toBe("");
+    expect(pickDefaultDate([], "2026-10-08", false)).toBe("");
   });
 });

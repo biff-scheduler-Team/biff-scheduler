@@ -627,12 +627,20 @@ export function openFilmPicker(ctx: LibraryCtx, tab?: "lib" | "pick" | "agenda")
   const libTab = el("button", TAB_ON, "影片库");
   const pickTab = el("button", TAB_OFF, "我的选片");
   const agendaTab = el("button", TAB_OFF, "我的行程");
+  // 面板出口 —— 文案按形态分工(2026-09-12,PLAN-20260912002532):
+  //  · 宽屏:抽屉是**挤压式**兄弟节点(网格一直在旁边),出口 = 「收起 ✕」;
+  //  · 窄屏:抽屉是**全屏主视图的替代品**,出口 = 「◀ 时间线」(动作相同,语义不同 ——
+  //    用户要的不是「收起一块面板」,而是「回到时间轴」)。故**只换文案与 tip**,
+  //    类名 / 落位**逐字不动**(PC 端按钮零变化)。
+  const mobile = isMobileDrawer();
   const closeBtn = el(
     "button",
     "ml-auto shrink-0 border border-line rounded-6 px-[8px] py-[3px] text-12 font-bold bg-card text-ink hover:border-line-strong hover:bg-hover whitespace-nowrap",
-    "收起 ✕"
+    mobile ? "◀ 时间线" : "收起 ✕"
   );
-  closeBtn.dataset.tip = "收起选片面板(网格恢复原宽;Esc 同效)";
+  closeBtn.dataset.tip = mobile
+    ? "回到时间轴(窄屏下时间线是主视图;本面板是全屏的「列表 · 行程」)"
+    : "收起选片面板(网格恢复原宽;Esc 同效)";
   head.append(libTab, pickTab, agendaTab, closeBtn);
 
   // ---- tab 1:影片库 ----
