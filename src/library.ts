@@ -536,8 +536,13 @@ export function openFilmPicker(ctx: LibraryCtx): void {
   // ---- 视图状态 ----
   /** 影片库 tab 展开态:默认全折叠(目录 250 部,全展开不可用) */
   const expLib = new Set<string>();
-  /** 我的选片 tab 展开态:默认展开(选片通常 < 30 部,展开才看得到「已排场次」这一核心信息) */
-  const expPick = new Set<string>([...ctx.picks.keys()]);
+  /** 我的选片 tab 展开态:**默认全收起**(2026-09-11 用户要求「我的选片如果已经添加了选片的 就先收起卡片」)。
+   *  旧口径是「把当前每一部选片都放进展开集合」—— 选片一多,打开就是十几屏的场次流水,
+   *  想找某部片只能一路滚。现在先给一份**影片清单**(卡片头仍有「共 N 场 / 已排 M 场」),
+   *  要看场次再点开那一片;「＋ 加入我的选片」「★ 定档」与「✓ 已在选片 · 去排场次 ▸」
+   *  这三处**刚动过那一片**仍会写进本集合(见各调用点),不会被这条默认值影响。
+   *  ⚠ 本集合是 `openFilmPicker` 的闭包变量,抽屉每次打开都重建 → 初值 = 每次打开时的默认态。 */
+  const expPick = new Set<string>();
   let kw = "";
   let unit: string | null = null;
   /** 我的选片档位筛选:null = 全部;UNSET = 未设档位(只点了场次没定档) */
@@ -642,7 +647,8 @@ export function openFilmPicker(ctx: LibraryCtx): void {
           anchor: n.key,
           onPick: (p) => {
             setWish(n.key, p);
-            // 新打标的片在「我的选片」tab **默认展开**(与它的初始态一致:选片就要看到已排场次)
+            // 刚打标的这一片在「我的选片」tab **展开**(其余卡片仍走默认收起态,见 expPick 初值):
+            // 用户刚在这部片上做了动作,切过去应能直接看它的场次,不必再点一次。
             if (p) expPick.add(n.key);
             render();
           },
