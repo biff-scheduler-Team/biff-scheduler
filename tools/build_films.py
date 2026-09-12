@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""离线管线(M1 前置):BIFF 影片信息 xlsx → public/films.json(影片目录)。
+"""离线管线(M1 前置):BIFF 影片信息 xlsx → apps/web/public/films.json(影片目录)。
 
 只接影片目录(片名/单元/年份/国家/导演),海报与豆瓣信息留待 enrich_douban.py 慢速补齐。
 排期(code/时间/影院)由官方 Catalogue PDF → tools/extract_schedule.py 产出后再做「目录 × 排期」关联。
 
 用法:
-  python build_films.py --xlsx <影片信息.xlsx> [--out public/films.json]
+  python build_films.py --xlsx <影片信息.xlsx> [--out apps/web/public/films.json]
 """
 import argparse
 import json
@@ -85,9 +85,9 @@ def load_posters(enriched_path: str, posters_dir: str) -> dict[int, str]:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--xlsx", required=True)
-    ap.add_argument("--out", default="public/films.json")
+    ap.add_argument("--out", default="apps/web/public/films.json")
     ap.add_argument("--enriched", default="data/enriched_douban.json", help="豆瓣富化产物(取 subject_id)")
-    ap.add_argument("--posters-dir", default="public/posters", help="已下载的海报目录")
+    ap.add_argument("--posters-dir", default="apps/web/public/posters", help="已下载的海报目录")
     args = ap.parse_args()
 
     posters = load_posters(args.enriched, args.posters_dir)

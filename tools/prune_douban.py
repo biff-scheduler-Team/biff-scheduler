@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""prune_douban.py — 清掉 `public/douban.json` 里**跨届失效**的映射
+"""prune_douban.py — 清掉 `apps/web/public/douban.json` 里**跨届失效**的映射
 
 为什么需要它
 ------------
@@ -10,7 +10,7 @@
 * `f###` 是 xlsx 行序,换届后同一序号是另一部片。
 
 于是换届后旧映射会**按编号撞号**,把上一届的中文名 / 豆瓣链接静默套到这一届不相干的片上。
-实测(2026-09-11):`public/douban.json` 里 5 条映射(`f002` / `006` / `088` / `462` / `X0904`)
+实测(2026-09-11):`apps/web/public/douban.json` 里 5 条映射(`f002` / `006` / `088` / `462` / `X0904`)
 全部指向同一个豆瓣条目「第二次诞生」,而 `006`/`088`/`462` 在 2026 分别是
 《The First Taste of Loneliness》/《Too Many Beasts》/《The Scar-Faced Cat》——
 界面上表现为**两部毫不相干的片共用同一个中文名**。
@@ -26,8 +26,8 @@
 
 用法
 ----
-    python tools/prune_douban.py [--douban public/douban.json] \\
-        --schedule public/schedule.json --films public/films.json [--dry-run]
+    python tools/prune_douban.py [--douban apps/web/public/douban.json] \\
+        --schedule apps/web/public/schedule.json --films apps/web/public/films.json [--dry-run]
 """
 
 from __future__ import annotations
@@ -40,9 +40,9 @@ from typing import Any
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="清理跨届失效的豆瓣映射")
-    ap.add_argument("--douban", default="public/douban.json")
-    ap.add_argument("--schedule", default="public/schedule.json")
-    ap.add_argument("--films", default="public/films.json")
+    ap.add_argument("--douban", default="apps/web/public/douban.json")
+    ap.add_argument("--schedule", default="apps/web/public/schedule.json")
+    ap.add_argument("--films", default="apps/web/public/films.json")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 

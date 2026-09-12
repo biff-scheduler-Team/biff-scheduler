@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """build_douban_intros.py — 为已映射影片拉取豆瓣详情里的 `intro`(简介)。
 
-产出 `public/douban-intros.json`,给资料弹层用。键 = subject_id。
+产出 `apps/web/public/douban-intros.json`,给资料弹层用。键 = subject_id。
 顺手把详情里的评分写回映射表**不在本脚本范围**(映射已有 rating 列)。
 
 用法
@@ -81,9 +81,9 @@ def write_payload(path: Path, intros: dict[str, str]) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="拉取豆瓣简介,写入 public/douban-intros.json")
-    ap.add_argument("--mappings", default="public/douban.json")
-    ap.add_argument("--out", default="public/douban-intros.json")
+    ap = argparse.ArgumentParser(description="拉取豆瓣简介,写入 apps/web/public/douban-intros.json")
+    ap.add_argument("--mappings", default="apps/web/public/douban.json")
+    ap.add_argument("--out", default="apps/web/public/douban-intros.json")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--delay", type=float, default=1.2)
     ap.add_argument("--no-resume", action="store_true")

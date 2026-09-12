@@ -7,6 +7,9 @@ disable: false
 agent_created: true
 ---
 
+> BIFF 当前部署使用独立 web/API Workers。此文件保留旧 Pages 流程供历史参考；BIFF 发布请遵循 `docs/account-integration.md`，从仓库根目录执行 `npm run deploy`。
+
+
 # cloudflare-pages-d1-deploy
 
 ## When to use

@@ -27,7 +27,7 @@ try {
   await writeFile(secretPath, randomBytes(48).toString("base64url"), { mode: 0o600, flag: "wx" });
 }
 const secret = (await readFile(secretPath, "utf8")).trim();
-const varsPath = join(root, ".dev.vars");
+const varsPath = join(root, "apps/api/.dev.vars");
 try {
   await readFile(varsPath);
 } catch (error) {
@@ -130,7 +130,7 @@ while (true) {
   }
   await new Promise((resolve) => setTimeout(resolve, 250));
 }
-start("npx", ["wrangler", "dev", "--ip", "127.0.0.1", "--port", new URL(biffOrigin).port], root, {
+start("npx", ["wrangler", "dev", "-c", "apps/api/wrangler.jsonc", "-c", "apps/web/wrangler.jsonc", "--ip", "127.0.0.1", "--port", new URL(biffOrigin).port], root, {
   ...env,
   WRANGLER_REGISTRY_PATH: registry,
   MINIFLARE_REGISTRY_PATH: registry,

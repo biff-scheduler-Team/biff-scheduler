@@ -1,11 +1,14 @@
+import { and, eq, gt, lt, sql } from "drizzle-orm";
+import { database } from "./db";
+import { appSession, festivalDocument, oauthPending } from "./db/schema";
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import * as oauth from "oauth4webapi";
-import { accountProfileSchema, type AccountProfile } from "../src/account-contract";
-import { canonical } from "../src/sync-data";
+import { accountProfileSchema, type AccountProfile } from "@biff/contracts/account";
+import { canonical } from "@biff/contracts/canonical";
 import { configuration } from "./config";
 import { randomToken, hash, seal, unseal } from "./crypto";
 import {
@@ -78,7 +81,7 @@ app.use("/api/*", async (c, next) => {
   await next();
 });
 app.get("/api/health", async (c) => {
-  await c.env.DB.prepare("SELECT 1").first();
+  await database(c.env.DB).get(sql`SELECT 1`);
   return c.json({ status: "ok" });
 });
 app.get("/api/auth/login", async (c) => {
@@ -96,12 +99,11 @@ app.get("/api/auth/login", async (c) => {
     p.config.SESSION_SECRET,
     `oauth:${cookieHash}`,
   );
-  await c.env.DB.batch([
-    c.env.DB.prepare("DELETE FROM oauth_pending WHERE expires_at < ?").bind(Date.now()),
-    c.env.DB.prepare("DELETE FROM app_session WHERE expires_at < ?").bind(Date.now()),
-    c.env.DB.prepare(
-      "INSERT INTO oauth_pending (cookie_hash,payload,expires_at) VALUES (?,?,?)",
-    ).bind(cookieHash, payload, Date.now() + 600_000),
+  const db = database(c.env.DB);
+  await db.batch([
+    db.delete(oauthPending).where(lt(oauthPending.expires_at, Date.now())),
+    db.delete(appSession).where(lt(appSession.expires_at, Date.now())),
+    db.insert(oauthPending).values({ cookie_hash: cookieHash, payload, expires_at: Date.now() + 600_000 }),
   ]);
   setCookie(c, pendingCookieName(p.config), cookie, cookieOptions(p.config, 600));
   const url = new URL(as.authorization_endpoint);
@@ -130,11 +132,9 @@ app.get("/api/auth/callback", async (c) => {
     return c.redirect("/?account_error=expired");
   }
   const cookieHash = await hash(cookie);
-  const pending = await c.env.DB.prepare(
-    "DELETE FROM oauth_pending WHERE cookie_hash = ? AND expires_at > ? RETURNING payload",
-  )
-    .bind(cookieHash, Date.now())
-    .first<{ payload: string }>();
+  const [pending] = await database(c.env.DB).delete(oauthPending)
+    .where(and(eq(oauthPending.cookie_hash, cookieHash), gt(oauthPending.expires_at, Date.now())))
+    .returning({ payload: oauthPending.payload });
   if (!pending) {
     console.warn("oidc_pending_record_missing");
     return c.redirect("/?account_error=expired");
@@ -177,22 +177,17 @@ app.get("/api/auth/callback", async (c) => {
     };
     const sessionToken = randomToken();
     const tokenHash = await hash(sessionToken);
-    await c.env.DB.prepare(
-      "INSERT INTO app_session (token_hash,subject,payload,expires_at,token_expires_at) VALUES (?,?,?,?,?)",
-    )
-      .bind(
-        tokenHash,
-        subject,
-        await seal(tokens, p.config.SESSION_SECRET, `session:${tokenHash}`),
-        Date.now() + 7 * 86400_000,
-        Date.now() + (result.expires_in ?? 900) * 1000,
-      )
-      .run();
+    const db = database(c.env.DB);
+    await db.insert(appSession).values({
+      token_hash: tokenHash,
+      subject,
+      payload: await seal(tokens, p.config.SESSION_SECRET, `session:${tokenHash}`),
+      expires_at: Date.now() + 7 * 86400_000,
+      token_expires_at: Date.now() + (result.expires_in ?? 900) * 1000,
+    }).run();
     const oldCookie = getCookie(c, sessionCookieName(p.config));
     if (oldCookie)
-      await c.env.DB.prepare("DELETE FROM app_session WHERE token_hash = ?")
-        .bind(await hash(oldCookie))
-        .run();
+      await db.delete(appSession).where(eq(appSession.token_hash, await hash(oldCookie))).run();
     setCookie(c, sessionCookieName(p.config), sessionToken, cookieOptions(p.config, 7 * 86400));
     return c.redirect("/?account=connected");
   } catch (error) {
@@ -215,9 +210,7 @@ app.use("/api/account/*", async (c, next) => {
   );
   if (!identity.ok) {
     if (identity.status === 401)
-      await c.env.DB.prepare("DELETE FROM app_session WHERE token_hash = ?")
-        .bind(session.row.token_hash)
-        .run();
+      await database(c.env.DB).delete(appSession).where(eq(appSession.token_hash, session.row.token_hash)).run();
     return c.json(
       { error: identity.status === 401 ? "UNAUTHENTICATED" : "IDENTITY_UNAVAILABLE" },
       identity.status === 401 ? 401 : 503,
@@ -277,7 +270,7 @@ app.on(["PUT", "DELETE"], "/api/account/avatar", async (c) => {
 app.post("/api/account/logout", async (c) => {
   const p = provider(c.env, c.req.header("cf-connecting-ip"));
   const { row, tokens } = c.get("session");
-  await c.env.DB.prepare("DELETE FROM app_session WHERE token_hash = ?").bind(row.token_hash).run();
+  await database(c.env.DB).delete(appSession).where(eq(appSession.token_hash, row.token_hash)).run();
   deleteCookie(c, sessionCookieName(p.config), cookieOptions(p.config, 0));
   c.executionCtx.waitUntil(
     (async () => {
@@ -290,11 +283,8 @@ app.post("/api/account/logout", async (c) => {
 });
 app.get("/api/account/sync/biff-2026", async (c) => {
   const subject = c.get("session").row.subject;
-  const row = await c.env.DB.prepare(
-    "SELECT revision,records,updated_at FROM festival_document WHERE subject = ? AND edition = 'biff-2026'",
-  )
-    .bind(subject)
-    .first<{ revision: number; records: string; updated_at: number }>();
+  const row = await database(c.env.DB).select().from(festivalDocument)
+    .where(and(eq(festivalDocument.subject, subject), eq(festivalDocument.edition, "biff-2026"))).get();
   return c.json(
     row
       ? {
@@ -311,11 +301,9 @@ app.put("/api/account/sync/biff-2026", async (c) => {
   if (!parsed.success) return c.json({ error: "INVALID_SYNC_DOCUMENT" }, 422);
   const { subject, revision, operationId, records } = parsed.data;
   if (subject !== c.get("session").row.subject) return c.json({ error: "ACCOUNT_CHANGED" }, 409);
-  const previous = await c.env.DB.prepare(
-    "SELECT revision,last_operation,records FROM festival_document WHERE subject = ? AND edition = 'biff-2026'",
-  )
-    .bind(subject)
-    .first<{ revision: number; last_operation: string; records: string }>();
+  const db = database(c.env.DB);
+  const identity = and(eq(festivalDocument.subject, subject), eq(festivalDocument.edition, "biff-2026"));
+  const previous = await db.select().from(festivalDocument).where(identity).get();
   if (previous?.last_operation === operationId) {
     if (previous.records !== canonical(records))
       return c.json({ error: "OPERATION_ID_REUSED" }, 409);
@@ -325,23 +313,21 @@ app.put("/api/account/sync/biff-2026", async (c) => {
   if (new TextEncoder().encode(serialized).byteLength > 450 * 1024)
     return c.json({ error: "SYNC_TOO_LARGE" }, 413);
   const now = Date.now();
-  const result =
-    revision === 0
-      ? await c.env.DB.prepare(
-          "INSERT INTO festival_document (subject,edition,revision,records,last_operation,updated_at) VALUES (?,'biff-2026',1,?,?,?) ON CONFLICT DO NOTHING RETURNING revision",
-        )
-          .bind(subject, serialized, operationId, now)
-          .first<{ revision: number }>()
-      : await c.env.DB.prepare(
-          "UPDATE festival_document SET revision = revision + 1, records = ?, last_operation = ?, updated_at = ? WHERE subject = ? AND edition = 'biff-2026' AND revision = ? RETURNING revision",
-        )
-          .bind(serialized, operationId, now, subject, revision)
-          .first<{ revision: number }>();
+  const [result] = revision === 0
+    ? await db.insert(festivalDocument).values({
+        subject, edition: "biff-2026", revision: 1,
+        records: serialized, last_operation: operationId, updated_at: now,
+      }).onConflictDoNothing().returning({ revision: festivalDocument.revision })
+    : await db.update(festivalDocument).set({
+        revision: sql`${festivalDocument.revision} + 1`,
+        records: serialized, last_operation: operationId, updated_at: now,
+      }).where(and(identity, eq(festivalDocument.revision, revision)))
+        .returning({ revision: festivalDocument.revision });
   if (!result) return c.json({ error: "REVISION_CONFLICT" }, 409);
   return c.json({ revision: result.revision });
 });
 app.all("/api/*", (c) => c.json({ error: "NOT_FOUND" }, 404));
-app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
+app.notFound((c) => c.json({ error: "NOT_FOUND" }, 404));
 app.onError((error, c) => {
   if (error instanceof HTTPException)
     return c.json(

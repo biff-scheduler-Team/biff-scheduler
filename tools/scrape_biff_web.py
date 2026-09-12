@@ -38,8 +38,8 @@
 
 产物
 ----
-    <out-dir>/schedule.json        与 public/schedule.json 同契约
-    <out-dir>/venues.json          与 public/venues.json 同契约
+    <out-dir>/schedule.json        与 apps/web/public/schedule.json 同契约
+    <out-dir>/venues.json          与 apps/web/public/venues.json 同契约
     <out-dir>/film-meta.json       idx → 片名 / 单元 / 年份 / 国家 / 片长(交叉核对用)
     <out-dir>/_cache/*.html        原始页缓存(--offline 复用;可随时删)
 
@@ -422,7 +422,7 @@ def main() -> int:
     parser.add_argument("--sleep", type=float, default=0.2, help="每次请求间隔秒数(默认 0.2)")
     parser.add_argument("--offline", action="store_true", help="只用缓存,不发请求")
     parser.add_argument("--no-kr", action="store_true", help="跳过韩文详情页(省一半请求,韩文片名留空)")
-    parser.add_argument("--films-json", help="影片目录(public/films.json);给了就回填 title_zh 并报匹配率")
+    parser.add_argument("--films-json", help="影片目录(apps/web/public/films.json);给了就回填 title_zh 并报匹配率")
     parser.add_argument("--alias", default="data/title-alias-2026.json", help="人工别名表(官方片名 → 目录中文名)")
     args = parser.parse_args()
 

@@ -19,7 +19,7 @@
 - **Bash 的 `grep`/`rg` 会被拦并静默返回空** → 检索一律用 `Grep` 工具。确需 Bash grep **必须带 `-E`**(不带 `-E` 的 BRE 交替会静默返回空 + exit 1)。
   命令里含 `ps`/`reg`/`sc`/`wmic` 之类 token 会被判「系统级工具」拦掉 → 写临时 `.py` 文件跑。
 - **多会话并行提交纪律**:提交/部署前先确认「静默」
-  (`date` + `stat -f '%Sm %N' -t '%H:%M:%S' index.html src/*.ts docs/plans/*.md`;`git log --oneline -1` 比对 HEAD)。
+  (`date` + `stat -f '%Sm %N' -t '%H:%M:%S' index.html apps/web/src/*.ts docs/plans/*.md`;`git log --oneline -1` 比对 HEAD)。
   连续 90 秒无新写入再动手。对方已 commit+push+deploy 同一内容 → 不重复提交。
 - **只提交自己 hunk 的标准手法**:完整配方见 SKILL **`parallel-agent-safe-commit`**。两条实测坑:
   ① **对方 commit 会把你在途改动一起卷走**(症状:你的文件在 `git status` 变 clean、`git diff HEAD` 只剩尾巴)
@@ -38,7 +38,7 @@
   快照可能「不完整」(依赖只在别人工作区改过)→ **构建后 `grep` 产物确认新 token/类名命中**;线上核对用
   `curl -sL "https://biff.lcandy.co/<f>.json?cb=$(date +%s)"`(**必须带 cache-buster**,否则边缘缓存会返回旧版)。
 
-## 二、弹层交互(`src/modal.ts`)
+## 二、弹层交互(`apps/web/src/modal.ts`)
 
 - **弹层容器 = 栈**(2026-09-10 起):`openModal(title, body, wide?, onReturn?)` 是**压栈**语义 —— 开新层前把栈顶
   `overlay.style.display = "none"`(**留在 DOM**,不销毁),关闭时恢复下层并调 `onReturn?.()`。
@@ -239,7 +239,7 @@
     三态由 `modal.ts::actState()` 单源给出(`@utility act-on` 已随绿色实底按钮一起删除)。
   **文案必须与 `toggleScreening` 真实语义一致**:一场只属一个方案,对「已在另一组」的场次是**移出**
   不是搬运 → 文案写「已在 A 组 · 点击移出」(旧「改入 A」是错许诺)。
-- **交互类改动的验收方式**:无头 DOM 断言(playwright-core + 缓存 chromium + 临时 `python -m http.server` 对 `dist/`,用完 `pkill`)
+- **交互类改动的验收方式**:无头 DOM 断言(playwright-core + 缓存 chromium + 临时 `python -m http.server` 对 `apps/web/dist/`,用完 `pkill`)
   —— 见 SKILL `web-ui-headless-interaction-qa`;对线上只跑**只读**断言,别点会写接口的按钮。
 
 ## 三、数据契约
@@ -248,7 +248,7 @@
   选片 / 排片**不上云** —— `state.ts::commit()` 落盘即完成,没有异步回写;
   `user_pick` 表与 `/api/pick*`(2026-09-10 退役)、`douban_map` 表与 `/api/mapping*`(2026-09-11 退役)全部删除,
   `functions/` 与 `migrations/` 目录已不存在 —— **前端不再 fetch 任何后端**。
-  · 豆瓣映射 = `public/douban.json`(离线产物;`data.ts::loadDoubanMappings()` → `state.ts::loadMappings()`
+  · 豆瓣映射 = `apps/web/public/douban.json`(离线产物;`data.ts::loadDoubanMappings()` → `state.ts::loadMappings()`
     在首渲前灌好,避免片名「先英文后中文」跳变);文件留空即「零映射」,弹层 / 影片库走中英文搜索兜底。
     **页面上不可编辑** —— 要改就重跑离线管线再部署。
   · 原因:两次「部署换 origin、云端为准」都造成过数据复活 / 覆盖(片单清空被云端覆盖;映射与本地 origin 错位)。
@@ -320,7 +320,7 @@
 - **影片节点 key 单一来源**:`util.ts` 的 `filmNodeKey(cat, s)`(目录命中 → `cat:<id>`,否则 `sched:<片名小写>`;
   纯目录片 `cat:<f###>`)。影片库合并/选片总览/甘特打标全走它。匹配顺序:
   ① `(title_zh || title_orig) === s.title_zh` → `cat:<id>`;② `title_orig === s.title_en` → `cat:<id>`;③ 否则 `sched:<…>`。
-- **~~选片打标共享层 `src/pick.ts`~~(2026-09-11 整文件删除,`PLAN-20260911223000`)**:
+- **~~选片打标共享层 `apps/web/src/pick.ts`~~(2026-09-11 整文件删除,`PLAN-20260911223000`)**:
   档位(必看 / 备选 / 随缘)、色类(`PRI_TAG`/`PRI_TEXT`)、★ 星标控件 `wishIcon()`、`state.setWish()` 全部下线。
   它原本的定位就是「冲突组内的顺位」,现在这个位置由真正的**抢票顺位**(场次级 + 拖动排序)接管;
   在非冲突场景里档位只剩排序噪声 —— **两套排序机制并存只会互相打架**。别再恢复 `pick.ts`。
@@ -351,7 +351,7 @@
 - **`venue_id` = 按「厅」**(2026-09-10 定案):29 个,`id` = 官方代码小写(`b1`/`c2`/`l10`),`group` = 影院
   (`bcc`/`cgv`/`lotte`/`kofic`/`megabox`/`sohyang`/`bcm`),`region` = 区(`centum`/`nampo`)。**旧「按楼 5 馆」口径已废**
   (`bcc-1`/`bcc-2`/`cgv-centum`/`lotte-centum`/`mega-haeundae`)。`types.ts` 的 `Venue` 有 `region?: string`;
-  图例分区走 `legend.ts::GROUP_AREA`。`src/`/`index.html`/`functions/` **零硬编码 venue id**,换口径只需换 `public/*.json`。
+  图例分区走 `legend.ts::GROUP_AREA`。`apps/web/src/`/`index.html`/`functions/` **零硬编码 venue id**,换口径只需换 `apps/web/public/*.json`。
 - **`Venue.short` = 甘特影厅列的行标签**(2026-09-10 加):影厅列宽 `LABEL_W` 148px,减去内边距 20px +
   代码 chip ≈25~30px + gap 5px → 可写 ≈ 98~103px(12px semibold),而全名「Busan Cinema Center Cinema 1」
   约 178px **必被 `truncate` 裁掉**,且区分性字词全在末尾 → B1/B2/B3 三行都显示成「Busan Cinema …」。
@@ -361,14 +361,14 @@
   超过 98px 就会重新截断(而 MEGABOX 四行截断后又会糊成同一串,即本次修的 bug)。
   **取用只走 `legend.ts::venueShort()`**(`short || name`,旧 JSON 不会空白);`venue_display` 与 `name` 保持全名 ——
   全名去向 = 行 hover `venueTip` / ⓘ 说明弹层「代码 → 行标签 → 官方全名」表 / ICS `LOCATION`。
-  数据源 = `tools/extract_schedule.py::VENUE_NAME` 第 5 元素(重跑 PDF 管线不会丢),同步 `public/venues.json`。
+  数据源 = `tools/extract_schedule.py::VENUE_NAME` 第 5 元素(重跑 PDF 管线不会丢),同步 `apps/web/public/venues.json`。
 - **★ 午夜场跨天 = 24+ 时制**(2026-09-10 定案):`end_time` 可 ≥ `"24:00"`(`"29:35"` = 次日 05:35)。
   **任何地方都不得对小时取模**。唯一归一化闸门 = `data.ts::loadCatalog()`(`end <= start` → `minToHms(en + 1440)`)。
   显示一律走 `util.ts` 的 `minToClock`/`fmtEndClock`/`fmtMinRange`/`nextDayTag`(`minToHms` 只供数据层与 ICS,勿直接显示);
   ICS 的 `DTEND` 靠 `Date.UTC` 自动进位。实测 4 场:`008`/`081`/`164`/`244`(23:59 → 次日 05:26~06:04)。
-- **目录片(暂无排期)豆瓣关联**:`f###`(f001…)与排期 3 位 code 互不冲突,同存 `public/douban.json` 的 `mappings`;
+- **目录片(暂无排期)豆瓣关联**:`f###`(f001…)与排期 3 位 code 互不冲突,同存 `apps/web/public/douban.json` 的 `mappings`;
   影片库节点 key `cat:f###`;无映射时该行渲染「豆瓣搜索 ↗」外链(兜底)。
-- **`FilmItem` 契约**(`src/types.ts`):`{ id, unit, remark, title_zh, title_orig, year, rating, rating_count, country, director }`
+- **`FilmItem` 契约**(`apps/web/src/types.ts`):`{ id, unit, remark, title_zh, title_orig, year, rating, rating_count, country, director }`
   —— 10 字段,**无** `runtime_min`/`title_kr`/`codes`。`displayTitle` = `title_zh || mappingTitleCn || title_en`。
   `library.ts::unitKey()` 对未知 unit **回退原字符串**,故英文单元名安全。
 
@@ -414,7 +414,7 @@
   **折行容器(`flex-wrap`)里的操作组用 `ml-auto` 而不是 `flex-1` 占位符** —— 折行后仍贴右缘。
   弹层内主按钮落位见 §二「底部主操作右对齐」。
 
-- **★ 字阶 / 圆角 = 值命名阶梯(2026-09-10,`PLAN-20260910235000`)**:`src/style.css` 的 `:root` 存字面值
+- **★ 字阶 / 圆角 = 值命名阶梯(2026-09-10,`PLAN-20260910235000`)**:`apps/web/src/style.css` 的 `:root` 存字面值
   (`--fs-9`…`--fs-18` / `--r-2`…`--r-12`),`@theme` 映射为 **`text-9`…`text-18`** 与 **`rounded-2`…`rounded-12`**。
   · **值命名是必须的**:CSS 自定义属性名不允许 `.`,半像素做不成 token;值命名同时避开 Tailwind 默认
     字号名(`xs/sm/base/lg/xl/2xl`)与圆角名(`xs/sm/md/lg/xl/2xl`),不会悄悄改掉别人的语义。
@@ -433,7 +433,7 @@
   · 取色已过 WCAG 自检:暗色下 `text-meta` 4.47:1、`text-faint` 3.47:1 —— **比浅色基线(2.81 / 2.4)更好**。
 - **★ 窄屏(≤768px)= 单日纵向时间线**(2026-09-12 二改,`PLAN-20260912002532`;一改的「列表优先」已废):
   `library.ts::isMobileDrawer()`(断点与 `style.css` 的 `@media (max-width: 768px)` **逐字一致**)
-  → `main.ts::renderGrid()` 首行分支到 `renderTimeline()`,用 `src/timeline.ts::buildTimeline()`
+  → `main.ts::renderGrid()` 首行分支到 `renderTimeline()`,用 `apps/web/src/timeline.ts::buildTimeline()`
   **整块替换 `#grid-scroll`**;抽屉退化为**次级**的「列表 · 行程」视图(顶栏按钮进入、全屏)。
   · **为什么换掉「列表优先」**:二维甘特在 390px 竖屏要横滚 4 屏 + 纵滚 26 行,形态本身不可用,
     当年只好把抽屉当主视图 → 用户报「一打开就是影片库,时间轴被挡住了」(实际是 `#main-col` 被 `display:none`)。
@@ -479,12 +479,12 @@
 
 - **D1 已退役(2026-09-11,`PLAN-20260911001107`)**:`douban_map` / `user_pick` / `user_plan` 三张表、
   `functions/`、`migrations/`、`wrangler.toml` 的 `[[d1_databases]]`、`package.json::migrate:remote` 全部删除。
-  改数据不再需要迁移 —— 静态 JSON(`public/*.json`)改了重新 `npm run deploy` 即可。**别再引入 D1 / Functions**。
+  改数据不再需要迁移 —— 静态 JSON(`apps/web/public/*.json`)改了重新 `npm run deploy` 即可。**别再引入 D1 / Functions**。
 - **wrangler 必须在沙箱外跑**:沙箱内到 `api.cloudflare.com` fetch failed。`pages deploy` 一律加
   `dangerouslyDisableSandbox`;本地预览 `wrangler pages dev dist`(纯静态)无此问题。
 - **`tools/extract_schedule.py`**(BIFF 适配层):排期表 = 官方册子 **p9–p16**(旋转 90° 的表格)。
   与电影节无关的通用逻辑已抽到 **`tools/festival_common.py`**(以 `LayoutSpec` / `MetaSyntax` 注入差异);
-  新增电影节时复制适配层、替换场馆表与 token 正则即可,输出契约对齐 `src/types.ts`。
+  新增电影节时复制适配层、替换场馆表与 token 正则即可,输出契约对齐 `apps/web/src/types.ts`。
 - **`tools/extract_films_2025.py`**(2026-09-10 新建):影片介绍页 = **p22–p97**(印刷页 42–194),
   每页 2 栏(`x0 < 250` 为左栏),**每遇到一条元数据行 `<国别>|<年>|<N>min|<格式>|<color>` 就开启一部新片**,
   其后到下一元数据行的场次行都归它(**不能用 y 窗口** —— 一页 2~3 部片);国别过长会换行 → 按 **x 邻近(±20pt)** 回看;
@@ -494,6 +494,6 @@
   另有 10 个 code 的 `page` 为空(`800`/`164`/`X1601`/`621–626`/`002`)。**关联方向是反的**:从影片介绍页读出该片的 code 清单,再用 code 去排期取片名。
 - **实测基线**:2025 = **699 场 / 29 厅 / 10 天(09-17~09-26)**;影片目录 **224 片**(`cat:` 命中 646/699 = 92.4%,
   未命中的 53 个全是非影片条目)。2026 目录暂存 `data/films-2026.json`(明天片单发布后复用)。
-- **2025 排期已知缺陷(未修)**:`public/schedule.json` 里 `008.title_en = "163, 165 Midnight Passion 1"`、
+- **2025 排期已知缺陷(未修)**:`apps/web/public/schedule.json` 里 `008.title_en = "163, 165 Midnight Passion 1"`、
   `164.title_en = "115, 160, 163, 164 Midnight Passion 3"`、`800.title_en = "Winner of the Camellia Award] Special Talk […"`,
   根因是 `extract_schedule.py::split_title()`。

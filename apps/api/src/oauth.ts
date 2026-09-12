@@ -1,3 +1,6 @@
+import { and, eq, gt, lt } from "drizzle-orm";
+import { database } from "./db";
+import { appSession } from "./db/schema";
 import * as oauth from "oauth4webapi";
 import { z } from "zod";
 import { HTTPException } from "hono/http-exception";
@@ -13,14 +16,6 @@ const tokensSchema = z.object({
   emailVerified: z.boolean(),
 });
 export type SessionTokens = z.infer<typeof tokensSchema>;
-export type SessionRow = {
-  token_hash: string;
-  subject: string;
-  payload: string;
-  expires_at: number;
-  token_expires_at: number;
-  refresh_until: number;
-};
 export const sessionCookieName = (config: Configuration) =>
   config.APP_ENV === "production" ? "__Host-biff.session" : "biff.session";
 export const pendingCookieName = (config: Configuration) =>
@@ -66,25 +61,21 @@ export async function sessionFor(env: Env, cookie: string | undefined, clientIp?
   if (!cookie) return null;
   const config = configuration(env);
   const tokenHash = await hash(cookie);
+  const db = database(env.DB);
   for (let attempt = 0; attempt < 12; attempt++) {
-    const row = await env.DB.prepare(
-      "SELECT * FROM app_session WHERE token_hash = ? AND expires_at > ?",
-    )
-      .bind(tokenHash, Date.now())
-      .first<SessionRow>();
+    const row = await db.select().from(appSession)
+      .where(and(eq(appSession.token_hash, tokenHash), gt(appSession.expires_at, Date.now()))).get();
     if (!row) return null;
     const tokens = tokensSchema.parse(
       await unseal(row.payload, config.SESSION_SECRET, `session:${tokenHash}`),
     );
     if (row.token_expires_at > Date.now() + 30_000) return { row, tokens };
     if (!tokens.refreshToken) {
-      await env.DB.prepare("DELETE FROM app_session WHERE token_hash = ?").bind(tokenHash).run();
+      await db.delete(appSession).where(eq(appSession.token_hash, tokenHash)).run();
       return null;
     }
-    const lease = await env.DB.prepare(
-      "UPDATE app_session SET refresh_until = ? WHERE token_hash = ? AND refresh_until < ? AND payload = ?",
-    )
-      .bind(Date.now() + 15_000, tokenHash, Date.now(), row.payload)
+    const lease = await db.update(appSession).set({ refresh_until: Date.now() + 15_000 })
+      .where(and(eq(appSession.token_hash, tokenHash), lt(appSession.refresh_until, Date.now()), eq(appSession.payload, row.payload)))
       .run();
     if (!lease.meta.changes) {
       await new Promise((resolve) => setTimeout(resolve, 200));
@@ -116,19 +107,15 @@ export async function sessionFor(env: Env, cookie: string | undefined, clientIp?
         idToken: result.id_token ?? tokens.idToken,
       };
       const payload = await seal(fresh, config.SESSION_SECRET, `session:${tokenHash}`);
-      await env.DB.prepare(
-        "UPDATE app_session SET payload = ?, token_expires_at = ?, refresh_until = 0 WHERE token_hash = ? AND payload = ?",
-      )
-        .bind(payload, Date.now() + (result.expires_in ?? 900) * 1000, tokenHash, row.payload)
-        .run();
+      await db.update(appSession).set({
+        payload, token_expires_at: Date.now() + (result.expires_in ?? 900) * 1000, refresh_until: 0,
+      }).where(and(eq(appSession.token_hash, tokenHash), eq(appSession.payload, row.payload))).run();
     } catch (error) {
       if (error instanceof oauth.ResponseBodyError && error.error === "invalid_grant") {
-        await env.DB.prepare("DELETE FROM app_session WHERE token_hash = ?").bind(tokenHash).run();
+        await db.delete(appSession).where(eq(appSession.token_hash, tokenHash)).run();
         return null;
       }
-      await env.DB.prepare("UPDATE app_session SET refresh_until = 0 WHERE token_hash = ?")
-        .bind(tokenHash)
-        .run();
+      await db.update(appSession).set({ refresh_until: 0 }).where(eq(appSession.token_hash, tokenHash)).run();
       throw new HTTPException(503, { message: "Identity service unavailable" });
     }
   }

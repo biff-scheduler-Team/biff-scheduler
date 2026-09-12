@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """build_douban_related.py — 为已映射影片拉取豆瓣 Frodo `/recommendations`。
 
-产出 `public/douban-related.json`,给资料弹层「本届也在放 / 豆瓣也推荐」用。
+产出 `apps/web/public/douban-related.json`,给资料弹层「本届也在放 / 豆瓣也推荐」用。
 「是不是本届」由前端对照当前 `douban.json` 现查,本文件只存推荐条目本身。
 
 为什么是 `/recommendations` 而不是 `/related_subjects`
@@ -156,9 +156,9 @@ def write_payload(path: Path, recs: dict[str, list[dict[str, Any]]]) -> None:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="拉取豆瓣相关电影,写入 public/douban-related.json")
-    ap.add_argument("--mappings", default="public/douban.json", help="已有豆瓣映射表")
-    ap.add_argument("--out", default="public/douban-related.json", help="相关电影产物")
+    ap = argparse.ArgumentParser(description="拉取豆瓣相关电影,写入 apps/web/public/douban-related.json")
+    ap.add_argument("--mappings", default="apps/web/public/douban.json", help="已有豆瓣映射表")
+    ap.add_argument("--out", default="apps/web/public/douban-related.json", help="相关电影产物")
     ap.add_argument("--limit", type=int, default=0, help="只处理前 N 个 subject(冒烟)")
     ap.add_argument("--delay", type=float, default=1.2, help="每个请求之间的间隔秒数")
     ap.add_argument("--no-resume", action="store_true", help="忽略已有产物,全部重抓")

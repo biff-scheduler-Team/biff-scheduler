@@ -9,7 +9,7 @@ import {
   type CloudDocument,
 } from "./sync-data";
 
-import { accountSchema, accountUserIdSchema as id, type Account } from "./account-contract";
+import { accountSchema, accountUserIdSchema as id, type Account } from "@biff/contracts/account";
 export { accountSchema };
 export type { Account };
 const recordsSchema = z.record(z.string(), z.string());

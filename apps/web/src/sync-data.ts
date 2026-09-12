@@ -1,3 +1,5 @@
+import { canonical } from "@biff/contracts/canonical";
+export { canonical } from "@biff/contracts/canonical";
 /** Portable account data. Record IDs remain stable across devices; absence is a deletion. */
 export type WorkspaceRecords = Record<string, string>;
 export interface WorkspaceStorage {
@@ -22,15 +24,7 @@ type Value = null | boolean | number | string | Value[] | { [key: string]: Value
 function isObject(value: Value | undefined): value is { [key: string]: Value } {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
-export function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object")
-    return `{${Object.keys(value)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`)
-      .join(",")}}`;
-  return JSON.stringify(value);
-}
+
 function equal(a: Value | undefined, b: Value | undefined) {
   return canonical(a) === canonical(b);
 }

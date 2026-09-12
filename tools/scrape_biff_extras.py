@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""scrape_biff_extras.py — 从 BIFF 官网抓「排期之外」的辅助信息 → public/festival-extras.json
+"""scrape_biff_extras.py — 从 BIFF 官网抓「排期之外」的辅助信息 → apps/web/public/festival-extras.json
 
 背景
 ----
@@ -14,12 +14,12 @@
 3. **开闭幕式**(Opening & Closing Information, `page_num=11233`)——
    红毯 / 主活动 / 放映时间表 + 封路时段。
 
-节目块只保留**在 `public/schedule.json` 里真实存在**的 code(自动滤掉官网页面上的
+节目块只保留**在 `apps/web/public/schedule.json` 里真实存在**的 code(自动滤掉官网页面上的
 往届遗留条目,如 2025 的 Camellia Award 得主)。
 
 产物
 ----
-    <out>   默认 public/festival-extras.json
+    <out>   默认 apps/web/public/festival-extras.json
 
 用法
 ----
@@ -350,7 +350,7 @@ def parse_ceremony(lines: list[str]) -> dict[str, Any]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="抓 BIFF 官网辅助信息(售票 / 嘉宾 / 开闭幕式)")
-    ap.add_argument("--out", default="public/festival-extras.json", help="产物 JSON 路径")
+    ap.add_argument("--out", default="apps/web/public/festival-extras.json", help="产物 JSON 路径")
     ap.add_argument("--cache-dir", default="data/_cache/extras", help="HTML 缓存目录")
     ap.add_argument("--offline", action="store_true", help="只用缓存,不联网")
     ap.add_argument("--delay", type=float, default=0.4, help="每页抓取间隔(秒)")

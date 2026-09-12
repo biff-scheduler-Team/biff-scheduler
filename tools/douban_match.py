@@ -4,7 +4,7 @@
 
 调用方
 ------
-* `tools/build_douban_map.py` —— 产出前端消费的 `public/douban.json`;
+* `tools/build_douban_map.py` —— 产出前端消费的 `apps/web/public/douban.json`;
 * `tools/enrich_douban.py`   —— 产出海报管线用的 `data/enriched_douban.json`。
 
 两者输入不同(前者吃 `films.json` 的官网片目,后者吃 xlsx / 目录清单),但**判定口径必须同源** ——

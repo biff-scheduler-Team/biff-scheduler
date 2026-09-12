@@ -10,9 +10,9 @@ HTTP 418 + 13 字节占位文件(实测),直接 `<img src>` 引用必然破图�
 
 命名(溯源锚点)
 ---------------
-    public/posters/<subject_id>-s.jpg   270 x 381   ~16 KB
-    public/posters/<subject_id>-m.jpg   540 x 762   ~46 KB
-    public/posters/<subject_id>-l.jpg  1075 x 1518  ~219 KB
+    apps/web/public/posters/<subject_id>-s.jpg   270 x 381   ~16 KB
+    apps/web/public/posters/<subject_id>-m.jpg   540 x 762   ~46 KB
+    apps/web/public/posters/<subject_id>-l.jpg  1075 x 1518  ~219 KB
 
 用豆瓣 **subject_id** 而非 `f###`:后者是按 xlsx 行序现编的编号,换届会撞号
 (2025 的 f001 与 2026 的 f001 是两部不同的片)。
@@ -27,7 +27,7 @@ HTTP 418 + 13 字节占位文件(实测),直接 `<img src>` 引用必然破图�
 用法
 ----
     python fetch_posters.py --enriched data/enriched_douban.json \\
-        --out-dir public/posters [--delay 2] [--limit N]
+        --out-dir apps/web/public/posters [--delay 2] [--limit N]
 """
 import argparse
 import json
@@ -82,7 +82,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--enriched", default="data/enriched_douban.json",
                     help="enrich_douban.py 的产物")
-    ap.add_argument("--out-dir", default="public/posters", help="海报落盘目录")
+    ap.add_argument("--out-dir", default="apps/web/public/posters", help="海报落盘目录")
     ap.add_argument("--delay", type=float, default=2.0, help="每张图之间的间隔秒数")
     ap.add_argument("--limit", type=int, default=0, help="只处理前 N 部(调试用)")
     args = ap.parse_args()

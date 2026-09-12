@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""build_films_2026.py — 合并「官网片目」与「xlsx 目录」→ public/films.json
+"""build_films_2026.py — 合并「官网片目」与「xlsx 目录」→ apps/web/public/films.json
 
 为什么以官网为底座
 ------------------
@@ -27,8 +27,8 @@ xlsx 降级为**富化源**:能对上就补中文名 / 豆瓣海报 / 豆瓣分 
     python tools/build_films_2026.py \\
         --web     /tmp/biff2026/films-web.json \\
         --catalog data/films-catalog-2026.json \\
-        --schedule public/schedule.json \\
-        --out     public/films.json
+        --schedule apps/web/public/schedule.json \\
+        --out     apps/web/public/films.json
 """
 
 from __future__ import annotations
@@ -99,9 +99,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="合并官网片目与 xlsx 目录")
     ap.add_argument("--web", required=True, help="scrape_biff_web.py 产出的 films-web.json")
     ap.add_argument("--catalog", default="data/films-catalog-2026.json")
-    ap.add_argument("--schedule", default="public/schedule.json")
+    ap.add_argument("--schedule", default="apps/web/public/schedule.json")
     ap.add_argument("--alias", default="data/title-alias-2026.json", help="人工别名表(官网片名 → 目录中文名)")
-    ap.add_argument("--out", default="public/films.json")
+    ap.add_argument("--out", default="apps/web/public/films.json")
     args = ap.parse_args()
 
     web = json.loads(Path(args.web).read_text(encoding="utf-8"))["films"]

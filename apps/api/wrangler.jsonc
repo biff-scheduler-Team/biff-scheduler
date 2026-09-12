@@ -1,23 +1,17 @@
 {
-  "$schema": "./node_modules/wrangler/config-schema.json",
+  "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "biff-scheduler",
   "account_id": "62cbe67b545f2d12c986729ac7ffcee8",
-  "main": "server/index.ts",
+  "main": "src/worker.ts",
   "compatibility_date": "2026-09-12",
   "compatibility_flags": ["nodejs_compat"],
-  "assets": {
-    "directory": "./dist",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"],
-  },
   "vars": {
     "APP_ENV": "production",
     "APP_ORIGIN": "https://biff.lcandy.co",
     "IFFDAY_ORIGIN": "https://account.iff.day",
     "OIDC_CLIENT_ID": "biff-scheduler",
   },
-  "services": [{ "binding": "IFFDAY_API", "service": "iffday-account-api" }],
+  "services": [{ "binding": "WEB", "service": "biff-scheduler-web" }, { "binding": "IFFDAY_API", "service": "iffday-account-api" }],
   "d1_databases": [
     {
       "binding": "DB",

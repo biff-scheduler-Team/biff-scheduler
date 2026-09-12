@@ -143,7 +143,7 @@ SCHEDULE_PAGES_DEFAULT = "9-16"
 # 故 short 取「**品牌 + 厅号**」并**去掉与品牌重复的城市词**(CGV Centum City → CGV / MEGABOX
 # Busan Theater → MEGABOX):城市词在品牌里已隐含,去掉无损信息,却能把最长一条从 107px 压到 98px。
 # 实测(Chromium + 本机字体栈,12px semibold):29 条全部 ≤ 98px,零截断;最长 = "BCC BIFF Theatre"。
-# 全名去向:行 hover tooltip / ⓘ 说明弹层 / ICS LOCATION(都读 name)。改这里请同步 public/venues.json。
+# 全名去向:行 hover tooltip / ⓘ 说明弹层 / ICS LOCATION(都读 name)。改这里请同步 apps/web/public/venues.json。
 VENUE_NAME: dict[str, tuple[str, str, str, str, str]] = {
     "BT": ("Busan Cinema Center BIFF Theatre", "영화의전당 야외극장", "bcc", "centum", "BCC BIFF Theatre"),
     "BH": ("Busan Cinema Center Haneulyeon Theatre", "영화의전당 하늘연극장", "bcc", "centum", "BCC Haneulyeon"),

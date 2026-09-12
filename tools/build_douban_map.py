@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""build_douban_map.py — 用豆瓣官方 Frodo API 生成 `public/douban.json`(豆瓣映射表)。
+"""build_douban_map.py — 用豆瓣官方 Frodo API 生成 `apps/web/public/douban.json`(豆瓣映射表)。
 
 为什么改走官方 API
 ------------------
@@ -10,12 +10,12 @@
 稳定得多,且 `movie/{id}` 详情直接给中文名 / 评分 / 海报 / `aka`(英文名)/ 导演 / 年份 ——
 足以**自我校验**,不必再靠模糊字符串猜。
 
-本脚本产出的是**前端真正消费的那份**(`public/douban.json`,见 `src/data.ts::loadDoubanMappings`),
+本脚本产出的是**前端真正消费的那份**(`apps/web/public/douban.json`,见 `src/data.ts::loadDoubanMappings`),
 `enrich_douban.py` 产出的 `data/enriched_douban.json` 只服务海报下载,两者互不影响。
 
 流程
 ----
-    public/films.json(官网片目;`title_en` 是唯一身份)
+    apps/web/public/films.json(官网片目;`title_en` 是唯一身份)
       → /api/v2/search/subjects 逐片检索(英文名 → 中文名 → 原始名,命中即止)
       → /api/v2/movie/{id} 详情确认(标题 / aka / 原始名 / 年份)
       → mappings:键 = 影片 id(`f###`)**与它各场次的 code**(前端按场次 code 查表)
@@ -30,9 +30,9 @@
 
 用法
 ----
-    python tools/build_douban_map.py --films public/films.json --out public/douban.json
-    python tools/build_douban_map.py --films public/films.json --limit 5 --dry-run   # 冒烟
-    python tools/build_douban_map.py --films public/films.json --no-resume           # 强制全量重查
+    python tools/build_douban_map.py --films apps/web/public/films.json --out apps/web/public/douban.json
+    python tools/build_douban_map.py --films apps/web/public/films.json --limit 5 --dry-run   # 冒烟
+    python tools/build_douban_map.py --films apps/web/public/films.json --no-resume           # 强制全量重查
 """
 
 from __future__ import annotations
@@ -184,9 +184,9 @@ def expand_mappings(
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="用豆瓣官方 API 生成 public/douban.json")
-    ap.add_argument("--films", default="public/films.json", help="影片目录(官网片目底座)")
-    ap.add_argument("--out", default="public/douban.json", help="映射表产物路径")
+    ap = argparse.ArgumentParser(description="用豆瓣官方 API 生成 apps/web/public/douban.json")
+    ap.add_argument("--films", default="apps/web/public/films.json", help="影片目录(官网片目底座)")
+    ap.add_argument("--out", default="apps/web/public/douban.json", help="映射表产物路径")
     ap.add_argument("--limit", type=int, default=0, help="只处理前 N 部(冒烟用)")
     ap.add_argument("--delay", type=float, default=1.2, help="每个豆瓣请求之间的间隔秒数")
     ap.add_argument("--min-confidence", choices=("high", "medium"), default="high",

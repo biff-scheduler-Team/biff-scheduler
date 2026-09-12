@@ -35,3 +35,5 @@ __pycache__/
 worker-configuration.d.ts
 playwright-report/
 test-results/
+
+.planning/

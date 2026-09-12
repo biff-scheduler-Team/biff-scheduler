@@ -5,7 +5,7 @@
 鉴权方式与 piecelet-api-relay 的 `/tmdb` 中继相同(Bearer v4 token),
 token 只从环境变量 `TMDB_KEY` / `RELAY_TMDB_KEY` 读,不写任何检入文件。
 
-图床 `image.tmdb.org` 不防盗链,但仍下到 `public/posters/` —— 本站 PWA 要离线、
+图床 `image.tmdb.org` 不防盗链,但仍下到 `apps/web/public/posters/` —— 本站 PWA 要离线、
 也不想运行时打第三方。
 
 命中口径(宁可缺,不可错)
@@ -178,9 +178,9 @@ def patch_films_json(films_path: Path, mapping: dict[str, Any], posters_dir: Pat
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="用 TMDB 海报填 films.json(token 只读环境变量)")
-    ap.add_argument("--films", default="public/films.json")
+    ap.add_argument("--films", default="apps/web/public/films.json")
     ap.add_argument("--map", default="data/tmdb_map.json")
-    ap.add_argument("--out-dir", default="public/posters")
+    ap.add_argument("--out-dir", default="apps/web/public/posters")
     ap.add_argument("--delay", type=float, default=0.35)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--dry-run", action="store_true")

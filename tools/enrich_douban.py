@@ -24,12 +24,12 @@
 
 用法:
   python enrich_douban.py --xlsx <path> --out data/enriched_douban.json [--limit N] [--delay 1.2]
-  python enrich_douban.py --films-json public/films.json --out data/enriched_douban.json
+  python enrich_douban.py --films-json apps/web/public/films.json --out data/enriched_douban.json
 
 数据源(二选一):
 * --xlsx        官方影片信息 xlsx —— 有 xlsx 的年份优先(列名:单元/备注/中文片名/原始片名/
                 年份/评分/评价人数/国家/地区/导演)。
-* --films-json  public/films.json 目录片清单 —— 只有 PDF 产物、拿不到官方 xlsx 的年份走这条
+* --films-json  apps/web/public/films.json 目录片清单 —— 只有 PDF 产物、拿不到官方 xlsx 的年份走这条
                 (2025 即属此类;字段与 xlsx 一一对应,`remark`/`rating_count` 即「备注」/「评价人数」)。
 """
 
@@ -117,7 +117,7 @@ def load_rows(xlsx_path):
 
 
 def load_rows_from_json(json_path, limit=0):
-    """从 public/films.json(目录片清单)构造与 `load_rows()` **同形状**的行。
+    """从 apps/web/public/films.json(目录片清单)构造与 `load_rows()` **同形状**的行。
 
     只有 PDF 产物、拿不到官方 xlsx 的年份走这条入口(2025 即属此类)。
     字段一一对应:`remark` → 备注、`rating_count` → 评价人数;
@@ -149,7 +149,7 @@ def load_rows_from_json(json_path, limit=0):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--xlsx", help="官方影片信息 xlsx(与 --films-json 二选一)")
-    ap.add_argument("--films-json", help="public/films.json 目录片清单(与 --xlsx 二选一)")
+    ap.add_argument("--films-json", help="apps/web/public/films.json 目录片清单(与 --xlsx 二选一)")
     ap.add_argument("--out", default="data/enriched_douban.json")
     ap.add_argument("--limit", type=int, default=0, help="只处理前 N 部(调试用)")
     ap.add_argument("--delay", type=float, default=1.2,

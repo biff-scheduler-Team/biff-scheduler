@@ -24,14 +24,14 @@ BIFF cookie 为 `__Host-biff.session`，设置 Secure、HttpOnly、SameSite=Lax 
 
 ## Cloudflare 配置
 
-Worker 为 `biff-scheduler`，D1 为 `biff-account-data`，`IFFDAY_API` 绑定 `iffday-account-api`。`wrangler.jsonc` 是配置来源。
+Worker 为 `biff-scheduler`，D1 为 `biff-account-data`，`IFFDAY_API` 绑定 `iffday-account-api`。API 配置位于 `apps/api/wrangler.jsonc`。前端单独部署为 `biff-scheduler-web`，由 API 入口通过 `WEB` service binding 转发页面请求。前端 Worker 不绑定数据库或 OAuth 密钥。
 
 生产需要两个 Worker secret：
 
 - `OIDC_CLIENT_SECRET`：与账号系统登记的客户端凭据对应。
 - `SESSION_SECRET`：至少 32 字符，用于加密后端会话中的 token。
 
-自动构建沿用 `npm run build`，部署沿用 `npx wrangler deploy`。构建通过后，`postbuild` 仅在 Cloudflare 的 `main` 分支构建中执行生产迁移；本地构建和预览分支跳过。手动发布使用 `npm run deploy`，同样先迁移再部署。发布顺序为账号 API、账号 Web，再发布 BIFF；新增 OAuth 表与资料字段通过增量迁移加入。
+自动构建沿用 `npm run build`，部署沿用 `npx wrangler deploy`。构建通过后，`postbuild` 生成 Wrangler 部署配置重定向，并仅在 Cloudflare 的 `main` 分支构建中执行生产迁移和前端 Worker 部署；随后原有部署命令发布 API。本地构建和预览分支跳过生产写入。手动发布使用 `npm run deploy`，同样先迁移再部署。发布顺序为账号 API、账号 Web，再发布 BIFF；新增 OAuth 表与资料字段通过增量迁移加入。
 
 ## 本地运行与 E2E
 
@@ -63,3 +63,30 @@ npm run test:e2e
 - [Better Auth OAuth Provider](https://better-auth.com/docs/plugins/oauth-provider)
 - [oauth4webapi](https://github.com/panva/oauth4webapi)
 - [Cloudflare service bindings](https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/)
+
+
+## 前后端工作区与 Drizzle
+
+项目使用 npm workspaces：`apps/web` 包含 Vite 前端、静态目录和前端单测；`apps/api` 包含 Hono、OIDC 服务端逻辑、Drizzle schema 与 D1 migrations；`packages/contracts` 只包含共享 Zod 契约和 JSON canonicalization。前后端禁止直接导入对方的源码。
+
+公开域名、`/api` 路径及 OAuth 回调保持原样。`biff-scheduler` 作为 API 和公开入口，非 API 请求经内部 `WEB` 绑定交给独立的 `biff-scheduler-web`。这样可以分别构建、发布，同时沿用已存在的生产会话、密钥和 D1 数据。
+
+D1 仍为 `biff-account-data`。Drizzle 使用 `drizzle-orm/d1`，schema 位于 `apps/api/src/db/schema.ts`。最初的 `0001_account.sql` 保留原文件名和内容，并作为 Drizzle snapshot 的起点；现有库无需重复建表或搬迁数据。后续修改 schema 后运行 `npm run db:generate`，审阅 SQL，再通过 Wrangler 应用迁移。不要对生产执行 `drizzle-kit push`。
+
+```sh
+npm ci
+npm run build
+npm run db:generate
+npm run db:migrate
+IFFDAY_ACCOUNT_PATH=/path/to/account npm run test:e2e
+
+# 分别构建与部署
+npm run build -w @biff/web
+npm run build -w @biff/api
+npm run deploy -w @biff/web
+npm run deploy -w @biff/api
+```
+
+`npm run dev` 提供前端 Vite 热更新，适合访客功能开发。完整账号联调使用 `IFFDAY_ACCOUNT_PATH=/path/to/account npm run dev:account`，同时运行前端、BIFF API 和本地 IFFDAY。BIFF 本地密钥在 `apps/api/.dev.vars`，本地 D1 在 `apps/api/.wrangler/state`。迁移旧本地环境时，可将原根目录 `.dev.vars` 和 `.wrangler/state` 分别复制到以上位置；切勿上传到 Git。
+
+`scripts/cloudflare-targets.json` 记录两个 Worker 的非敏感资源 ID。构建脚本先核对账号和 API Worker，再为前端部署设置它自己的 Wrangler 身份校验值；API 的最终部署仍由原生 Workers Builds 完成。若重新创建 Worker，需要更新该文件中的 ID。

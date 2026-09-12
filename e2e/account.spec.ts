@@ -6,10 +6,10 @@ import { resolve } from "node:path";
 const origin = process.env.BIFF_TEST_ORIGIN ?? "http://localhost:31028";
 const identityOrigin = process.env.IFFDAY_TEST_ORIGIN ?? "http://127.0.0.1:5183";
 const password = "Cinema-account-integration-2026!";
-const schedule = JSON.parse(readFileSync("public/schedule.json", "utf8")) as {
+const schedule = JSON.parse(readFileSync("apps/web/public/schedule.json", "utf8")) as {
   screenings: { code: string; title_en: string }[];
 };
-const films = JSON.parse(readFileSync("public/films.json", "utf8")) as {
+const films = JSON.parse(readFileSync("apps/web/public/films.json", "utf8")) as {
   films: { id: string; title_en?: string }[];
 };
 const screening = schedule.screenings[0]!;
@@ -372,7 +372,7 @@ test("concurrent requests refresh the server-side token without exposing it", as
   await registerFromBiff(page, email());
   await waitSynced(page);
   const identity = await (await page.request.get("/api/account/me")).json();
-  const directory = resolve(".wrangler/state/v3/d1/miniflare-D1DatabaseObject");
+  const directory = resolve("apps/api/.wrangler/state/v3/d1/miniflare-D1DatabaseObject");
   let updated = 0;
   for (const filename of readdirSync(directory).filter(
     (name) => name.endsWith(".sqlite") && name !== "metadata.sqlite",

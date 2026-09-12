@@ -64,7 +64,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--schedule", required=True, help="extract_schedule.py 的 --out 产物")
     ap.add_argument("--venues", required=True, help="extract_schedule.py 的 --venues-out 产物")
-    ap.add_argument("--dest", default="public", help="目标目录(默认 public)")
+    ap.add_argument("--dest", default="apps/web/public", help="目标目录(默认 public)")
     ap.add_argument("--backup-suffix", default="", help="目标文件已存在时另存的后缀(如 .bak)")
     args = ap.parse_args()
 

@@ -1,0 +1,13 @@
+{
+  "name": "@biff/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./account": "./src/account.ts",
+    "./canonical": "./src/canonical.ts"
+  },
+  "dependencies": {
+    "zod": "4.6.2"
+  }
+}

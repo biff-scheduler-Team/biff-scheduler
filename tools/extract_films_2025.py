@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""extract_films_2025.py — 从 BIFF Ticket Catalogue PDF 的「影片介绍页」抽取影片目录 → public/films.json
+"""extract_films_2025.py — 从 BIFF Ticket Catalogue PDF 的「影片介绍页」抽取影片目录 → apps/web/public/films.json
 
 背景
 ----
@@ -39,8 +39,8 @@
 ----
     python tools/extract_films_2025.py \
         --pdf   ~/Downloads/2025_BIFF_Ticket_Catalogue_web.pdf \
-        --schedule public/schedule.json \
-        --out   public/films.json [--dry-run]
+        --schedule apps/web/public/schedule.json \
+        --out   apps/web/public/films.json [--dry-run]
 """
 
 from __future__ import annotations
@@ -245,8 +245,8 @@ def parse_page(page) -> list[dict]:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--pdf", required=True)
-    ap.add_argument("--schedule", default="public/schedule.json")
-    ap.add_argument("--out", default="public/films.json")
+    ap.add_argument("--schedule", default="apps/web/public/schedule.json")
+    ap.add_argument("--out", default="apps/web/public/films.json")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
