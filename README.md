@@ -1,347 +1,103 @@
-# BIFF Scheduler · 釜山电影节排片工具
+# BIFF Scheduler
 
-把[釜山国际电影节](https://www.biff.kr/)的官方排期表，变成一张**可点选的甘特网格**：
+釜山国际电影节选片与排期工具。用 React Router 和 React Spectrum S2 构建，数据保存在浏览器本机，可导出日历、分享图片与备份。
 
-> **选片 → 冲突检测 → 双方案（A/B）对比 → 导出 `.ics` 进手机日历 → 一键跳豆瓣**
+桌面上，影片库、我的选片和我的行程位于左侧，右侧保留可操作的排片表。手机使用按开场时间排列的纵向时间线。顶栏的「回到旧版」打开 `/legacy/`，保留原版完整界面；旧版顶栏可返回新版。
 
-个人自用、单用户、**零服务器成本**。前端无框架手写，数据本地优先，**全站零后端**（纯静态 + 浏览器 `localStorage`）。
+## 本地运行
 
-[![Deploy](https://img.shields.io/badge/online-biff.lcandy.co-ce1e36)](https://biff.lcandy.co)
-[![Stack](https://img.shields.io/badge/stack-Vite%206%20·%20TypeScript%205%20·%20Tailwind%20v4-3178c6)](https://vitejs.dev/)
-[![Host](https://img.shields.io/badge/host-Cloudflare%20Workers-f38020)](https://workers.cloudflare.com/)
-[![Tests](https://img.shields.io/badge/tests-vitest-passing-3fb950)](./tests)
+需要 Node.js 22.12+ 与 npm。
 
-> **当前状态**：核心链路（排片网格 / 冲突检测 / 行程 / 选片 / 影片库 / `.ics` 导出 / 豆瓣跳转）均已实现并部署冒烟通过。
-> 仓库内置的是**第 31 届（2026）真实数据**：**750 场 / 26 厅 / 10 天（10/6–10/15）/ 250 部影片**，
-> 排期 / 片名 / 分级 / 字幕 / GV 全部由 `tools/scrape_biff_web.py` 从 biff.kr 官网实时页面抓取，
-> 影片目录来自官方影片信息 xlsx（`tools/build_films.py`）。2025 第 30 届的 699 场数据仍保留在 git 历史里。
-
----
-
-## 目录
-
-- [一、这是什么](#一这是什么)
-- [二、快速开始](#二快速开始)
-- [三、使用指南](#三使用指南详细)
-- [四、技术栈](#四技术栈)
-- [五、架构与数据流](#五架构与数据流)
-- [六、目录结构](#六目录结构)
-- [七、开发与部署](#七开发与部署)
-- [八、项目能力（Skills）](#八项目能力skills)
-- [九、数据从哪来](#九数据从哪来部署时不需要解析-pdf)
-- [十、数据说明与许可](#十数据说明与许可)
-
----
-
-## 一、这是什么
-
-一个「一个人的电影节排片工作台」。电影节的官方排期是一张巨大的 PDF 表格（影院 × 时间），人工看片、排时间、算转场、防撞场非常痛苦。这个工具把它变成：
-
-- 一张**横向时间轴 × 纵向影厅**的甘特网格，点一下就加入行程；
-- 自动检测**时间重叠**与跨馆转场余量；
-- **顺位 = 偏好次序，方案 = 所有无冲突组合**：同一时间带重叠的几场在「我的行程」里折叠成一张**绿框顺位卡**
-  （绿框 = 已处理好，不是警报），**拖动排序**即排出「先保哪一场」；工具把「每个冲突组各取一场」的
-  **全部组合**逐套校验后列成方案对比（2 组各 2 场 → 4 套），按顺位成本排序；
-- 一键导出标准 `.ics`，直接进 iOS/Android 日历（含提醒），或生成一段可粘贴到微信的**分享文案**。
-
-**设计取舍**：单用户自用工具，追求零成本与零重依赖。网格对交互定制要求极高（冲突联动、跨午夜 24+ 时制、缩放锚点、就地 patch 复用），现成组件库要么付费、要么样式难融、要么体积过大 —— 自研反而更小更可控。
-
----
-
-## 二、快速开始
-
-### 在线使用（已部署）
-
-打开 **https://biff.lcandy.co** 即可。无需注册、无鉴权；站点已在 `robots.txt` / `<meta name="robots">` 里禁止收录，仅个人自用。
-
-### 本地运行
-
-```bash
-npm install
-
-npm run dev          # 本地开发服务器（Vite）
-npm run typecheck    # tsc --noEmit
-npm run test         # vitest run（纯函数口径单测）
-npm run build        # typecheck + lint + test + vite build
-npm run preview      # 构建后用 wrangler dev 起本地 Worker 静态资源环境（纯静态）
+```sh
+npm ci
+npm run dev
 ```
 
-> **无后端**：豆瓣映射是静态文件 `public/douban.json`（随部署进 `dist`），片单只落 `localStorage`
-> —— `dev` / `preview` / 线上行为完全一致。
+开发服务默认使用 `http://localhost:31026`。如果主工作区正在使用这个端口，可在独立 worktree 中运行：
 
----
-
-## 三、使用指南（详细）
-
-### 1. 顶栏
-
-| 控件 | 作用 |
-|---|---|
-| **A 方案 / B 方案** | 切换当前正在编辑的方案。选片、行程、冲突检测、导出都按「当前方案」生效；两套方案互不干扰 |
-| **⚠ 冲突角标** | 当前方案存在冲突时出现，点它打开选片抽屉并切到「我的行程」tab |
-| **选片 · 行程** | 开 / 收左侧**挤压式抽屉**（内含「影片库 / 我的选片 / 我的行程」三个 tab） |
-| **导出 .ics** | 下拉菜单：导出 A 方案 / B 方案 / A+B 全部 / 分享文案（复制） |
-| **外观（跟随系统 / 亮 / 暗）** | 三段选择器，点哪段就是哪段；首屏由 `<head>` 内联脚本防闪白 |
-| **设置** | 提醒提前量、跨馆转场缓冲、GV 映后谈默认、清空场次 |
-
-### 2. 排片网格（甘特）
-
-- **日期快捷条**：顶部一条浅灰胶囊轨道（官方「Schedule by Date」同款），选中项是浮起的白底红字胶囊；点选切换当天，标题右侧显示当日场次数。
-- **筛选（字幕 / 影厅 / GV）**：日期条下方三行筛选轨道 ——
-  - **字幕**：`KE / KN / KK / NO / 未标注`（多选；未标注 = 官方缺省「英文字幕 + 韩语对白」）；
-  - **影厅**：26 个厅逐厅多选（标签走 `short` 短名，如 `BCC Cinema 1` / `CGV 3` / `LOTTE 10`）；
-  - **场次**：`仅 GV` / `非 GV` 三态单选。
-  三道之间是**与**关系，各自内部是**或**。不匹配的场次只**淡出**（不隐藏、不改几何 → 网格不跳版），
-  标题右侧实时显示 `命中/总数 场（已筛选）`；任一筛选生效时出现「清除筛选」。
-  ⚠ 筛选不随切日期清空（筛的是「看什么」，跨日有效）。
-- **点选加入 / 移出**：点击任意场次卡片即加入行程（整卡淡绿底）；再点一次移出。
-- **状态配色**（三套互相独立）：
-  - **红**：两场放映时间重叠 → 整卡红底红框 + 右上角红点（跨行时用红虚线把重叠时段连起来）；
-  - **黄**：已选场次里相邻两场衔接偏紧（间隔小于转场缓冲，或余量不足 15 分钟）→ 整卡淡黄底；hover 卡片可看到完整算式；
-  - **绿**：已加入行程。
-- **跨馆转场余量（gap-bar）**：相邻两场之间若需跨影院，会显示余量条，三态 `ok / tight / bad`。
-- **双向 hover 联动**：鼠标移到网格卡片上，同一冲突组与「我的行程」里对应的行会一起高亮；反向亦然。
-- **缩放**：`− / +` 沿离散阶梯缩放（影厅列宽、时间刻度、卡片字号同倍率伸缩），「适应」把当天整条时间轴塞进视口，「1:1」回到基准比例。缩放是纯视图偏好，会自动记忆。
-- **行标签**：左侧粘性列显示官方影院代码 chip（`B1` / `BT` / `L10`…），整格 hover 出全名 / 韩名 / 分区。
-- **场次徽章**：观影等级（ALL/12/15/19）、字幕/对白标识（KE/KN/KK/NO）、节目册页码、片长、GV / Masterclass / Premiere 等，均以小徽章渲染，每枚 hover 即说明。
-- **ⓘ 日程表说明**：顶栏入口打开**分区卡片式说明弹层**（880px 宽，8 个分区）—— 「一格怎么读」（画成一张模拟网格卡）· 观影等级 · 字幕/对白标识 · 场次特性徽章 · 影院与官方代码 · 网格与行程图例 · 我的选片 · 特别提示；每个字段 / 徽章都可在弹层里 hover 看即时解释。
-- **渲染策略**：网格按「几何签名不变 → 就地 patch 状态」，点选 / 冲突变化 / 时间筛选都不会重建 DOM（滚动位置与自定义属性天然保持）。
-
-### 3. 我的行程
-
-- 按日期分组的议程列表，显示已排的全部场次。
-- **冲突组顺位卡**：同一时间带互相重叠的几场折叠成一张**绿框卡**（绿框 = 这组已处理好，不是警报），
-  卡片头第 1 列的 **⠿ 把手可上下拖动** —— 组内顺序就是**偏好次序**（顺位 1 = 最想要）。
-  **顺位不决定分组**，它只回答「先保哪一场」。红色只留给真异常（有的组合内部仍撞车）。
-- **方案对比**：行程顶部把「每个冲突组各取一场」的**全部组合**并列列出 —— 每一套都经冲突校验、
-  保证内部不重叠；按**顺位成本**（各组所选顺位之和）排序，都取首选的那套排最前。
-  每张卡只列差异场次（共同场次各套相同，折成一行计数），一屏看清每套保哪几场。
-- **✕** 只移除该场（选片保留，该片仍留在「我的选片」里，标为「未排场」）。
-- **映后胶囊**：GV 场次可单独覆写映后谈时长 / 是否参加（留空 = 跟随全局默认）。
-- 头部显示场次数、冲突数，以及一个**排片质量分**药丸（`场次数 + GV − 紧转场`）。
-- 日期头可点击 → 网格切到该日期、横向居中到当天最早一场、当天场次批量闪烁高亮。
-
-### 4. 我的选片
-
-- 「按片看」的总览视图：一部片一条记录，显示已排场次、备注。
-- 可按日期筛选、点「定位 ▸」跳到网格并闪烁高亮、或整片移除。
-- 与「我的行程」是**同一份数据的两个视图**，永远一致。
-
-### 5. 影片库
-
-- 浏览全部影片目录（2026 基线 **250 部**），支持搜索：中文名 / 原始片名 / 场次 code / 单元 / 导演。
-- **海报缩略图**：174/250 部有（豆瓣 subject_id 对齐 `public/posters/` 的本地图，`tools/fetch_posters.py` 下载）；缺图的卡片**不留空列**，片名左缘不参差。
-- **排片筛选**：与时间轴**共用同一份状态**（字幕 / 影厅 / GV）—— 在影片库里勾完，切回甘特图仍是同一套口径。抽屉只有 520px 宽，这里走**可折叠**形态（「▸ 筛选」+ 生效摘要 + 清除）；筛的是「这部片还有没有我要看的场」，没有就直接不列，展开的场次列表同样过筛。
-- **单元筛选 chips**：按单元（主竞赛 / Icons / 亚洲电影之窗…）快速收窄。
-- **行内展开场次**：每部片展开后列出它的所有场次（只读，配「定位 ▸」）。
-- **「＋ 加入我的选片」**：把影片收进选片清单（场次在「我的选片」里挑）。
-- **定位 ▸**：跳到网格对应日期并滚动闪烁到该场。
-- **资料 ⓘ**：打开影片资料弹层（元信息 + 豆瓣条目直链 / 搜索跳转）。
-
-> **抽屉而非弹窗 / 独立页**：选片抽屉打开后网格**完全可见可点** —— 点选 → 卡片当场变绿。根因是「选片」与「选场次」本是同一件事的两步，不应被换页或遮罩打断。
-
-### 6. 导出与分享
-
-- **`.ics` 导出**：标准 iCalendar，时间一律 UTC，`UID = <code>@biff-2026`，含相对提醒（默认提前 45 分钟，可在设置改）、场馆。导入手机日历后按手机时区显示。
-  ⚠ **导出不分方案** —— 全部已选场次一起导出（冲突双方在日历里同时存在是用户明知的状态，抢票时抢到哪个去哪个）。
-- GV 场次的结束时间会按「是否参加映后谈」动态计算，`.ics` 与冲突检测口径一致。
-- 严格遵守 RFC 5545：文本转义（`\` `;` `,` 换行）+ 按 **UTF-8 字节**折行（含 `VALARM` 的 `DESCRIPTION`）。
-- **分享文案（复制）**：按「日期分节 + 两行一场」生成的纯文本（时间 / 片名 / 影院 · CODE），粘贴到微信也读得清。
-
-### 7. 豆瓣跳转
-
-- 影片资料弹层「豆瓣」区：**有映射** → 豆瓣条目直链；**无映射** → 「中文搜索 / 英文搜索」两个外链（跳 `douban.com/search`）。
-- 有映射时还会列出 **本届也在放**（豆瓣推荐里正好也在本届片目的,点开即进那部资料）和 **豆瓣也推荐**（其余外链,最多 6 条）。数据来自离线产物 `public/douban-related.json`。
-- 影片库「无排期目录片」行内也有一枚「豆瓣搜索 ↗」。
-- 映射是**离线产物** `public/douban.json`（`tools/build_douban_map.py` 用豆瓣**官方 API** 生成），**页面上不可编辑**；留空即全站走搜索兜底。
-- 评分徽章（`豆 x.x`）来自 `public/films.json` 的 `rating`（官方影片信息表），与映射无关。
-- **不做浏览器直连**：官方接口要签名（`apikey/_ts/_sig`），而浏览器**设不了 `User-Agent`**、跨域也被拦、`app_secret` 会随产物外泄 → 只能离线跑（详见 `docs/plans/PLAN-20260911223200.md`）。
-  ⚠ 官方口有两处**按 IP 的风控**：`search/subjects` 跑约 100 次即 `403 need_login`（登录流程未恢复，**别用这个口**）、详情口 `code=1309 subject_ip_rate_limit`；风控期间检索仍返回 200，**极易被误记成「豆瓣没有这部片」**，故脚本命中风控码即停轮保进度。
-
-### 8. 设置
-
-| 设置项 | 说明 |
-|---|---|
-| 提醒提前量 | `.ics` 闹钟提前分钟数（建议 30–60） |
-| 跨场馆转场缓冲 | 判定跨影院场次冲突所需的余量（同影院不受影响；默认 0 = 仅判时间重叠） |
-| GV 映后谈默认 | 全局默认是否参加 + 默认时长（分钟）；单场可在行程里覆写 |
-| 清空全部已排场次 | 只清场次，**保留**「我的选片」里收着的影片与备注 |
-| 清空全部（选片 + 排片） | 把「我的选片」与「我的行程」一起清空（备注 / 场次 / 顺位全删）。**片单只存本机，清完刷新 / 部署都不会再回来** |
-
-### 9. 抢票信息（开票倒计时 / 票价 / 节目嘉宾）
-
-数据来自官网 **Booking Information** 等活动页（离线抓取 → `public/festival-extras.json`，见 §九）。
-
-- **顶栏开票倒计时**：未到开票时显示「距第 N 批开票 X 天 Y 小时 · 京 `9/17 13:00` / 韩 `9/17 14:00`」——
-  ⚠ **同时给两个时区**：官网印的是韩国时间（KST），人在国内看的是北京时间（= KST − 1h），并排显示不必自己换算。
-  全部批次开完后切「售票中」。**无 `festival-extras.json` 时横幅自动隐藏**（纯增强，不阻塞主流程）。
-- **点击横幅 → 「抢票信息」弹层**：
-  - **开票批次**：第一批（开闭幕式 / Open Cinema / Midnight Passion / **Actors' House** / Community BIFF）、
-    第二批（普通场次 / **Master Class** / Cine Class），各带倒计时与「已开票」态；
-  - **票价**：开闭幕式 ₩30,000 · Midnight Passion ₩20,000 · Actors' House / Master Class ₩15,000 ·
-    普通场次 / Cine Class ₩10,000；折扣 −₩3,000（老人 / 残障 / 退伍军人，需证件核验）；
-  - **购票须知**：Chrome、弹窗拦截、每场限 2 张、排队号机制、客服 1666-9177（官网英文原文的关键条目给了中文摘要）；
-  - **开闭幕式**：红毯时间表（17:00 入场 → 18:00 红毯 → 19:00 主活动 → 20:20 放映）+ 当天封路时段；
-  - **加入日历提醒（.ics）**：把两批开票时刻导出成日历事件（提前 30 分钟提醒），导入手机日历即可。
-- **网格卡嘉宾章**：Master Class / Actors' House / Cine Class / Special Talk 的卡片徽章行**最前面**多一枚嘉宾名
-  （中文名优先，如「罗泓轸」），hover 给出形式 / 嘉宾 / 票价；**详情弹层（ⓘ）**另有完整「活动节目」区（形式 / 嘉宾 / 语言 / 票价 / 简介）。
-- **行程票价**：每场场次行右缘显示票价（如 `₩15,000`），日期头显示「当日 ₩XX,XXX」，抽屉摘要行显示「票 ₩XXX,XXX」（全部按官网价目表估算，以购票页实付为准）。
-
----
-
-## 四、技术栈
-
-| 层 | 选型 | 说明 |
-|---|---|---|
-| 构建 | **Vite 6** | 输出到 `dist/`，`base: "./"`；`public/*.json` 原样拷贝进产物根目录 |
-| 语言 | **TypeScript 5** | 全量类型标注，`tsc --noEmit` 作为构建前置门禁 |
-| 前端框架 | **无** | 手写 TS + DOM，网格 / 冲突 / 徽章 / 弹层栈 / 甘特缩放全部自研；未引入任何组件库 |
-| 样式 | **Tailwind CSS v4**（`@tailwindcss/postcss`） | **增量双轨**：不引 preflight，存量语义类读设计 token，新 UI 用 utility；token 是唯一色源 |
-| 主题 | **三态**（跟随系统 / 亮 / 暗） | CSS 只认 `:root[data-theme]`；「跟随系统」由 `theme.ts` 用 `matchMedia` 就地解析 |
-| 测试 | **Vitest** | 纯函数口径单测（24+ 时制 / GV 有效结束 / 冲突 / `.ics` / 网格卡状态），`npm run build` 前置门禁 |
-| 代码质量 | **ESLint 10** + `typescript-eslint` | `npm run lint`，同为构建门禁 |
-| 部署 | **Cloudflare Workers**（静态资源） | **纯静态产物**（`wrangler.toml [assets]`），全球边缘分发，零服务器成本 |
-| 离线 | **PWA**（`vite-plugin-pwa`） | 预缓存产物 + 五个只读 JSON → 现场断网可用；方形 PNG 图标可加到主屏（含 iOS 180） |
-| 运维 | **Wrangler 4** | 本地预览、Workers 部署（**无 D1 / 无 Functions**） |
-| 离线管线 | **Python**（stdlib + openpyxl）+ Node 脚本 | 从 **biff.kr 官网排期页**抓 `schedule.json` / `venues.json`，从官方影片信息 **xlsx** 生成 `films.json`；产物检入仓库，**仅在更新数据时需要**，部署链路不依赖它 |
-
-**无障碍与可达性**：弹层 `role=dialog` + focus trap + 焦点归还 + body 滚动锁；toast `aria-live`；tooltip 触屏与键盘可达。
-
----
-
-## 五、架构与数据流
-
-```
-离线数据管线（本机 Python / Node，非部署部分）
-  biff.kr 官网排期页（date.asp）+ 官方影片信息 xlsx
-    └─ tools/*.py ──► public/schedule.json · venues.json · films.json · douban.json
-                      （只读、版本化、可 diff）
-
-在线应用（Cloudflare Workers 静态资源，纯静态）
-  dist/（Vite 构建产物）
-  ├─ schedule.json（只读排期）
-  ├─ venues.json（只读场馆）
-  ├─ films.json（只读目录）
-  ├─ douban.json（豆瓣映射，离线产物，可为空）
-  ├─ festival-extras.json（售票 / 节目嘉宾 / 开闭幕式，离线产物）
-  └─ assets/（main.ts 打包）
-
-浏览器 localStorage（用户数据主存储，**不上云**）
-  ├─ biff.picks.v2                          选片 + 排片（唯一数据源）
-  ├─ biff.settings.v1                       设置（提醒 / 转场 / GV 默认 / 主题）
-  └─ biff.gvtalk.v1 · biff.gvtalkmin.v1     GV 单场覆写
+```sh
+npm run dev -- --port 31027
 ```
 
-**数据分层原则**：
+## 使用
 
-- **官方排期** = 只读静态 JSON（前端按 code 反查权威数据，版本化、可 diff）；
-- **片单（选片 / 排片）** = **只存浏览器 localStorage**，不写云端 —— 刷新 / 重新部署都不会「复活」；
-- **豆瓣映射** = 只读静态 JSON `public/douban.json`（离线产物，留空即走搜索兜底）—— **全站零上云**。
+在影片库搜索片名、导演、嘉宾、活动形式、单元或场次编号，将影片加入我的选片，再选择要参加的场次。我的选片支持备注和日期多选。影片库只读查看场次，排场在我的选片和时间轴进行。影片详情包含海报、豆瓣评分、简介、相关电影和嘉宾信息。
 
-**核心数据模型**：全站唯一数据源是「**一部片一条记录**」（`film_key → { picks[], note }`）。
+排片表可按字幕、影厅和 GV 筛选。影片库与排片表使用两套独立筛选，都会记住上次选择。影厅支持包含与排除模式，以及按影院和区域选择。桌面时间轴支持缩放、拖动平移、整点筛选和场次定位。
 
-- 记录在**影片级**（一部片一条）；
-- 已选场次在**场次级**（同一部片的两场可以分属不同顺位）；
-- **抢票顺位**也在场次级（`state.ts::rankOf: Map<code, number>`,独立键 `biff.ranks.v1`），
-  它只回答「冲突组里先保哪一场」,顺序即方案编号（`plans.ts::buildPlanSet`）；
-- 「我的选片」（按片看）与「我的行程」（按场次看）是这份数据的两个视图，永不打架。
+已选场次显示为绿色，转场余量不足显示为黄色，时间重叠显示为红色。重叠场次可以同时保留作为抢票备选。在我的行程中拖动调整顺位，或使用上移、下移按钮。保存当前方案时，每个冲突组只取第一顺位，再加上共同场次。第一顺位撞片时需要先选择让哪一组改选，也可以预览自动修复，再保存独立方案。
 
-**前端模块（`src/`，28 个 `.ts` + `style.css`）**
+GV 场次可单独调整映后时长和是否参加。冲突、有效结束时间和日历导出使用同一套规则。所有页面显示韩国时间；ICS 日历使用 UTC，导入后按设备所在时区显示。
 
-| 文件 | 职责 |
-|---|---|
-| `main.ts` | 装配 + 全局事件委托 + 导出 / 缩放 / 双向 hover 联动 |
-| `state.ts` | 全局 store、localStorage 持久化（**片单只存本地**）、派生索引（`groupIndex` / `slotIndex`）与订阅分域 |
-| `grid.ts` | 甘特排片网格（时间轴、粘性影厅列、缩放锚点、gap-bar、就地 patch） |
-| `agenda.ts` | 我的行程列表（冲突组**绿框顺位卡**：拖动排偏好次序 + **方案对比**并列卡片） |
-| `library.ts` | 影片库 + 我的选片（左侧挤压抽屉，三 tab） |
-| `settings.ts` | 设置弹层 + GV 映后时长小弹层 |
-| `theme.ts` | 三态外观（跟随系统 / 亮 / 暗）→ `data-theme` 落盘与系统变化监听 |
-| `share.ts` | 分享文案（复制）——「两行一场 + 日期分节」纯文本 |
-| `score.ts` | 排片质量分 |
-| `conflict.ts` | 纯函数冲突检测（转场余量可注入）+ 冲突组（连通分量） |
-| `plans.ts` | 纯函数：冲突组 + 顺位 → **N 套方案**（含「同一套内部不重叠」的校验） |
-| `ics.ts` | `.ics` 生成（UTC、跨午夜进位、GV 映后、RFC 5545 转义与折行） |
-| `gv.ts` | GV 映后谈时长 / 是否参加的统一解析口径 |
-| `row.ts` | 场次行单一构造（影片库 / 我的选片 / 我的行程共用） |
-| `badges.ts` / `legend.ts` | 场次徽章注册表 / 图例与场馆说明（`buildGuideBody` = 「日程表说明」分区卡片弹层） |
-| `modal.ts` | 弹层栈（开新层压住下层、返回恢复滚动与筛选态）+ 宽度档 `md` / `lg` / `xl` |
-| `filters.ts` | 排片筛选（字幕 / 影厅 / GV）的状态与判定（网格与抽屉各持一份） |
-| `ui.ts` / `chips.ts` / `form.ts` / `toast.ts` | 按钮·tab·缩放控件类名与工厂 / 胶囊 chip 类名 / 表单行骨架 / Toast 的共享层 |
-| `data.ts` / `related.ts` / `tip.ts` / `types.ts` / `util.ts` | 数据加载与归一（含豆瓣映射 `douban.json`）/ 豆瓣相关电影 / 悬停提示 / 类型 / 工具（含 `slackBetween()` 转场余量） |
-| `style.css` | 设计 token 唯一色源（`:root` 字面值 → `@theme` 映射）+ 原生语义类 |
+导出与分享从已保存方案生成 ICS、纯文本和 PNG。数据备份会包含所有 `biff.*` 数据；导入前会展示预览。JSON 备份整体替换本机数据，ICS 可以合并或替换已排场次。购票信息提供韩国时间、北京时间、票价和开票提醒日历。
 
-**样式与适配**：设计 token 是唯一色源；字阶 / 圆角走**值命名**阶梯（`text-12` = 12px、`rounded-8` = 8px，全站已无 `text-[Npx]` 任意值）；暗色**只覆盖 token**（零 utility 改动）；窄屏（≤768px）走**列表优先**（默认打开选片抽屉，网格降级为次级入口）。
+## 路由
 
-**API**：**本站没有 API**。片单只落浏览器 `localStorage`，豆瓣映射是静态文件。`/api/pick*`、`/api/mapping*` 与 D1 `douban_map`、`functions/` 目录均已退役删除。
+| 路径 | 内容 |
+| --- | --- |
+| `/legacy/` | 独立原版入口，同域共享原 localStorage；`/legacy` 自动跳转 |
+| `/schedule` | 排片表，手机显示纵向时间线 |
+| `/library` | 影片库 |
+| `/picks` | 我的选片 |
+| `/agenda` | 我的行程、顺位与已保存方案 |
+| `/<view>/films/:filmKey` | 当前视图中的影片详情 |
 
----
+日期、搜索、单元和定位目标保存在 URL 查询参数中；两个选片视图的展开状态在当前面板会话中保留。详情支持直接打开、刷新和浏览器后退。
 
-## 六、目录结构
+## localStorage 兼容性
 
-```
-├─ index.html              # 单页入口（含防闪白内联脚本）
-├─ src/                    # 前端 TS 源码（见上表）
-├─ public/                 # 静态数据：schedule.json / venues.json / films.json / douban.json / douban-related.json / festival-extras.json / brand/ / robots.txt
-├─ tools/                  # 离线数据管线：festival_common.py（通用底座）+ extract_schedule.py（BIFF 适配层）
-├─ skills/                 # 项目能力（Skills）：数据管线 / 部署 / 无头验收 / 并行提交 / Tailwind 核对
-├─ tests/                  # Vitest 单测（time / conflict / gv / ics / grid-state）
-├─ data/                   # 离线中间产物（enriched_douban.json、films-2026.json 等）
-├─ docs/                   # CONVENTIONS.md（工程约定）+ plans/（逐需求 PLAN）+ history/
-├─ PLAN.md                 # 活文档：当前状态 / 决策 / 待办 / 架构
-└─ dist/                   # 构建产物（部署目录）
+原有存储键、影片标识、场次编号、JSON 结构和备份格式保持兼容。新版使用原有状态模块读写，React 通过 `useSyncExternalStore` 订阅变更。读取 v2 数据不会自动重写；未知的 `biff.*` 键和设置扩展字段会保留。
+
+`biff.plan.v1` 和 `biff.wish.v1` 仍按原版规则迁移。空的 v2 片单优先于旧版数据，清空后不会复活。具体结构和迁移规则见 [迁移说明](docs/react-spectrum-migration.md)，逐项修复与测试见 [旧版行为补齐](docs/parity-restoration.md) 和 [Review修复与旧版入口](docs/review-fixes-and-legacy.md)。
+
+localStorage 按 origin 隔离。原站使用同一域名上线时会直接读取原数据；不同端口、域名或设备需要用备份搬移。
+
+## 验证
+
+```sh
+npm run typecheck
+npm run lint
+npm test
+npm run build
+npx playwright install chromium webkit
+npm run test:e2e
 ```
 
----
+`npm run build` 包含 TypeScript、ESLint、全部单元测试和生产构建。`npm run test:e2e` 先构建，再通过独立端口 `31029` 的 `vite preview` 测试生产产物，不复用 dev 服务。E2E 使用独立浏览器上下文和合成旧版数据，不读取真实用户的浏览器资料。
 
-## 七、开发与部署
+测试配置包括桌面 Chromium、手机 Chromium 和手机 WebKit。离线 PWA、桌面拖动排序与跨视图高亮另有专项测试。HTML 报告位于 `playwright-report/index.html`；失败时保留截图和 trace。
 
-```bash
-npm install
+## 实现
 
-npm run dev                 # 本地开发（Vite，无 Functions）
-npm run typecheck           # tsc --noEmit
-npm run lint                # eslint src tests
-npm run test                # vitest run（纯函数口径单测）
-npm run build               # typecheck + lint + test + vite build
-npm run preview             # 构建 + wrangler dev（纯静态）
+- React 19、React Router 8、React Spectrum S2。
+- Vite 构建，React Spectrum 官方宏插件与语言裁剪插件。
+- 原有冲突、GV、顺位方案、ICS、分享和备份逻辑继续使用纯 TypeScript 模块。
+- 新版界面使用 React；`legacy/` 单独保留旧版 DOM 界面与 Tailwind 样式，两份样式互不加载。
+- 静态数据从 `public/` 读取，生产环境使用 Cloudflare Workers 静态资源。
+- PWA 预缓存应用与目录数据，可离线恢复已选影片与行程。
 
-# 部署 = git push（唯一常规路径）
-git push origin main        # → Cloudflare Workers Builds 自动构建上线 https://biff.lcandy.co
-
-# 兜底：本机直传（需本机 wrangler 已登录部署账号 62cbe67b…，配置见 wrangler.toml [assets]）
-npm run deploy              # 构建 + wrangler deploy
+```text
+legacy/           8a95215 原版快照和独立 HTML 入口
+src/app/          应用外壳、状态订阅、目录投影、界面 hooks
+src/components/   Spectrum 控件组合、场次卡、设置与导出弹窗
+src/pages/        影片库、行程、甘特图、时间线与影片详情
+src/state.ts      兼容原版的本机状态与持久化
+src/*.ts          冲突、GV、方案、筛选、导出等领域逻辑
+e2e/              浏览器测试与旧版存储实现快照
+tests/            领域逻辑单元测试
+public/           排期、影片、影院、海报与品牌资源
+tools/            原有数据采集与生成工具
 ```
 
-> **部署口径（2026-09-11 修正）**：线上 = **Cloudflare Workers** 项目 `biff-scheduler`（账号 `62cbe67b545f2d12c986729ac7ffcee8`），
-> 自定义域 **https://biff.lcandy.co**，由 **GitHub `main` 分支自动构建**（GitHub 上可见 `Workers Builds: biff-scheduler` 检查）。
-> 旧的 **Cloudflare Pages** 项目 `biff-scheduler.pages.dev`（账号 `c591765d…`）**已不在访问链路上**，
-> 不要再 `wrangler pages deploy` 直传 —— 传上去也没有人访问（排查方式：Pages 的 HTML 响应带
-> `access-control-allow-origin` / `referrer-policy` / `content-type: text/html; charset=utf-8` 三个默认头，Workers 静态资源没有）。
+## 部署
 
-**改代码前建议先读**：[`docs/CONVENTIONS.md`](./docs/CONVENTIONS.md)（数据契约 / 弹层交互 / 渲染约定 / 基础设施踩坑）与 [`PLAN.md`](./PLAN.md)（当前状态与决策记录）。
+```sh
+npm run deploy
+```
 
----
+沿用 `wrangler.toml` 的静态资源配置与 SPA fallback，深层路由会回到应用入口。也可沿用仓库现有的 Cloudflare Workers Builds 流程。重写工作在独立分支进行，不会自动部署。
 
-## 八、项目能力（Skills）
-
-仓库的 `skills/` 目录把**可复用的开发能力**固化下来，随代码版本化 —— 每份 skill 是一份 `SKILL.md`（可选 `scripts/`），写清「何时用、怎么做、踩过哪些坑」。索引见 [`skills/README.md`](./skills/README.md)。
-
-| Skill | 用途 | 何时触发 |
-|---|---|---|
-| [`biff-catalogue-pdf-to-schedule`](./skills/biff-catalogue-pdf-to-schedule/SKILL.md) | BIFF 官方 Catalogue PDF → `schedule.json` / `venues.json` / `films.json` | 换届、更新排期、导入影片目录 |
-| [`cloudflare-pages-d1-deploy`](./skills/cloudflare-pages-d1-deploy/SKILL.md) | Cloudflare 部署（非交互模式）；**D1 / Functions 已于 2026-09-11 退役，现役部署 = 推 `main` 触发 Workers Builds**，本 skill 只剩静态产物核对部分 | 首次建站、自动构建异常 |
-| [`parallel-agent-safe-commit`](./skills/parallel-agent-safe-commit/SKILL.md) | 多会话并行时只提交自己的改动（blob 手术 + 隔离 worktree 部署） | 提交前发现工作区有他人在途改动 |
-| [`web-ui-headless-interaction-qa`](./skills/web-ui-headless-interaction-qa/SKILL.md) | playwright-core 无头交互验收（DOM 断言） | 改完交互要证据、部署后验证线上 |
-| [`tailwind-v4-built-css-verify`](./skills/tailwind-v4-built-css-verify/SKILL.md) | 核对 Tailwind v4 类是否真的进了构建产物 | 改完样式确认是否生效 |
-
-**怎么用**：人直接读对应 `SKILL.md`；AI 助手把它作为上下文或按 frontmatter `description` 触发。
-
-> IDE 的 skill 自动加载只认用户级目录（本机为 `~/.workbuddy/skills/`）。`skills/` 是**权威副本**；需要自动触发时把改动同步到用户级目录即可。
-
----
-
-## 九、数据从哪来（部署时**不需要**解析 PDF）
+## 数据从哪来（部署时不需要解析 PDF）
 
 **一句话**：部署链路与解析脚本无关。运行时数据就是仓库里的静态 JSON，它们**已经检入 git**，`npm run build` 时被 Vite 原样拷进 `dist/`，前端 `data.ts` 用 `fetch("schedule.json")` 加载。
 

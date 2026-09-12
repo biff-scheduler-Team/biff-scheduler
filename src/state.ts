@@ -661,3 +661,9 @@ export function deletePlan(id: string): void {
 export function planById(id: string): SavedPlan | undefined {
   return savedPlans.find((p) => p.id === id);
 }
+
+/** Edit a film note without changing its screening slots. */
+export function setPickNote(key: string, note: string): void {
+  const current = store.picks.get(key);
+  if (current) commit(key, { ...current, note });
+}

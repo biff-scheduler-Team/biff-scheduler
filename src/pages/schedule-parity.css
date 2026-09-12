@@ -1,0 +1,42 @@
+.schedule-panning,
+.schedule-panning * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+.schedule-panning > * {
+  pointer-events: none;
+}
+.schedule-located {
+  outline: 3px solid var(--brand);
+  outline-offset: 2px;
+}
+.schedule-now-line {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  background: var(--brand);
+  pointer-events: none;
+  z-index: 3;
+}
+.schedule-now-label {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  padding: 2px 5px;
+  border-radius: 3px;
+  color: var(--surface);
+  background: var(--brand);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1;
+}
+.schedule-midnight {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--text);
+  opacity: 0.6;
+}

@@ -1,3 +1,5 @@
+> React Router / Spectrum 重写后的界面结构与验证入口见 [迁移说明](react-spectrum-migration.md)。本文保留此前设计与数据约定；提到已删除的 DOM 渲染模块时，以新实现为准。
+
 # biff-scheduler 工程约定
 
 > 从 `.workbuddy/memory/MEMORY.md` 拆出(该文件有 3,000 字上限)。**改代码前先读这份**。
