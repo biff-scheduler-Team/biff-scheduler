@@ -41,7 +41,7 @@ export default defineConfig({
       registerType: "autoUpdate", // 有新版自动接管,自用工具不需要用户确认弹窗
       injectRegister: "auto", // 插件往 index.html 注入注册脚本 → 零 TS 改动
       devOptions: { enabled: false }, // 开发期不装 SW(否则热更新会被缓存干扰)
-      includeAssets: ["brand/favicon.ico", "brand/biff-2026-wordmark.png", "brand/biff-scheduler-wordmark.svg", "brand/apple-touch-icon.png", "robots.txt"],
+      includeAssets: ["brand/favicon.ico", "brand/biff-scheduler-seal.svg", "brand/biff-2026-wordmark.png", "brand/biff-scheduler-wordmark.svg", "brand/apple-touch-icon.png", "robots.txt"],
       manifest: {
         name: "BIFF 2026 排片 · Busan International Film Festival",
         short_name: "BIFF 排片",

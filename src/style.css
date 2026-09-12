@@ -720,3 +720,8 @@ main:not(.is-picker-open) #picker-resizer {
     contain-intrinsic-size: auto 116px;
   }
 }
+
+/* 顶栏字标是纯黑 #111 的 SVG;暗色下反相成近白,透明底不受影响。 */
+:root[data-theme="dark"] .logo-wordmark {
+  filter: invert(1);
+}
