@@ -22,7 +22,7 @@ const ip = () => {
   return `10.${bytes[0]}.${bytes[1]}.${bytes[2]}`;
 };
 const email = () => `integration-${randomUUID()}@iff-day.test`;
-async function seedGuest(page: Page) {
+async function seedGuest(page: Page, note = initial[0]!.note) {
   await page.addInitScript(
     ({ origin, initial }) => {
       if (location.origin === origin && !sessionStorage.getItem("integration-seeded")) {
@@ -34,7 +34,7 @@ async function seedGuest(page: Page) {
         sessionStorage.setItem("integration-seeded", "yes");
       }
     },
-    { origin, initial },
+    { origin, initial: initial.map((row) => ({ ...row, note })) },
   );
 }
 async function finishConsent(page: Page) {
@@ -90,8 +90,6 @@ test("OIDC login migrates local data, syncs a second device and edits the global
   await page.goto("/");
   await expect(page.locator("#account-btn")).toBeVisible();
   await registerFromBiff(page, userEmail);
-  await expect(page.getByRole("button", { name: "合并本机数据", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "合并本机数据", exact: true }).click();
   await waitSynced(page);
   const identity = await (await page.request.get("/api/account/me")).json();
   const stored = await (await page.request.get("/api/account/sync/biff-2026")).json();
@@ -233,7 +231,6 @@ test("switching accounts keeps local and cloud data isolated", async ({ page, co
   await page.goto("/");
   const firstEmail = email();
   await registerFromBiff(page, firstEmail);
-  await page.getByRole("button", { name: "合并本机数据", exact: true }).click();
   await waitSynced(page);
   const first = await (await page.request.get("/api/account/me")).json();
   await registerFromBiff(page, email(), true);
@@ -263,7 +260,6 @@ test("conflicting offline edits are reviewable and sync writes use revisions", a
   await seedGuest(page);
   await page.goto("/");
   await registerFromBiff(page, userEmail);
-  await page.getByRole("button", { name: "合并本机数据", exact: true }).click();
   await waitSynced(page);
   await closePanel(page);
   const second = await contextFor(browser, ip());
@@ -403,4 +399,126 @@ test("concurrent requests refresh the server-side token without exposing it", as
     expect(data.user.id).toBe(identity.user.id);
     expect(JSON.stringify(data)).not.toMatch(/accessToken|refreshToken|idToken/);
   }
+});
+
+test("empty storage does not claim import; nonempty data imports once across devices and logins", async ({ page, context, browser }) => {
+  await context.setExtraHTTPHeaders({ "cf-connecting-ip": ip() });
+  const userEmail = email();
+  await registerFromBiff(page, userEmail);
+  await waitSynced(page);
+  const blank = await (await page.request.get("/api/account/sync/biff-2026")).json();
+  expect(blank.importedAt).toBeNull();
+  const emptyAttempt = await page.request.post("/api/account/import", {
+    headers: { Origin: origin },
+    data: { subject: blank.subject, revision: blank.revision, operationId: randomUUID(), records: {}, sourceRecords: { "local:biff.gvtalk.v1": "{}", "local:biff.picks.v2": "[]" } },
+  });
+  expect(emptyAttempt.status()).toBe(422);
+  expect((await emptyAttempt.json()).error).toBe("EMPTY_IMPORT");
+  expect((await (await page.request.get("/api/account/sync/biff-2026")).json()).importedAt).toBeNull();
+  const sourceDevice = await contextFor(browser, ip());
+  const laterDevice = await contextFor(browser, ip());
+  try {
+    const sourcePage = await sourceDevice.newPage();
+    await seedGuest(sourcePage, "First device data");
+    await sourcePage.goto("/");
+    await loginFromBiff(sourcePage, userEmail);
+    await waitSynced(sourcePage);
+    const imported = await (await sourcePage.request.get("/api/account/sync/biff-2026")).json();
+    expect(imported.importedAt).toEqual(expect.any(Number));
+    expect(JSON.parse(imported.records[record]).note).toBe("First device data");
+    await expect(sourcePage.getByRole("button", { name: "合并本机数据", exact: true })).toHaveCount(0);
+    const laterPage = await laterDevice.newPage();
+    await seedGuest(laterPage, "Must never replace the account");
+    await laterPage.goto("/");
+    await loginFromBiff(laterPage, userEmail);
+    await waitSynced(laterPage);
+    expect(await laterPage.evaluate(() => JSON.parse(localStorage.getItem("biff.picks.v2")!)[0].note)).toBe("First device data");
+    await laterPage.getByRole("button", { name: "退出账号", exact: true }).click();
+    await loginFromBiff(laterPage, userEmail);
+    await waitSynced(laterPage);
+    const again = await (await laterPage.request.get("/api/account/sync/biff-2026")).json();
+    expect(again.importedAt).toBe(imported.importedAt);
+    expect(again.revision).toBe(imported.revision);
+    expect(JSON.parse(again.records[record]).note).toBe("First device data");
+  } finally { await sourceDevice.close(); await laterDevice.close(); }
+});
+
+test("concurrent imports claim the account once and failed revisions leave it eligible", async ({ page, context }) => {
+  await context.setExtraHTTPHeaders({ "cf-connecting-ip": ip() });
+  await registerFromBiff(page, email());
+  await waitSynced(page);
+  const initialDoc = await (await page.request.get("/api/account/sync/biff-2026")).json();
+  const attempt = (name: string, revision: number, operationId = randomUUID()) => page.request.post("/api/account/import", {
+    headers: { Origin: origin },
+    data: { subject: initialDoc.subject, revision, operationId, records: { [`local:biff.${name}`]: JSON.stringify(name) }, sourceRecords: { [`local:biff.${name}`]: JSON.stringify(name) } },
+  });
+  expect((await attempt("failed", initialDoc.revision + 3)).status()).toBe(409);
+  expect((await (await page.request.get("/api/account/sync/biff-2026")).json()).importedAt).toBeNull();
+  const responses = await Promise.all([attempt("first", initialDoc.revision), attempt("second", initialDoc.revision)]);
+  for (const response of responses) expect(response.status()).toBe(200);
+  const outcomes = await Promise.all(responses.map((response) => response.json()));
+  expect(outcomes.filter((outcome) => outcome.imported)).toHaveLength(1);
+  const finalDoc = await (await page.request.get("/api/account/sync/biff-2026")).json();
+  expect(finalDoc.revision).toBe(initialDoc.revision + 1);
+  expect(Object.keys(finalDoc.records)).toHaveLength(1);
+  const repeated = await (await attempt("third", finalDoc.revision)).json();
+  expect(repeated.imported).toBe(false);
+  expect(repeated.records).toEqual(finalDoc.records);
+  expect(repeated.importedAt).toBe(finalDoc.importedAt);
+});
+
+test("lost import response retries without importing the account twice", async ({ page, context }) => {
+  await context.setExtraHTTPHeaders({ "cf-connecting-ip": ip() });
+  let committed = false;
+  await page.route("**/api/account/import", async (route) => {
+    if (!committed) {
+      const response = await route.fetch();
+      expect(response.status()).toBe(200);
+      committed = true;
+      await route.abort("failed");
+    } else await route.continue();
+  });
+  await seedGuest(page);
+  await page.goto("/");
+  await registerFromBiff(page, email());
+  await expect.poll(() => committed).toBe(true);
+  await expect(page.locator("#account-sync-status")).toHaveText("暂未同步");
+  const committedDoc = await (await page.request.get("/api/account/sync/biff-2026")).json();
+  expect(committedDoc.importedAt).toEqual(expect.any(Number));
+  await page.getByRole("button", { name: "重试同步", exact: true }).click();
+  await waitSynced(page);
+  const retried = await (await page.request.get("/api/account/sync/biff-2026")).json();
+  expect(retried.revision).toBe(committedDoc.revision);
+  expect(retried.importedAt).toBe(committedDoc.importedAt);
+  expect(JSON.parse(retried.records[record]).note).toBe(initial[0]!.note);
+});
+
+test("conflicting first import waits for a choice before marking the account", async ({ page, context, browser }) => {
+  await context.setExtraHTTPHeaders({ "cf-connecting-ip": ip() });
+  const userEmail = email();
+  await registerFromBiff(page, userEmail);
+  await waitSynced(page);
+  const blank = await (await page.request.get("/api/account/sync/biff-2026")).json();
+  const cloudRecords = { [record]: JSON.stringify({ key, codes: { [screening.code]: true }, note: "Existing cloud note" }) };
+  expect((await page.request.put("/api/account/sync/biff-2026", {
+    headers: { Origin: origin },
+    data: { subject: blank.subject, revision: blank.revision, operationId: randomUUID(), records: cloudRecords },
+  })).status()).toBe(200);
+  const sourceDevice = await contextFor(browser, ip());
+  try {
+    const sourcePage = await sourceDevice.newPage();
+    await seedGuest(sourcePage, "Imported note selected by user");
+    await sourcePage.goto("/");
+    await loginFromBiff(sourcePage, userEmail);
+    await expect(sourcePage.getByRole("button", { name: "确认选择并同步", exact: true })).toBeVisible();
+    const beforeChoice = await (await sourcePage.request.get("/api/account/sync/biff-2026")).json();
+    expect(beforeChoice.importedAt).toBeNull();
+    expect(JSON.parse(beforeChoice.records[record]).note).toBe("Existing cloud note");
+    await sourcePage.getByRole("dialog", { name: "IFFDAY 账号" }).locator("select").selectOption("remote");
+    await sourcePage.getByRole("button", { name: "确认选择并同步", exact: true }).click();
+    await waitSynced(sourcePage);
+    const afterChoice = await (await sourcePage.request.get("/api/account/sync/biff-2026")).json();
+    expect(afterChoice.importedAt).toEqual(expect.any(Number));
+    expect(JSON.parse(afterChoice.records[record]).note).toBe("Imported note selected by user");
+  } finally { await sourceDevice.close(); }
 });

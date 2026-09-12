@@ -1,3 +1,4 @@
+import { hasImportableData } from "@biff/contracts/import";
 import { z } from "zod";
 import {
   canonical,
@@ -15,6 +16,7 @@ export type { Account };
 const recordsSchema = z.record(z.string(), z.string());
 const documentSchema = z.object({
   subject: id,
+  importedAt: z.number().nullable(),
   revision: z.number().int().nonnegative(),
   records: recordsSchema,
   updatedAt: z.number(),
@@ -93,6 +95,7 @@ let remoteConflict: CloudDocument | null = null;
 let mergedConflict: WorkspaceRecords = {};
 let conflictLocal: WorkspaceRecords = {};
 let importingConflict = false;
+let importResolution: { revision: number; local: WorkspaceRecords; records: WorkspaceRecords } | null = null;
 const listeners = new Set<() => void>();
 export function onAccountChange(listener: () => void) {
   listeners.add(listener);
@@ -161,7 +164,7 @@ function activate(account: Account | null) {
     if (
       owner === "guest" &&
       account &&
-      Object.keys(local).length &&
+      hasImportableData(local) &&
       !localStorage.getItem(importKey(next))
     ) {
       localStorage.setItem(importKey(next), JSON.stringify(local));
@@ -181,6 +184,7 @@ function activate(account: Account | null) {
   accountState.pendingImport = pending ? recordsSchema.parse(JSON.parse(pending)) : null;
   accountState.conflicts = [];
   remoteConflict = null;
+  importResolution = null;
 }
 function isEditing() {
   const element = document.activeElement;
@@ -253,19 +257,17 @@ export async function syncAccount() {
       setStatus("guest");
       return;
     }
-    if (accountState.pendingImport) {
-      setStatus("pending", "有本机数据等待合并到账号。");
-      return;
-    }
     if (accountState.conflicts.length) {
       setStatus("conflict");
       return;
     }
     setStatus("syncing");
-    const remote = documentSchema.parse(await (await api("/api/account/sync/biff-2026")).json());
+    let remote = documentSchema.parse(await (await api("/api/account/sync/biff-2026")).json());
     if (remote.subject !== owner) throw new ApiFailure(409, "ACCOUNT_CHANGED");
-    const local = currentRecords();
-    const merged = mergeRecords(cache.base, local, remote.records);
+    let local = currentRecords();
+    if (accountState.pendingImport && (remote.importedAt !== null || !hasImportableData(accountState.pendingImport)))
+      finishImport(false);
+    let merged = mergeRecords(cache.base, local, remote.records);
     if (merged.conflicts.length) {
       importingConflict = false;
       remoteConflict = remote;
@@ -274,6 +276,34 @@ export async function syncAccount() {
       accountState.conflicts = merged.conflicts;
       setStatus("conflict");
       return;
+    }
+    if (accountState.pendingImport) {
+      const guest = accountState.pendingImport;
+      localStorage.setItem(`iffday.workspace.import-backup.v1:${owner}`, JSON.stringify(guest));
+      const combined = mergeRecords({}, merged.records, guest);
+      const resolution = importResolution?.revision === remote.revision && canonical(importResolution.local) === canonical(local)
+        ? importResolution.records : null;
+      if (combined.conflicts.length && !resolution) {
+        importingConflict = true;
+        remoteConflict = remote;
+        mergedConflict = combined.records;
+        conflictLocal = local;
+        accountState.conflicts = combined.conflicts;
+        setStatus("conflict");
+        return;
+      }
+      remote = await submitImport(remote, resolution ?? combined.records, local);
+      local = currentRecords();
+      merged = mergeRecords(cache.base, local, remote.records);
+      if (merged.conflicts.length) {
+        importingConflict = false;
+        remoteConflict = remote;
+        mergedConflict = merged.records;
+        conflictLocal = local;
+        accountState.conflicts = merged.conflicts;
+        setStatus("conflict");
+        return;
+      }
     }
     if (canonical(merged.records) !== canonical(local)) {
       if (isEditing()) {
@@ -330,41 +360,32 @@ export async function syncAccount() {
     running = false;
   }
 }
-function finishImport() {
+function finishImport(consumed: boolean) {
   localStorage.removeItem(importKey(owner));
   accountState.pendingImport = null;
-  localStorage.setItem(cacheKey("guest"), JSON.stringify(emptyCache()));
+  importResolution = null;
+  if (consumed) localStorage.setItem(cacheKey("guest"), JSON.stringify(emptyCache()));
 }
-export async function importGuestData() {
-  if (!accountState.authenticated || !accountState.pendingImport || running) return;
-  const guest = accountState.pendingImport;
-  localStorage.setItem(`iffday.workspace.import-backup.v1:${owner}`, JSON.stringify(guest));
-  const local = currentRecords();
-  const combined = mergeRecords({}, local, guest);
-  if (combined.conflicts.length) {
-    importingConflict = true;
-    remoteConflict = { revision: cache.revision, records: guest, updatedAt: 0 };
-    mergedConflict = combined.records;
-    conflictLocal = local;
-    accountState.conflicts = combined.conflicts;
-    setStatus("conflict");
-    return;
-  }
-  apply(combined.records);
-  cache.local = combined.records;
+async function submitImport(remote: CloudDocument, records: WorkspaceRecords, before: WorkspaceRecords) {
+  const sourceRecords = accountState.pendingImport;
+  if (!sourceRecords) throw new Error("No pending import");
+  const response = await api("/api/account/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ subject: owner, revision: remote.revision, operationId: crypto.randomUUID(), records, sourceRecords }),
+  });
+  const result = documentSchema.extend({ imported: z.boolean() }).parse(await response.json());
+  if (result.subject !== owner) throw new ApiFailure(409, "ACCOUNT_CHANGED");
+  // Keep edits made while the request was in flight. The next merge uses the pre-import
+  // workspace as common ancestor and the committed server response as the remote side.
+  cache.base = before;
+  cache.local = currentRecords();
   persist();
-  finishImport();
-  await syncAccount();
+  finishImport(result.imported);
+  return result;
 }
 export function conflictSource() {
   return importingConflict ? "导入的本机数据" : "云端数据";
-}
-export async function skipGuestImport() {
-  if (!accountState.account) return;
-  // Keep the guest copy recoverable through a local backup; do not upload it without acceptance.
-  localStorage.removeItem(importKey(owner));
-  accountState.pendingImport = null;
-  await syncAccount();
 }
 export async function resolveSyncConflicts(choices: Record<string, "local" | "remote">) {
   if (!remoteConflict || running) return;
@@ -380,14 +401,19 @@ export async function resolveSyncConflicts(choices: Record<string, "local" | "re
     if (value === null) delete records[conflict.key];
     else records[conflict.key] = value;
   }
-  if (!importingConflict) {
-    cache.base = remoteConflict.records;
-    cache.revision = remoteConflict.revision;
+  if (importingConflict) {
+    importResolution = { revision: remoteConflict.revision, local: conflictLocal, records };
+    importingConflict = false;
+    accountState.conflicts = [];
+    remoteConflict = null;
+    await syncAccount();
+    return;
   }
+  cache.base = remoteConflict.records;
+  cache.revision = remoteConflict.revision;
   apply(records);
   cache.local = records;
   persist();
-  if (importingConflict) finishImport();
   importingConflict = false;
   accountState.conflicts = [];
   remoteConflict = null;
