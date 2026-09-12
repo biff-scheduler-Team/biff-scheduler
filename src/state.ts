@@ -491,6 +491,41 @@ export function clearAllPicks(): void {
   mutate(() => store.picks.clear());
 }
 
+/** 把一批场次 code 挂进 `store.picks`(调用方负责用 `mutate` 包裹)。
+ *  `keyOf` 返回 null(排期换版查不到该 code)→ 静默跳过;已在行程里的不重复加。 */
+function attachScreenings(codes: string[], keyOf: (code: string) => string | null): void {
+  for (const code of codes) {
+    const key = keyOf(code);
+    if (!key) continue;
+    const cur = store.picks.get(key);
+    if (!cur) {
+      store.picks.set(key, { key, picks: [{ code }], note: "" });
+      continue;
+    }
+    if (cur.picks.some((p) => p.code === code)) continue;
+    store.picks.set(key, { ...cur, picks: [...cur.picks, { code }] });
+  }
+}
+
+/** 用一批场次 **替换**全部已排场次(.ics 导入的「替换」档,见 `backup.ts::parseIcsCodes`)。
+ *  只清场次:**有备注的记录保留**(降级成「未排场」),没备注的空壳整条删。
+ *  ⚠ 被清掉场次的抢票顺位由 `rebuildIndex()` 一并 prune(顺位按 code 索引,留着就是脏数据)。 */
+export function replaceScreenings(codes: string[], keyOf: (code: string) => string | null): void {
+  mutate(() => {
+    for (const e of [...store.picks.values()]) {
+      if (!e.picks.length) continue;
+      if (e.note) store.picks.set(e.key, { ...e, picks: [] });
+      else store.picks.delete(e.key);
+    }
+    attachScreenings(codes, keyOf);
+  });
+}
+
+/** 把一批场次 **并入**现有行程(.ics 导入的「合并」档,默认;已有的不重复加)。 */
+export function mergeScreenings(codes: string[], keyOf: (code: string) => string | null): void {
+  mutate(() => attachScreenings(codes, keyOf));
+}
+
 export function setSettings(patch: Partial<Settings>): void {
   store.settings = { ...store.settings, ...patch };
   saveSettingsLocal();

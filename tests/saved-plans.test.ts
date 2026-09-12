@@ -5,7 +5,7 @@
 // 用内存 localStorage 替身而非 jsdom:被测模块在 import 期不碰 localStorage(真机入口才读)。
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { deletePlan, loadSavedPlans, savePlan, savedPlans } from "../src/state";
+import { deletePlan, loadSavedPlans, mergeScreenings, replaceScreenings, savePlan, savedPlans, store } from "../src/state";
 
 /** 最小内存 localStorage 替身 —— state.ts 直接用全局 localStorage,故挂到 globalThis */
 const mem = new Map<string, string>();
@@ -28,6 +28,7 @@ const mem = new Map<string, string>();
 
 beforeEach(() => {
   savedPlans.length = 0;
+  store.picks.clear();
   mem.clear();
 });
 
@@ -85,6 +86,33 @@ describe("loadSavedPlans:从 localStorage 恢复", () => {
     expect(savedPlans.map((p) => p.id)).toEqual(["p1", "p3"]);
     expect(savedPlans[1].codes).toEqual(["003"]);
     expect(savedPlans[1].name).toBe("方案 2"); // 缺 name → 兜底
+  });
+});
+
+describe("replaceScreenings / mergeScreenings:.ics 导入落盘", () => {
+  /** 极简 key 口径:`100` → `film:1`(同首位数字归同一部片),非纯数字返回 null */
+  const keyOf = (code: string): string | null => (/^\d+$/.test(code) ? `film:${code[0]}` : null);
+
+  it("merge:并入现有行程,已有的不重复加,备注不动", () => {
+    store.picks.set("film:1", { key: "film:1", picks: [{ code: "100" }], note: "备注A" });
+    mergeScreenings(["100", "200"], keyOf);
+    expect(store.picks.get("film:1")?.picks.map((p) => p.code)).toEqual(["100"]);
+    expect(store.picks.get("film:1")?.note).toBe("备注A");
+    expect(store.picks.get("film:2")?.picks.map((p) => p.code)).toEqual(["200"]);
+  });
+
+  it("replace:清空现有场次;有备注的记录保留(降级为未排场),无备注空壳整条删", () => {
+    store.picks.set("film:1", { key: "film:1", picks: [{ code: "100" }], note: "备注A" });
+    store.picks.set("film:9", { key: "film:9", picks: [{ code: "900" }], note: "" });
+    replaceScreenings(["200"], keyOf);
+    expect(store.picks.get("film:1")).toEqual({ key: "film:1", picks: [], note: "备注A" });
+    expect(store.picks.has("film:9")).toBe(false);
+    expect(store.picks.get("film:2")?.picks.map((p) => p.code)).toEqual(["200"]);
+  });
+
+  it("keyOf 返回 null 的 code 静默跳过(排期换版残留)", () => {
+    mergeScreenings(["abc"], keyOf);
+    expect(store.picks.size).toBe(0);
   });
 });
 

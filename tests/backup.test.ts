@@ -6,7 +6,7 @@
 // 用内存替身而非 jsdom:被测模块在 import 期不碰 DOM / localStorage(真机入口才读)。
 
 import { describe, expect, it } from "vitest";
-import { BACKUP_PREFIX, parseBackupText, restore, snapshot, type BackupStorage } from "../src/backup";
+import { BACKUP_PREFIX, parseBackupText, parseIcsCodes, restore, snapshot, type BackupStorage } from "../src/backup";
 
 /** 最小内存 Storage 替身(顺序稳定,便于断言) */
 function memStorage(init: Record<string, string> = {}): BackupStorage {
@@ -25,6 +25,56 @@ function memStorage(init: Record<string, string> = {}): BackupStorage {
     },
   };
 }
+
+describe("parseIcsCodes:从 .ics 反解场次", () => {
+  /** 一份最小的导出 .ics(两条场次) */
+  const ics = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "BEGIN:VEVENT",
+    "UID:375@biff-2026",
+    "SUMMARY:x",
+    "END:VEVENT",
+    "BEGIN:VEVENT",
+    "UID:419@biff-2026",
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ].join("\r\n");
+
+  it("反解出场次 code(保序)", () => {
+    const r = parseIcsCodes(ics);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.codes).toEqual(["375", "419"]);
+  });
+
+  it("重复 UID 只取一次", () => {
+    const t = ["BEGIN:VCALENDAR", "UID:375@biff-2026", "UID:375@biff-2026", "END:VCALENDAR"].join("\n");
+    const r = parseIcsCodes(t);
+    if (r.ok) expect(r.codes).toEqual(["375"]);
+  });
+
+  it("开票日历的 UID(biff-ticket-N)不算场次", () => {
+    const t = ["BEGIN:VCALENDAR", "UID:biff-ticket-1@biff-2026", "UID:375@biff-2026", "END:VCALENDAR"].join("\n");
+    const r = parseIcsCodes(t);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.codes).toEqual(["375"]);
+  });
+
+  it("不是 .ics → 报错", () => {
+    expect(parseIcsCodes('{"biff.picks.v2":"[]"}').ok).toBe(false);
+  });
+
+  it("是 .ics 但没有本工具的 UID → 报错", () => {
+    const t = ["BEGIN:VCALENDAR", "UID:other@example.com", "END:VCALENDAR"].join("\n");
+    const r = parseIcsCodes(t);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("没有本工具导出的场次");
+  });
+
+  it("空内容 → 报错", () => {
+    expect(parseIcsCodes("   ").ok).toBe(false);
+  });
+});
 
 describe("snapshot:只搬 biff.* 前缀的键", () => {
   it("按前缀筛掉无关键,值原样搬运(不解析业务结构)", () => {

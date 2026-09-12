@@ -112,6 +112,38 @@ export function parseBackupText(text: string): BackupParse {
   return { ok: true, data };
 }
 
+/* ---------------- .ics 导入(2026-09-12) ----------------
+ * `.ics` 是**单向出口**(喂日历),它带不动本工具的私有状态(备注 / 顺位 / 已保存方案 / 设置),
+ * 但每条 VEVENT 的 `UID:<code>@biff-2026` 里就藏着场次 code —— 故可以「反解出场次清单」。
+ * 语义 = **导入一份排片**(朋友把他的 .ics 发你),**不是**「恢复备份」。
+ *
+ * ⚠ 只认 `<纯数字>@biff-2026`:开票日历的 UID 是 `biff-ticket-<n>@biff-2026`
+ *   (见 `ics.ts::buildTicketIcs`),不过滤就会把抢票提醒当成场次。 */
+
+export type IcsParse = { ok: true; codes: string[] } | { ok: false; error: string };
+
+/** 从 .ics 文本反解场次 code(去重保序)。失败时给出**能照做的**中文原因。 */
+export function parseIcsCodes(text: string): IcsParse {
+  const trimmed = text.trim();
+  if (!trimmed) return { ok: false, error: "内容为空" };
+  if (!/BEGIN:VCALENDAR/i.test(trimmed)) {
+    return { ok: false, error: "不是 .ics 日历文件(缺少 BEGIN:VCALENDAR)" };
+  }
+  const codes: string[] = [];
+  const seen = new Set<string>();
+  const re = /^UID:(\d+)@biff-2026\s*$/gm;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(trimmed)) !== null) {
+    if (seen.has(m[1])) continue;
+    seen.add(m[1]);
+    codes.push(m[1]);
+  }
+  if (codes.length === 0) {
+    return { ok: false, error: "这份 .ics 里没有本工具导出的场次(UID 不是 <code>@biff-2026)" };
+  }
+  return { ok: true, codes };
+}
+
 /* ---------------- 运行时入口(读写真实 localStorage) ---------------- */
 
 function localStore(): BackupStorage {

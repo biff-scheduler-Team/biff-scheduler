@@ -17,8 +17,10 @@ import {
   loadRanks,
   loadSavedPlans,
   loadSettings,
+  mergeScreenings,
   rankOf,
   removeScreening,
+  replaceScreenings,
   setGvTalk,
   setZoom,
   slotOf,
@@ -121,6 +123,16 @@ function filmKeyOfCode(code: string): string | null {
   const s = cat.byCode.get(code);
   return s ? filmNodeKey(cat, s) : null;
 }
+
+/** 「导入 .ics 排片」的宿主能力(见 `backup-panel.ts::IcsImport`):
+ *  排期校验(换版残留的 code 直接滤掉)+ 落盘(合并 / 替换)。 */
+const icsImport = {
+  isValidCode: (code: string): boolean => cat.byCode.has(code),
+  apply: (codes: string[], mode: "merge" | "replace"): void => {
+    if (mode === "replace") replaceScreenings(codes, filmKeyOfCode);
+    else mergeScreenings(codes, filmKeyOfCode);
+  },
+};
 
 /** 影片**资料**弹层的公共上下文(网格 ⓘ 与影片库共用)。
  *  弹层只给「资料 + 豆瓣」—— 场次列表唯一入口在影片库行内展开(见 library.ts::LibraryCtx.onToggle)。 */
@@ -805,7 +817,7 @@ function bindEvents(): void {
       document.getElementById("export-menu")!.classList.add("is-hidden");
       const which = ex.dataset.which;
       if (which === "BACKUP") downloadBackup();
-      else if (which === "RESTORE") openImportBackupModal();
+      else if (which === "RESTORE") openImportBackupModal(icsImport);
       // 导出 / 分享三项(.ics / 文案 / 图)统一走弹层:**先选已保存方案,再选出口**(2026-09-12)
       else openExportPanel(cat, gvTalkOf);
       return;
