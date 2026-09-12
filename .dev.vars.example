@@ -1,0 +1,7 @@
+APP_ENV=local
+APP_ORIGIN=http://localhost:31028
+IFFDAY_ORIGIN=http://127.0.0.1:5183
+OIDC_CLIENT_ID=biff-scheduler-local
+# Use npm run dev:account with IFFDAY_ACCOUNT_PATH to generate matching local secrets.
+OIDC_CLIENT_SECRET=replace-with-matching-local-client-secret
+SESSION_SECRET=replace-with-random-secret-at-least-32-characters

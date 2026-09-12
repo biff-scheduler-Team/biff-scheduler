@@ -1,3 +1,5 @@
+import { initAccount } from "./account";
+import { reloadWorkspaceState } from "./state";
 // 入口 — 装配数据/状态/视图,统一事件委托。
 // 全量化:仅维护基础骨架(顶栏/面板/弹层根/Toast/底部),所有内部样式由 markup 端 Tailwind utility 表达。
 
@@ -53,6 +55,7 @@ import { abbrTooltip } from "./badges";
 import { attachTip } from "./tip";
 import { buildGuideBody } from "./legend";
 import {
+  clearFilter,
   hasActiveFilter,
   loadFilters,
   makeFilterState,
@@ -1130,6 +1133,25 @@ async function boot(): Promise<void> {
   // 选片记录(唯一数据源)必须在 cat 就绪之后载入:首次迁移要用 filmNodeKey(cat, s)
   // 把旧的场次级 plan 归并到影片级记录(旧两套 → 一套)
   loadPicks(filmKeyOfCode);
+  await initAccount(() => {
+    reloadWorkspaceState(filmKeyOfCode);
+    zoom = clampZoom(store.settings.zoom ?? 1);
+    initTheme();
+    clearFilter(filters);
+    loadFilters(filters, new Set(cat.venues.map((v) => v.id)));
+  }, (key) => {
+    if (key.startsWith("pick:cat:")) {
+      const film = cat.films.find(item => item.id === key.slice(9));
+      return film?.title_zh || film?.title_en || "影片选择";
+    }
+    if (key.startsWith("pick:sched:")) return key.slice(11);
+    if (key.startsWith("plan:")) return "保存的排片方案";
+    if (key.includes("ranks")) return "场次顺位";
+    if (key.includes("gvtalk")) return "映后谈设置";
+    if (key.includes("filters")) return "筛选条件";
+    return "排片偏好";
+  });
+
   // 豆瓣映射 = 静态 douban.json(2026-09-11,D1 退役):在首渲前灌好,避免片名「先英文后中文」跳变。
   await loadMappings();
   // 官网「排期之外」的辅助信息(售票批次 / 节目嘉宾 / 开闭幕式)与豆瓣相关电影:

@@ -66,6 +66,7 @@ export default defineConfig({
         // 没排期数据离线打开等于空表,必须进缓存
         globPatterns: ["**/*.{js,css,html,ico,png,json,svg}"],
         navigateFallback: "index.html",
+        navigateFallbackDenylist: [/^\/api(?:\/|$)/],
         cleanupOutdatedCaches: true,
       },
     }),

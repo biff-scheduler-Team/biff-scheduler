@@ -1,3 +1,4 @@
+import { writeWorkspaceItem, removeWorkspaceItem } from "./workspace-storage";
 // 影片库 — 全部影片浏览 + 单元筛选 chips + 搜索 → 反向定位 / 详情豆瓣。
 // 全量化:列表 / 行 / 头部 / chip / pill / 场次行 全部 Tailwind utility。
 // 16-B 单元 chip / 评分章 / 选片三选 同源 —— 都读写 store.picks(唯一数据源)。
@@ -399,8 +400,8 @@ function loadPickerW(): number | null {
 /** 落盘拖拽宽度;`null` = 清除记忆(回到自适应宽度) */
 function savePickerW(w: number | null): void {
   try {
-    if (w === null) localStorage.removeItem(PICKER_W_KEY);
-    else localStorage.setItem(PICKER_W_KEY, String(w));
+    if (w === null) removeWorkspaceItem(PICKER_W_KEY);
+    else writeWorkspaceItem(PICKER_W_KEY, String(w));
   } catch {
     // 隐私模式 / 禁用存储:仅本次生效,不落盘
   }

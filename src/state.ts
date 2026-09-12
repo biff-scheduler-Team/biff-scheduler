@@ -1,3 +1,4 @@
+import { writeWorkspaceItem, removeWorkspaceItem } from "./workspace-storage";
 // 应用状态:选片记录 / 抢票顺位 / 豆瓣映射 / 设置。
 //
 // 单一数据源 = store.picks:「我的选片」(按片看)与「我的行程」(按场次看)是同一份数据的两个视图。
@@ -76,7 +77,7 @@ export function loadRanks(): void {
 
 function saveRanks(): void {
   try {
-    localStorage.setItem(LS_RANKS, JSON.stringify(Object.fromEntries(rankOf)));
+    writeWorkspaceItem(LS_RANKS, JSON.stringify(Object.fromEntries(rankOf)));
   } catch {
     /* ignore */
   }
@@ -122,7 +123,7 @@ export function loadGvTalk(): void {
 
 export function saveGvTalk(): void {
   try {
-    localStorage.setItem(LS_GV_TALK, JSON.stringify(Object.fromEntries(gvTalk)));
+    writeWorkspaceItem(LS_GV_TALK, JSON.stringify(Object.fromEntries(gvTalk)));
   } catch {
     /* ignore */
   }
@@ -154,7 +155,7 @@ export function loadGvTalkMin(): void {
 
 export function saveGvTalkMin(): void {
   try {
-    localStorage.setItem(LS_GV_TALK_MIN, JSON.stringify(Object.fromEntries(gvTalkMinOv)));
+    writeWorkspaceItem(LS_GV_TALK_MIN, JSON.stringify(Object.fromEntries(gvTalkMinOv)));
   } catch {
     /* ignore */
   }
@@ -190,7 +191,7 @@ export function loadAgendaFold(): void {
 
 function saveAgendaFold(): void {
   try {
-    localStorage.setItem(LS_AGENDA_FOLD, JSON.stringify([...agendaFolded]));
+    writeWorkspaceItem(LS_AGENDA_FOLD, JSON.stringify([...agendaFolded]));
   } catch {
     /* ignore */
   }
@@ -266,7 +267,7 @@ function scheduleNotify(domain: ChangeDomain): void {
 /* ---------- 本地持久化 + 派生索引 ---------- */
 function saveLocal(): void {
   try {
-    localStorage.setItem(LS_PICKS, JSON.stringify([...store.picks.values()]));
+    writeWorkspaceItem(LS_PICKS, JSON.stringify([...store.picks.values()]));
   } catch {
     /* ignore */
   }
@@ -406,8 +407,8 @@ function migrateLegacy(filmKeyOf: (code: string) => string | null): void {
   saveLocal();
   // 旧 key 用完即删(见上方注释):否则 v2 一旦缺失,旧数据会重新合成出排片 / 选片。
   try {
-    localStorage.removeItem(LS_PLAN_LEGACY);
-    localStorage.removeItem(LS_WISH_LEGACY);
+    removeWorkspaceItem(LS_PLAN_LEGACY);
+    removeWorkspaceItem(LS_WISH_LEGACY);
   } catch {
     /* ignore */
   }
@@ -544,7 +545,7 @@ export function setZoom(z: number): void {
 
 function saveSettingsLocal(): void {
   try {
-    localStorage.setItem(LS_SETTINGS, JSON.stringify(store.settings));
+    writeWorkspaceItem(LS_SETTINGS, JSON.stringify(store.settings));
   } catch {
     /* ignore */
   }
@@ -624,7 +625,7 @@ export function loadSavedPlans(): void {
 
 function persistSavedPlans(): void {
   try {
-    localStorage.setItem(LS_SAVED_PLANS, JSON.stringify(savedPlans));
+    writeWorkspaceItem(LS_SAVED_PLANS, JSON.stringify(savedPlans));
   } catch {
     /* ignore */
   }
@@ -660,4 +661,12 @@ export function deletePlan(id: string): void {
 /** 按 id 取方案 */
 export function planById(id: string): SavedPlan | undefined {
   return savedPlans.find((p) => p.id === id);
+}
+
+/** Replace the in-memory view after an account switch or a merged cloud update. */
+export function reloadWorkspaceState(filmKeyOf: (code: string) => string | null): void {
+  store.picks.clear(); rankOf.clear(); gvTalk.clear(); gvTalkMinOv.clear(); agendaFolded.clear(); savedPlans.length = 0;
+  store.settings = { alarmMin: 45, transitMin: 0, gvTalkOn: true, gvTalkMin: 25 };
+  loadSettings(); loadGvTalk(); loadGvTalkMin(); loadRanks(); loadSavedPlans(); loadAgendaFold(); loadPicks(filmKeyOf);
+  notify("all");
 }

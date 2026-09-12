@@ -28,3 +28,10 @@ data/_*
 
 # Python 字节码缓存(离线管线 tools/*.py 运行时产生,不进版本库)
 __pycache__/
+
+.dev.vars*
+!.dev.vars.example
+.local/
+worker-configuration.d.ts
+playwright-report/
+test-results/

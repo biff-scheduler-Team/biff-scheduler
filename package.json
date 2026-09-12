@@ -2,20 +2,28 @@
   "name": "biff-scheduler",
   "version": "0.1.0",
   "private": true,
-  "description": "BIFF 电影节排片工具 - Cloudflare Workers 纯静态 + Vite/TS",
+  "description": "BIFF 电影节排片工具，支持 IFFDAY 登录和账号同步",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint src tests",
+    "typecheck": "wrangler types && tsc --noEmit && tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.e2e.json",
+    "lint": "eslint src server tests",
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "npm run typecheck && npm run lint && npm run test && vite build",
     "preview": "npm run build && wrangler dev",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && npm run db:migrate:remote && wrangler deploy",
+    "db:migrate": "wrangler d1 migrations apply biff-account-data --local",
+    "db:migrate:remote": "wrangler d1 migrations apply biff-account-data --remote",
+    "test:e2e": "playwright test",
+    "dev:account": "node scripts/dev-account.mjs",
+    "postbuild": "node scripts/migrate-cloudflare.mjs"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "5.20260911.1",
+    "@playwright/test": "1.63.0",
     "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "24.13.4",
     "eslint": "^10.10.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.6.0",
@@ -23,6 +31,11 @@
     "vite": "^6.0.0",
     "vite-plugin-pwa": "^1.3.0",
     "vitest": "^5.0.0",
-    "wrangler": "^4.0.0"
+    "wrangler": "4.131.1"
+  },
+  "dependencies": {
+    "hono": "4.13.7",
+    "oauth4webapi": "3.8.8",
+    "zod": "4.6.2"
   }
 }

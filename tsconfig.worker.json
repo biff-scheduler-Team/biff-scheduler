@@ -3,11 +3,7 @@
     "target": "ES2020",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": [
-      "ES2020",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2022"],
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
@@ -15,12 +11,7 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": [
-      "vite/client"
-    ]
+    "types": []
   },
-  "include": [
-    "src",
-    "tests"
-  ]
+  "include": ["server", "worker-configuration.d.ts"]
 }

@@ -1,3 +1,4 @@
+import { writeWorkspaceItem } from "./workspace-storage";
 // 排片筛选(字幕 / 影厅 / GV)—— **同一套判定与控件,两份独立状态**。
 //
 // 为什么抽成独立模块
@@ -176,7 +177,7 @@ export function loadFilters(f: FilterState, validVenueIds?: Set<string>, key: st
 export function saveFilters(f: FilterState, key: string = LS_FILTERS_GRID): void {
   try {
     const data: StoredFilters = { subs: [...f.subs], venues: [...f.venues], venueMode: f.venueMode, gv: f.gv };
-    localStorage.setItem(key, JSON.stringify(data));
+    writeWorkspaceItem(key, JSON.stringify(data));
   } catch {
     /* 隐私模式 / 禁用存储 */
   }
