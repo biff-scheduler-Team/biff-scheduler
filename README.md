@@ -385,6 +385,9 @@ python tools/build_douban_related.py --delay 3
 
 # 豆瓣简介（详情弹层；缺文件不占位）
 python tools/build_douban_intros.py --delay 3
+
+# TMDB 海报（token 只从环境变量读，见 .env.example；不要把密钥写进仓库）
+python tools/fetch_tmdb_posters.py
 ```
 
 自检会打印：场次总数 / 编号唯一性 / 厅数 / GV 与联映块数量 / **估算片长清单** / **目录匹配率**。

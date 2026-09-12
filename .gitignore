@@ -1,5 +1,11 @@
 node_modules/
 dist/
+
+# 本机密钥(TMDB / 豆瓣等)。真值只放环境变量或未跟踪的 .env,示例文件可以进仓库。
+.env
+.env.*
+!.env.example
+
 .npm-cache/
 .wrangler/
 dev-dist/

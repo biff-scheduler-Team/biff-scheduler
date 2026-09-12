@@ -1,0 +1,1806 @@
+{
+ "generated_at": "2026-09-12T13:42:22+00:00",
+ "source": "TMDB /3/search/movie; posters from image.tmdb.org. Token never stored.",
+ "films": {
+  "f001": {
+   "tmdb_id": 1337732,
+   "title": "낮과 밤은 서로에게",
+   "original_title": "낮과 밤은 서로에게",
+   "year": "2026",
+   "poster_path": "/9l6VtYyqzb1KoI5JW5cqxISoUmx.jpg",
+   "title_en": "The Table: Day and Night"
+  },
+  "f002": {
+   "tmdb_id": 1591675,
+   "title": "蓦然回首",
+   "original_title": "ルックバック",
+   "year": "2026",
+   "poster_path": "/nASevhZpvFhPKm9wyteoIOWoYqf.jpg",
+   "title_en": "Look Back"
+  },
+  "f003": {
+   "tmdb_id": 1739413,
+   "title": "無用の人",
+   "original_title": "無用の人",
+   "year": "2027",
+   "poster_path": "/bgapSeASBoacEvypu6lp7yIqubP.jpg",
+   "title_en": "In My Father′s Room"
+  },
+  "f004": {
+   "tmdb_id": null,
+   "title_en": "Satoko Always"
+  },
+  "f005": {
+   "tmdb_id": 1404395,
+   "title": "初次尝到寂寞",
+   "original_title": "初次尝到寂寞",
+   "year": "2026",
+   "poster_path": "/43A6TJxjmJQJBYcvJio5xP52s2Y.jpg",
+   "title_en": "The First Taste of Loneliness"
+  },
+  "f006": {
+   "tmdb_id": 1746633,
+   "title": "周日之后",
+   "original_title": "日曜のあと",
+   "year": "2026",
+   "poster_path": "/m2NQXdXKsS4zqCFbmec66DPIE9N.jpg",
+   "title_en": "The Day After Sunday"
+  },
+  "f007": {
+   "tmdb_id": 1590933,
+   "title": "汝、星のごとく",
+   "original_title": "汝、星のごとく",
+   "year": "2026",
+   "poster_path": "/jtovoRjH6fo5lDohAiG5rkDGPnq.jpg",
+   "title_en": "You, Like a Star"
+  },
+  "f008": {
+   "tmdb_id": 15916,
+   "title": "天使之卵",
+   "original_title": "天使のたまご",
+   "year": "1985",
+   "poster_path": "/djM3KS5nJj7pYAeAK7uQJfxYkW8.jpg",
+   "title_en": "Angel′s Egg"
+  },
+  "f009": {
+   "tmdb_id": 1257942,
+   "title": "魔方小姐",
+   "original_title": "魔方小姐",
+   "year": "2026",
+   "poster_path": "/qvTiG4LSu6wFCfXjg2KTiqHeQBF.jpg",
+   "title_en": "It′s My Time"
+  },
+  "f010": {
+   "tmdb_id": 1453069,
+   "title": "Skintown",
+   "original_title": "Skintown",
+   "year": "2026",
+   "poster_path": "/yUVA3HebQJ5dlgF4xTa4TLSadfl.jpg",
+   "title_en": "Skintown"
+  },
+  "f011": {
+   "tmdb_id": 1159810,
+   "title": "初世界",
+   "original_title": "첫세계",
+   "year": "2026",
+   "poster_path": "/oSRvKfFoqmvFAXQL8hroetMmoUs.jpg",
+   "title_en": "The World Before"
+  },
+  "f012": {
+   "tmdb_id": 1686280,
+   "title": "In Winter",
+   "original_title": "In Winter",
+   "year": "2026",
+   "poster_path": "/hUhtuTiLPTtkeJUwx1jwBf3Tij3.jpg",
+   "title_en": "In Winter"
+  },
+  "f013": {
+   "tmdb_id": 1630464,
+   "title": "克拉丽莎",
+   "original_title": "Clarissa",
+   "year": "2026",
+   "poster_path": "/9qS8heXhQdLoyGsqZHHb3HkrK62.jpg",
+   "title_en": "Clarissa"
+  },
+  "f014": {
+   "tmdb_id": 1370191,
+   "title": "Tender Loving Care",
+   "original_title": "Tender Loving Care",
+   "year": "2026",
+   "poster_path": "/iPwhnonUlzcHKLvqJyqvtBNUZRF.jpg",
+   "title_en": "Tender Loving Care"
+  },
+  "f015": {
+   "tmdb_id": 947493,
+   "title": "Le Corset",
+   "original_title": "Le Corset",
+   "year": "2026",
+   "poster_path": "/h4YDklaLjbgdu9yUr6vNybnrnzX.jpg",
+   "title_en": "Iron Boy"
+  },
+  "f016": {
+   "tmdb_id": 1632188,
+   "title": "Il fuoco che ti porti dentro",
+   "original_title": "Il fuoco che ti porti dentro",
+   "year": "2026",
+   "poster_path": "/sYQCImkNLmZ9aQNBOWxl8q61W1Y.jpg",
+   "title_en": "The Fire Within You"
+  },
+  "f017": {
+   "tmdb_id": 1665527,
+   "title": "Hope",
+   "original_title": "Hope",
+   "year": "2026",
+   "poster_path": "",
+   "title_en": "HOPE"
+  },
+  "f018": {
+   "tmdb_id": 1483525,
+   "title": "可能的爱情",
+   "original_title": "가능한 사랑",
+   "year": "2026",
+   "poster_path": "/afov480Y30WBDhb9OwOFdgAtcOQ.jpg",
+   "title_en": "Possible Love"
+  },
+  "f019": {
+   "tmdb_id": 1102883,
+   "title": "圣母玛利亚",
+   "original_title": "Mother Mary",
+   "year": "2026",
+   "poster_path": "/foWF3bZCc7830Kx7Ms7OFN4fwN3.jpg",
+   "title_en": "Mother Mary"
+  },
+  "f020": {
+   "tmdb_id": 271789,
+   "title": "捕鲸猎人",
+   "original_title": "고래사냥",
+   "year": "1984",
+   "poster_path": "/cMizehQ8XZXNBXPG2coU06OKz2r.jpg",
+   "title_en": "Whale Hunting"
+  },
+  "f021": {
+   "tmdb_id": 265340,
+   "title": "刮风的好日子",
+   "original_title": "바람불어 좋은 날",
+   "year": "1980",
+   "poster_path": "/uHhEOlLSEEMqtZHGLp7OwEcYQ85.jpg",
+   "title_en": "A Fine, Windy Day"
+  },
+  "f022": {
+   "tmdb_id": 200482,
+   "title": "白色战争",
+   "original_title": "하얀전쟁",
+   "year": "1992",
+   "poster_path": "/4vFhK8i4YUT5AuUBtF3wUbLf9LB.jpg",
+   "title_en": "White Badge"
+  },
+  "f023": {
+   "tmdb_id": 257638,
+   "title": "七洙和万洙",
+   "original_title": "칠수와 만수",
+   "year": "1988",
+   "poster_path": "/wYXaJPj5j438jZMOT8BZlmgu5v8.jpg",
+   "title_en": "Chil-su and Man-su"
+  },
+  "f024": {
+   "tmdb_id": 131964,
+   "title": "搞笑演员",
+   "original_title": "개그맨",
+   "year": "1989",
+   "poster_path": "/gCaH1o0qTWxNa8ZgJceJOYnB34X.jpg",
+   "title_en": "Gagman"
+  },
+  "f025": {
+   "tmdb_id": 1401459,
+   "title": "峡湾",
+   "original_title": "Fjord",
+   "year": "2026",
+   "poster_path": "/whXX6V7UdBcIrTsgdDTOEhqqwfU.jpg",
+   "title_en": "Fjord"
+  },
+  "f026": {
+   "tmdb_id": 1536433,
+   "title": "Chicas tristes",
+   "original_title": "Chicas tristes",
+   "year": "2026",
+   "poster_path": "/uBuKmFb6lpqvL1a1TeqP6NmOTHP.jpg",
+   "title_en": "Sad Girlz"
+  },
+  "f027": {
+   "tmdb_id": 1417935,
+   "title": "菲律宾女孩",
+   "original_title": "Filipiñana",
+   "year": "2026",
+   "poster_path": "/pe0MudvC8VOoTtAMCTIfHqrRo8o.jpg",
+   "title_en": "Filipiñana"
+  },
+  "f028": {
+   "tmdb_id": null,
+   "title_en": "The Burning Giants"
+  },
+  "f029": {
+   "tmdb_id": 1736513,
+   "title": "Union Town",
+   "original_title": "Union Town",
+   "year": "2026",
+   "poster_path": "/wxaSeSZ2BCHxfeJTCZ88zjbs4EX.jpg",
+   "title_en": "Union Town"
+  },
+  "f030": {
+   "tmdb_id": 1336116,
+   "title": "日光",
+   "original_title": "日光",
+   "year": "2026",
+   "poster_path": "/1hTW3bnKafnwgbtonQM3DYnxRPr.jpg",
+   "title_en": "Will You Still Be My Friend"
+  },
+  "f031": {
+   "tmdb_id": 42994,
+   "title": "回忆三部曲",
+   "original_title": "MEMORIES",
+   "year": "1995",
+   "poster_path": "/n3KppMhmN3eFY669z4keqMP6sB3.jpg",
+   "title_en": "MEMORIES"
+  },
+  "f032": {
+   "tmdb_id": 1444454,
+   "title": "疯癫老人日记",
+   "original_title": "Diary of a Mad Old Man",
+   "year": "2026",
+   "poster_path": "/oJopGw7Hetu7BYS3kDiVnHHUQJo.jpg",
+   "title_en": "Diary of a Mad Old Man"
+  },
+  "f033": {
+   "tmdb_id": 1496928,
+   "title": "我们是外星人",
+   "original_title": "我々は宇宙人",
+   "year": "2026",
+   "poster_path": "/pDq9lDGluzgbvS3lYbyLKnKo0mu.jpg",
+   "title_en": "We Are Aliens"
+  },
+  "f034": {
+   "tmdb_id": 1759822,
+   "title": "薔薇の鎖",
+   "original_title": "薔薇の鎖",
+   "year": "2026",
+   "poster_path": "/tkirCF3QYuKWnIJBUxxnbHlPFuN.jpg",
+   "title_en": "The Chain of Roses"
+  },
+  "f035": {
+   "tmdb_id": 1595346,
+   "title": "Zi",
+   "original_title": "Zi",
+   "year": "2026",
+   "poster_path": "/9mv0iOsYH0OafmE0PHrjwt9hBvL.jpg",
+   "title_en": "zi"
+  },
+  "f036": {
+   "tmdb_id": 1658272,
+   "title": "幸福快樂的日子",
+   "original_title": "幸福快樂的日子",
+   "year": "2026",
+   "poster_path": "/pdUYfzuv1UBYKuAYjOCqtSv4RsY.jpg",
+   "title_en": "Happily Ever After"
+  },
+  "f037": {
+   "tmdb_id": 1617774,
+   "title": "사피엔스",
+   "original_title": "사피엔스",
+   "year": "2026",
+   "poster_path": "/tZZrU3JuPNA6AUlvIbJsO3ouLn9.jpg",
+   "title_en": "Sapiens"
+  },
+  "f038": {
+   "tmdb_id": 1265831,
+   "title": "夏日红岩",
+   "original_title": "Les Roches Rouges",
+   "year": "2026",
+   "poster_path": "/6q3zCTkbrHw0AhdfWtK0mTQW9tP.jpg",
+   "title_en": "Red Rocks"
+  },
+  "f039": {
+   "tmdb_id": 1429713,
+   "title": "魂淡",
+   "original_title": "Bucking Fastard",
+   "year": "2026",
+   "poster_path": "/6NVZPz2tkFkIYYX1Ji26vesxhR5.jpg",
+   "title_en": "Bucking Fastard"
+  },
+  "f040": {
+   "tmdb_id": 1662776,
+   "title": "Thính Giác",
+   "original_title": "Thính Giác",
+   "year": "2026",
+   "poster_path": "/ubRPVxziDoeSzbA6Xnzl5zMEYUo.jpg",
+   "title_en": "Hearing"
+  },
+  "f041": {
+   "tmdb_id": 1626386,
+   "title": "Head to Head",
+   "original_title": "Head to Head",
+   "year": "2026",
+   "poster_path": "/3wYLa4fBeLNrmIw3ZjbLrZ1iFTL.jpg",
+   "title_en": "Head to Head"
+  },
+  "f042": {
+   "tmdb_id": 1083624,
+   "title": "수능, 출제의 비밀",
+   "original_title": "수능, 출제의 비밀",
+   "year": "2026",
+   "poster_path": "/i8DFsZWKN6P5uRHqPNjiWHEt04v.jpg",
+   "title_en": "Ugly Duckling Ms. Maeng"
+  },
+  "f043": {
+   "tmdb_id": 1503762,
+   "title": "理智与情感",
+   "original_title": "Sense and Sensibility",
+   "year": "2026",
+   "poster_path": "/czsyPHosFNbh4PPqXfqWu1aBXnA.jpg",
+   "title_en": "Sense and Sensibility"
+  },
+  "f044": {
+   "tmdb_id": 1658244,
+   "title": "Time and Tide",
+   "original_title": "Time and Tide",
+   "year": "2026",
+   "poster_path": "/rJeVptmv0dz47s84SUTdN6J8xUA.jpg",
+   "title_en": "Time and Tide"
+  },
+  "f045": {
+   "tmdb_id": null,
+   "title_en": "Dead-End Job"
+  },
+  "f046": {
+   "tmdb_id": 1701900,
+   "title": "Sinner",
+   "original_title": "Sinner",
+   "year": "2026",
+   "poster_path": "/5BDBoD6eu0rQvuB8LT2zMpUfHh4.jpg",
+   "title_en": "SINNER"
+  },
+  "f047": {
+   "tmdb_id": 750334,
+   "title": "郑家牧场",
+   "original_title": "정가네",
+   "year": "2026",
+   "poster_path": "/u5Kdh0X6vsggOzBUFIMjttdtlni.jpg",
+   "title_en": "Cattle Run"
+  },
+  "f048": {
+   "tmdb_id": 1473148,
+   "title": "温柔的怪物",
+   "original_title": "Gentle Monster",
+   "year": "2026",
+   "poster_path": "/jX0i2WufQ8mbPpktylUOGPEyRXb.jpg",
+   "title_en": "Gentle Monster"
+  },
+  "f049": {
+   "tmdb_id": 1472813,
+   "title": "女仆日记",
+   "original_title": "Le Journal d'une femme de chambre",
+   "year": "2026",
+   "poster_path": "/iKDaYgc0crkad8jlu668Fkk3QaL.jpg",
+   "title_en": "The Diary of a Chambermaid"
+  },
+  "f050": {
+   "tmdb_id": 1728590,
+   "title": "无处安放我的双眼",
+   "original_title": "눈 둘 데가 없네",
+   "year": "2026",
+   "poster_path": "/2c0g7UABkH4d1LsdXRTUsrnfaww.jpg",
+   "title_en": "Nowhere to Lay My Eyes"
+  },
+  "f051": {
+   "tmdb_id": 21712,
+   "title": "心理游戏",
+   "original_title": "マインド・ゲーム",
+   "year": "2004",
+   "poster_path": "/isHiNM9yoHuW2AvcewNdIoSLFiw.jpg",
+   "title_en": "MIND GAME"
+  },
+  "f052": {
+   "tmdb_id": 1448971,
+   "title": "奈义日记",
+   "original_title": "ナギダイアリー",
+   "year": "2026",
+   "poster_path": "/i5BgsFxypyz3ml3oiMUxODI5Agc.jpg",
+   "title_en": "Nagi Notes"
+  },
+  "f053": {
+   "tmdb_id": 1545057,
+   "title": "최종면접",
+   "original_title": "최종면접",
+   "year": "2026",
+   "poster_path": "/o7P9Def0bRWCTuO62C0OR8s9rZm.jpg",
+   "title_en": "Final Interview"
+  },
+  "f054": {
+   "tmdb_id": null,
+   "title_en": "The Blue Road"
+  },
+  "f055": {
+   "tmdb_id": 1380417,
+   "title": "不择手段",
+   "original_title": "By Any Means",
+   "year": "2026",
+   "poster_path": "/f4hdIed8vh10O8TkQ1CkHS8MQ3G.jpg",
+   "title_en": "By Any Means"
+  },
+  "f056": {
+   "tmdb_id": 1437981,
+   "title": "懦夫",
+   "original_title": "Coward",
+   "year": "2026",
+   "poster_path": "/AjgJ4yHrkQjKtl48E8X2VwxB78D.jpg",
+   "title_en": "Coward"
+  },
+  "f057": {
+   "tmdb_id": 1364629,
+   "title": "无名女孩",
+   "original_title": "无名女孩",
+   "year": "2027",
+   "poster_path": "/5A1dG9Plbr5OkSNVrZqRsDKeoc5.jpg",
+   "title_en": "A Girl Unknown"
+  },
+  "f058": {
+   "tmdb_id": 1736492,
+   "title": "故事",
+   "original_title": "故事",
+   "year": "2026",
+   "poster_path": "/nQH3dVNI7iTjvVuymfjuizg4Gws.jpg",
+   "title_en": "Gu Shi"
+  },
+  "f059": {
+   "tmdb_id": 64777,
+   "title": "白蛇传",
+   "original_title": "白蛇伝",
+   "year": "1958",
+   "poster_path": "/iOKNSDEJhg8jm3nfRL7JN3UtVk3.jpg",
+   "title_en": "The White Snake Enchantress"
+  },
+  "f060": {
+   "tmdb_id": 1470198,
+   "title": "贝德福德公园",
+   "original_title": "Bedford Park",
+   "year": "2026",
+   "poster_path": "/afH14yQ0xwyalCy3AyZrhQpRZyB.jpg",
+   "title_en": "Bedford Park"
+  },
+  "f061": {
+   "tmdb_id": null,
+   "title_en": "Campeón Gabacho"
+  },
+  "f062": {
+   "tmdb_id": null,
+   "title_en": "Four Seasons in Java"
+  },
+  "f063": {
+   "tmdb_id": 1241574,
+   "title": "男人没有好东西",
+   "original_title": "Kabul Jan",
+   "year": "2026",
+   "poster_path": "/xe3JxueDjAj3h6qFkb07Yjt1w7c.jpg",
+   "title_en": "No Good Men"
+  },
+  "f064": {
+   "tmdb_id": 1046304,
+   "title": "九庙上天堂",
+   "original_title": "9 วัด สู่สวรรค์",
+   "year": "2026",
+   "poster_path": "/9nBRqy5RS3HP9ru86ySVOB0PcqB.jpg",
+   "title_en": "9 Temples to Heaven"
+  },
+  "f065": {
+   "tmdb_id": 1410955,
+   "title": "皎洁迎宵之月",
+   "original_title": "うるわしの宵の月",
+   "year": "2026",
+   "poster_path": "/lZ2PWXRx5ciuPz4jdvmXalxtVvt.jpg",
+   "title_en": "In the Clear Moonlit Dusk"
+  },
+  "f066": {
+   "tmdb_id": 1620963,
+   "title": "剃刀",
+   "original_title": "면도",
+   "year": "2026",
+   "poster_path": "/l0ATP4s7DhdYQCrDTGmz8YKkcdf.jpg",
+   "title_en": "Shaving"
+  },
+  "f067": {
+   "tmdb_id": 1590909,
+   "title": "IBUKU",
+   "original_title": "IBUKU",
+   "year": "2026",
+   "poster_path": "/zYwxtzF9wIAPybLfU4s7sADX3ZG.jpg",
+   "title_en": "IBUKU"
+  },
+  "f068": {
+   "tmdb_id": 1619996,
+   "title": "긴긴밤",
+   "original_title": "긴긴밤",
+   "year": "2026",
+   "poster_path": "/9UT3G7Dxfvd08UVJJ9QkHD7Grv8.jpg",
+   "title_en": "Long Long Night"
+  },
+  "f069": {
+   "tmdb_id": null,
+   "title_en": "ghost – end of night"
+  },
+  "f070": {
+   "tmdb_id": 1706729,
+   "title": "Gæsten",
+   "original_title": "Gæsten",
+   "year": "2026",
+   "poster_path": "/Agpqn5YurARQJiwZlnLLO29bwQn.jpg",
+   "title_en": "The Guest"
+  },
+  "f071": {
+   "tmdb_id": 1458914,
+   "title": "我爱的男人",
+   "original_title": "The Man I Love",
+   "year": "2027",
+   "poster_path": "/qIZ8pQ5nQjRKDtmsl0DYGO1nCQ.jpg",
+   "title_en": "The Man I Love"
+  },
+  "f072": {
+   "tmdb_id": 1603305,
+   "title": "小姐",
+   "original_title": "Making of The Handmaiden",
+   "year": "2016",
+   "poster_path": "/oLALU5qhYbz995SfcSbrxE2zmYM.jpg",
+   "title_en": "The Handmaiden"
+  },
+  "f073": {
+   "tmdb_id": 1378791,
+   "title": "人人都爱比尔·埃文斯",
+   "original_title": "Everybody Digs Bill Evans",
+   "year": "2026",
+   "poster_path": "/zXZel9xntywX8PV7GgeP5fRYH33.jpg",
+   "title_en": "Everybody Digs Bill Evans"
+  },
+  "f074": {
+   "tmdb_id": 1616166,
+   "title": "Not a Hero",
+   "original_title": "Not a Hero",
+   "year": "2026",
+   "poster_path": "/2vplLqjKa3PZBsOKIP80xt4u0By.jpg",
+   "title_en": "Not a Hero"
+  },
+  "f075": {
+   "tmdb_id": 1001405,
+   "title": "L'Espèce explosive",
+   "original_title": "L'Espèce explosive",
+   "year": "2026",
+   "poster_path": "/vKn8iEridbzuPBtTp8ZX4yKmRmS.jpg",
+   "title_en": "Too Many Beasts"
+  },
+  "f076": {
+   "tmdb_id": 1437696,
+   "title": "故土",
+   "original_title": "Ojczyzna",
+   "year": "2026",
+   "poster_path": "/7VjwmvDG5mksJBXMcmK6PudqH88.jpg",
+   "title_en": "Fatherland"
+  },
+  "f077": {
+   "tmdb_id": 1315657,
+   "title": "告知信",
+   "original_title": "Gelbe Briefe",
+   "year": "2026",
+   "poster_path": "/va42wHDLicckZqCjHpDRi6yb4gp.jpg",
+   "title_en": "Yellow Letters"
+  },
+  "f078": {
+   "tmdb_id": 1473553,
+   "title": "歡迎來到朵莉之家",
+   "original_title": "歡迎來到朵莉之家",
+   "year": "2026",
+   "poster_path": "/bh7u42Po7j9pvvCNsEKDn9c5mC8.jpg",
+   "title_en": "Welcome to Dolly′s House"
+  },
+  "f079": {
+   "tmdb_id": null,
+   "title_en": "Rehearsals for a Revolution"
+  },
+  "f080": {
+   "tmdb_id": 1154730,
+   "title": "行走之人",
+   "original_title": "La Gradiva",
+   "year": "2026",
+   "poster_path": "/3RkRk4jA4WyH3wLy9BGYvofPulU.jpg",
+   "title_en": "La Gradiva"
+  },
+  "f081": {
+   "tmdb_id": 1405200,
+   "title": "Ben'Imana",
+   "original_title": "Ben'Imana",
+   "year": "2027",
+   "poster_path": "/qUBear4cXvzYMEx7WzpUIW8yLJ4.jpg",
+   "title_en": "Ben′imana"
+  },
+  "f082": {
+   "tmdb_id": null,
+   "title_en": "Dhara"
+  },
+  "f083": {
+   "tmdb_id": 1736323,
+   "title": "Salvation",
+   "original_title": "Salvation",
+   "year": "2026",
+   "poster_path": "/1cu2jp2zha4ggjCPkJZzHWceEtV.jpg",
+   "title_en": "Salvation"
+  },
+  "f084": {
+   "tmdb_id": null,
+   "title_en": "Revolving Lanterns"
+  },
+  "f085": {
+   "tmdb_id": null,
+   "title_en": "The Soul Whisperer"
+  },
+  "f086": {
+   "tmdb_id": 1562901,
+   "title": "谎言生活",
+   "original_title": "謊言生活",
+   "year": "2026",
+   "poster_path": "/rd4jfiOqSZxyfffUgx1YXfHcJyb.jpg",
+   "title_en": "Big Little Things"
+  },
+  "f087": {
+   "tmdb_id": 1000843,
+   "title": "Titanic Ocean",
+   "original_title": "Titanic Ocean",
+   "year": "2026",
+   "poster_path": "/1tv0zJ5fPtvll6VX1dZLtLTP7dJ.jpg",
+   "title_en": "Titanic Ocean"
+  },
+  "f088": {
+   "tmdb_id": 108,
+   "title": "蓝白红三部曲之蓝",
+   "original_title": "Trois couleurs : Bleu",
+   "year": "1993",
+   "poster_path": "/xEdaNgO9HxlcEmhQYHKwRpCovyP.jpg",
+   "title_en": "Three Colours: Blue"
+  },
+  "f089": {
+   "tmdb_id": 1736478,
+   "title": "Makikiraan po",
+   "original_title": "Makikiraan po",
+   "year": "2026",
+   "poster_path": "/1LCbsi1Djz1yp1aJPM4Zr6PklLC.jpg",
+   "title_en": "Let Us Through, Dear Ancestors"
+  },
+  "f090": {
+   "tmdb_id": 1088548,
+   "title": "苦涩的圣诞节",
+   "original_title": "Amarga Navidad",
+   "year": "2026",
+   "poster_path": "/hzbolgdNCYiqOuM1GonZL9jNys.jpg",
+   "title_en": "Bitter Christmas"
+  },
+  "f091": {
+   "tmdb_id": 1694201,
+   "title": "Föa",
+   "original_title": "Föa",
+   "year": "2026",
+   "poster_path": "/8S9N2UWB5q97lDZvXV5ubofKQQm.jpg",
+   "title_en": "Föa - Once Upon A Future"
+  },
+  "f092": {
+   "tmdb_id": 1430815,
+   "title": "Un bon petit soldat",
+   "original_title": "Un bon petit soldat",
+   "year": "2026",
+   "poster_path": "/8PbPm4pnl6uepMQHaJLQYP1d8tj.jpg",
+   "title_en": "A Good Little Soldier"
+  },
+  "f093": {
+   "tmdb_id": null,
+   "title_en": "About an Intimate Matter"
+  },
+  "f094": {
+   "tmdb_id": 947502,
+   "title": "In Waves",
+   "original_title": "In Waves",
+   "year": "2026",
+   "poster_path": "/3z3gZ6faikQ81EM19zTX4lHfpwL.jpg",
+   "title_en": "In Waves"
+  },
+  "f095": {
+   "tmdb_id": 1534221,
+   "title": "A Long Winter",
+   "original_title": "A Long Winter",
+   "year": "2027",
+   "poster_path": "/dHeu7wMp9A5BuSJZvOi7gKBMilv.jpg",
+   "title_en": "A Long Winter"
+  },
+  "f096": {
+   "tmdb_id": 1021848,
+   "title": "茫然女王",
+   "original_title": "Queen at Sea",
+   "year": "2026",
+   "poster_path": "/iGfTwhMYMLd1z81AO3d1MHVTCbP.jpg",
+   "title_en": "Queen at Sea"
+  },
+  "f097": {
+   "tmdb_id": 1652642,
+   "title": "여전히 찬란하게",
+   "original_title": "여전히 찬란하게",
+   "year": "2026",
+   "poster_path": "/aqQNIHJaE3sIWWWvQPSZDLMvnj5.jpg",
+   "title_en": "Still Shining"
+  },
+  "f098": {
+   "tmdb_id": 1352304,
+   "title": "Adieu Monde Cruel",
+   "original_title": "Adieu Monde Cruel",
+   "year": "2026",
+   "poster_path": "/xH1qX01mmzkuS3kkRrV7zRHanbU.jpg",
+   "title_en": "Goodbye Cruel World"
+  },
+  "f099": {
+   "tmdb_id": 1540060,
+   "title": "세대유감",
+   "original_title": "세대유감",
+   "year": "2026",
+   "poster_path": "/qR2aSRCgBkIaazvagkFpjZF6Gmt.jpg",
+   "title_en": "The Sorry Generation"
+  },
+  "f100": {
+   "tmdb_id": 891621,
+   "title": "野马九号",
+   "original_title": "Wild Horse Nine",
+   "year": "2026",
+   "poster_path": "/dNJFRtVg3xLQ7dbNIQ55cmmIniD.jpg",
+   "title_en": "Wild Horse Nine"
+  },
+  "f101": {
+   "tmdb_id": null,
+   "title_en": "From Inside Out - The Architecture of Peter Zumthor"
+  },
+  "f102": {
+   "tmdb_id": 1429602,
+   "title": "15/18",
+   "original_title": "15/18",
+   "year": "2026",
+   "poster_path": "/nlqZ62tEobENzeLxNUXANgz8XJa.jpg",
+   "title_en": "A Place to Heal"
+  },
+  "f103": {
+   "tmdb_id": 1550622,
+   "title": "La Perra",
+   "original_title": "La Perra",
+   "year": "2026",
+   "poster_path": "/7Vae9fo0r4nIWyeCahZu7wclCK8.jpg",
+   "title_en": "La Perra"
+  },
+  "f104": {
+   "tmdb_id": 1670563,
+   "title": "Merci d'être venu",
+   "original_title": "Merci d'être venu",
+   "year": "2026",
+   "poster_path": "/yu9NDS9t3GLcD3fwNXViagZkjU6.jpg",
+   "title_en": "Thanks for Coming"
+  },
+  "f105": {
+   "tmdb_id": 1576934,
+   "title": "The Echo Chamber",
+   "original_title": "The Echo Chamber",
+   "year": "2026",
+   "poster_path": "/xJvbcxyD8BN8tyr0XdlxRP4czzV.jpg",
+   "title_en": "The Echo Chamber"
+  },
+  "f106": {
+   "tmdb_id": 1563891,
+   "title": "Mariage au goût d'orange",
+   "original_title": "Mariage au goût d'orange",
+   "year": "2026",
+   "poster_path": "/xKcS1CVqOK1AgCjkb8Vcgja9FPA.jpg",
+   "title_en": "Orange-Flavoured Wedding"
+  },
+  "f107": {
+   "tmdb_id": 1001375,
+   "title": "归于尘埃",
+   "original_title": "Dust",
+   "year": "2026",
+   "poster_path": "/xNkRIt4QSMUdoAWrjaIyVW30b9X.jpg",
+   "title_en": "Dust"
+  },
+  "f108": {
+   "tmdb_id": 1499546,
+   "title": "Succederà questa notte",
+   "original_title": "Succederà questa notte",
+   "year": "2026",
+   "poster_path": "/z4WYphWimZ6bjWnaHBRKXeggSp6.jpg",
+   "title_en": "It Will Happen Tonight"
+  },
+  "f109": {
+   "tmdb_id": null,
+   "title_en": "The Scar-Faced Cat: Way of Asura"
+  },
+  "f110": {
+   "tmdb_id": 22504,
+   "title": "国王与小鸟",
+   "original_title": "Le Roi et l'Oiseau",
+   "year": "1980",
+   "poster_path": "/8LlM0gtrwmzmf9z9RvhWvOOl2WE.jpg",
+   "title_en": "The King and the Mockingbird"
+  },
+  "f111": {
+   "tmdb_id": 1677235,
+   "title": "殺人の門",
+   "original_title": "殺人の門",
+   "year": "2027",
+   "poster_path": "/reKfPJre09EH3ori1G7hmIK62cV.jpg",
+   "title_en": "The Gate of Murder"
+  },
+  "f112": {
+   "tmdb_id": 1699532,
+   "title": "Lovers in the Blue Night",
+   "original_title": "Lovers in the Blue Night",
+   "year": "2026",
+   "poster_path": "/6DZ5wxRxWbgXNCRl9cr9WlIv4Cm.jpg",
+   "title_en": "Lovers in the Blue Night"
+  },
+  "f113": {
+   "tmdb_id": null,
+   "title_en": "Spirit Guardians: The Last Secret Of The First Emperor"
+  },
+  "f114": {
+   "tmdb_id": 1661926,
+   "title": "雾中的大象",
+   "original_title": "तिनीहरू",
+   "year": "2026",
+   "poster_path": "/uusQ1AJdL3ZiwF5MB6Ie6pec2r3.jpg",
+   "title_en": "Elephants in the Fog"
+  },
+  "f115": {
+   "tmdb_id": 1412795,
+   "title": "L'estranea",
+   "original_title": "L'estranea",
+   "year": "2026",
+   "poster_path": "/6GisyPsQBvnpgMKXqtPuwJqpZzl.jpg",
+   "title_en": "The Spiral"
+  },
+  "f116": {
+   "tmdb_id": 1279865,
+   "title": "花绿青绽放之日",
+   "original_title": "花緑青が明ける日に",
+   "year": "2026",
+   "poster_path": "/vjQdrAGPvLhEuwVo1Bk6BglODGE.jpg",
+   "title_en": "A New Dawn"
+  },
+  "f117": {
+   "tmdb_id": 1506653,
+   "title": "朵拉",
+   "original_title": "도라",
+   "year": "2026",
+   "poster_path": "/9dP3vze6K4zXfg23CONkJ7KEBZd.jpg",
+   "title_en": "Dora"
+  },
+  "f118": {
+   "tmdb_id": null,
+   "title_en": "Midday Meal"
+  },
+  "f119": {
+   "tmdb_id": 9659,
+   "title": "疯狂的麦克斯",
+   "original_title": "Mad Max",
+   "year": "1979",
+   "poster_path": "/dKrXmgXOh8kwcoM3innR5Epvmaa.jpg",
+   "title_en": "Mad Max"
+  },
+  "f120": {
+   "tmdb_id": null,
+   "title_en": "Deep Blue"
+  },
+  "f121": {
+   "tmdb_id": 1157869,
+   "title": "平行故事",
+   "original_title": "Histoires parallèles",
+   "year": "2026",
+   "poster_path": "/9VAKwQ0wbafwfyOusX3RF3K0bC8.jpg",
+   "title_en": "Parallel Tales"
+  },
+  "f122": {
+   "tmdb_id": 1318864,
+   "title": "我们的救赎",
+   "original_title": "Notre salut",
+   "year": "2026",
+   "poster_path": "/tFzSSetNzvdaxms6RLfr2pyu9sM.jpg",
+   "title_en": "A Man of His Time"
+  },
+  "f123": {
+   "tmdb_id": null,
+   "title_en": "Selvi"
+  },
+  "f124": {
+   "tmdb_id": null,
+   "title_en": "After the Song"
+  },
+  "f125": {
+   "tmdb_id": null,
+   "title_en": "The Cord"
+  },
+  "f126": {
+   "tmdb_id": 1585239,
+   "title": "夜店小子",
+   "original_title": "Club Kid",
+   "year": "2026",
+   "poster_path": "/3CdM37GtEDMAp7fGlRn9MCpFjn1.jpg",
+   "title_en": "Club Kid"
+  },
+  "f127": {
+   "tmdb_id": 848700,
+   "title": "米诺陶",
+   "original_title": "Minotaure",
+   "year": "2026",
+   "poster_path": "/7XH2vaVsishBS0GuCgO3bOXfCaB.jpg",
+   "title_en": "Minotaur"
+  },
+  "f128": {
+   "tmdb_id": 9606,
+   "title": "大都会",
+   "original_title": "メトロポリス",
+   "year": "2001",
+   "poster_path": "/tOehVz3MhBhzvpvizEnsC8Gylo1.jpg",
+   "title_en": "Metropolis"
+  },
+  "f129": {
+   "tmdb_id": 1437925,
+   "title": "穆兰",
+   "original_title": "Moulin",
+   "year": "2026",
+   "poster_path": "/niEnEAPjqc2Mey6IiVPtBun45ZV.jpg",
+   "title_en": "Moulin"
+  },
+  "f130": {
+   "tmdb_id": 1667643,
+   "title": "The Unknown",
+   "original_title": "The Unknown",
+   "year": "2026",
+   "poster_path": "/cUp9YRHmqRsWiebGHP3T06nY68t.jpg",
+   "title_en": "The Unknown"
+  },
+  "f131": {
+   "tmdb_id": null,
+   "title_en": "AGAAR"
+  },
+  "f132": {
+   "tmdb_id": 1391640,
+   "title": "58th",
+   "original_title": "58th",
+   "year": "2026",
+   "poster_path": "/ysN4Q48ffto3saLTpql4qxYlma3.jpg",
+   "title_en": "58th"
+  },
+  "f133": {
+   "tmdb_id": 1759792,
+   "title": "어크로스: 전쟁은 어떻게 잊혀지는가",
+   "original_title": "어크로스: 전쟁은 어떻게 잊혀지는가",
+   "year": "2026",
+   "poster_path": "/7OiYxXjDp1Dxq6Nc7wFzlVAsTdn.jpg",
+   "title_en": "ACROSS: Anatomy of the Forgotten War"
+  },
+  "f134": {
+   "tmdb_id": 1759813,
+   "title": "권진규: 예술가의 일생",
+   "original_title": "권진규: 예술가의 일생",
+   "year": "2026",
+   "poster_path": "/1nowHVovyasQr5fD2cGWOCojyIt.jpg",
+   "title_en": "A Life of an Artist: Kwon Jinkyu"
+  },
+  "f135": {
+   "tmdb_id": 1759811,
+   "title": "김윤신은 미술관에 없다",
+   "original_title": "김윤신은 미술관에 없다",
+   "year": "2026",
+   "poster_path": "/pC8iRf1ZlyQlg9X2Ab0SuScmDGG.jpg",
+   "title_en": "Kim Yun Shin Punches In"
+  },
+  "f136": {
+   "tmdb_id": 1759854,
+   "title": "안녕, 스텔라",
+   "original_title": "안녕, 스텔라",
+   "year": "2026",
+   "poster_path": "/gBxEO2msy45LTrWs3MA7j2to9eq.jpg",
+   "title_en": "Annyeong, Stellar"
+  },
+  "f137": {
+   "tmdb_id": 1596322,
+   "title": "Birds of War",
+   "original_title": "Birds of War",
+   "year": "2026",
+   "poster_path": "/nnnFSJCrKfgb2oMVdwxiURKcEYz.jpg",
+   "title_en": "Birds of War"
+  },
+  "f138": {
+   "tmdb_id": 1675132,
+   "title": "파도 위에서 춤추는 여자",
+   "original_title": "파도 위에서 춤추는 여자",
+   "year": "2026",
+   "poster_path": "/mkXaTQVKLRITOLwUZX81JE2BQnx.jpg",
+   "title_en": "A Woman Dancing on the Waves"
+  },
+  "f139": {
+   "tmdb_id": null,
+   "title_en": "Some Detective"
+  },
+  "f140": {
+   "tmdb_id": 1625465,
+   "title": "베일러",
+   "original_title": "베일러",
+   "year": "2026",
+   "poster_path": "/ie6BfIIIgkauNG1Ucj8dldV2ifd.jpg",
+   "title_en": "BALER"
+  },
+  "f141": {
+   "tmdb_id": 1640158,
+   "title": "귀벌레",
+   "original_title": "귀벌레",
+   "year": "2026",
+   "poster_path": "/bv2tq0mvtq1iC5aDhTdbSoU0YM1.jpg",
+   "title_en": "Earbug"
+  },
+  "f142": {
+   "tmdb_id": 1736461,
+   "title": "Cudze rzeczy",
+   "original_title": "Cudze rzeczy",
+   "year": "2026",
+   "poster_path": "/9LJ1yYtajZIOJSvTpASTbrqPTzb.jpg",
+   "title_en": "What Belongs to Others"
+  },
+  "f143": {
+   "tmdb_id": 1210268,
+   "title": "冰释雪融",
+   "original_title": "El deshielo",
+   "year": "2026",
+   "poster_path": "/qia4SpH0shPlNboorBgbFnfIhKf.jpg",
+   "title_en": "The Meltdown"
+  },
+  "f144": {
+   "tmdb_id": 1418816,
+   "title": "Em bé đồng bóng, em bé ngạo nghễ và em bé đau lòng",
+   "original_title": "Em bé đồng bóng, em bé ngạo nghễ và em bé đau lòng",
+   "year": "2026",
+   "poster_path": "/bxGVaLMog8f2MuCd3LDYFufCvXU.jpg",
+   "title_en": "Baby Jackfruit Baby Guava"
+  },
+  "f145": {
+   "tmdb_id": null,
+   "title_en": "Dreams of the Wild Oaks"
+  },
+  "f146": {
+   "tmdb_id": 1759459,
+   "title": "Khoriya",
+   "original_title": "Khoriya",
+   "year": "2026",
+   "poster_path": "/p5cltppnldYCEXGAKYuBcAPH0t9.jpg",
+   "title_en": "Khoriya"
+  },
+  "f147": {
+   "tmdb_id": 1754755,
+   "title": "아직 아무 일도 일어나지 않은",
+   "original_title": "아직 아무 일도 일어나지 않은",
+   "year": "2026",
+   "poster_path": "/pByhkud9wwimeJztyuis0F3lTZk.jpg",
+   "title_en": "Nothing Has Happened Yet"
+  },
+  "f148": {
+   "tmdb_id": null,
+   "title_en": "Not for You"
+  },
+  "f149": {
+   "tmdb_id": 1640160,
+   "title": "화곡사",
+   "original_title": "화곡사",
+   "year": "2026",
+   "poster_path": "/khc1RTXTMIXh651ed7rX2NkmsBj.jpg",
+   "title_en": "The Flower"
+  },
+  "f150": {
+   "tmdb_id": null,
+   "title_en": "Can I Talk to You?"
+  },
+  "f151": {
+   "tmdb_id": 1404684,
+   "title": "Juste une illusion",
+   "original_title": "Juste une illusion",
+   "year": "2026",
+   "poster_path": "/eWPq3wSvJEMakESTXzaBECUNBYr.jpg",
+   "title_en": "Just an Illusion"
+  },
+  "f152": {
+   "tmdb_id": null,
+   "title_en": "The Remarried Empress"
+  },
+  "f153": {
+   "tmdb_id": null,
+   "title_en": "Viva Carmen"
+  },
+  "f154": {
+   "tmdb_id": 1510539,
+   "title": "Promised Spaces",
+   "original_title": "Promised Spaces",
+   "year": "2026",
+   "poster_path": "/yxjpudfZqh4ouAgtzGgUyeffOLh.jpg",
+   "title_en": "Promised Spaces"
+  },
+  "f155": {
+   "tmdb_id": 1754953,
+   "title": "소리그물",
+   "original_title": "소리그물",
+   "year": "2026",
+   "poster_path": "/ymPlLIVacvIX7HEzU28RBK1Bqpr.jpg",
+   "title_en": "Soundweave"
+  },
+  "f156": {
+   "tmdb_id": 1702861,
+   "title": "Homesick",
+   "original_title": "Homesick",
+   "year": "2026",
+   "poster_path": "/isGW1btyliBqIZRfHBcgqfb7rol.jpg",
+   "title_en": "Homesick"
+  },
+  "f157": {
+   "tmdb_id": 1607388,
+   "title": "Days",
+   "original_title": "Days",
+   "year": "2026",
+   "poster_path": "/ko9zccbmXaSOORdqA8XR8Xq9py3.jpg",
+   "title_en": "771 Days"
+  },
+  "f158": {
+   "tmdb_id": 1176962,
+   "title": "罗斯",
+   "original_title": "Rose",
+   "year": "2026",
+   "poster_path": "/c4p2lQ5JdubYmPiY1gyizOhSJ71.jpg",
+   "title_en": "Rose"
+  },
+  "f159": {
+   "tmdb_id": 1655419,
+   "title": "每时每刻",
+   "original_title": "Everytime",
+   "year": "2026",
+   "poster_path": "/bOEoQxzC74eGMGbSq6xW7eLZjWn.jpg",
+   "title_en": "Everytime"
+  },
+  "f160": {
+   "tmdb_id": 41549,
+   "title": "M",
+   "original_title": "M",
+   "year": "2007",
+   "poster_path": "/hvJC0SyAhaYp0mA1Dnkf4m6j8VZ.jpg",
+   "title_en": "M (4K Remastering)"
+  },
+  "f161": {
+   "tmdb_id": 1381273,
+   "title": "纸老虎",
+   "original_title": "Paper Tiger",
+   "year": "2026",
+   "poster_path": "/v023L1AFtd3rpy61B5JiEOR1sMF.jpg",
+   "title_en": "Paper Tiger"
+  },
+  "f162": {
+   "tmdb_id": null,
+   "title_en": "Hilol"
+  },
+  "f163": {
+   "tmdb_id": 1738677,
+   "title": "그날의 태주",
+   "original_title": "그날의 태주",
+   "year": "2026",
+   "poster_path": "/kl6Px2IQd0tGnY34WREi8qafK3a.jpg",
+   "title_en": "Beach Fictions"
+  },
+  "f164": {
+   "tmdb_id": 1759179,
+   "title": "银色快车",
+   "original_title": "シルバー・エクスプレス",
+   "year": "2026",
+   "poster_path": "/jOGlxJo4nr1SohOOgN87sIhnZFn.jpg",
+   "title_en": "silver express"
+  },
+  "f165": {
+   "tmdb_id": 1514891,
+   "title": "Mémoire de fille",
+   "original_title": "Mémoire de fille",
+   "year": "2026",
+   "poster_path": "/vmSnGjmeu5Ql42ZRo1RYU2HbB3C.jpg",
+   "title_en": "A Girl′s Story"
+  },
+  "f166": {
+   "tmdb_id": 1597199,
+   "title": "Ritorno a Buenos Aires",
+   "original_title": "Ritorno a Buenos Aires",
+   "year": "2026",
+   "poster_path": "/42yQnX3vuZkxSo44KmL051xCTKN.jpg",
+   "title_en": "Back to Buenos Aires"
+  },
+  "f167": {
+   "tmdb_id": 1409985,
+   "title": "Dead End",
+   "original_title": "Dead End",
+   "year": "2026",
+   "poster_path": "/iqJpNcqBnO63xqk3z1118bDFpfx.jpg",
+   "title_en": "Dead End"
+  },
+  "f168": {
+   "tmdb_id": null,
+   "title_en": "Hinotama: Ball of Fire"
+  },
+  "f169": {
+   "tmdb_id": 1379928,
+   "title": "Ria",
+   "original_title": "Ria",
+   "year": "2026",
+   "poster_path": "/w68Vri0rX3KCOW30SAS04eeqCRk.jpg",
+   "title_en": "Ria"
+  },
+  "f170": {
+   "tmdb_id": 44092,
+   "title": "剑雨",
+   "original_title": "剑雨",
+   "year": "2010",
+   "poster_path": "/fNSFl35PqSqc3vpkl0txC3eZLm0.jpg",
+   "title_en": "Reign of Assassins"
+  },
+  "f171": {
+   "tmdb_id": 1499071,
+   "title": "寒战1994",
+   "original_title": "寒戰1994",
+   "year": "2026",
+   "poster_path": "/8NaaLrhXbhuXmjndCKmgaJvLTb1.jpg",
+   "title_en": "Cold War 1994"
+  },
+  "f172": {
+   "tmdb_id": 1302994,
+   "title": "罗马流光",
+   "original_title": "Roma elastica",
+   "year": "2026",
+   "poster_path": "/xMkf1d2gDtagqFENfEN0oxjScXb.jpg",
+   "title_en": "Roma Elastica"
+  },
+  "f173": {
+   "tmdb_id": 1074074,
+   "title": "所爱之人",
+   "original_title": "El ser querido",
+   "year": "2026",
+   "poster_path": "/LdKLipXCdKHNXxUxn8l7UTdnXJ.jpg",
+   "title_en": "The Beloved"
+  },
+  "f174": {
+   "tmdb_id": 874510,
+   "title": "Colors of White Rock",
+   "original_title": "Colors of White Rock",
+   "year": "2026",
+   "poster_path": "/6zkjfoK4iUzoOZk34Hx2n6HDosw.jpg",
+   "title_en": "Colors of White Rock"
+  },
+  "f175": {
+   "tmdb_id": 1759806,
+   "title": "청춘길일",
+   "original_title": "청춘길일",
+   "year": "2026",
+   "poster_path": "/kJnQzlrwSaAlS3GgKcMn7GGX81t.jpg",
+   "title_en": "The Best Days"
+  },
+  "f176": {
+   "tmdb_id": 1510542,
+   "title": "Mia mera sti zoi tis Tzo: Kefalaio Faidra",
+   "original_title": "Mia mera sti zoi tis Tzo: Kefalaio Faidra",
+   "year": "2026",
+   "poster_path": "/c8bwi1QIqFCwgbGoIQ7PiVJm2Yo.jpg",
+   "title_en": "A Day in the Life of Jo: Chapter Phaedra"
+  },
+  "f177": {
+   "tmdb_id": null,
+   "title_en": "Birds in the Dark"
+  },
+  "f178": {
+   "tmdb_id": null,
+   "title_en": "Slumber"
+  },
+  "f179": {
+   "tmdb_id": null,
+   "title_en": "Bua"
+  },
+  "f180": {
+   "tmdb_id": 1759803,
+   "title": "리커버리",
+   "original_title": "리커버리",
+   "year": "2026",
+   "poster_path": "/r0kSyGcX5irrdeipL3YKLG6Tx0w.jpg",
+   "title_en": "Recovery"
+  },
+  "f181": {
+   "tmdb_id": null,
+   "title_en": "On the Road with Abbas Kiarostami"
+  },
+  "f182": {
+   "tmdb_id": 1498001,
+   "title": "새",
+   "original_title": "새",
+   "year": "2026",
+   "poster_path": "/ia54hSSj0jDwWuYll5ZIbS7EFCr.jpg",
+   "title_en": "The Birds"
+  },
+  "f183": {
+   "tmdb_id": 1652644,
+   "title": "풀문",
+   "original_title": "풀문",
+   "year": "2026",
+   "poster_path": "/zKunt7WMOMxGFG6zzjap6TF6cJ0.jpg",
+   "title_en": "FULL MOON"
+  },
+  "f184": {
+   "tmdb_id": 1455389,
+   "title": "우주의 흔적",
+   "original_title": "우주의 흔적",
+   "year": "2026",
+   "poster_path": "/5JzdmYBgOfmVSh1OUbBqhHE4V6J.jpg",
+   "title_en": "Cosmic Trace"
+  },
+  "f185": {
+   "tmdb_id": 1422041,
+   "title": "黑球",
+   "original_title": "La bola negra",
+   "year": "2026",
+   "poster_path": "/fIfT76e2MlZeht0rMp2ti4ihjHk.jpg",
+   "title_en": "La Bola Negra"
+  },
+  "f186": {
+   "tmdb_id": 1746959,
+   "title": "OASIS",
+   "original_title": "OASIS",
+   "year": "2026",
+   "poster_path": "/J9GctsceO1iPVedxFEtjQpViyz.jpg",
+   "title_en": "Oasis"
+  },
+  "f187": {
+   "tmdb_id": null,
+   "title_en": "Black Church Bay"
+  },
+  "f188": {
+   "tmdb_id": 1724831,
+   "title": "Eklipse",
+   "original_title": "Eklipse",
+   "year": "2026",
+   "poster_path": "/lUg40on46lGnLSvITablDllDQEc.jpg",
+   "title_en": "Eklipse"
+  },
+  "f189": {
+   "tmdb_id": 1759452,
+   "title": "Birds on Ice",
+   "original_title": "Birds on Ice",
+   "year": "2026",
+   "poster_path": "/dnyCVBE6BFdVRE1hupe3bQm1cAB.jpg",
+   "title_en": "Birds on Ice"
+  },
+  "f190": {
+   "tmdb_id": 1652639,
+   "title": "Space",
+   "original_title": "스페이스",
+   "year": "2026",
+   "poster_path": "/g9R8T6GrmQm3VQfiprkjgSE5TS9.jpg",
+   "title_en": "Space"
+  },
+  "f191": {
+   "tmdb_id": 1647236,
+   "title": "극장에 두고 온 것들",
+   "original_title": "극장에 두고 온 것들",
+   "year": "2026",
+   "poster_path": "/ieZHYE0kwakXZM2nBucHqlR3d1W.jpg",
+   "title_en": "Things I Left at the Theater"
+  },
+  "f192": {
+   "tmdb_id": 1754749,
+   "title": "사랑의 지평선 너머로",
+   "original_title": "사랑의 지평선 너머로",
+   "year": "2026",
+   "poster_path": "/58g2QZe8GXxQ9RbInHQujqHx3yI.jpg",
+   "title_en": "Beyond Love′s Horizon"
+  },
+  "f193": {
+   "tmdb_id": 748681,
+   "title": "The Violinist",
+   "original_title": "The Violinist",
+   "year": "2026",
+   "poster_path": "/uN5BghMmDD3fkhxi5wqVqEesgUf.jpg",
+   "title_en": "The Violinist"
+  },
+  "f194": {
+   "tmdb_id": 1312310,
+   "title": "Gabin",
+   "original_title": "Gabin",
+   "year": "2026",
+   "poster_path": "/cVEnzhnfFvfwAeqF7hHAj6hPG7t.jpg",
+   "title_en": "Gabin"
+  },
+  "f195": {
+   "tmdb_id": 1476614,
+   "title": "突如其来",
+   "original_title": "Soudain",
+   "year": "2026",
+   "poster_path": "/6g9mHfhUm3D47Z5F1qTw1q13H98.jpg",
+   "title_en": "All of a Sudden"
+  },
+  "f196": {
+   "tmdb_id": 1759817,
+   "title": "바람의 빛깔",
+   "original_title": "바람의 빛깔",
+   "year": "2026",
+   "poster_path": "/1RXhgKjLBwD7ulQtgA8MQPEFsZ2.jpg",
+   "title_en": "Our Wish, Our Colors"
+  },
+  "f197": {
+   "tmdb_id": 1511780,
+   "title": "Kvinde ukendt",
+   "original_title": "Kvinde ukendt",
+   "year": "2027",
+   "poster_path": "/moWsebxgJjFB19CcZMvDjHEEbGp.jpg",
+   "title_en": "Woman Unknown"
+  },
+  "f198": {
+   "tmdb_id": 64847,
+   "title": "悲伤的贝拉多娜",
+   "original_title": "哀しみのベラドンナ",
+   "year": "1973",
+   "poster_path": "/4U9Bbc7UqvKahDV0ZELaASBLNLh.jpg",
+   "title_en": "Belladonna of Sadness"
+  },
+  "f199": {
+   "tmdb_id": null,
+   "title_en": "Inherit"
+  },
+  "f200": {
+   "tmdb_id": 1660754,
+   "title": "事到如今谈什么爱",
+   "original_title": "このごにおよんで愛など",
+   "year": "2026",
+   "poster_path": "/y6X7C7TKuEMbSxZxFB1jTa92Kbb.jpg",
+   "title_en": "Between Two Lovers"
+  },
+  "f201": {
+   "tmdb_id": 1383091,
+   "title": "有用的人",
+   "original_title": "有用的人",
+   "year": "2026",
+   "poster_path": "/bFAvhjSTDzy5BjLIK8QXY1TD4ak.jpg",
+   "title_en": "To Be Ordinary"
+  },
+  "f202": {
+   "tmdb_id": 1590723,
+   "title": "Laut Bercerita",
+   "original_title": "Laut Bercerita",
+   "year": "2026",
+   "poster_path": "/8FqJSSMPaKJzqq2VVxVmdHUozLY.jpg",
+   "title_en": "The Sea Speaks His Name"
+  },
+  "f203": {
+   "tmdb_id": null,
+   "title_en": "I Rarely Wake Up Dreaming"
+  },
+  "f204": {
+   "tmdb_id": null,
+   "title_en": "Zogsool"
+  },
+  "f205": {
+   "tmdb_id": 1754868,
+   "title": "有一场雪",
+   "original_title": "有一场雪",
+   "year": "2026",
+   "poster_path": "/eGDNwIDpVXRhgysChP9pOQeLWH.jpg",
+   "title_en": "There Will Be Snow"
+  },
+  "f206": {
+   "tmdb_id": 1470395,
+   "title": "1982",
+   "original_title": "1982",
+   "year": "2026",
+   "poster_path": "/meyC8plWUUKdsBZ1FiI828BAQW9.jpg",
+   "title_en": "1982"
+  },
+  "f207": {
+   "tmdb_id": 940009,
+   "title": "Ray Gunn",
+   "original_title": "Ray Gunn",
+   "year": "2026",
+   "poster_path": "/qXexEAo999wlEp5rMsFnVSRaTSM.jpg",
+   "title_en": "Ray Gunn"
+  },
+  "f208": {
+   "tmdb_id": 1703273,
+   "title": "L'Autre",
+   "original_title": "L'Autre",
+   "year": "2026",
+   "poster_path": "/7zy3GMIvxSzB2sfSLuRhIhEcJ3T.jpg",
+   "title_en": "L’Autre"
+  },
+  "f209": {
+   "tmdb_id": 1318413,
+   "title": "诺曼底72小时",
+   "original_title": "Pressure",
+   "year": "2026",
+   "poster_path": "/vNHIJncQMkFsDdgzAbg1lcgPfyg.jpg",
+   "title_en": "Pressure"
+  },
+  "f210": {
+   "tmdb_id": 1464311,
+   "title": "La noche de la infancia",
+   "original_title": "La noche de la infancia",
+   "year": "2026",
+   "poster_path": "/mojudr95PvV9vmnXaXYj0RsfWby.jpg",
+   "title_en": "From Dawn to Dawn"
+  },
+  "f211": {
+   "tmdb_id": 1061798,
+   "title": "吉姆皇后",
+   "original_title": "Jim Queen",
+   "year": "2026",
+   "poster_path": "/jw8vwfyKOf509Zj1cu27waGFZLB.jpg",
+   "title_en": "Jim Queen"
+  },
+  "f212": {
+   "tmdb_id": 1152312,
+   "title": "我的妻子哭了",
+   "original_title": "Meine Frau weint",
+   "year": "2026",
+   "poster_path": "/tAdDuoV8XTCuIWRa3G7cBQHVwYy.jpg",
+   "title_en": "My Wife Cries"
+  },
+  "f213": {
+   "tmdb_id": null,
+   "title_en": "Phoenix 2772（Space Firebird）"
+  },
+  "f214": {
+   "tmdb_id": 1429592,
+   "title": "Ni vue, ni connue",
+   "original_title": "Ni vue, ni connue",
+   "year": "2026",
+   "poster_path": "/sXqiQw6cwZlp4B8OnT3LRGC6wgR.jpg",
+   "title_en": "All About Corinne"
+  },
+  "f215": {
+   "tmdb_id": 225617,
+   "title": "Festival",
+   "original_title": "Festival",
+   "year": "1996",
+   "poster_path": "/rkwsZhW9dNFZJyMwsEiadEFgO17.jpg",
+   "title_en": "Festival"
+  },
+  "f216": {
+   "tmdb_id": 1687863,
+   "title": "Sợi Chỉ Đỏ",
+   "original_title": "Sợi Chỉ Đỏ",
+   "year": "2026",
+   "poster_path": "/uVm9NUEb86UXCURjNtXauuwVTPZ.jpg",
+   "title_en": "Red Thread"
+  },
+  "f217": {
+   "tmdb_id": 1708288,
+   "title": "Paradise Lost",
+   "original_title": "Paradise Lost",
+   "year": "2026",
+   "poster_path": "/hvNTmhTgxE7PKKLGlE5rCixHmTG.jpg",
+   "title_en": "PARADISE LOST"
+  },
+  "f218": {
+   "tmdb_id": 62215,
+   "title": "忧郁症",
+   "original_title": "Melancholia",
+   "year": "2011",
+   "poster_path": "/wkzJxtnBDShi9971UwNugQWEAoR.jpg",
+   "title_en": "Melancholia"
+  },
+  "f219": {
+   "tmdb_id": null,
+   "title_en": "Beneath the Barren"
+  },
+  "f220": {
+   "tmdb_id": 1760052,
+   "title": "Chumpa: A Doll Under the Basket",
+   "original_title": "Chumpa: A Doll Under the Basket",
+   "year": "2026",
+   "poster_path": "/z6ingmrTbsvKC06uEwbkSwqTuSw.jpg",
+   "title_en": "Chumpa: A Doll Under the Basket"
+  },
+  "f221": {
+   "tmdb_id": null,
+   "title_en": "Downwind"
+  },
+  "f222": {
+   "tmdb_id": 1760055,
+   "title": "Fatima",
+   "original_title": "Fatima",
+   "year": "2026",
+   "poster_path": "/ArQ6fnEV2r4gaZix0IlBQkf69Qd.jpg",
+   "title_en": "Fatima"
+  },
+  "f223": {
+   "tmdb_id": 1733425,
+   "title": "Salt Electric",
+   "original_title": "Salt Electric",
+   "year": "2026",
+   "poster_path": "/kLxl0Rr6GK8sdW7JVtVJxuKEj5l.jpg",
+   "title_en": "Salt Electric"
+  },
+  "f224": {
+   "tmdb_id": 1760046,
+   "title": "The Things That Vanish",
+   "original_title": "The Things That Vanish",
+   "year": "2026",
+   "poster_path": "/vJMdHcESS1ALK7sjjWZIvTCAaJQ.jpg",
+   "title_en": "The Things That Vanish"
+  },
+  "f225": {
+   "tmdb_id": 1666334,
+   "title": "Wild",
+   "original_title": "Wild",
+   "year": "2026",
+   "poster_path": "/7Oj8M7zXmtb6fRUTPGdAD8Oz4eK.jpg",
+   "title_en": "Wild No More"
+  },
+  "f226": {
+   "tmdb_id": 1576462,
+   "title": "αLPα",
+   "original_title": "αLPα",
+   "year": "2025",
+   "poster_path": "/7jRhoGLatI0XxICnznVDCwaaXCW.jpg",
+   "title_en": "αLPα"
+  },
+  "f227": {
+   "tmdb_id": null,
+   "title_en": "Shiranui"
+  },
+  "f228": {
+   "tmdb_id": 1736736,
+   "title": "她说",
+   "original_title": "她說",
+   "year": "2026",
+   "poster_path": "/ihNBRJoS3FtmjSlm6uM3ELMftfX.jpg",
+   "title_en": "She Said"
+  },
+  "f229": {
+   "tmdb_id": 24010,
+   "title": "巴士站",
+   "original_title": "Bus Stop",
+   "year": "1956",
+   "poster_path": "/oXZiz5zIyynjQMJMBbXijS4434z.jpg",
+   "title_en": "Bus Stop"
+  },
+  "f230": {
+   "tmdb_id": 1593157,
+   "title": "戏",
+   "original_title": "Sandiwara",
+   "year": "2026",
+   "poster_path": "/xBn8V0OhL9aRU89peIqLAbrNaTL.jpg",
+   "title_en": "Sandiwara"
+  },
+  "f231": {
+   "tmdb_id": 27812,
+   "title": "捉迷藏",
+   "original_title": "カクレンボ",
+   "year": "2004",
+   "poster_path": "/u7RhGFaP1gFxZKNrm9nqZL1MNFb.jpg",
+   "title_en": "Kakurenbo"
+  },
+  "f232": {
+   "tmdb_id": null,
+   "title_en": "In Our Panic"
+  },
+  "f233": {
+   "tmdb_id": 545611,
+   "title": "瞬息全宇宙",
+   "original_title": "Everything Everywhere All at Once",
+   "year": "2022",
+   "poster_path": "/p8ulGTtp2Syv2U5H32FcWoBQb9v.jpg",
+   "title_en": "Everything Everywhere All at Once"
+  },
+  "f234": {
+   "tmdb_id": 1731500,
+   "title": "Flesh Impact",
+   "original_title": "Flesh Impact",
+   "year": "2026",
+   "poster_path": "/jndRfy9eQ235lZfE1pVBS5uD874.jpg",
+   "title_en": "Flesh Impact"
+  },
+  "f235": {
+   "tmdb_id": 1275007,
+   "title": "Baby Doe",
+   "original_title": "Baby Doe",
+   "year": "2026",
+   "poster_path": "/7i9Fm1M0cqnN0gTMsLU1JhkP7kJ.jpg",
+   "title_en": "Baby Doe"
+  },
+  "f236": {
+   "tmdb_id": 1640168,
+   "title": "개",
+   "original_title": "개",
+   "year": "2026",
+   "poster_path": "/bH4pp619ydDkYM73y4fMmVWVaGj.jpg",
+   "title_en": "﻿All of Her"
+  },
+  "f237": {
+   "tmdb_id": 1760008,
+   "title": "교량의오후",
+   "original_title": "교량의오후",
+   "year": "2026",
+   "poster_path": "/rhrWsJqpHEMlY7FiTvm3x8ix71I.jpg",
+   "title_en": "Afternoon on the Bridge"
+  },
+  "f238": {
+   "tmdb_id": 1760009,
+   "title": "낮잠",
+   "original_title": "낮잠",
+   "year": "2026",
+   "poster_path": "/xw0cpKi86MdBfUGUsQ2H5jB0GcG.jpg",
+   "title_en": "Dear Sunshine"
+  },
+  "f239": {
+   "tmdb_id": 1760011,
+   "title": "멀리 있는 집",
+   "original_title": "멀리 있는 집",
+   "year": "2026",
+   "poster_path": "/3HG2X1eEvsFdSX8a9Ubgo2Bm3p2.jpg",
+   "title_en": "The Distant Home"
+  },
+  "f240": {
+   "tmdb_id": 1760013,
+   "title": "변종",
+   "original_title": "변종",
+   "year": "2026",
+   "poster_path": "/miYugtHeLNHKzPwryX2vTh0MT5v.jpg",
+   "title_en": "The Variety"
+  },
+  "f241": {
+   "tmdb_id": 1760016,
+   "title": "아마추어 에너지",
+   "original_title": "아마추어 에너지",
+   "year": "2026",
+   "poster_path": "/edUmBvUxQgOKlUOs5jdpzDZBTeU.jpg",
+   "title_en": "Amateur Energy"
+  },
+  "f242": {
+   "tmdb_id": 1760018,
+   "title": "여*기의 발가락",
+   "original_title": "여*기의 발가락",
+   "year": "2026",
+   "poster_path": "/3q6fxQEGHiQlYUvtemV1Oh1HrM6.jpg",
+   "title_en": "TOE′S"
+  },
+  "f243": {
+   "tmdb_id": 1767118,
+   "title": "The Boy who Fell to Earth",
+   "original_title": "The Boy who Fell to Earth",
+   "year": "2026",
+   "poster_path": "/1gxtb97pOFGOnDx1PrtuEhI0ISc.jpg",
+   "title_en": "The Boy Who Fell to Earth"
+  },
+  "f244": {
+   "tmdb_id": 1760025,
+   "title": "지민지민지",
+   "original_title": "지민지민지",
+   "year": "2026",
+   "poster_path": "/nsJVVUfMH4We7sGYoSX9T9Syqgv.jpg",
+   "title_en": "Tale of Tails"
+  },
+  "f245": {
+   "tmdb_id": 1760027,
+   "title": "초대받지 않은 이웃",
+   "original_title": "초대받지 않은 이웃",
+   "year": "2026",
+   "poster_path": "/d7VUJNAiiL6qk05DvYptFUsCk1q.jpg",
+   "title_en": "An Uninvited Neighbor"
+  },
+  "f246": {
+   "tmdb_id": 1760028,
+   "title": "토마토 파스타 레시피",
+   "original_title": "토마토 파스타 레시피",
+   "year": "2026",
+   "poster_path": "/vxqxTPtxTVkgkSUje3aEdtisgRW.jpg",
+   "title_en": "Tomato Pasta Recipe"
+  }
+ }
+}
