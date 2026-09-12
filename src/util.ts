@@ -265,3 +265,27 @@ export function filmInfoOf(cat: Catalog, s: Screening, map?: Mapping): FilmInfo 
 export function filmInfoText(info: FilmInfo): string {
   return [...info.names, info.meta].filter(Boolean).join(" · ");
 }
+
+/** 评价人数展示:≥1 万写成 `1.6万`,否则原样数字。0 / 非有限不该进来。 */
+export function fmtVoters(n: number): string {
+  if (n >= 10000) {
+    const w = n / 10000;
+    const s = w >= 10 ? String(Math.round(w)) : w.toFixed(1).replace(/\.0$/, "");
+    return `${s}万`;
+  }
+  return String(n);
+}
+
+export interface DoubanScore {
+  rating: number;
+  count: number | null;
+}
+
+/** 豆瓣分:目录优先,映射兜底;没有分或 ≤0 当无(暂无评分不要画成 0.0)。 */
+export function doubanScoreOf(film?: FilmItem | null, map?: Mapping | null): DoubanScore | null {
+  const rating = film?.rating ?? map?.rating ?? null;
+  if (rating == null || !(rating > 0)) return null;
+  const raw = film?.rating_count ?? map?.rating_count ?? null;
+  const count = raw != null && raw > 0 ? raw : null;
+  return { rating, count };
+}

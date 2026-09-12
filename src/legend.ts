@@ -10,7 +10,7 @@
 // 官方影院代码(BT/B1/C1/L2…)不单独当行标签,放行首 chip + 悬停说明。
 
 import type { Catalog, ExtraProgram, RatingKey, Screening, SubsKey, Venue } from "./types";
-import { el } from "./util";
+import { el, fmtVoters } from "./util";
 import { BADGE_DEFS, badgeEl, codeTip, DOUBAN_CHIP_TITLE, screeningBadgeKeys, UNIFORM_CHIP_BASE } from "./badges";
 import { KIND_LABEL, programOf } from "./extras";
 
@@ -162,15 +162,17 @@ export function durChip(min: number, opts?: { boxed?: boolean }): HTMLElement {
   return node;
 }
 
-/** 豆瓣评分章:豆 8.5 —— 影片库 / 影片详情弹层 / 图例总览共用同一处 markup(extraCls 供调用方补间距) */
-export function doubanChip(rating: number, extraCls?: string): HTMLElement {
+/** 豆瓣评分章:豆 8.5 或 豆 8.5 1.6万 —— 排片表 / 时间线 / 影片库 / 详情 / 图例共用。 */
+export function doubanChip(rating: number, extraCls?: string, count?: number | null): HTMLElement {
+  const label = count != null && count > 0 ? `豆 ${rating} ${fmtVoters(count)}` : `豆 ${rating}`;
   const node = el(
     "span",
     "inline-block text-11 font-bold text-muted border border-line bg-card rounded px-[6px] " +
       "leading-[1.7] select-none whitespace-nowrap cursor-help" + (extraCls ? ` ${extraCls}` : ""),
-    `豆 ${rating}`
+    label
   );
-  node.dataset.tip = DOUBAN_CHIP_TITLE;
+  node.dataset.tip =
+    count != null && count > 0 ? `${DOUBAN_CHIP_TITLE}\n${count} 人评价` : DOUBAN_CHIP_TITLE;
   return node;
 }
 
@@ -647,7 +649,7 @@ export function buildGuideBody(cat: Catalog): HTMLElement {
         badgeEl("gv"),
         "Guest Visit 嘉宾映后 — 默认连映后谈一起选(两张拼接卡同亮),可在映后块/行程单独放弃,放弃后按正片结束算转场;映后时长可配置(设置里改默认值,行程行映后标签逐场覆写)",
       ],
-      [doubanChip(8.5), "豆瓣用户评分(满分 10 分,仅影片库 / 详情出现)"],
+      [doubanChip(8.5, undefined, 16000), "豆瓣用户评分(满分 10 分)与评价人数;排片表 / 时间线 / 影片库 / 详情,有分才出现"],
     ];
     const ul = el("ul", "grid gap-[7px]");
     lines.forEach(([k, v]) => {

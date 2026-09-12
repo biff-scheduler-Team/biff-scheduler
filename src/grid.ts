@@ -3,11 +3,11 @@
 
 import type { Catalog, Mapping, Screening } from "./types";
 import type { ConflictResult } from "./conflict";
-import { displayTitle, el, fmtEndClock, fmtMinRange, fmtMinRangeMin, hmsToMin, slackBetween, todayIsoLocal } from "./util";
+import { displayTitle, doubanScoreOf, el, filmInfoOf, fmtEndClock, fmtMinRange, fmtMinRangeMin, hmsToMin, slackBetween, todayIsoLocal } from "./util";
 import { screeningsByVenue } from "./data";
 import { codeTip } from "./badges";
 import { effEndMin, filmEndMin, gvTalkMin } from "./gv";
-import { hasBadges, metaRowFor, venueTip } from "./legend";
+import { doubanChip, hasBadges, metaRowFor, venueTip } from "./legend";
 import { matchesFilters, venueAllowed, type FilterState } from "./filters";
 
 export const ROW_H = 92; // 100% 基准行高(1 行 = 1 影厅);实际行高 = ROW_H × 缩放倍率,见 rowMetrics
@@ -594,8 +594,10 @@ function scaleText(node: HTMLElement, basePx: number, scale: number, lineHeight 
 /** 卡片基底类(几何与文字以外的一切;复用路径**不重置**它) */
 const CARD_BASE_CLS =
   "group absolute bg-card rounded-5 px-[7px] pb-1 pt-[5px] overflow-hidden cursor-pointer " +
-  "flex flex-col gap-px transition-[box-shadow,border-color] duration-[120ms] ease-in-out " +
+  "flex flex-row gap-[6px] items-stretch transition-[box-shadow,border-color] duration-[120ms] ease-in-out " +
   "hover:shadow-[var(--shadow-hover)] hover:z-[2]";
+/** 卡片正文列(身份 / 片名 / 副标题 / 徽章)—— 有海报表是 flex 第二列,没海报就是唯一列。 */
+const CARD_BODY_CLS = "flex flex-col gap-px min-w-0 flex-1";
 
 /** 谈块基底类 */
 const TALK_BASE_CLS =
@@ -807,9 +809,10 @@ function appendCard(
   card.dataset.card = "1"; // 复用路径的选择器锚点
   // GV 拆分:主卡只画「正片段」(结束=正片末),谈段由右侧紧贴的 talk 块承接 → 视觉两张拼接
   const cardEnd = talk > 0 ? filmEndMin(s) : end;
+  const cardW = (cardEnd - start) * pxPerMin - 4;
   card.style.left = `${(start - axisStart) * pxPerMin + 2}px`;
   card.style.top = `${insetY}px`;
-  card.style.width = `${(cardEnd - start) * pxPerMin - 4}px`;
+  card.style.width = `${cardW}px`;
   card.style.height = `${rowH - insetY * 2}px`;
   // 内边距随行高等比缩(基准 = 类名里的 pt-[5px] pb-1 px-[7px]);倍率 1 时写入值与之逐字相同 → 基准外观不变
   card.style.paddingTop = `${+(5 * fontScale).toFixed(2)}px`;
@@ -819,6 +822,26 @@ function appendCard(
 
   // 时间筛选:非选中小时段的场次淡化(hour-dim),保留上下文与 hover 可读(槽位整段含谈判定)
   if (st.dim) card.classList.add("hour-dim");
+
+  const map = ctx.mappingOf(s.code);
+  const film = filmInfoOf(ctx.cat, s, map).cats[0];
+  const score = doubanScoreOf(film, map);
+  // 海报:本地文件才画。卡太窄(<130px)或行高不够(徽章行已关的两档)就藏,避免把 CODE / 时间挤没。
+  const posterSrc = film?.poster;
+  const showPoster = Boolean(posterSrc) && cardW >= 130 && showBadges;
+  if (showPoster && posterSrc) {
+    const img = document.createElement("img");
+    img.src = posterSrc;
+    img.alt = "";
+    img.loading = "lazy";
+    img.decoding = "async";
+    const pw = Math.max(22, Math.round(40 * fontScale));
+    img.style.width = `${pw}px`;
+    img.className = "shrink-0 self-stretch object-cover rounded-3 bg-raised";
+    card.appendChild(img);
+  }
+  const body = el("div", CARD_BODY_CLS);
+  card.appendChild(body);
 
   // 身份行:CODE + 起止时间(排片核心信息,时间升格加墨;时间 span 独立便于 fitTimeTexts 量测降级,
   // 窄卡放不下完整 "09:00–10:40" 时由挂载后实测降级为只显开始时间,完整时间移入 hover —— 绝不硬裁)。
@@ -840,7 +863,7 @@ function appendCard(
   t1.append(codeB, timeSpan);
   // 行尾让给右上角标(ⓘ / ⚠)的预留位也随倍率缩(基准 = 类名里的 pr-[20px]);倍率 1 时不写,保持基准外观
   if (Math.abs(fontScale - 1) >= 1e-3) t1.style.paddingRight = `${+(20 * fontScale).toFixed(2)}px`;
-  card.appendChild(t1);
+  body.appendChild(t1);
   // 字号随行高等比缩(基准 12px)。容器 t1 是 **flex** 而不是块容器 → 两个子项各自的行盒就是
   // 自身 font-size × 1.45,不存在「父级 strut 撑住行高、矮行里行盒不缩」那个坑,故只缩叶子。
   scaleText(codeB, 12, fontScale);
@@ -859,6 +882,14 @@ function appendCard(
   ttl.dataset.cardTitle = "1";
   ttl.dataset.tip = title; // 窄卡 truncate 时 hover 看全片名(英文名 · 中文名)
   scaleText(ttl, 13, fontScale);
+  const ttlRow = el("div", "flex items-center gap-[4px] min-w-0");
+  ttlRow.appendChild(ttl);
+  if (score) {
+    const chip = doubanChip(score.rating, "shrink-0", score.count);
+    chip.dataset.cardScore = "1";
+    scaleText(chip, 11, fontScale);
+    ttlRow.appendChild(chip);
+  }
   // 次级行:韩文名(官方只印韩文时 title_en 就是韩文名,故要排掉同值)→ 否则片长兜底
   const sub = el(
     "span",
@@ -866,7 +897,7 @@ function appendCard(
     s.title_kr && s.title_kr !== s.title_en ? s.title_kr : `${s.duration_min}min`
   );
   scaleText(sub, 11, fontScale);
-  card.append(ttl, sub);
+  body.append(ttlRow, sub);
 
   // 徽章行:等级 → 字幕 → 特性(GV/首映…) → 页码 → 片长。无任何徽章(理论仅 mock 缺字段)时不创建,避免空行。
   // 缩放与门控两件事都在这里:
@@ -879,7 +910,7 @@ function appendCard(
     // 徽章行走**模板缓存**(legend.ts::metaRowFor):同一场次只逐枚构造一次,之后 clone
     const bdgRow = metaRowFor(s);
     if (Math.abs(fontScale - 1) >= 1e-3) bdgRow.style.zoom = `${+fontScale.toFixed(3)}`;
-    card.appendChild(bdgRow);
+    body.appendChild(bdgRow);
   }
 
   // ⓘ 详情钮:常态 opacity-0,hover / focus 时显现(触屏无 hover,见 CONVENTIONS)

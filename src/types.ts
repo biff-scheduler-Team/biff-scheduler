@@ -136,6 +136,9 @@ export interface Mapping {
   subject_id: number | null;
   title_cn: string | null;
   douban_url: string | null;
+  /** 豆瓣评分(映射表审计字段;前端展示优先 `FilmItem.rating`,缺了才用它) */
+  rating?: number | null;
+  rating_count?: number | null;
 }
 
 /** 豆瓣 Frodo `/recommendations` 的一条(离线产物 `public/douban-related.json`)。

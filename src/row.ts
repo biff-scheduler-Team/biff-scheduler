@@ -221,6 +221,8 @@ export interface ScreeningRowOpts {
   rowActs?: HTMLElement;
   /** 追加行(行程 = 冲突提示);`null` = 无 */
   extra?: HTMLElement | null;
+  /** 流式容器里多贴一枚章(时间线 = 豆瓣评分);影片库场次行不传。 */
+  chip?: HTMLElement;
 }
 
 /** 场次行 / 行程卡 —— 三处唯一构造。
@@ -256,6 +258,7 @@ export function screeningRow(o: ScreeningRowOpts): HTMLElement {
   timeGroup.push(sepEl());
   flow.appendChild(group(timeGroup));
   flow.appendChild(group([uniformChipEl(`${s.duration_min}min`, durTip(s.duration_min)), sepEl()]));
+  if (o.chip) flow.appendChild(group([o.chip, sepEl()]));
 
   // ---- 图标组(等级 / 字幕 / GV / 页码)—— **直接进流容器**:
   //      逐枚参与折行,第 1 行先被填满;若套一层容器就变成「整组一起折」,第 1 行右侧会被浪费 ----

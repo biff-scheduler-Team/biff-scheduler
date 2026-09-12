@@ -23,6 +23,12 @@ export default defineConfig({
       plugins: [tailwindcss()],
     },
   },
+  // 开发端口 31026 = 第 31 届 + 2026,避开 Vite 默认 5173(本机常被占用)。
+  // strictPort:撞车就失败,不悄悄换口。
+  server: {
+    port: 31026,
+    strictPort: true,
+  },
   build: {
     outDir: "dist",
     assetsDir: "assets",
@@ -35,7 +41,7 @@ export default defineConfig({
       registerType: "autoUpdate", // 有新版自动接管,自用工具不需要用户确认弹窗
       injectRegister: "auto", // 插件往 index.html 注入注册脚本 → 零 TS 改动
       devOptions: { enabled: false }, // 开发期不装 SW(否则热更新会被缓存干扰)
-      includeAssets: ["brand/favicon.ico", "brand/biff-2026-wordmark.png", "brand/apple-touch-icon.png", "robots.txt"],
+      includeAssets: ["brand/favicon.ico", "brand/biff-2026-wordmark.png", "brand/biff-scheduler-wordmark.svg", "brand/apple-touch-icon.png", "robots.txt"],
       manifest: {
         name: "BIFF 2026 排片 · Busan International Film Festival",
         short_name: "BIFF 排片",
@@ -58,7 +64,7 @@ export default defineConfig({
       workbox: {
         // 预缓存:产物资源 + 只读 JSON(schedule / venues / films / douban / festival-extras)——
         // 没排期数据离线打开等于空表,必须进缓存
-        globPatterns: ["**/*.{js,css,html,ico,png,json}"],
+        globPatterns: ["**/*.{js,css,html,ico,png,json,svg}"],
         navigateFallback: "index.html",
         cleanupOutdatedCaches: true,
       },

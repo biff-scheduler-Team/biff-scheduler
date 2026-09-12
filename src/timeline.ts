@@ -26,10 +26,11 @@
 // ⚠ 时间线**不参与**就地 patch(`patchGridStates`)、不画跨行冲突连线(`drawConflictLinks`)、
 //   不做纵向锚点(`rowAnchor` 读 `[data-vrow]`,时间线不挂它 ⇒ 自然失效)。始终全量重建。
 
-import type { Catalog, Screening } from "./types";
-import { el, hmsToMin, minToClock, nextDayTag, slackBetween, type SlackResult } from "./util";
+import type { Catalog, Mapping, Screening } from "./types";
+import { doubanScoreOf, el, filmInfoOf, hmsToMin, minToClock, nextDayTag, slackBetween, type SlackResult } from "./util";
 import { effEndMin, gvTalkMin } from "./gv";
 import { matchesFilters, type FilterState } from "./filters";
+import { doubanChip } from "./legend";
 import { SHOW_ROW_CLS, screeningRow } from "./row";
 
 /** 时间轨列宽(px)—— 放得下 `HH:MM`(11px 等宽数字 ≈ 34px)+ 右侧 10px 内距 */
@@ -39,8 +40,9 @@ const RAIL_GAP = 12;
 
 /** 时间线的一张卡:场次行骨架 + 卡片外壳(底色由 `in-plan` / `in-conf` 覆盖,与网格同源)。
  *  ⚠ 外壳类**只加外壳**(边框 / 圆角 / 白底),不动 `SHOW_ROW_CLS` 的栅格与内距。 */
-const TL_CARD_CLS =
-  `${SHOW_ROW_CLS} border border-line rounded-8 bg-card shadow-[var(--shadow-card)]`;
+/** 时间线卡外壳(边框 / 圆角 / 白底)—— 海报贴左缘,场次行走 flex 第二列。 */
+const TL_SHELL_CLS =
+  "flex items-stretch overflow-hidden border border-line rounded-8 bg-card shadow-[var(--shadow-card)]";
 
 export interface TimelineOpts {
   /** **甘特图那套**排片筛选(字幕 / 影厅 / GV)—— 时间线读同一份:被筛掉的场次不列 */
@@ -110,6 +112,7 @@ export interface TimelineCtx extends TimelineOpts {
   /** 当日**已选**冲突 code 集合(与二维网格同源:`conflicts.get(date).codeSet`)。
    *  未选场次恒不在其中 —— 冲突只在「我的行程」里才有意义。 */
   conflictCodes?: Set<string>;
+  mappingOf?: (code: string) => Mapping | undefined;
 }
 
 /** 单日纵向时间线 —— 产出**替代 `#grid-scroll` 的容器**(由 `main.ts::renderTimeline` 挂载)。
@@ -181,11 +184,40 @@ function card(ctx: TimelineCtx, e: TimelineEntry): HTMLElement {
   rail.appendChild(el("span", `absolute right-[-3.5px] top-[16px] w-[7px] h-[7px] rounded-full border border-card ${dotCls}`));
   row.appendChild(rail);
 
-  // ---- 第 2 列:场次卡(零新排版 —— 与「影片库 / 我的选片 / 我的行程」同一套骨架)----
-  const body = screeningRow({ s: e.s, cat: ctx.cat, rowCls: `${TL_CARD_CLS} ${stateCls}` });
-  body.dataset.card = "1";
-  if (conflict) body.dataset.tip = "与行程里另一场时间重叠 —— 两场无法同时观看";
-  row.appendChild(body);
+  // ---- 第 2 列:场次卡 = 左缘海报 + 场次行骨架(与影片库同一套,海报只在时间线贴一次)----
+  const map = ctx.mappingOf?.(e.s.code);
+  const film = filmInfoOf(ctx.cat, e.s, map).cats[0];
+  const score = doubanScoreOf(film, map);
+  const wrap = el("div", `${TL_SHELL_CLS} ${stateCls}`);
+  wrap.dataset.card = "1";
+  wrap.dataset.code = e.s.code;
+  if (conflict) wrap.dataset.tip = "与行程里另一场时间重叠 —— 两场无法同时观看";
+  if (film?.poster) {
+    const img = document.createElement("img");
+    img.src = film.poster;
+    img.alt = "";
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.className = "w-[44px] self-stretch object-cover shrink-0 bg-raised";
+    wrap.appendChild(img);
+  }
+  const body = screeningRow({
+    s: e.s,
+    cat: ctx.cat,
+    rowCls: `${SHOW_ROW_CLS} flex-1 min-w-0`,
+    chip: score ? doubanChip(score.rating, undefined, score.count) : undefined,
+  });
+  delete body.dataset.code; // 锚点挂在外壳(含海报),避免 hover / 闪烁命中两次
+  wrap.appendChild(body);
+  const info = el(
+    "button",
+    "shrink-0 self-start mt-[8px] mr-[8px] border-0 bg-transparent text-muted text-13 leading-none p-[2px] rounded-4 hover:text-biff-ink",
+    "ⓘ"
+  );
+  info.dataset.info = e.s.code;
+  info.dataset.tip = "影片资料 / 豆瓣";
+  wrap.appendChild(info);
+  row.appendChild(wrap);
   return row;
 }
 

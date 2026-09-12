@@ -352,6 +352,7 @@ npm run deploy              # 构建 + wrangler deploy
 | `public/films.json` | 影片目录（片名 / 单元 / 年份 / 国家 / 导演 / 豆瓣分） | `tools/build_films.py`（官方影片信息 **xlsx**） |
 | `public/douban.json` | 豆瓣映射（**场次 code 与影片 `f###` 双键** → subject_id / 中文名 / 条目链接；**可为空**） | **`tools/build_douban_map.py`**（豆瓣官方 API，检索 `search/suggestion` + 详情 `movie/{id}` 确认） |
 | `public/douban-related.json` | 豆瓣相关电影（subject_id → `/recommendations` 精简列表；**可为空**） | **`tools/build_douban_related.py`**（对已映射 subject 拉 Frodo 推荐；「是否本届」前端对照 mappings 现查） |
+| `public/douban-intros.json` | 豆瓣简介（subject_id → intro；**可为空**） | **`tools/build_douban_intros.py`**（对已映射 subject 拉 `movie/{id}` 的 intro） |
 | `public/festival-extras.json` | 官网「排期之外」的辅助信息：**开票批次 / 票价 / 购票须知**（Booking Information）、**节目嘉宾**（Master Class / Actors' House / Cine Class / Special Talk）、**开闭幕式红毯时间表 + 交通管制** | **`tools/scrape_biff_extras.py`**（抓 biff.kr 官网 `page_num=11402` / `11218` / `11219` / `11366` / `11226` / `11223` / `11233`；只保留 `schedule.json` 里真实存在的 code，自动滤掉往届遗留条目） |
 
 ### 两条排期管线：官网抓取（现役）与 Catalogue PDF（历史）
@@ -381,6 +382,9 @@ python tools/build_douban_map.py --films public/films.json --out public/douban.j
 
 # 豆瓣相关电影（对已映射 subject 拉 /recommendations；缺文件前端不报错）
 python tools/build_douban_related.py --delay 3
+
+# 豆瓣简介（详情弹层；缺文件不占位）
+python tools/build_douban_intros.py --delay 3
 ```
 
 自检会打印：场次总数 / 编号唯一性 / 厅数 / GV 与联映块数量 / **估算片长清单** / **目录匹配率**。

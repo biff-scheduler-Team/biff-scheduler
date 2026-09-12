@@ -872,7 +872,7 @@ export function openFilmPicker(ctx: LibraryCtx, tab?: "lib" | "pick" | "agenda")
     // 三处共用的卡片头:箭头 / 片名 + 副标题 + 状态行 / 右缘图标组
     const head = cardHead({
       title: n.title, // 英文名 · 中文名(口径见 util.ts::bilingualTitle)
-      titleExtra: cat0?.rating != null ? doubanChip(cat0.rating) : undefined,
+      titleExtra: cat0?.rating != null ? doubanChip(cat0.rating, undefined, cat0.rating_count) : undefined,
       sub: subBits.length ? subBits.join(" · ") : undefined,
       status,
       collapse: { open, attr: mode === "picks" ? "pickHead" : "libHead", value: n.key },

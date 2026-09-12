@@ -19,7 +19,13 @@ async function loadJson<T>(url: string): Promise<T | null> {
 interface DoubanFile {
   mappings?: Record<
     string,
-    { subject_id?: number | null; title_cn?: string | null; douban_url?: string | null }
+    {
+      subject_id?: number | null;
+      title_cn?: string | null;
+      douban_url?: string | null;
+      rating?: number | null;
+      rating_count?: number | null;
+    }
   >;
 }
 
@@ -34,6 +40,8 @@ export async function loadDoubanMappings(): Promise<Mapping[]> {
     subject_id: m?.subject_id ?? null,
     title_cn: m?.title_cn ?? null,
     douban_url: m?.douban_url ?? null,
+    rating: typeof m?.rating === "number" && m.rating > 0 ? m.rating : null,
+    rating_count: typeof m?.rating_count === "number" && m.rating_count > 0 ? m.rating_count : null,
   }));
 }
 

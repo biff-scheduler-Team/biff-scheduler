@@ -4,8 +4,9 @@
 // 全量化:overlay / modal / 资料弹层结构 全部 Tailwind utility。
 
 import type { Catalog, DoubanRec, FestRef, FilmItem, Mapping } from "./types";
-import { bilingualTitle, displayTitle, el, filmEnName, filmInfoOf } from "./util";
+import { bilingualTitle, displayTitle, doubanScoreOf, el, filmEnName, filmInfoOf } from "./util";
 import { doubanChip } from "./legend";
+import { introOf } from "./intros";
 import { KIND_LABEL, formatKrw, programOf } from "./extras";
 import { indexFestival, recsOf, splitRelated } from "./related";
 import { slotOf, store } from "./state";
@@ -278,9 +279,12 @@ export function showFilmModal(code: string, ctx: FilmModalCtx): void {
     const bits = [film.unit, film.country, film.year ? String(film.year) : "", film.director].filter(Boolean);
     if (bits.length) meta.appendChild(el("div", "text-muted text-13", bits.join(" · ")));
   }
-  if (film?.rating != null) meta.appendChild(doubanChip(film.rating, "mt-2")); // 豆瓣章单一来源(legend.ts)
+  const score = doubanScoreOf(film, ctx.mappings.get(code));
+  if (score) meta.appendChild(doubanChip(score.rating, "mt-2", score.count));
   head.appendChild(meta);
   body.appendChild(head);
+  const intro = appendIntro(ctx.mappings.get(code)?.subject_id);
+  if (intro) body.appendChild(intro);
 
   // ---- 午夜场联映块:块名不是片名,这里把块内成员片列出来 ----
   // 联映块 = 「一张票连看 2~3 部」,册子格子里只有块名 + 页码列表;成员片名由解析器
@@ -357,9 +361,12 @@ export function showCatalogFilmModal(
   if (infoBits.length) {
     meta.appendChild(el("div", "text-muted text-13", infoBits.join(" · ")));
   }
-  if (film.rating != null) meta.appendChild(doubanChip(film.rating, "mt-2")); // 豆瓣章单一来源(legend.ts)
+  const score = doubanScoreOf(film, ctx.mappings.get(filmId));
+  if (score) meta.appendChild(doubanChip(score.rating, "mt-2", score.count));
   head.appendChild(meta);
   body.appendChild(head);
+  const intro = appendIntro(ctx.mappings.get(filmId)?.subject_id);
+  if (intro) body.appendChild(intro);
 
   body.appendChild(
     el(
@@ -373,6 +380,16 @@ export function showCatalogFilmModal(
   // 英文搜索用**官方英文名**(`filmEnName`);`title_orig` 在新 schema 里是原始韩/日文名,拿去搜豆瓣必空
   body.appendChild(buildDoubanBlock(film.id, film.title_zh || "", filmEnName(film), ctx));
   openModal(`资料 · ${title}`, body, "lg");
+}
+
+/** 豆瓣简介:有才占位。`whitespace-pre-wrap` 保留原文换行。 */
+function appendIntro(subjectId: number | null | undefined): HTMLElement | null {
+  const text = introOf(subjectId ?? null);
+  if (!text) return null;
+  const p = el("div", "text-13 text-ink-2 leading-[1.7] mb-[14px] whitespace-pre-wrap");
+  p.dataset.intro = "1";
+  p.textContent = text;
+  return p;
 }
 
 /** 豆瓣区:有映射 → 条目直链;无映射 → 中英文搜索外链(兜底)。
