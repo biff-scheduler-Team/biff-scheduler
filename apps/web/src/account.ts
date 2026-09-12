@@ -9,8 +9,6 @@ import {
   onAccountChange,
   initAccountSync,
   syncAccount,
-  importGuestData,
-  skipGuestImport,
   resolveSyncConflicts,
   conflictSource,
   refreshAccountProfile,
@@ -346,12 +344,11 @@ export function openAccountPanel() {
         el(
           "p",
           "text-14",
-          `这台设备有 ${counts.films} 部选片、${counts.plans} 个保存方案及排片偏好，可合并到当前账号。原始数据会保留本机备份。`,
+          `正在自动导入 ${counts.films} 部选片、${counts.plans} 个保存方案及排片偏好。原始数据会保留本机备份。`,
         ),
       );
       sync.append(
-        button("合并本机数据", () => void importGuestData(), true),
-        button("仅使用账号数据", () => void skipGuestImport()),
+        button("重试同步", () => void syncAccount()),
       );
     } else if (accountState.account) {
       sync.append(button("立即同步", () => void syncAccount()));

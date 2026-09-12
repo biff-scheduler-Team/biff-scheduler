@@ -69,7 +69,7 @@ npm run build        # typecheck + lint + test + vite build
 npm run preview      # 构建后用 wrangler dev 起本地 Worker 静态资源环境（前后端 Worker）
 ```
 
-> **账号与数据**：访客数据保留在浏览器；登录 IFFDAY 后，可选择导入并同步至独立 D1。前端位于 `apps/web`，Hono + Drizzle 后端位于 `apps/api`，共享接口类型位于 `packages/contracts`。详见 [账号接入](docs/account-integration.md)。
+> **账号与数据**：访客数据保留在浏览器；登录 IFFDAY 后，非空本机数据会自动导入并同步至独立 D1；每个账号只自动导入一次。前端位于 `apps/web`，Hono + Drizzle 后端位于 `apps/api`，共享接口类型位于 `packages/contracts`。详见 [账号接入](docs/account-integration.md)。
 
 ---
 

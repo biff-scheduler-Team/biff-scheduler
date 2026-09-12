@@ -1,6 +1,7 @@
-import { and, eq, gt, lt, sql } from "drizzle-orm";
+import { hasImportableData } from "@biff/contracts/import";
+import { and, eq, gt, lt, notExists, sql } from "drizzle-orm";
 import { database } from "./db";
-import { appSession, festivalDocument, oauthPending } from "./db/schema";
+import { accountImport, appSession, festivalDocument, oauthPending } from "./db/schema";
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { bodyLimit } from "hono/body-limit";
@@ -67,7 +68,7 @@ const profileSchema = z
   .strict();
 app.use(
   "/api/*",
-  bodyLimit({ maxSize: 512 * 1024, onError: (c) => c.json({ error: "PAYLOAD_TOO_LARGE" }, 413) }),
+  (c, next) => bodyLimit({ maxSize: c.req.path === "/api/account/import" ? 1024 * 1024 : 512 * 1024, onError: (c) => c.json({ error: "PAYLOAD_TOO_LARGE" }, 413) })(c, next),
 );
 app.use("/api/*", async (c, next) => {
   c.header("Cache-Control", "no-store");
@@ -283,18 +284,58 @@ app.post("/api/account/logout", async (c) => {
 });
 app.get("/api/account/sync/biff-2026", async (c) => {
   const subject = c.get("session").row.subject;
+  const imported = await database(c.env.DB).select().from(accountImport).where(eq(accountImport.subject, subject)).get();
   const row = await database(c.env.DB).select().from(festivalDocument)
     .where(and(eq(festivalDocument.subject, subject), eq(festivalDocument.edition, "biff-2026"))).get();
   return c.json(
     row
       ? {
           subject,
+          importedAt: imported?.imported_at ?? null,
           revision: row.revision,
           records: JSON.parse(row.records),
           updatedAt: row.updated_at,
         }
-      : { subject, revision: 0, records: {}, updatedAt: 0 },
+      : { subject, importedAt: imported?.imported_at ?? null, revision: 0, records: {}, updatedAt: 0 },
   );
+});
+// Atomically save the merged workspace and mark the account imported. D1 batch is transactional.
+app.post("/api/account/import", async (c) => {
+  const parsed = syncSchema.extend({ sourceRecords: recordsSchema }).safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "INVALID_SYNC_DOCUMENT" }, 422);
+  const { subject, revision, operationId, records, sourceRecords } = parsed.data;
+  if (subject !== c.get("session").row.subject) return c.json({ error: "ACCOUNT_CHANGED" }, 409);
+  if (!hasImportableData(sourceRecords)) return c.json({ error: "EMPTY_IMPORT" }, 422);
+  const serialized = canonical(records);
+  if (new TextEncoder().encode(serialized).byteLength > 450 * 1024)
+    return c.json({ error: "SYNC_TOO_LARGE" }, 413);
+  const db = database(c.env.DB);
+  const identity = and(eq(festivalDocument.subject, subject), eq(festivalDocument.edition, "biff-2026"));
+  const unclaimed = notExists(db.select().from(accountImport).where(eq(accountImport.subject, subject)));
+  const now = Date.now();
+  const commitId = randomToken();
+  await db.batch([
+    db.insert(festivalDocument).values({ subject, edition: "biff-2026", updated_at: now }).onConflictDoNothing(),
+    db.update(festivalDocument).set({
+      revision: sql`${festivalDocument.revision} + 1`, records: serialized,
+      last_operation: commitId, updated_at: now,
+    }).where(and(identity, eq(festivalDocument.revision, revision), unclaimed)),
+    db.insert(accountImport).select(db.select({
+      subject: festivalDocument.subject,
+      operation_id: sql<string>`${operationId}`.as("operation_id"),
+      imported_at: sql<number>`${now}`.as("imported_at"),
+    }).from(festivalDocument).where(and(identity,
+      eq(festivalDocument.last_operation, commitId), eq(festivalDocument.revision, revision + 1), unclaimed,
+    ))).onConflictDoNothing(),
+  ]);
+  const imported = await db.select().from(accountImport).where(eq(accountImport.subject, subject)).get();
+  if (!imported) return c.json({ error: "REVISION_CONFLICT" }, 409);
+  const row = await db.select().from(festivalDocument).where(identity).get();
+  return c.json({
+    imported: imported.operation_id === operationId,
+    subject, importedAt: imported.imported_at,
+    revision: row?.revision ?? 0, records: row ? JSON.parse(row.records) : {}, updatedAt: row?.updated_at ?? 0,
+  });
 });
 app.put("/api/account/sync/biff-2026", async (c) => {
   const parsed = syncSchema.safeParse(await c.req.json().catch(() => null));
