@@ -1,15 +1,5 @@
-// 场次特性徽章(16-F)— 单一注册表:grid 卡 / agenda 行 / 影片库 / 详情弹层共用。
-// 数据侧:Screening.is_gv 隐含 "gv";Screening.tags 存其余特性键(如 "masterclass")。
-// 官方真实排期导入后,只需扩展此注册表 + schedule.json 里的 tags,无需改渲染逻辑。
-//
-// 缩写/CODE 说明（口径取自 2025 第 30 届 BIFF 官网英文 timetable 的
-// Schedule Guide 原文。合理筛选:本工具场馆显示完整英文名,故 2025 影院代码
-// (B1/C1/L2…)不收录;Goodwill 捐赠场非场次标记且官网图例未载,不收录。
+import type {Screening} from './types';
 
-import type { Screening } from "./types";
-import { el } from "./util";
-
-/** 卡片/行程/影片库行内 CODE 数字的 hover 说明(标题 + 分点;tip.ts 渲染) */
 export function codeTip(code: string): string {
   return [
     `放映 CODE ${code}`,
@@ -18,10 +8,8 @@ export function codeTip(code: string): string {
   ].join("\n");
 }
 
-/** 「豆 x.x」评分章的 hover 说明(豆 = 豆瓣) */
 export const DOUBAN_CHIP_TITLE = "豆瓣用户评分(满分 10 分)";
 
-/** 排片表缩写总览(单源;网格图例「ⓘ 缩写说明」用)。逐行 mark — 中文释义(渲染成标题 + 分点) */
 const ABBR_LINES: [string, string][] = [
   ["CODE 001", "场次编号 — 每场放映唯一,同片多场编号不同;对表 / 抢票以此为准"],
   ["评级 ALL / 12 / 15 / 19", "观影年龄分级 — 未满对应年龄不得入场(ALL = 全年龄)"],
@@ -34,7 +22,6 @@ const ABBR_LINES: [string, string][] = [
   ["联映", "Midnight Passion 联映块 — 一张票连看 2~3 部(2025 共 4 块 / 10 部);格子只印块名,成员片名见详情弹层;成员片的介绍页会把该块 CODE 列为自己的一场"],
 ];
 
-/** 图例悬停用的多行说明文本(第 1 行标题,其余为分点) */
 export function abbrTooltip(): string {
   return ["排片表标记说明(官方口径)", ...ABBR_LINES.map(([m, zh]) => `${m} — ${zh}`)].join("\n");
 }
@@ -47,7 +34,6 @@ export interface BadgeDef {
   cls: string;
 }
 
-/** 注册表 — 新增样式只改这里 */
 export const BADGE_DEFS: BadgeDef[] = [
   {
     key: "gv",
@@ -138,34 +124,10 @@ export const BADGE_DEFS: BadgeDef[] = [
   },
 ];
 
-/** 徽章基础字阶 / 排版(所有变体共享) */
-const BADGE_BASE =
-  "not-italic text-10 font-extrabold rounded-3 leading-[1.4] whitespace-nowrap select-none shrink-0 cursor-help";
-
-/* ---------- 统一章(uniform)—— 影片行「场次行」的元数据标签组专用 ----------
- * 需求(PLAN-20260910184745 §8):标签组要**统一高度 / 圆角 / 描边 / 字色(灰)**,只给
- * 「观影等级」留一点强调色边框;GV 等原先的黑底 / 红底实心章在密集的场次行里太吵,统一降为中性描边。
- * ⚠ 只作用于 `appendMetaRow(..., { uniform: true })`(影片行场次行),**网格卡 / 行程行不受影响** ——
- *   那两处的实心 GV 是「扫一眼看到有映后谈」的主信号,不能一起抹平。
- * 字阶 9.5 → 10.5px 并统一 `rounded-4 px-[5px] py-[2px]`:原各变体的 padding / 圆角 / 字阶
- * 互不相同,并排时高度参差(那正是「统一高度和圆角」要修的东西)。 */
-export const UNIFORM_CHIP_BASE =
-  "not-italic text-11 rounded-4 px-[5px] py-[2px] border leading-[1.35] " +
-  "whitespace-nowrap select-none shrink-0 cursor-help inline-flex items-center";
-/** 中性描边(默认;等级章另走 legend.ts 的强调色描边) */
-export const UNIFORM_CHIP = `${UNIFORM_CHIP_BASE} font-semibold text-ink-2 bg-card border-line`;
-
-const defByKey = new Map(BADGE_DEFS.map((d) => [d.key, d]));
-
-/** `screeningBadgeKeys` 的缓存 —— 该函数在网格 / 行程 / 影片库 / 弹层里每场次被调用多次。
- *  键带上**全部输入**(code + is_gv + tags):数据加载后这些字段不再变,但真变了也会自动失效,
- *  不会像「只按 code 缓存」那样读到脏值。 */
 const badgeKeysCache = new Map<string, string[]>();
 
-/** 该场次的特性键列表(去重保序:gv 恒在首位,其后按 tags 原序)。
- *  ⚠ 返回的是**共享数组**,调用方只读(全站调用点均为遍历 / 取 length,已复核)。 */
 export function screeningBadgeKeys(s: Screening): string[] {
-  const key = `${s.code}|${s.is_gv ? 1 : 0}|${s.tags?.join(",") ?? ""}`;
+  const key = `${s.code}|${s.midnight_members?.length ?? 0}|${s.is_gv ? 1 : 0}|${s.tags?.join(",") ?? ""}`;
   const hit = badgeKeysCache.get(key);
   if (hit) return hit;
   const keys: string[] = [];
@@ -174,22 +136,10 @@ export function screeningBadgeKeys(s: Screening): string[] {
     if (!keys.includes(k)) keys.push(k);
   };
   if (s.is_gv) push("gv");
+  if (s.midnight_members?.length) push("batch");
   for (const t of s.tags ?? []) push(t);
   badgeKeysCache.set(key, keys);
   return keys;
 }
 
-/** 单个徽章 DOM — gv 走 BADGE_DEFS 中 cls(gv 默认实心黑),其它走各自变体。
- *  `opts.uniform` = 忽略该键自己的配色改走中性描边(label / tooltip 不变),见 UNIFORM_CHIP_BASE。 */
-export function badgeEl(key: string, opts?: { uniform?: boolean }): HTMLElement {
-  const def = defByKey.get(key);
-  const cls = opts?.uniform ? UNIFORM_CHIP : `${BADGE_BASE} ${def?.cls ?? BADGE_DEFS[0].cls}`;
-  const node = el("i", cls, def?.label ?? key);
-  if (def?.title) node.dataset.tip = def.title; // 缩写说明:悬停即时解释(经 tip.ts)
-  return node;
-}
-
-/** 把某场次的全部特性徽章 append 到容器(保持内联流式布局) */
-export function appendBadges(host: HTMLElement, s: Screening, opts?: { uniform?: boolean }): void {
-  for (const k of screeningBadgeKeys(s)) host.appendChild(badgeEl(k, opts));
-}
+const defByKey = new Map(BADGE_DEFS.map(d => [d.key, d]));

@@ -32,7 +32,7 @@ interface DoubanFile {
 /** 读 douban.json → `Mapping[]`(键 = 排期 code 或 `f###` 目录片 id)。
  *  文件缺失 / `mappings` 为空 → `[]`(不报错,与 loadJson 同口径)。 */
 export async function loadDoubanMappings(): Promise<Mapping[]> {
-  const file = await loadJson<DoubanFile>("douban.json");
+  const file = await loadJson<DoubanFile>("/douban.json");
   const map = file?.mappings;
   if (!map) return [];
   return Object.entries(map).map(([code, m]) => ({
@@ -48,9 +48,9 @@ export async function loadDoubanMappings(): Promise<Mapping[]> {
 export async function loadCatalog(): Promise<Catalog> {
   // 三个只读 JSON 互不依赖 → 并行拉取(旧版串行 await 白等两个 RTT)
   const [schedule, venuesFile, filmsFile] = await Promise.all([
-    loadJson<ScheduleFile>("schedule.json"),
-    loadJson<VenuesFile>("venues.json"),
-    loadJson<FilmsFile>("films.json"),
+    loadJson<ScheduleFile>("/schedule.json"),
+    loadJson<VenuesFile>("/venues.json"),
+    loadJson<FilmsFile>("/films.json"),
   ]);
 
   // 结构守卫:文件存在但字段缺失(空对象 / 换版漏字段)时**显式报错**,

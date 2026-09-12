@@ -1,21 +1,8 @@
-// 通用工具:DOM 辅助 / 时间换算 / 格式化 / 影片信息(片名 + 元信息行)
+// 通用工具:时间换算 / 格式化 / 影片信息(片名 + 元信息行)
 
 import type { Catalog, FilmItem, Mapping, Screening } from "./types";
 import { unitDef } from "./units";
 
-export function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  cls?: string,
-  text?: string
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (cls) node.className = cls;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
-
-/** "HH:MM" → 当日分钟。**24+ 时制**:跨午夜场的 end_time 可 ≥ "24:00"(如 "29:35" = 次日 05:35),
- *  故返回值域为 0..2880 —— 排序 / 轴界 / 卡片宽度 / 冲突 / ICS 进位全部依赖这一点。 */
 export function hmsToMin(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
   return h * 60 + m;

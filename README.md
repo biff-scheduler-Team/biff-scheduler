@@ -1,13 +1,15 @@
 # BIFF Scheduler · 釜山电影节排片工具
 
 
+新版界面位于 `apps/web/src`，开发命令仍是 `npm run dev`。桌面和手机共用纵向时间轴，顶部提供独立选片与行程页面，右下角浮动面板用于快速查看。原有 localStorage 格式和 IFFDAY 账号同步均保留。新版浏览器测试使用 `npm run test:e2e:react`，原账号联调测试继续使用 `npm run test:e2e`。
+
 账号登录、全局资料编辑与排片同步的配置及测试方法见 [账号接入说明](docs/account-integration.md)。
 
 把[釜山国际电影节](https://www.biff.kr/)的官方排期表，变成一张**可点选的甘特网格**：
 
 > **选片 → 冲突检测 → 双方案（A/B）对比 → 导出 `.ics` 进手机日历 → 一键跳豆瓣**
 
-前端以 TypeScript 编写，数据本地优先。访客可离线使用，登录 IFFDAY 后可跨设备同步。前后端通过 npm workspaces 分离，分别部署为 Cloudflare Workers；后端使用 Hono、Drizzle ORM 和 D1。
+前端使用 React、React Router 和 React Spectrum S2，数据本地优先。访客可离线使用，登录 IFFDAY 后可跨设备同步。前后端通过 npm workspaces 分离，分别部署为 Cloudflare Workers；后端使用 Hono、Drizzle ORM 和 D1。
 
 [![Deploy](https://img.shields.io/badge/online-biff.lcandy.co-ce1e36)](https://biff.lcandy.co)
 [![Stack](https://img.shields.io/badge/stack-Vite%206%20·%20TypeScript%205%20·%20Tailwind%20v4-3178c6)](https://vitejs.dev/)
@@ -195,16 +197,16 @@ npm run preview      # 构建后用 wrangler dev 起本地 Worker 静态资源�
 
 | 层 | 选型 | 说明 |
 |---|---|---|
-| 构建 | **Vite 6** | 输出到 `apps/web/dist/`，`base: "./"`；`apps/web/public/*.json` 原样拷贝进产物根目录 |
+| 构建 | **Vite 6** | 输出到 `apps/web/dist/`，`base: "/"`；`apps/web/public/*.json` 原样拷贝进产物根目录 |
 | 语言 | **TypeScript 5** | 全量类型标注，`tsc --noEmit` 作为构建前置门禁 |
-| 前端框架 | **无** | 手写 TS + DOM，网格 / 冲突 / 徽章 / 弹层栈 / 甘特缩放全部自研；未引入任何组件库 |
+| 前端框架 | **React + React Router + React Spectrum S2** | 新版排片页、独立选片/行程页面、浮动面板及资料 popover；旧版保留在 `/legacy/` |
 | 样式 | **Tailwind CSS v4**（`@tailwindcss/postcss`） | **增量双轨**：不引 preflight，存量语义类读设计 token，新 UI 用 utility；token 是唯一色源 |
 | 主题 | **三态**（跟随系统 / 亮 / 暗） | CSS 只认 `:root[data-theme]`；「跟随系统」由 `theme.ts` 用 `matchMedia` 就地解析 |
 | 测试 | **Vitest** | 纯函数口径单测（24+ 时制 / GV 有效结束 / 冲突 / `.ics` / 网格卡状态），`npm run build` 前置门禁 |
 | 代码质量 | **ESLint 10** + `typescript-eslint` | `npm run lint`，同为构建门禁 |
 | 部署 | **Cloudflare Workers** | 前端 `biff-scheduler-web`，API `biff-scheduler`，共享公开入口 `biff.lcandy.co` |
 | 离线 | **PWA**（`vite-plugin-pwa`） | 预缓存产物 + 五个只读 JSON → 现场断网可用；方形 PNG 图标可加到主屏（含 iOS 180） |
-| 运维 | **Wrangler 4** | 本地预览、Workers 部署（**无 D1 / 无 Functions**） |
+| 运维 | **Wrangler 4** | 本地预览、Workers 部署（API 使用 D1 与 Drizzle） |
 | 离线管线 | **Python**（stdlib + openpyxl）+ Node 脚本 | 从 **biff.kr 官网排期页**抓 `schedule.json` / `venues.json`，从官方影片信息 **xlsx** 生成 `films.json`；产物检入仓库，**仅在更新数据时需要**，部署链路不依赖它 |
 
 **无障碍与可达性**：弹层 `role=dialog` + focus trap + 焦点归还 + body 滚动锁；toast `aria-live`；tooltip 触屏与键盘可达。
@@ -275,7 +277,7 @@ npm run preview      # 构建后用 wrangler dev 起本地 Worker 静态资源�
 
 **样式与适配**：设计 token 是唯一色源；字阶 / 圆角走**值命名**阶梯（`text-12` = 12px、`rounded-8` = 8px，全站已无 `text-[Npx]` 任意值）；暗色**只覆盖 token**（零 utility 改动）；窄屏（≤768px）走**列表优先**（默认打开选片抽屉，网格降级为次级入口）。
 
-**API**：**本站没有 API**。片单只落浏览器 `localStorage`，豆瓣映射是静态文件。`/api/pick*`、`/api/mapping*` 与 D1 `douban_map`、`functions/` 目录均已退役删除。
+**API**：账号登录、资料和同步由 `apps/api` 提供，数据结构定义在 `packages/contracts`；公开片目仍从前端静态 JSON 读取。
 
 ---
 

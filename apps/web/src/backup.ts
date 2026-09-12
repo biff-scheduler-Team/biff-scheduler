@@ -2,7 +2,7 @@
 //
 // 背景:片单(选片 / 排片 / 抢票顺位 / GV 覆写 / 设置 / 筛选)只存 localStorage(见 state.ts 文件头),
 // 而 localStorage **按 origin 隔离** —— 绑定新域名后,用户在新域名看到的是空数据。
-// JSON 备份支持跨站搬迁与手动恢复；登录后的自动同步另由 account-sync 管理。
+// 云端早已整体退役(纯静态零后端),所以「搬家」只能靠一份显式 JSON:旧站导出 → 新站导入。
 //
 // ★ 三条设计口径:
 //   ① **不写死键清单**,按 `biff.` 前缀快照全部键 —— 将来新增视图偏好键会自动被带上,
@@ -15,8 +15,6 @@
 // ⚠ 本模块**不得在 import 期触碰 DOM** —— 纯函数要能在 node 环境被单测直接导入
 //   (见 vitest.config.ts)。「导入备份」弹层因需要 modal / ui,单列在 `backup-panel.ts`。
 
-import { el, todayIsoLocal } from "./util";
-import { toast } from "./toast";
 
 /** 备份覆盖的 localStorage 前缀 —— 全站键统一 `biff.`(state.ts / filters.ts / library.ts 同口径)。 */
 export const BACKUP_PREFIX = "biff.";
@@ -145,36 +143,3 @@ export function parseIcsCodes(text: string): IcsParse {
 }
 
 /* ---------------- 运行时入口(读写真实 localStorage) ---------------- */
-
-function localStore(): BackupStorage {
-  return window.localStorage;
-}
-
-/** 下载备份文件(「导出备份文件」入口)。本机无数据时只提示、不产出空文件。 */
-export function downloadBackup(): void {
-  const file = snapshot(localStore(), new Date(), location.origin);
-  const n = Object.keys(file.data).length;
-  if (n === 0) {
-    toast("本机没有可备份的数据 —— 先选几场再导出");
-    return;
-  }
-  const blob = new Blob([JSON.stringify(file, null, 2)], { type: "application/json;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = el("a");
-  a.href = url;
-  a.download = `biff-backup-${todayIsoLocal()}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-  toast(`已导出备份(${n} 项)—— 在新域名用「导入数据备份」恢复`);
-}
-
-/** 写入并**刷新页面**。
- *  各模块的数据都是启动时从 localStorage 读进内存的(store.picks / rankOf / settings …),
- *  不刷新就只能靠逐模块重新 hydrate —— 漏一个就是「导入成功但界面没变」。刷新是唯一可靠口径。 */
-export function applyBackup(data: Record<string, string>): void {
-  const n = restore(localStore(), data);
-  toast(`已导入 ${n} 项数据,正在刷新…`);
-  location.reload();
-}

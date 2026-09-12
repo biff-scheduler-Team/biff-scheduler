@@ -1,0 +1,72 @@
+.agenda-page .agenda-date {
+  flex-wrap: wrap;
+}
+.agenda-day-count,
+.agenda-day-summary {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.agenda-day-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  flex-basis: 100%;
+}
+.agenda-overlap-count {
+  color: var(--conflict-line);
+}
+.rank-group > ol > li {
+  position: relative;
+}
+.rank-group > ol[data-rank-dragging] > li {
+  transition: transform 170ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.rank-group > ol[data-rank-dragging] > li[data-dragging] {
+  z-index: 2;
+  transition: none;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  outline: 2px solid var(--selected-line);
+  border-radius: 8px;
+}
+.rank-group .drag-handle {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.rank-group .drag-handle:active {
+  cursor: grabbing;
+}
+.rank-group:not([data-broken]) .conflict-label {
+  display: none;
+}
+.rank-group[data-broken] {
+  border-color: var(--conflict-line);
+}
+.rank-clash-item {
+  margin-top: 12px;
+}
+.saved-plan-details {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.saved-plan-details summary {
+  cursor: pointer;
+}
+.saved-plan-details p {
+  white-space: pre-line;
+  font-variant-numeric: tabular-nums;
+}
+@media (pointer: coarse) {
+  .rank-group .drag-handle {
+    width: 44px;
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rank-group > ol[data-rank-dragging] > li {
+    transition: none;
+  }
+}

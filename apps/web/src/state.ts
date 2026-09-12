@@ -1,4 +1,4 @@
-import { writeWorkspaceItem, removeWorkspaceItem } from "./workspace-storage";
+import {writeWorkspaceItem, removeWorkspaceItem} from "./workspace-storage";
 // 应用状态:选片记录 / 抢票顺位 / 豆瓣映射 / 设置。
 //
 // 单一数据源 = store.picks:「我的选片」(按片看)与「我的行程」(按场次看)是同一份数据的两个视图。
@@ -663,10 +663,8 @@ export function planById(id: string): SavedPlan | undefined {
   return savedPlans.find((p) => p.id === id);
 }
 
-/** Replace the in-memory view after an account switch or a merged cloud update. */
-export function reloadWorkspaceState(filmKeyOf: (code: string) => string | null): void {
-  store.picks.clear(); rankOf.clear(); gvTalk.clear(); gvTalkMinOv.clear(); agendaFolded.clear(); savedPlans.length = 0;
-  store.settings = { alarmMin: 45, transitMin: 0, gvTalkOn: true, gvTalkMin: 25 };
-  loadSettings(); loadGvTalk(); loadGvTalkMin(); loadRanks(); loadSavedPlans(); loadAgendaFold(); loadPicks(filmKeyOf);
-  notify("all");
+/** Edit a film note without changing its screening slots. */
+export function setPickNote(key: string, note: string): void {
+  const current = store.picks.get(key);
+  if (current) commit(key, { ...current, note });
 }

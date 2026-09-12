@@ -1,6 +1,4 @@
-import { el } from "./util";
-import { openModal, closeModal } from "./modal";
-import { toast } from "./toast";
+import {el, openModal, closeModal, toast} from "./components/AccountHost";
 import { workspaceCounts } from "./sync-data";
 import {
   accountState,
@@ -59,6 +57,7 @@ function updateHeader() {
 export async function initAccount(
   onWorkspaceChanged: () => void,
   describeRecord: (key: string) => string,
+  replaceUrl?: (url: URL) => void,
 ) {
   labelForRecord = describeRecord;
   document.getElementById("account-btn")?.addEventListener("click", openAccountPanel);
@@ -77,7 +76,8 @@ export async function initAccount(
   if (connected || failed) {
     url.searchParams.delete("account");
     url.searchParams.delete("account_error");
-    history.replaceState(null, "", url);
+    if (replaceUrl) replaceUrl(url);
+    else history.replaceState(null, "", url);
     if (failed) toast("登录未完成，本机排片没有改动。请重试。");
     setTimeout(openAccountPanel, 0);
   }

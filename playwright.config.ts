@@ -10,6 +10,7 @@ export default defineConfig({
       }
     : undefined,
   testDir: "./e2e",
+  testIgnore: "**/react/**",
   fullyParallel: false,
   workers: 1,
   timeout: 60_000,

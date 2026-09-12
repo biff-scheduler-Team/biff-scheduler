@@ -155,18 +155,6 @@ export function buildTicketIcs(opens: TicketOpen[], alarmMin: number, bookingUrl
   return lines.join("\r\n") + "\r\n";
 }
 
-export function downloadIcs(content: string, filename: string): void {
-  const blob = new Blob([content], { type: "text/calendar;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
 /** 从选片记录展开出**全部**已排场次,按日期/开始时间排序。
  *  一场一行 —— 档位随影片级记录带出,故同一部片的多场档位必然一致。 */
 export function pickEntries(picks: Map<string, PickEntry>, cat: Catalog): PickRow[] {

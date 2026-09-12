@@ -1,0 +1,21 @@
+import {test,expect} from '@playwright/test';
+import {ready,storage} from './helpers';
+
+test('GV attendance toggles independently and survives selecting the film and reload', async ({page}) => {
+  await ready(page,'/schedule?date=2026-10-07');
+  const film=page.locator('[data-grid-code="008"]');
+  const talk=page.getByRole('button',{name:'008 参加映后谈',exact:true});
+  await talk.click();
+  await expect(talk).toHaveAttribute('aria-pressed','false');
+  await expect(film).toHaveAttribute('aria-pressed','false');
+  expect(JSON.parse((await storage(page))['biff.gvtalk.v1'])['008']).toBe(false);
+  await film.click();
+  await expect(film).toHaveAttribute('aria-pressed','true');
+  await expect(talk).toHaveAttribute('aria-pressed','false');
+  await talk.click();
+  await expect(talk).toHaveAttribute('aria-pressed','true');
+  await expect(film).toHaveAttribute('aria-pressed','true');
+  await page.reload();
+  await expect(talk).toHaveAttribute('aria-pressed','true');
+  await expect(film).toHaveAttribute('aria-pressed','true');
+});
