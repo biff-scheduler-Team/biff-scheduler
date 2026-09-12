@@ -17,7 +17,6 @@ import {
   ActionButton,
   DialogTrigger,
   ToastContainer,
-  ToggleButton,
 } from "../components/spectrum";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { ExportDialog } from "../components/ExportDialog";
@@ -29,7 +28,7 @@ import {
 import { SchedulePage } from "../pages/SchedulePage";
 import { CatalogProvider, hydrateStorage, useCatalog } from "./store";
 import { useMedia } from "./hooks";
-import { setSettings, store } from "../state";
+import { store } from "../state";
 import type { Catalog } from "../types";
 
 // React Router resolves app paths; absolute external links must keep their scheme.
@@ -40,13 +39,7 @@ function useAppHref(href: string) {
 }
 
 export function IndexRedirect() {
-  const mobile = useMedia("(max-width: 1099px)");
-  return (
-    <Navigate
-      replace
-      to={!mobile && store.picks.size ? "/agenda" : "/schedule"}
-    />
-  );
+  return <Navigate replace to="/schedule" />;
 }
 function readWidth() {
   try {
@@ -63,24 +56,22 @@ function Shell() {
   const navigate = useNavigate();
   const location = useLocation();
   const systemDark = useMedia("(prefers-color-scheme: dark)");
-  const small = useMedia("(max-width: 1099px)");
   const theme = store.settings.theme ?? "system";
   const dark = theme === "dark" || (theme === "system" && systemDark);
-  const panelOpen = /^\/(library|picks|agenda)(\/|$)/.test(location.pathname);
+  const viewingRoute = /^\/(picks|agenda)(\/|$)/.test(location.pathname);
+  const panelOpen = viewingRoute && new URLSearchParams(location.search).get("quick") === "1";
+  const fullPage = /^\/library(?:\/|$)/.test(location.pathname) || (viewingRoute && !panelOpen);
+  const pageParams = new URLSearchParams(location.search);
+  pageParams.delete("quick");
+  const pageSearch = pageParams.size ? `?${pageParams}` : "";
+  const floatButton = useRef<HTMLButtonElement>(null);
+  const lastPanel = useRef("/agenda");
+  if (panelOpen) lastPanel.current = location.pathname.startsWith("/picks") ? "/picks" : "/agenda";
   const [width, setWidth] = useState(readWidth);
-  const widthRef = useRef(width);
-  widthRef.current = width;
-  const drag = useRef<{ start: number; width: number } | null>(null);
   const aside = useRef<HTMLElement>(null);
-  const persistWidth = (n: number | null) => {
-    setWidth(n);
-    try {
-      if (n === null) localStorage.removeItem("biff.pickerw.v1");
-      else localStorage.setItem("biff.pickerw.v1", String(n));
-    } catch {
-      /* Session width remains usable when storage is unavailable. */
-    }
-  };
+  useEffect(() => {
+    if (panelOpen && !aside.current?.contains(document.activeElement) && !document.querySelector('[role="dialog"]')) aside.current?.querySelector<HTMLElement>("a.active,button")?.focus({preventScroll: true});
+  }, [panelOpen]);
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     document.documentElement.dataset.colorScheme = dark ? "dark" : "light";
@@ -103,19 +94,21 @@ function Shell() {
         !document.querySelector(
           '[role="dialog"], [role="alertdialog"], [role="listbox"]',
         )
-      )
-        navigate(`/schedule${location.search}`);
+      ) {
+        navigate(`/schedule${pageSearch}`);
+        floatButton.current?.focus();
+      }
     };
     window.addEventListener("keydown", escape);
     return () => window.removeEventListener("keydown", escape);
-  }, [panelOpen, navigate, location.search]);
+  }, [panelOpen, navigate, pageSearch]);
   const [settingsSession, setSettingsSession] = useState(0);
   const [exportSession, setExportSession] = useState(0);
   const nav = [
     ["/schedule", "排片表"],
     ["/library", "影片库"],
-    ["/picks", `我的选片${store.picks.size ? ` ${store.picks.size}` : ""}`],
-    ["/agenda", `我的行程${codes.length ? ` ${codes.length}` : ""}`],
+    ["/picks", "我的选片"],
+    ["/agenda", "我的行程"],
   ];
   return (
     <Provider
@@ -173,30 +166,20 @@ function Shell() {
           {nav.map(([path, text]) => (
             <NavLink
               key={path}
-              to={`${path}${location.search}`}
+              to={`${path}${pageSearch}`}
               className={({ isActive }) =>
-                isActive ? "nav-item active" : "nav-item"
+                (panelOpen ? path === "/schedule" : isActive) ? "nav-item active" : "nav-item"
               }
             >
               {text}
             </NavLink>
           ))}
         </nav>
-        <div className="theme-controls" aria-label="外观">
-          {(["system", "light", "dark"] as const).map((t) => (
-            <ToggleButton
-              key={t}
-              isSelected={theme === t}
-              onChange={() => setSettings({ theme: t })}
-            >
-              {t === "system" ? "系统" : t === "light" ? "亮色" : "暗色"}
-            </ToggleButton>
-          ))}
-        </div>
+
       </div>
       <main
         id="workspace"
-        className={`workspace ${panelOpen ? "with-panel" : ""}`}
+        className={`workspace floating-workspace ${fullPage ? "full-page-workspace" : ""}`}
         style={
           width
             ? ({ "--panel-width": `${width}px` } as CSSProperties)
@@ -205,10 +188,15 @@ function Shell() {
       >
         {panelOpen ? (
           <>
-            <aside className="side-panel panel" ref={aside}>
-              <div className="panel-close">
+            <aside id="viewing-panel" aria-label="我的观影" className="side-panel panel viewing-panel" ref={aside}>
+              <div className="panel-close viewing-panel-heading">
+                <nav aria-label="我的观影视图" className="viewing-tabs">
+                  <NavLink to={`/picks${location.search}`}>我的选片 {store.picks.size}</NavLink>
+                  <NavLink to={`/agenda${location.search}`}>我的行程 {codes.length}</NavLink>
+                </nav>
+                <RouterLink className="viewing-full-link" to={`${location.pathname.split("/films/")[0]}${pageSearch}`}>打开完整页面</RouterLink>
                 <ActionButton
-                  onPress={() => navigate(`/schedule${location.search}`)}
+                  onPress={() => { navigate(`/schedule${pageSearch}`); floatButton.current?.focus(); }}
                   aria-label="收起选片面板"
                 >
                   收起
@@ -216,76 +204,34 @@ function Shell() {
               </div>
               <Outlet />
             </aside>
-            {!small && (
-              <div
-                className="panel-resizer"
-                role="separator"
-                aria-label="调整选片面板宽度"
-                aria-orientation="vertical"
-                aria-valuemin={520}
-                aria-valuemax={800}
-                aria-valuenow={
-                  width ?? Math.round(aside.current?.clientWidth ?? 520)
-                }
-                tabIndex={0}
-                onDoubleClick={() => persistWidth(null)}
-                onKeyDown={(e) => {
-                  if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-                    e.preventDefault();
-                    persistWidth(
-                      Math.max(
-                        520,
-                        Math.min(
-                          800,
-                          (width ?? aside.current?.clientWidth ?? 520) +
-                            (e.key === "ArrowLeft" ? -20 : 20),
-                        ),
-                      ),
-                    );
-                  }
-                  if (e.key === "Home") persistWidth(520);
-                  if (e.key === "End") persistWidth(800);
-                }}
-                onPointerDown={(e) => {
-                  drag.current = {
-                    start: e.clientX,
-                    width: aside.current?.clientWidth ?? 520,
-                  };
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                }}
-                onPointerMove={(e) => {
-                  if (drag.current)
-                    setWidth(
-                      Math.max(
-                        520,
-                        Math.min(
-                          800,
-                          Math.round(
-                            drag.current.width + e.clientX - drag.current.start,
-                          ),
-                        ),
-                      ),
-                    );
-                }}
-                onPointerUp={() => {
-                  if (drag.current) persistWidth(widthRef.current);
-                  drag.current = null;
-                }}
-                onPointerCancel={() => {
-                  drag.current = null;
-                }}
-              >
-                <span />
-              </div>
-            )}
+
           </>
         ) : (
           <Outlet />
         )}
-        <div className="schedule-column">
+        <div className="schedule-column" hidden={fullPage}>
           <SchedulePage />
         </div>
       </main>
+      <button
+        ref={floatButton}
+        hidden={fullPage}
+        className="viewing-fab"
+        type="button"
+        aria-label={panelOpen ? "收起我的观影" : "打开我的观影"}
+        aria-expanded={panelOpen}
+        aria-controls="viewing-panel"
+        onClick={() => {
+          if (panelOpen) navigate(`/schedule${pageSearch}`);
+          else {
+            const params = new URLSearchParams(pageSearch);
+            params.set("quick", "1");
+            navigate(`${lastPanel.current}?${params}`);
+          }
+        }}
+      >
+        {panelOpen ? "收起" : `我的观影${codes.length ? ` ${codes.length}` : ""}`}
+      </button>
       <footer className="app-footer">
         BIFF {cat.schedule.festival.year}，釜山国际电影节{" "}
         <span>数据保存在当前浏览器</span>

@@ -1,3 +1,4 @@
+import { FilmBadge } from "./ScreeningCard";
 import { useEffect, useState } from "react";
 import {
   ActionButton,
@@ -56,9 +57,18 @@ export function TicketLabel() {
   if (!opens.length) return <>购票信息</>;
   if (!next) return <span title="全部批次均已开票，点击查看票价、购票须知与开票批次">BIFF 2026 售票中 · 抢票信息</span>;
   const batch = opens.findIndex((o) => o.at === next.at) + 1;
+  const seconds = Math.max(0, Math.ceil((next.at - now) / 1000));
+  const days = Math.floor(seconds / 86400);
+  const showSeconds = seconds <= 3600;
+  const clock = [Math.floor(seconds / 3600) % 24, Math.floor(seconds / 60) % 60, seconds % 60]
+    .slice(0, showSeconds ? 3 : 2)
+    .map(n => String(n).padStart(2, "0")).join(":");
   return (
-    <span title={`第 ${batch} 批包含：${next.includes}`}>
-      距第 {batch} 批开票 {countdownText(next.at - now)} · 京 {next.bj} / 韩 {next.kst}
+    <span className="ticket-countdown" title={`第 ${batch} 批：北京时间 ${next.bj} / 韩国时间 ${next.kst}\n包含：${next.includes}`}>
+      <span className="ticket-countdown-label">距第 {batch} 批开票</span>
+      <span role="timer" aria-live="off" aria-label={`${days} 天 ${Math.floor(seconds / 3600) % 24} 小时 ${Math.floor(seconds / 60) % 60} 分${showSeconds ? ` ${seconds % 60} 秒` : ""}`} className="ticket-countdown-digits">
+        <span>{days}<small>天</small></span><span>{clock}</span>
+      </span>
     </span>
   );
 }
@@ -226,7 +236,7 @@ export function GuideDialog() {
                 <dl className="definition-list">
                   {RATING_ORDER.map((k) => (
                     <div key={k}>
-                      <dt>{k}</dt>
+                      <dt><FilmBadge kind={`rating-${k}`} label={k} /></dt>
                       <dd>{RATING_DEFS[k].zh}</dd>
                     </div>
                   ))}
@@ -237,7 +247,7 @@ export function GuideDialog() {
                 <dl className="definition-list">
                   {Object.values(SUBS_DEFS).map((d) => (
                     <div key={d.label}>
-                      <dt>{d.label}</dt>
+                      <dt><FilmBadge kind={`subs-${d.label}`} label={d.label} /></dt>
                       <dd>{d.zh}</dd>
                     </div>
                   ))}
@@ -252,7 +262,7 @@ export function GuideDialog() {
                 <dl className="definition-list">
                   {BADGE_DEFS.map((d) => (
                     <div key={d.key}>
-                      <dt>{d.label}</dt>
+                      <dt><FilmBadge kind={d.key} label={d.label} /></dt>
                       <dd>{d.title.replaceAll(" · ", "，")}</dd>
                     </div>
                   ))}
@@ -263,7 +273,7 @@ export function GuideDialog() {
                 <dl className="definition-list">
                   {cat.venues.map((v) => (
                     <div key={v.id}>
-                      <dt>{v.code}</dt>
+                      <dt><span className="code venue-code">{v.code}</span></dt>
                       <dd>
                         {venueShort(v)}
                         <br />

@@ -22,10 +22,12 @@ export function FilterBar({
   filters,
   onChange,
   label,
+  fieldsOnly = false,
 }: {
   filters: FilterState;
   onChange: (patch: Partial<FilterState>) => void;
   label: string;
+  fieldsOnly?: boolean;
 }) {
   const { cat } = useCatalog();
   const groups = [...new Set(cat.venues.map((v) => v.group))];
@@ -35,15 +37,7 @@ export function FilterBar({
     else ids.forEach((id) => next.add(id));
     onChange({ venues: next });
   };
-  return (
-    <Disclosure>
-      <DisclosureTitle>
-        {label}
-        {hasActiveFilter(filters)
-          ? `：${filterSummary(filters).replaceAll(" · ", "，")}`
-          : ""}
-      </DisclosureTitle>
-      <DisclosurePanel>
+  const fields = (
         <div className="filter-fields">
           <CheckboxGroup
             label="字幕与对白"
@@ -150,7 +144,15 @@ export function FilterBar({
             </ActionButton>
           )}
         </div>
-      </DisclosurePanel>
+  );
+  if (fieldsOnly) return fields;
+  return (
+    <Disclosure>
+      <DisclosureTitle>
+        {label}
+        {hasActiveFilter(filters) ? `：${filterSummary(filters).replaceAll(" · ", "，")}` : ""}
+      </DisclosureTitle>
+      <DisclosurePanel>{fields}</DisclosurePanel>
     </Disclosure>
   );
 }

@@ -1,0 +1,13 @@
+/* The new-version entry is the legacy UI's only red action. */
+button[class*="bg-biff"],
+button[class*="var(--biff-red)"],
+button[class*="text-biff"],
+button[class*="text-conf"] {
+  background: var(--color-card) !important;
+  color: var(--color-ink) !important;
+  border-color: var(--color-line) !important;
+  box-shadow: inset 0 0 0 1px var(--color-line);
+}
+button[class*="bg-biff"][class*="text-on-brand"] { background: color-mix(in srgb, var(--color-ink) 12%, var(--color-card)) !important; }
+#modern-version-link { background: #ce1e36; border-color: #ce1e36; color: #fff; }
+#modern-version-link:hover { background: #b2192f; }

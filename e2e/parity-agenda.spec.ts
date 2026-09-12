@@ -255,9 +255,11 @@ test("ticket details retain translated guidance and a fixed 30-minute ticket ala
   await seed(page, { "biff.settings.v1": JSON.stringify({ alarmMin: 90 }) });
   await ready(page, "/agenda");
   const ticketButton = page.getByRole("button", { name: /距第 1 批开票/ });
-  await expect(ticketButton).toContainText("京 9/17 13:00 / 韩 9/17 14:00");
+  await expect(ticketButton.getByRole("timer")).toBeVisible();
   await ticketButton.click();
   const dialog = page.getByRole("dialog", { name: "购票信息", exact: true });
+  await expect(dialog).toContainText("北京时间 9/17 13:00");
+  await expect(dialog).toContainText("韩国时间 9/17 14:00");
   await expect(dialog).toContainText(
     "65 岁以上（1961 年前出生）/ 残障 / 退伍军人，需证件核验",
   );

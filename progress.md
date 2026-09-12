@@ -51,3 +51,19 @@
 - Final production verification:23 suites/200 unit tests, TypeScript/ESLint, dual HTML entry Vite+PWA build,209 Playwright executions across desktop Chromium/mobile Chromium/mobile WebKit all passed (0 failed/0 skipped,1.2min).
 - Visual QA of /legacy desktop/mobile passed; no mobile overflow. New/old navigation is full-document and shares storage; root static-data URLs and offline /legacy aliases verified.
 - All8 P2 and3 lower-priority findings from the latest review are resolved. Added review-fixes-and-legacy.md with implementation/test mapping. Dev31027 remains active; original main is untouched.
+
+## 2026-09-13: Vertical time axis
+
+- Replaced the horizontal desktop schedule and phone list with one vertical time/venue grid. The document owns vertical scrolling; the grid only scrolls horizontally.
+- Added sticky synchronized venue headers, vertical film/GV segments, same-venue overlap lanes and page-time zoom anchors. Reused the GV duration dialog.
+- Fixed feedback between programmatic header synchronization and pointer panning.
+- Preserved storage/domain logic and the frozen legacy entry.
+- Validation: typecheck, lint, 24 suites / 203 unit tests; 215 Playwright executions passed, zero failures/skips (1.4m). Desktop and iPhone WebKit screenshots checked. Mobile WebKit uses document-scroll geometry because Playwright does not inject native swipe/wheel there.
+
+## 2026-09-13: Floating viewing panel
+
+- Replaced the picks/agenda sidebar with a bottom-right floating panel and launcher. Tabs share the panel; library is a standalone page.
+- Selecting no longer opens the panel. Locating closes it and reveals the schedule target. Mobile gets a viewport-bounded bottom panel.
+- Preserved legacy storage keys, including existing panel-width preference; legacy entry unchanged.
+- Verified desktop/mobile geometry and focus. Fixed header obstruction for long panels and avoided overriding an expanded film's focus.
+- Validation: typecheck, lint and 203 unit tests passed. Full E2E run passed 214/218; corrected the obsolete location test and stabilized focus before the detail reading-position assertion. All 30 edge-case/library tests then passed, covering all four previous failures. All 218 scenarios now pass across the full run and targeted rerun.

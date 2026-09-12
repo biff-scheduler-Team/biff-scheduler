@@ -53,6 +53,7 @@ test("multiple selected dates filter picks only and disappear when no picked fil
   const library = page.getByRole("region", { name: "影片库", exact: true });
   await expect(library.locator('[data-film-key="cat:f002"]')).toBeVisible();
   await expect(library.getByRole("button", { name: /选片日期/ })).toHaveCount(0);
+  if (!await page.locator("#viewing-panel").count()) await page.getByRole("button", {name: "打开我的观影", exact: true}).click();
   await page.getByRole("link", { name: /^我的选片/ }).click();
   await page.getByRole("button", { name: "移除影片 彼此的日夜", exact: true }).click();
   await expect(page.locator('[data-film-key="cat:f002"]')).toBeVisible();
@@ -77,6 +78,7 @@ test("film expansion survives tab switches and temporary search filters", async 
   const film = page.locator('[data-film-key="cat:f001"]');
   await film.getByRole("button", { name: "展开 彼此的日夜 场次", exact: true }).click();
   await expect(film.locator("[data-screening]")).toHaveCount(4);
+  if (!await page.locator("#viewing-panel").count()) await page.getByRole("button", {name: "打开我的观影", exact: true}).click();
   await page.getByRole("link", { name: /^我的选片/ }).click();
   await page.getByRole("link", { name: "影片库", exact: true }).click();
   await expect(film.locator("[data-screening]")).toHaveCount(4);

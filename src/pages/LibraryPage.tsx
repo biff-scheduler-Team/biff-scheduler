@@ -243,7 +243,7 @@ export function LibraryPage({ picked = false }: { picked?: boolean }) {
     setFilmExpanded("picks", targetKey, true);
     const panel = card.closest<HTMLElement>(".side-panel");
     if (panel && getComputedStyle(panel).overflowY !== "visible") {
-      panel.scrollTop = Math.max(0, card.getBoundingClientRect().top - panel.getBoundingClientRect().top + panel.scrollTop);
+      panel.scrollTop = Math.max(0, card.getBoundingClientRect().top - panel.getBoundingClientRect().top + panel.scrollTop - (panel.querySelector<HTMLElement>(".viewing-panel-heading")?.offsetHeight ?? 0));
     } else {
       window.scrollTo({ top: card.getBoundingClientRect().top + window.scrollY, behavior: "instant" });
     }

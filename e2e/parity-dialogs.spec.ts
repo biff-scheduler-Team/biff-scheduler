@@ -35,7 +35,11 @@ test("cancel discards settings drafts and reopening reads current preferences", 
     settings,
   );
   if (!isMobile) {
-    await page.getByRole("button", { name: "暗色", exact: true }).click();
+    await page.getByRole("button", { name: "设置", exact: true }).click();
+    const appearance = page.getByRole("dialog", { name: "设置", exact: true });
+    await appearance.getByRole("button", { name: /外观/ }).click();
+    await page.getByRole("option", { name: "暗色", exact: true }).click();
+    await appearance.getByRole("button", { name: "保存设置", exact: true }).click();
     await page.getByRole("button", { name: "放大排片表", exact: true }).click();
   }
   await page.getByRole("button", { name: "设置", exact: true }).click();
@@ -63,7 +67,7 @@ test("restoring GV duration preserves attendance, and editing requires confirmat
     "biff.gvtalkmin.v1": '{"001":40}',
   });
   await ready(page, "/agenda");
-  await page
+  await page.getByRole("region", {name: "我的行程", exact: true})
     .getByRole("button", { name: "调整 001 映后时长", exact: true })
     .click();
   let dialog = page.getByRole("dialog", { name: "001 映后谈", exact: true });
@@ -74,7 +78,7 @@ test("restoring GV duration preserves attendance, and editing requires confirmat
     "001": false,
   });
   expect(JSON.parse((await storage(page))["biff.gvtalkmin.v1"])).toEqual({});
-  await page
+  await page.getByRole("region", {name: "我的行程", exact: true})
     .getByRole("button", { name: "调整 001 映后时长", exact: true })
     .click();
   dialog = page.getByRole("dialog", { name: "001 映后谈", exact: true });
@@ -86,7 +90,7 @@ test("restoring GV duration preserves attendance, and editing requires confirmat
   await input.press("Tab");
   expect(JSON.parse((await storage(page))["biff.gvtalkmin.v1"])).toEqual({});
   await dialog.getByRole("button", { name: "取消", exact: true }).click();
-  await page
+  await page.getByRole("region", {name: "我的行程", exact: true})
     .getByRole("button", { name: "调整 001 映后时长", exact: true })
     .click();
   await expect(input).toHaveValue("");
@@ -249,7 +253,7 @@ test("clipboard image failure automatically downloads the rendered PNG", async (
   expect((await event).suggestedFilename()).toBe("BIFF2026-看片计划.png");
 });
 
-test("clicking a dialog portal never toggles the timeline card behind it", async ({
+test("clicking a dialog portal never toggles the grid card behind it", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -267,7 +271,7 @@ test("clicking a dialog portal never toggles the timeline card behind it", async
   expect(JSON.parse((await storage(page))["biff.picks.v2"])).toEqual([entry]);
   await dialog.getByRole("button", { name: "取消", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "移出场次 001", exact: true }),
+    page.locator('[data-grid-code="001"][aria-pressed="true"]'),
   ).toBeVisible();
 });
 

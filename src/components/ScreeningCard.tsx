@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Tooltip as BadgeTooltip, TooltipTrigger as BadgeTooltipTrigger, Popover, Dialog as AriaDialog } from "react-aria-components";
 import { useScheduleNavigation } from "../app/navigation";
 import { priceOf, formatKrw } from "../extras";
 import { useHighlight } from "../app/highlight";
@@ -34,33 +35,39 @@ import {
   toggleScreening,
 } from "../state";
 import { RATING_DEFS, SUBS_DEFS, subsKeys, venueShort } from "../legend";
-import { BADGE_DEFS, screeningBadgeKeys } from "../badges";
+import { BADGE_DEFS, screeningBadgeKeys, codeTip } from "../badges";
 import type { Screening } from "../types";
+
+export function FilmBadge({ kind, label, title }: { kind: string; label: string; title?: string }) {
+  const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLSpanElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const id = useId();
+  const description = title || (kind === "code" ? codeTip(label) : kind.startsWith("rating-") ? Object.values(RATING_DEFS).find(d => d.label === label)?.tip : kind.startsWith("subs-") ? Object.values(SUBS_DEFS).find(d => d.label === label)?.zh : BADGE_DEFS.find(d => d.key === kind)?.title) || label;
+  const keepOpen = () => { if (closeTimer.current) clearTimeout(closeTimer.current); };
+  const closeSoon = () => { keepOpen(); closeTimer.current = setTimeout(() => setOpen(false), 150); };
+  useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current); }, []);
+  return <BadgeTooltipTrigger isOpen={open} onOpenChange={setOpen} delay={0} closeDelay={150}><span ref={trigger} className="film-badge" data-badge={kind} title="" aria-description={description} aria-describedby={open ? id : undefined}
+    onPointerEnter={() => {keepOpen();setOpen(true);}} onPointerLeave={closeSoon}>
+
+    {kind === "batch" ? <svg viewBox="0 0 26 18" width="22" height="15" role="img" aria-label="Batch Screening 联映"><path d="M2 5v10M5 3v12M9 7h15v9H9zM9 2h15v5H9zM11 2l3 5m2-5 3 5m2-5 3 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" /></svg> : label}
+  </span><BadgeTooltip triggerRef={trigger} placement="top" offset={6} className="film-badge-tooltip" onPointerEnter={keepOpen} onPointerLeave={closeSoon}><span id={id}>{description}</span></BadgeTooltip></BadgeTooltipTrigger>;
+}
 
 export function Badges({ screening: s }: { screening: Screening }) {
   const keys = screeningBadgeKeys(s);
   return (
     <span className="badges">
       {s.rating && (
-        <span className="badge" title={RATING_DEFS[s.rating]?.zh}>
-          {s.rating}
-        </span>
+        <FilmBadge kind={`rating-${s.rating}`} label={s.rating} title={RATING_DEFS[s.rating]?.tip} />
       )}
       {subsKeys(s.subs).map((k) => (
-        <span className="badge" key={k} title={SUBS_DEFS[k].zh}>
-          {k}
-        </span>
+        <FilmBadge kind={`subs-${k}`} key={k} label={k} title={SUBS_DEFS[k].zh} />
       ))}
       {keys.map((k) => (
-        <span
-          className="badge feature-badge"
-          key={k}
-          title={BADGE_DEFS.find((d) => d.key === k)?.title}
-        >
-          {BADGE_DEFS.find((d) => d.key === k)?.label ?? k}
-        </span>
+        <FilmBadge kind={k} key={k} label={BADGE_DEFS.find(d => d.key === k)?.label ?? k} title={BADGE_DEFS.find(d => d.key === k)?.title} />
       ))}
-      {s.page && <span className="badge">P{s.page}</span>}
+      {s.page && <FilmBadge kind="page" label={`P${s.page}`} title={`官方节目册第 ${s.page} 页`} />}
     </span>
   );
 }
@@ -120,8 +127,51 @@ function GvDurationDialog({ screening: s }: { screening: Screening }) {
   );
 }
 
-export function GvControls({ screening: s }: { screening: Screening }) {
+function GvPopoverForm({screening: s, close}: {screening: Screening; close: () => void}) {
+  const [value, setValue] = useState(() => gvTalkMinOv.get(s.code) ?? Number.NaN);
+  const defaults = store.settings.gvTalkMin;
+  return <AriaDialog aria-label={`${s.code} 映后谈`} className="gv-popover-form">
+    <h3>{s.code} 映后谈</h3>
+    <NumberField label="本场映后时长（分钟）" description={`留空则跟随全局默认 ${defaults} 分钟。`} placeholder={String(defaults)} minValue={0} maxValue={240} value={value} onChange={setValue} autoFocus />
+    <ActionButton onPress={() => {setGvTalkMin(s.code, null); close();}}>跟随默认（{defaults} 分钟）</ActionButton>
+    <div className="preview-actions">
+      <button className="preview-full" type="button" onClick={close}>取消</button>
+      <button className="preview-full" type="button" onClick={() => {setGvTalkMin(s.code, Number.isFinite(value) ? Math.max(0, Math.round(value)) : null);close();}}>保存映后时长</button>
+    </div>
+  </AriaDialog>;
+}
+
+function GvDurationPopover({screening: s}: {screening: Screening}) {
+  const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  return <>
+    <button ref={trigger} type="button" aria-label={`调整 ${s.code} 映后时长`} aria-haspopup="dialog" aria-expanded={open} onClick={() => {trigger.current?.focus({preventScroll: true});setOpen(value => !value);}}>
+      <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m12 4 4 4M3 17l1-5L14 2a2.8 2.8 0 0 1 4 4L8 16l-5 1Z" /></svg>
+    </button>
+    <Popover triggerRef={trigger} isOpen={open} onOpenChange={setOpen} placement="top" offset={8} className="gv-duration-popover">
+      <GvPopoverForm screening={s} close={() => setOpen(false)} />
+    </Popover>
+  </>;
+}
+
+export function GvDurationButton({ screening: s, iconOnly = false }: { screening: Screening; iconOnly?: boolean }) {
   const [session, setSession] = useState(0);
+  if (iconOnly) return <GvDurationPopover screening={s} />;
+  return (
+    <DialogTrigger
+      onOpenChange={(open) => {
+        if (open) setSession((n) => n + 1);
+      }}
+    >
+      <ActionButton aria-label={`调整 ${s.code} 映后时长`}>
+        {iconOnly ? <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m12 4 4 4M3 17l1-5L14 2a2.8 2.8 0 0 1 4 4L8 16l-5 1Z" /></svg> : `${gvTalkMin(s)} 分钟`}
+      </ActionButton>
+      <GvDurationDialog key={session} screening={s} />
+    </DialogTrigger>
+  );
+}
+
+export function GvControls({ screening: s }: { screening: Screening }) {
   return (
     <div className="gv-controls">
       <Checkbox
@@ -130,16 +180,7 @@ export function GvControls({ screening: s }: { screening: Screening }) {
       >
         参加映后谈
       </Checkbox>
-      <DialogTrigger
-        onOpenChange={(open) => {
-          if (open) setSession((n) => n + 1);
-        }}
-      >
-        <ActionButton aria-label={`调整 ${s.code} 映后时长`}>
-          {gvTalkMin(s)} 分钟
-        </ActionButton>
-        <GvDurationDialog key={session} screening={s} />
-      </DialogTrigger>
+      <GvDurationButton screening={s} />
     </div>
   );
 }
@@ -223,7 +264,7 @@ export function ScreeningCard({
       )}
       <div className="screening-content">
         <div className="screening-meta">
-          <span className="code">{s.code}</span>
+          <FilmBadge kind="code" label={s.code} />
           <time>
             {s.start_time.slice(0, 5)}–
             {fmtEndClock(effEndMin(s, talkOnOf(s.code)))}

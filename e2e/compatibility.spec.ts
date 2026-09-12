@@ -24,11 +24,7 @@ test("all legacy storage keys survive initial load, navigation, and reload byte 
   await expect(
     page.getByRole("button", { name: "展开行程 2026-10-07", exact: true }),
   ).toBeVisible();
-  if (!isMobile)
-    await expect(page.getByRole("separator")).toHaveAttribute(
-      "aria-valuenow",
-      "640",
-    );
+  if (!isMobile) expect((await page.locator("#viewing-panel").boundingBox())!.width).toBe(640);
   const old = await legacyRead(page);
   expect(old.settings.customPreference).toBe("preserve-me");
   expect(old.picks).toHaveLength(5);
@@ -60,6 +56,7 @@ test("new UI writes remain readable by the original implementation", async ({
     exact: true,
   });
   await note.fill("React 改过的备注\n兼容旧版本");
+  if (!await page.locator("#viewing-panel").count()) await page.getByRole("button", {name: "打开我的观影", exact: true}).click();
   await page.getByRole("link", { name: /^我的行程/ }).click();
   await page
     .getByRole("button", { name: "提高 008 顺位", exact: true })

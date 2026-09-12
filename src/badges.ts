@@ -127,7 +127,7 @@ export const BADGE_DEFS: BadgeDef[] = [
 const badgeKeysCache = new Map<string, string[]>();
 
 export function screeningBadgeKeys(s: Screening): string[] {
-  const key = `${s.code}|${s.is_gv ? 1 : 0}|${s.tags?.join(",") ?? ""}`;
+  const key = `${s.code}|${s.midnight_members?.length ?? 0}|${s.is_gv ? 1 : 0}|${s.tags?.join(",") ?? ""}`;
   const hit = badgeKeysCache.get(key);
   if (hit) return hit;
   const keys: string[] = [];
@@ -136,6 +136,7 @@ export function screeningBadgeKeys(s: Screening): string[] {
     if (!keys.includes(k)) keys.push(k);
   };
   if (s.is_gv) push("gv");
+  if (s.midnight_members?.length) push("batch");
   for (const t of s.tags ?? []) push(t);
   badgeKeysCache.set(key, keys);
   return keys;
