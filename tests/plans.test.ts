@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 import { computeConflicts, type ConflictResult, type Slot } from "../src/conflict";
-import { buildPlanSet, MAX_OPTIONS } from "../src/plans";
+import { autoFixRanks, buildPlanSet, MAX_OPTIONS } from "../src/plans";
 
 /** 一场(默认 2026-10-08 @ b1);start / end 为当日分钟数 */
 function slot(code: string, start: number, end: number, date = "2026-10-08"): Slot {
@@ -241,6 +241,106 @@ describe("buildPlanSet:同一部片只留一场", () => {
     );
     expect(ps.options.length).toBe(4);
     expect(ps.droppedSameFilm).toBe(0);
+  });
+});
+
+describe("buildPlanSet:顺位撞车(逐层)+ 一键修复", () => {
+  // 用户报的真实场景(2026-09-12):
+  //   组① {027 峡湾, 005}(10/7 12:20 同开)、组② {071 峡湾, 089}(10/8 09:00 同开);
+  //   027 与 071 **是同一部片**,且各自都是组内顺位 1 ⇒ 「都取首选」那层 = `027+071`
+  //   被「同一部片只留一场」剔除 —— 正是要提示 + 让路的状态。
+  const slots = [
+    slot("005", 740, 898, "2026-10-07"),
+    slot("027", 740, 886, "2026-10-07"),
+    slot("071", 540, 686, "2026-10-08"),
+    slot("089", 540, 724, "2026-10-08"),
+  ];
+  const codes = ["005", "027", "071", "089"];
+  /** 027 与 071 是同一部片,其余各自独立 */
+  const films = (code: string): string => (code === "027" || code === "071" ? "film:fjord" : `film:${code}`);
+  /** 用户拖出来的顺位:两组都是「峡湾在前」 */
+  const rank = new Map([
+    ["027", 1],
+    ["005", 2],
+    ["071", 1],
+    ["089", 2],
+  ]);
+
+  it("第 1 层两组同片 → 检出一条撞车,两个槽位各给出 alt", () => {
+    const ps = buildPlanSet(codes, conflictsOf(slots), rank, byCode, films);
+    expect(ps.rankClashes.length).toBe(1);
+    expect(ps.rankClashes[0].layer).toBe(1);
+    expect(ps.rankClashes[0].filmKey).toBe("film:fjord");
+    expect(ps.rankClashes[0].spots.map((s) => [s.group, s.code, s.alt])).toEqual([
+      [0, "027", "005"],
+      [1, "071", "089"],
+    ]);
+  });
+
+  it("让路(组① 首选换成 005)后撞车消失,「每组都取首选」那层回到第一", () => {
+    const fixed = new Map([
+      ["005", 1],
+      ["027", 2],
+      ["071", 1],
+      ["089", 2],
+    ]);
+    const ps = buildPlanSet(codes, conflictsOf(slots), fixed, byCode, films);
+    expect(ps.rankClashes).toEqual([]);
+    expect(ps.options[0].picks).toEqual(["005", "071"]);
+    expect(ps.options[0].cost).toBe(2);
+  });
+
+  it("第 2 层撞车也检出(逐层,不只第 1 层)", () => {
+    // 组① {005, 027}、组② {089, 071}:第 1 层 005 / 089 不同片;第 2 层 027 / 071 同片
+    const rank2 = new Map([
+      ["005", 1],
+      ["027", 2],
+      ["089", 1],
+      ["071", 2],
+    ]);
+    const ps = buildPlanSet(codes, conflictsOf(slots), rank2, byCode, films);
+    expect(ps.rankClashes.length).toBe(1);
+    expect(ps.rankClashes[0].layer).toBe(2);
+    expect(ps.rankClashes[0].spots.map((s) => s.code)).toEqual(["027", "071"]);
+  });
+
+  it("filmKeyOf 返回 null 的场次不参与判定(不误杀)", () => {
+    const ps = buildPlanSet(codes, conflictsOf(slots), rank, byCode, () => null);
+    expect(ps.rankClashes).toEqual([]);
+  });
+
+  it("autoFixRanks:让路后干净,只改一组", () => {
+    const ps = buildPlanSet(codes, conflictsOf(slots), rank, byCode, films);
+    const fix = autoFixRanks(ps.groups, films);
+    expect(fix.remaining).toEqual([]);
+    expect(fix.changes.length).toBe(1);
+    expect(fix.changes[0].after[0]).not.toBe(fix.changes[0].before[0]);
+    // 修复后两组第 1 层不同片
+    expect(films(fix.groups[0][0])).not.toBe(films(fix.groups[1][0]));
+  });
+
+  it("autoFixRanks:干净输入 → 零改动", () => {
+    const ps = buildPlanSet(codes, conflictsOf(slots), rank, byCode, films);
+    // 每场都是独立影片 → 无撞车
+    const clean = autoFixRanks(ps.groups, (c) => `film:${c}`);
+    expect(clean.changes).toEqual([]);
+    expect(clean.remaining).toEqual([]);
+  });
+
+  it("组内其余场次全是同一部片 → 两层都撞车,alt 为 null,一键修复也救不了", () => {
+    const allSame = [
+      slot("a1", 600, 700, "2026-10-07"),
+      slot("a2", 650, 750, "2026-10-07"),
+      slot("b1", 600, 700, "2026-10-08"),
+      slot("b2", 650, 750, "2026-10-08"),
+    ];
+    const ps = buildPlanSet(["a1", "a2", "b1", "b2"], conflictsOf(allSame), new Map(), () => 0, () => "film:x");
+    expect(ps.rankClashes.length).toBe(2);
+    expect(ps.rankClashes.map((c) => c.layer)).toEqual([1, 2]);
+    expect(ps.rankClashes[0].spots.map((s) => s.alt)).toEqual([null, null]);
+    const fix = autoFixRanks(ps.groups, () => "film:x");
+    expect(fix.changes).toEqual([]);
+    expect(fix.remaining.length).toBe(2);
   });
 });
 

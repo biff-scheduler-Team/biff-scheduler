@@ -6,7 +6,6 @@ import { OK_SLACK, dateInfo, el, filmNodeKey, hmsToMin, pickDefaultDate, todayIs
 import { loadCatalog } from "./data";
 import { computeConflicts, conflictGroupFor, type ConflictResult, type Slot } from "./conflict";
 import { buildPlanSet, type PlanSet } from "./plans";
-import { buildIcs, downloadIcs, pickEntries } from "./ics";
 import { effEndMin, talkOnOf } from "./gv";
 import {
   allCodes,
@@ -16,6 +15,7 @@ import {
   loadMappings,
   loadPicks,
   loadRanks,
+  loadSavedPlans,
   loadSettings,
   rankOf,
   removeScreening,
@@ -64,10 +64,9 @@ import { closeAllModals, openModal, showCatalogFilmModal, showFilmModal } from "
 import { closePickerDrawer, ensurePickerOpen, isMobileDrawer, isPickerDrawerOpen, openFilmPicker, setAgendaRenderer, setPickerTab, setPickerToggleHandler } from "./library";
 import { openSettings, openTalkMinModal } from "./settings";
 import { initTheme, isThemePref, setThemePref, themePref } from "./theme";
-import { copyShareText } from "./share";
+import { openExportPanel } from "./export-panel";
 import { formatKrw, loadExtras, priceOf } from "./extras";
 import { openTicketingModal, startTicketTicker } from "./ticketing";
-import { openPosterModal } from "./poster-panel";
 import { downloadBackup } from "./backup";
 import { openImportBackupModal } from "./backup-panel";
 import { toast } from "./toast";
@@ -87,6 +86,7 @@ let plans: PlanSet = {
   truncated: false,
   broken: new Set(),
   droppedSameFilm: 0,
+  rankClashes: [],
 };
 /** 甘特时间筛选:点击时间轴整点置为对应小时;null = 不过滤(切日期/再点/重置均清除) */
 let hourFilter: number | null = null;
@@ -609,6 +609,7 @@ function buildAgendaHost(): HTMLElement {
     gvTalkOf,
     conflicts,
     plans, // 顺位 → N 套方案(与 conflicts 同轮派生;见 computePlanSet)
+    filmKeyOf: filmKeyOfCode, // 顺位撞车检测 / 一键修复(与网格 / 影片库同一 key 口径)
     slotDate: currentDate,
     slotHour: hourFilter,
   });
@@ -800,15 +801,13 @@ function bindEvents(): void {
     }
     const ex = t.closest<HTMLElement>("#export-menu button");
     if (ex) {
-      // 菜单统一在这里收起:只有 exportIcs / copyShareText 会自己关,其余(含分享图片)靠本行,
-      // 重复 add 同一类是幂等的,换来的是「新加一项忘了关菜单」这个坑不必再记。
+      // 菜单统一在这里收起(重复 add 同一类是幂等的)—— 换取「新加一项忘了关菜单」这个坑不必再记。
       document.getElementById("export-menu")!.classList.add("is-hidden");
       const which = ex.dataset.which;
-      if (which === "SHARE") copyShareText(cat, gvTalkOf);
-      else if (which === "POSTER") openPosterModal(cat, gvTalkOf);
-      else if (which === "BACKUP") downloadBackup();
+      if (which === "BACKUP") downloadBackup();
       else if (which === "RESTORE") openImportBackupModal();
-      else exportIcs();
+      // 导出 / 分享三项(.ics / 文案 / 图)统一走弹层:**先选已保存方案,再选出口**(2026-09-12)
+      else openExportPanel(cat, gvTalkOf);
       return;
     }
     if (!t.closest("[data-export-wrap]")) {
@@ -881,18 +880,6 @@ function bindEvents(): void {
     renderGrid();
     updatePickerLabel();
   });
-}
-
-function exportIcs(): void {
-  document.getElementById("export-menu")!.classList.add("is-hidden");
-  const entries = pickEntries(store.picks, cat);
-  if (entries.length === 0) {
-    toast("还没有任何选片");
-    return;
-  }
-  const ics = buildIcs(cat, entries, store.mappings, store.settings.alarmMin, gvTalkOf);
-  downloadIcs(ics, "biff2026.ics");
-  toast(`已导出 ${entries.length} 场,导入日历后按手机时区显示`);
 }
 
 /* ---------------- 影片库反向定位:跳日期 + 滚到卡片高亮 ---------------- */
@@ -1112,6 +1099,7 @@ async function boot(): Promise<void> {
   loadGvTalk();
   loadGvTalkMin();
   loadRanks(); // 抢票顺位(场次级;冲突组内的拖动顺序 = 方案编号,见 plans.ts)
+  loadSavedPlans(); // 已保存方案(用户手动存的快照;导出 / 分享按方案导出,见 state.ts)
   loadAgendaFold(); // 「我的行程」按日收起(纯视图偏好,与选片 / 排片数据无关)
   // 缩放倍率随设置恢复(renderAll 里的 renderZoomCtl 同步控件态)。
   // 旧版存的可能是横向倍率(如 3 / 0.5)或旧行高倍率,clampZoom 统一钳进 [0.55, 1.2] —— 无需迁移。

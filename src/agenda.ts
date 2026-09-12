@@ -12,13 +12,16 @@
 //   └──────────────────────────────────────────────────────────────┘
 //          ┊ 赶场间隔 119min · 跨馆缓冲 15min ┊                     ← 卡片**之间**:虚线竖轨连接件
 //
-// ★ 顺位 / 方案(2026-09-11,`PLAN-20260911223000`):同一时间带互相重叠的几场折叠成一张**顺位卡**,
-//   组内按**偏好次序**排列,拖动左侧 ⠿ 即可改序。**顺位只表达「多想保哪场」,不决定分组**;
-//   **方案 = 「每个冲突组各取一场」的所有组合**(`plans.ts::buildPlanSet` 枚举 + 逐套校验无冲突)。
-//   顶部的「方案对比」把这些方案**全部**并列摆出来,按顺位成本排序(都取首选的排最前),
-//   每张卡只列差异场次(共同场次每套都一样,列 N 遍是噪声)。
-//   **同一部片在一套方案里只留一场**(2026-09-11 三改,`PLAN-20260911230500`):行程里留着
-//   「同一部片的两天场次」是抢票备选,不该让「最优先」那套变成同一部片看两遍(见 `plans.ts` 文件头)。
+// ★ 顺位 / 方案(2026-09-11 起;**2026-09-12 改为「用户保存方案」**):
+//   同一时间带互相重叠的几场折叠成一张**顺位卡**,组内按**偏好次序**排列,拖动左侧 ⠿ 即可改序。
+//   **顺位只表达「多想保哪场」,不决定分组**;**方案 = 用户手动存下来的快照**(`state.ts::savedPlans`)——
+//   「保存当前方案」把**第一顺位方案**(每个冲突组取顺位 1 的那场 + 共同场次)存下来,
+//   导出 / 分享时按方案导出(见 `export-panel.ts`)。
+//   ⚠ 旧的「枚举全部组合并列对比」区已于 2026-09-12 **整体下线** —— 方案不是算出来的,是用户存出来的。
+//   **同一部片在一个方案里只出现一次**(2026-09-11 三改,`PLAN-20260911230500`):行程里留着
+//   「同一部片的两天场次」是抢票备选,不该让「第一顺位方案」变成同一部片看两遍(见 `plans.ts` 文件头)。
+//   **顺位撞车**(2026-09-12):两个冲突组在**同一层**(各组第 k 场)撞到同一部片时,那一层的组合会被
+//   上一条剔除 ⇒ 行程顶部出**黄框提示 + 逐条让路 + 一键全部修复(带预览)**,见 `buildRankClashNote`。
 //   **顺位卡走绿框 OK**(不是红框警报):顺位接手之后重叠已不是错误状态,见 `buildConflictGroup` 文件头。
 //
 // ⚠ 档位(必看 / 备选 / 随缘)已于 2026-09-11 整体删除 —— 它在冲突场景里的作用被「拖动顺位」
@@ -29,11 +32,22 @@ import type { Catalog, Mapping, Screening } from "./types";
 import { dateInfo, displayTitle, el, filmInfoOf, filmInfoText, fmtEndClock, hmsToMin, slackBetween } from "./util";
 import { formatKrw, priceOf } from "./extras";
 import { effEndMin, filmEndMin, gvTalkMin } from "./gv";
-import { gvTalkMinOv, isAgendaFolded, setRanks, store, toggleAgendaFold } from "./state";
+import {
+  deletePlan,
+  gvTalkMinOv,
+  isAgendaFolded,
+  savePlan,
+  savedPlans,
+  setRanks,
+  store,
+  toggleAgendaFold,
+  type SavedPlan,
+} from "./state";
 import { CARD_SHELL_CLS, screeningRow } from "./row";
 import { BTN_GO_SM } from "./ui";
+import { toast } from "./toast";
 import type { ConflictResult } from "./conflict";
-import type { PlanOption, PlanSet } from "./plans";
+import { autoFixRanks, type PlanSet, type RankClash, type RankFixPlan } from "./plans";
 
 export interface AgendaCtx {
   cat: Catalog;
@@ -46,6 +60,8 @@ export interface AgendaCtx {
   conflicts: Map<string, ConflictResult>; // 全日期冲突(与网格同源)
   /** 顺位 → N 套方案(见 `plans.ts`)。由 main 侧统一派生 —— 行程只读,不自己算一遍。 */
   plans: PlanSet;
+  /** 场次 → 影片 key(与网格 / 影片库同口径)—— 顺位撞车检测 / 一键修复用 */
+  filmKeyOf: (code: string) => string | null;
   /** C1:网格时间筛选(整点时段)联动 —— 当日同段行 slot-hit 高亮,当日不同段行 hour-dim 淡化 */
   slotDate?: string;
   slotHour?: number | null;
@@ -62,9 +78,13 @@ export function buildAgenda(ctx: AgendaCtx): HTMLElement {
     return wrap;
   }
 
-  // ---- 方案对比(仅存在冲突组时才有意义)----
-  const compare = buildPlanCompare(ctx);
-  if (compare) wrap.appendChild(compare);
+  // ---- 顺位撞车提示(2026-09-12):两个冲突组在**同一层**上撞到同一部片 ----
+  //  排在「已保存方案」**之前** —— 它解释的正是「为什么第一顺位方案可能存不下来」。
+  const clashNote = buildRankClashNote(ctx);
+  if (clashNote) wrap.appendChild(clashNote);
+
+  // ---- 已保存方案(替换原「枚举对比」区;2026-09-12)----
+  wrap.appendChild(buildSavedPlans(ctx));
 
   // 「方案内部仍重叠」的场次(理论恒空;非空 = 冲突口径有洞)—— **只有它才配红色警报**。
   // 顺位接手之后,「两场重叠」本身不再是错误状态:它展开成 N 套各自可行的方案,
@@ -521,126 +541,237 @@ function rowActsOf(s: Screening): HTMLElement {
   return box;
 }
 
-/* ---------------- 方案对比(全部无冲突组合并列) ---------------- */
+/* ---------------- 顺位撞车(顺位互相打架) ---------------- */
 
-/** 方案对比区 —— 列出**全部无冲突方案**(每个冲突组各取一场的组合,逐套校验过)。
- *  每张卡只列**差异场次**(= 该组合在各冲突组里选中的那几场);共同场次(不属于任何冲突组)
- *  每一套都一样,列 N 遍是纯噪声,故折成底部一行计数。
- *  只有 1 套(没有冲突组)时返回 null —— 没有对比可言。 */
-function buildPlanCompare(ctx: AgendaCtx): HTMLElement | null {
-  const ps = ctx.plans;
-  if (ps.options.length <= 1) return null;
-  const wrap = el("div", "grid gap-[8px] pb-[12px] border-b border-line-strong");
-  const head = el("div", "flex items-baseline gap-[8px] flex-wrap");
-  head.appendChild(el("span", "text-14 font-bold text-ink", `方案对比 · ${ps.options.length} 套`));
+/** 「顺位撞车」提示块 —— 两个及以上冲突组在**同一层**上撞到同一部片(见 `plans.ts::RankClash`)。
+ *
+ *  ★ 为什么值得单独提示(2026-09-12,用户报的真实场景):
+ *    行程里同时留着「同一部片的两天场次」是**抢票备选**,但若两组的同一层都排到了这部片,
+ *    那一层的组合会被「同一部片只留一场」剔除(见 `plans.ts` 文件头)⇒
+ *    用户看不出「为什么这一层不是每组都取那场」。
+ *  本块逐条给出**让路**按钮(把该组这一层的场次与组内第一个不同片的场次**交换**),
+ *  顶部再给一枚**一键全部修复** —— 先出预览、确认后才执行(见 `renderRankFixPreview`)。
+ *
+ *  配色走**黄**(`text-tight`)而不是红:它不是「两场不能都看」那种硬冲突(那是红),
+ *  而是「你的偏好次序需要二选一」的可决策状态。 */
+function buildRankClashNote(ctx: AgendaCtx): HTMLElement | null {
+  const clashes = ctx.plans.rankClashes;
+  if (clashes.length === 0) return null;
+  const wrap = el(
+    "div",
+    "grid gap-[8px] rounded-8 border border-tight p-[10px] " +
+      "bg-[color-mix(in_srgb,var(--color-tight)_9%,var(--color-card))]"
+  );
+
+  // 头部:标题 + 一键全部修复(带预览)
+  const head = el("div", "flex items-center gap-[8px] flex-wrap");
+  const firstLayer = clashes.filter((c) => c.layer === 1).length;
   head.appendChild(
     el(
       "span",
-      "text-11 text-muted",
-      "每个冲突组各取一场 → 每一套都无冲突;同一部片只保留一场;按顺位成本排序(都取首选的排最前)"
+      "text-12 font-bold text-tight",
+      firstLayer ? `${firstLayer} 个冲突组在第 1 顺位撞到同一部片` : `${clashes.length} 处顺位撞车`
     )
   );
+  head.appendChild(el("span", "text-11 text-muted", "同一层里的同片重复会被剔除 —— 让一组让路即可恢复"));
+  const preview = el("div", "grid gap-[6px]");
+  const fixAll = el("button", BTN_GO_SM, "一键全部修复");
+  fixAll.dataset.tip =
+    "自动把撞车的组依次让路,直到每层都不重复;\n会**先给你看**要改哪几组、改成什么顺序,确认后才生效";
+  fixAll.addEventListener("click", () => {
+    renderRankFixPreview(ctx, preview, autoFixRanks(ctx.plans.groups, ctx.filmKeyOf));
+  });
+  head.appendChild(fixAll);
   wrap.appendChild(head);
+  wrap.appendChild(preview);
 
-  const row = el("div", "flex gap-[8px] overflow-x-auto pb-[2px]");
-  ps.options.forEach((opt, i) => row.appendChild(planCard(ctx, opt, i)));
-  wrap.appendChild(row);
-
-  // 同片去重的账要交代清楚 —— 否则「为什么只有 3 套」会变成新的疑问(见 plans.ts 文件头)
-  if (ps.droppedSameFilm > 0) {
-    const note = el(
-      "div",
-      "text-11 text-muted",
-      `已剔除 ${ps.droppedSameFilm} 套「同一部片排了两场」的组合 —— ` +
-        "行程里的同片多场是抢票备选,每套方案只保留其中一场"
-    );
-    note.dataset.tip =
-      "同一部片在一套方案里只能出现一次;\n" +
-      "被剔除的是那些「两个冲突组分别选中了同一部片的两天场次」的组合";
-    wrap.appendChild(note);
-  }
-
-  if (ps.truncated) {
+  for (const clash of clashes) {
+    const first = ctx.cat.byCode.get(clash.spots[0].code);
+    const film = first ? displayTitle(first, ctx.mappings.get(first.code)?.title_cn) : clash.filmKey;
     wrap.appendChild(
       el(
         "div",
-        "text-11 text-muted",
-        `组合数过多 —— 只列出顺位成本最低的 ${ps.options.length} 套(共 ${ps.total} 种组合)`
+        "text-12 font-bold text-tight",
+        `第 ${clash.layer} 顺位 · ${clash.spots.length} 个冲突组都把《${film}》排在这里`
       )
     );
+
+    const btns = el("div", "flex items-center gap-[6px] flex-wrap");
+    clash.spots.forEach((spot, si) => {
+      const label = groupLabel(ctx, [spot.code]);
+      if (spot.alt === null) {
+        // 组内其余场次全是同一部片 → 这组无处可让,只能让别的组让路
+        const dead = el("span", "text-11 text-faint", `${label} 组:组内其余场次都是同一部片,无法让路`);
+        dead.dataset.tip = "该冲突组里除这一场,其余场次也都是这部片 —— 让这一组让路解决不了问题";
+        btns.appendChild(dead);
+        return;
+      }
+      const btn = el("button", BTN_GO_SM, `${label} 组改选 ${spot.alt}`);
+      btn.dataset.tip =
+        `把「${label}」这组第 ${clash.layer} 顺位的 ${spot.code} 与 ${spot.alt} 交换,\n` +
+        "其余场次的相对次序不变";
+      btn.addEventListener("click", () => applySpotFix(ctx, clash, si));
+      btns.appendChild(btn);
+    });
+    wrap.appendChild(btns);
   }
   return wrap;
 }
 
-/** 单套方案卡:标题(方案 N · 成本)+ 差异场次列表 + 共同场次计数。
- *  `index` = 0 的那套是**成本最低**的(全都取首选),盖一枚「最优先」章。 */
-function planCard(ctx: AgendaCtx, opt: PlanOption, index: number): HTMLElement {
-  const ps = ctx.plans;
-  const shows = opt.picks
+/** 交换某组内两个场次的位置并落盘(逐条让路的唯一出口)。
+ *  顺序未变时 `setRanks` 会早退(不广播、不重绘),故无需自己判重。 */
+function applySpotFix(ctx: AgendaCtx, clash: RankClash, spotIndex: number): void {
+  const spot = clash.spots[spotIndex];
+  if (spot.alt === null) return;
+  const group = ctx.plans.groups[spot.group];
+  if (!group) return;
+  const i = group.indexOf(spot.code);
+  const j = group.indexOf(spot.alt);
+  if (i < 0 || j < 0) return;
+  const next = [...group];
+  [next[i], next[j]] = [next[j], next[i]];
+  setRanks(next);
+}
+
+/** 一键修复的**预览** —— 列出会改的组(before ⇒ after),确认后才执行。
+ *  `changes` 为空时只出说明不出按钮(无处可让 / 已经干净)。 */
+function renderRankFixPreview(ctx: AgendaCtx, box: HTMLElement, plan: RankFixPlan): void {
+  box.replaceChildren();
+  if (plan.changes.length === 0) {
+    box.appendChild(
+      el(
+        "div",
+        "text-11 text-muted",
+        plan.remaining.length
+          ? "没有可让路的场次 —— 每个撞车组里除撞车的那一场,其余场次也都是同一部片。"
+          : "顺位已经是干净的,无需修复。"
+      )
+    );
+    return;
+  }
+  box.appendChild(el("div", "text-11 text-muted", `将调整 ${plan.changes.length} 个组的顺位:`));
+  for (const ch of plan.changes) {
+    const first = ctx.cat.byCode.get(ch.before[0]);
+    const label = first ? dateInfo(first.date).label : ch.before[0];
+    const beforeTxt = ch.before.map((c) => shortCode(ctx, c)).join(" → ");
+    const afterTxt = ch.after.map((c) => shortCode(ctx, c)).join(" → ");
+    box.appendChild(el("div", "text-11 text-ink-2 tabular-nums", `${label} · ${beforeTxt}  ⇒  ${afterTxt}`));
+  }
+  if (plan.remaining.length) {
+    box.appendChild(el("div", "text-11 text-tight", `另有 ${plan.remaining.length} 处撞车未能自动修复(无处可让)`));
+  }
+  const acts = el("div", "flex items-center gap-[6px]");
+  const ok = el("button", BTN_GO_SM, "确认执行");
+  ok.addEventListener("click", () => {
+    for (const ch of plan.changes) setRanks(ch.after);
+  });
+  const cancel = el(
+    "button",
+    "border border-line bg-card rounded-5 px-[7px] py-[2px] text-11 font-bold text-ink whitespace-nowrap " +
+      "hover:border-line-strong hover:bg-hover",
+    "取消"
+  );
+  cancel.addEventListener("click", () => box.replaceChildren());
+  acts.append(ok, cancel);
+  box.appendChild(acts);
+}
+
+/** 冲突组的短标签(取组内首场的日期 + 时间)—— 预览 / 按钮上指代「哪一组」 */
+function groupLabel(ctx: AgendaCtx, codes: string[]): string {
+  const s = ctx.cat.byCode.get(codes[0]);
+  return s ? `${dateInfo(s.date).label} ${s.start_time.slice(0, 5)}` : codes[0];
+}
+
+/** 场次短标签:`19:00·375`(预览里读顺序用) */
+function shortCode(ctx: AgendaCtx, code: string): string {
+  const s = ctx.cat.byCode.get(code);
+  return s ? `${s.start_time.slice(0, 5)}·${code}` : code;
+}
+
+/* ---------------- 已保存方案(替换原「枚举对比」区) ---------------- */
+
+/** 「第一顺位方案」的场次集合 = 各组顺位 1 + 共同场次(见 `plans.ts` 文件头)。
+ *  这是行程里**最优的那一套**,也是「保存方案」存下来的东西 —— 落选的备选不进方案。 */
+function topPlanCodes(ps: PlanSet): string[] {
+  return [...ps.common, ...ps.groups.map((g) => g[0])];
+}
+
+/** 已保存方案区 —— 用户手动存下来的快照列表(2026-09-12 替换原「枚举对比」)。
+ *  顶部「保存当前方案」把**当前第一顺位方案**存下来(场次集合相同则去重,见 `state.ts::savePlan`);
+ *  每行给名称 / 场次数 / 日期区间 / 删除。
+ *  ⚠ 第一顺位有撞车时**禁用保存** —— 那一套里会有同片重复,存下来就是个「有冲突的方案」。 */
+function buildSavedPlans(ctx: AgendaCtx): HTMLElement {
+  const wrap = el("div", "grid gap-[8px] pb-[12px] border-b border-line-strong");
+  const head = el("div", "flex items-center gap-[8px] flex-wrap");
+  head.appendChild(el("span", "text-14 font-bold text-ink", `已保存方案 · ${savedPlans.length} 套`));
+
+  const firstLayerClash = ctx.plans.rankClashes.some((c) => c.layer === 1);
+  const save = el("button", BTN_GO_SM, "保存当前方案");
+  save.dataset.tip = firstLayerClash
+    ? "第一顺位有撞车(见上方提示)—— 先让路再保存,否则存下来的是「同一部片排两场」的方案"
+    : "把当前**第一顺位方案**存成一个快照(每个冲突组取顺位 1 的那场 + 共同场次);场次集合相同不会重复存";
+  if (firstLayerClash) {
+    save.disabled = true;
+    save.className += " opacity-45 cursor-not-allowed";
+  } else {
+    save.addEventListener("click", () => {
+      const r = savePlan(topPlanCodes(ctx.plans));
+      if (r.ok && r.plan) toast(`已保存为「${r.plan.name}」(${r.plan.codes.length} 场)`);
+      else if (r.reason === "duplicate") toast("这套方案已经存过了");
+      else toast("还没有选片,先加入行程");
+    });
+  }
+  head.appendChild(save);
+  wrap.appendChild(head);
+
+  if (savedPlans.length === 0) {
+    wrap.appendChild(
+      el(
+        "div",
+        "text-11 text-muted",
+        "还没有保存方案 —— 点「保存当前方案」把当前第一顺位方案存下来;导出 / 分享时按方案导出。"
+      )
+    );
+    return wrap;
+  }
+
+  const list = el("div", "grid gap-[6px]");
+  for (const p of savedPlans) list.appendChild(savedPlanRow(ctx, p));
+  wrap.appendChild(list);
+  return wrap;
+}
+
+/** 一行已保存方案:名称 + 概要(场次数 / 日期区间 / 失效场次)+ 删除。 */
+function savedPlanRow(ctx: AgendaCtx, p: SavedPlan): HTMLElement {
+  const row = el("div", "flex items-center gap-[8px] rounded-7 border border-line bg-card px-[9px] py-[6px]");
+  row.appendChild(el("span", "text-12 font-bold text-ink shrink-0", p.name));
+
+  const shows = p.codes
     .map((c) => ctx.cat.byCode.get(c))
     .filter((s): s is Screening => Boolean(s))
     .sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time));
-
-  const card = el("div", "shrink-0 w-[250px] grid gap-[6px] border border-line rounded-8 bg-card p-[9px]");
-  const head = el("div", "flex items-center gap-[6px] flex-wrap");
-  head.appendChild(el("span", "text-13 font-extrabold text-biff-ink", `方案 ${index + 1}`));
-  if (index === 0) {
-    const top = el("span", "text-11 font-extrabold text-ok whitespace-nowrap", "最优先");
-    top.dataset.tip = "顺位成本最低的一套 —— 每个冲突组都取了排在最前面的那一场";
-    head.appendChild(top);
+  const gone = p.codes.length - shows.length;
+  const bits: string[] = [`${shows.length} 场`];
+  if (shows.length) {
+    const first = dateInfo(shows[0].date).label;
+    const last = dateInfo(shows[shows.length - 1].date).label;
+    bits.push(first === last ? first : `${first}–${last}`);
   }
-  const costTxt = opt.picks.map((c) => ps.rankOf.get(c) ?? 1).join("+");
-  const cost = el("span", "text-11 text-muted tabular-nums", `顺位 ${costTxt}`);
-  cost.dataset.tip = `顺位成本 ${opt.cost} = 各组所选场次的顺位之和(${costTxt})—— 越小越优先`;
-  head.appendChild(cost);
-  card.appendChild(head);
+  if (gone > 0) bits.push(`${gone} 场已不在排期`);
+  const outline = el("span", "text-11 text-muted flex-1 min-w-0 truncate tabular-nums", bits.join(" · "));
+  outline.dataset.tip = p.codes.map((c) => shortCode(ctx, c)).join("\n");
+  row.appendChild(outline);
 
-  if (shows.length === 0) {
-    card.appendChild(el("div", "text-12 text-muted", "本套无差异场次"));
-  } else {
-    for (const s of shows) card.appendChild(planRow(ctx, s));
-  }
-  if (ps.common.length) {
-    card.appendChild(
-      el(
-        "div",
-        "text-11 text-faint pt-[4px] border-t border-line-faint",
-        `另有 ${ps.common.length} 场共同场次(各方案相同)`
-      )
-    );
-  }
-  return card;
-}
-
-/** 方案卡里的一行差异场次 —— 点 = 在网格中定位(与行程行的「定位 ▸」同一落点口径)。 */
-function planRow(ctx: AgendaCtx, s: Screening): HTMLElement {
-  const { label } = dateInfo(s.date);
-  const row = el(
+  const del = el(
     "button",
-    "w-full text-left border-0 bg-transparent p-0 flex items-start gap-[6px] rounded-4 " +
-      "hover:bg-[var(--bg-hover-soft)] cursor-pointer"
+    "shrink-0 border-0 bg-transparent p-0 w-[20px] h-[20px] inline-flex items-center justify-center " +
+      "text-12 text-faint rounded-4 hover:text-conf hover:bg-[var(--bg-hover-soft)]",
+    "✕"
   );
-  row.dataset.jumpCode = s.code;
-  row.appendChild(
-    el(
-      "span",
-      "shrink-0 font-extrabold text-10 leading-[1.7] text-on-brand bg-ink-solid rounded-3 px-[4px]",
-      s.code
-    )
-  );
-  const body = el("span", "grid min-w-0");
-  body.appendChild(
-    el("span", "text-12 font-semibold text-ink truncate", displayTitle(s, ctx.mappings.get(s.code)?.title_cn))
-  );
-  body.appendChild(
-    el(
-      "span",
-      "text-11 text-muted tabular-nums",
-      `${label} ${s.start_time.slice(0, 5)}–${fmtEndClock(hmsToMin(s.end_time))}`
-    )
-  );
-  row.appendChild(body);
-  row.dataset.tip = `在网格中定位 ${s.code}(点此跳转)`;
+  del.setAttribute("aria-label", `删除${p.name}`);
+  del.dataset.tip = `删除「${p.name}」(不影响行程)`;
+  del.addEventListener("click", () => deletePlan(p.id));
+  row.appendChild(del);
   return row;
 }
 

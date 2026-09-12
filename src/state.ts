@@ -523,3 +523,106 @@ export function loadSettings(): void {
     /* ignore */
   }
 }
+
+/* ---------- 已保存方案(2026-09-12) ----------
+ * 方案不再是系统枚举出来的对比列表,而是**用户手动存下来的快照** ——
+ * 「我认可的这一套」= 每组顺位 1 + 共同场次(见 `agenda.ts` 的保存入口)。
+ *
+ * ⚠ 独立 localStorage 键(`biff.savedplans.v1`,与 ranks / gvtalk 同口径):它不是设置,
+ *   「重置设置」不该顺手把方案带走;备份走 `biff.` 前缀快照,自动带上。
+ * ⚠ 快照语义:行程之后怎么改都不动已保存的方案;里面的 code 若被移出行程 / 数据换版,
+ *   导出时按 `cat` 查不到就静默跳过(列表里另行标注「N 场已不在行程」)。 */
+
+const LS_SAVED_PLANS = "biff.savedplans.v1";
+
+export interface SavedPlan {
+  id: string;
+  /** 自动命名:方案 1 / 方案 2 … */
+  name: string;
+  /** 该方案的场次 code(调用方按日期 / 开场时间排好) */
+  codes: string[];
+  createdAt: number;
+}
+
+export const savedPlans: SavedPlan[] = [];
+
+/** 场次集合是否相同(顺序无关)—— 保存去重的唯一口径 */
+function sameCodeSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const set = new Set(a);
+  return b.every((c) => set.has(c));
+}
+
+/** 下一个自动名 —— 取已有「方案 N」的最大 N + 1(删掉中间一个后不会撞名) */
+function nextPlanName(): string {
+  let max = 0;
+  for (const p of savedPlans) {
+    const m = /^方案 (\d+)$/.exec(p.name);
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return `方案 ${max + 1}`;
+}
+
+export function loadSavedPlans(): void {
+  try {
+    const raw = localStorage.getItem(LS_SAVED_PLANS);
+    if (!raw) return;
+    const rows = JSON.parse(raw) as unknown;
+    if (!Array.isArray(rows)) return;
+    for (const r of rows) {
+      if (!r || typeof r !== "object") continue;
+      const p = r as Partial<SavedPlan>;
+      if (typeof p.id !== "string" || !p.id) continue;
+      if (!Array.isArray(p.codes)) continue;
+      const codes = p.codes.filter((c): c is string => typeof c === "string" && Boolean(c));
+      savedPlans.push({
+        id: p.id,
+        name: typeof p.name === "string" && p.name ? p.name : `方案 ${savedPlans.length + 1}`,
+        codes,
+        createdAt: typeof p.createdAt === "number" ? p.createdAt : Date.now(),
+      });
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function persistSavedPlans(): void {
+  try {
+    localStorage.setItem(LS_SAVED_PLANS, JSON.stringify(savedPlans));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 保存一个方案(**场次集合相同则不重复存**,见 `sameCodeSet`)。
+ *  广播 `"agenda"` 域 —— 只有抽屉里的「已保存方案」列表需要重绘。 */
+export function savePlan(codes: string[]): { ok: boolean; plan?: SavedPlan; reason?: "duplicate" | "empty" } {
+  const list = [...new Set(codes)];
+  if (list.length === 0) return { ok: false, reason: "empty" };
+  if (savedPlans.some((p) => sameCodeSet(p.codes, list))) return { ok: false, reason: "duplicate" };
+  const plan: SavedPlan = {
+    id: `plan-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    name: nextPlanName(),
+    codes: list,
+    createdAt: Date.now(),
+  };
+  savedPlans.push(plan);
+  persistSavedPlans();
+  scheduleNotify("agenda");
+  return { ok: true, plan };
+}
+
+/** 删除一个已保存方案 */
+export function deletePlan(id: string): void {
+  const i = savedPlans.findIndex((p) => p.id === id);
+  if (i < 0) return;
+  savedPlans.splice(i, 1);
+  persistSavedPlans();
+  scheduleNotify("agenda");
+}
+
+/** 按 id 取方案 */
+export function planById(id: string): SavedPlan | undefined {
+  return savedPlans.find((p) => p.id === id);
+}

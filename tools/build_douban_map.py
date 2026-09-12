@@ -211,7 +211,17 @@ def main() -> int:
     client = FrodoClient()
     stats = {"high": 0, "medium": 0, "miss": 0, "skip": 0}
     # 逐片结果(只存 film id → 条目);场次 code 在收尾时统一展开
+    #
+    # ⚠ 必须**预置全部缓存条目**,不能只靠循环里逐片 `resolved[film_id] = cached`:
+    # 落盘发生在「非缓存影片」那一支,而中途被风控 `break` 时,断点之后**还没遍历到**的
+    # 已缓存影片就不在 `resolved` 里 → `expand_mappings` 会把这批映射整段丢掉,
+    # 产物越跑越小(实测 355 键 → 222 → 186,而缓存命中其实是 82 部)。
     resolved: dict[str, dict[str, Any]] = {}
+    for film in films:
+        film_id = str(film.get("id") or "")
+        cached = previous.get(film_id)
+        if cached and cached.get("title_en") == film.get("title_en"):
+            resolved[film_id] = cached
 
     for index, film in enumerate(films, 1):
         film_id = str(film.get("id") or "")

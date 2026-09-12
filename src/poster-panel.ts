@@ -8,7 +8,7 @@
 
 import type { Catalog } from "./types";
 import { el } from "./util";
-import { pickEntries } from "./ics";
+import { pickEntries, type PickRow } from "./ics";
 import { store } from "./state";
 import { openModal } from "./modal";
 import { toast } from "./toast";
@@ -42,11 +42,12 @@ function downloadBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-/** 导出菜单「分享图片(行程图)」的入口 —— 预览一张可复制 / 可下载的行程长图。 */
-export function openPosterModal(cat: Catalog, talkOf: (code: string) => boolean): void {
-  const model = buildPosterModel(cat, pickEntries(store.picks, cat), store.mappings, talkOf);
+/** 「分享图片(行程图)」的入口 —— 预览一张可复制 / 可下载的行程长图。
+ *  `rows` 省略 = 全部已排场次(旧行为);导出弹层按**所选方案**传入,只画那一套(2026-09-12)。 */
+export function openPosterModal(cat: Catalog, talkOf: (code: string) => boolean, rows?: PickRow[]): void {
+  const model = buildPosterModel(cat, rows ?? pickEntries(store.picks, cat), store.mappings, talkOf);
   if (!model) {
-    toast("还没有选片,先在网格里点选场次");
+    toast(rows ? "该方案里没有可导出的场次" : "还没有选片,先在网格里点选场次");
     return;
   }
 

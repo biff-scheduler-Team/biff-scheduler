@@ -31,10 +31,7 @@ import type { Catalog, Mapping, Screening } from "./types";
 import { dateInfo, displayTitle, filmNodeKey, fmtMinRangeMin, groupByDate, hmsToMin } from "./util";
 import { effEndMin, gvTalkMin } from "./gv";
 import { venueShort } from "./legend";
-import { pickEntries, type PickRow } from "./ics";
-import { copyText } from "./clipboard";
-import { store } from "./state";
-import { toast } from "./toast";
+import type { PickRow } from "./ics";
 
 /** 概要下方的分隔线(全角制表符,微信里是一条实线)—— 只出现一次,把「概要」与「场次」分开。 */
 const DIVIDER = "━━━━━━━━━━━━";
@@ -134,16 +131,4 @@ export function buildShareText(
   return lines.join("\n");
 }
 
-/** 复制**全部**已排场次的分享文案 —— 导出菜单「分享文案(复制)」的入口。 */
-export function copyShareText(cat: Catalog, gvTalkOf: (code: string) => boolean): void {
-  document.getElementById("export-menu")!.classList.add("is-hidden");
-  const entries = pickEntries(store.picks, cat);
-  if (entries.length === 0) {
-    toast("还没有选片,先在网格里点选场次");
-    return;
-  }
-  const text = buildShareText(cat, entries, store.mappings, gvTalkOf);
-  void copyText(text).then((ok) =>
-    toast(ok ? `已复制分享文案(${entries.length} 场),粘贴到微信即可` : "复制失败,请手动选择复制")
-  );
-}
+

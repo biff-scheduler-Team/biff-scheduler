@@ -23,6 +23,15 @@
 //   ⚠ 一改(同日早先)曾把顺位当成「方案编号」(方案 k = 各组第 k 场),那只产出 max|组| 套;
 //     用户澄清「在某一顺位下(比如第一顺位)可以生成多个无冲突的方案」—— 故改为**枚举所有组合**。
 //
+// ★ 「顺位撞车」= 顺位本身的冲突(2026-09-12 加,见 `RankClash`):
+//   去重(上一条)把「同片重复」的组合剔掉是对的,但它**顺带**吞掉了一个用户能自己修的状态 ——
+//   若两个冲突组在**同一层**(各组第 k 场)上撞到同一部片,那一层的组合被剔除后,
+//   用户看不出「为什么这一层不是每组都取那场」。
+//   故本模块把这种「顺位互相打架」**逐层**检出(`rankClashes`),交给 UI **提示 + 逐条让路 +
+//   一键全部修复**(`autoFixRanks`,带预览)。
+//   ⚠ 层 = 「每个冲突组各取第 k 场」那一套(第 1 层 = 都取首选)。**不查跨层的同片重复**
+//     (如 A 组顺位 1 与 B 组顺位 2 同片)—— 那属于正常的备选关系,那套本就不是最优。
+//
 // ★ 为什么方案一定无冲突(以及为什么仍然逐套校验):
 //   冲突组是**连通分量**,组与组之间按定义没有冲突边 —— 一套方案从每组各取一场,
 //   取出来的任意两场必然分属不同组 ⇒ 不重叠。**这是数学性质,不需要顺位去保证。**
@@ -46,6 +55,50 @@ export interface PlanOption {
   cost: number;
 }
 
+/** 「顺位撞车」里的一个槽位 —— 某个冲突组在**第 `layer` 层**的场次落在撞车影片上 */
+export interface RankClashSpot {
+  /** 冲突组索引(对应 `PlanSet.groups`) */
+  group: number;
+  /** 该组第 `layer` 顺位的场次 code */
+  code: string;
+  /** 该组内第一个**不与撞车影片同片**的场次(优先取 `layer` 之后,避免动到更靠前的层);
+   *  null = 组内其余场次全是同片,无处可让 */
+  alt: string | null;
+}
+
+/** **顺位撞车** —— 两个及以上冲突组在**同一层**上撞到同一部片(见文件头「顺位冲突」)。
+ *
+ *  「层」= 「每个冲突组各取第 k 场」那一套(`layer` = k)。第 1 层就是「各组都取首选」。
+ *  这不是「两场不能都看」(时间冲突),而是**用户拖出来的偏好次序本身互相打架**:
+ *  两组都想要同一部片,而这一层的组合会被「同一部片只留一场」剔除 ⇒
+ *  方案对比里**根本不存在**那一层,用户却看不出原因。
+ *  故逐层检出后由 UI 提示 + 逐条让路 / 一键全部修复。 */
+export interface RankClash {
+  /** 第几层(1-based) */
+  layer: number;
+  /** 撞车的影片 key */
+  filmKey: string;
+  /** 卷入的槽位(≥2 项,按组序) */
+  spots: RankClashSpot[];
+}
+
+/** 一键修复里某一组的前后顺序(只记**实际变了**的组) */
+export interface RankFixChange {
+  group: number;
+  before: string[];
+  after: string[];
+}
+
+/** 一键修复的**预览**(纯数据,先给用户看、确认后再落盘) */
+export interface RankFixPlan {
+  /** 实际会改动的组(每组一条,`before → after`) */
+  changes: RankFixChange[];
+  /** 修复后的组顺序(与 `PlanSet.groups` 同序;`changes` 为空时等于原样) */
+  groups: string[][];
+  /** 修不完的剩余撞车(无处可让 / 超出步数上限) */
+  remaining: RankClash[];
+}
+
 export interface PlanSet {
   /** 冲突组(只含 ≥2 场的组),按组内首 code 稳定排序;**组内已按顺位排好** */
   groups: string[][];
@@ -63,6 +116,8 @@ export interface PlanSet {
   broken: Set<string>;
   /** 因「同一部片出现两场」被剔除的组合数(见文件头;UI 据此解释套数为什么变少) */
   droppedSameFilm: number;
+  /** **第一顺位撞车**(见 `RankClash`);空 = 各组首选之间没有同片重复 */
+  rankClashes: RankClash[];
 }
 
 /** 枚举上限 —— 超过就只保留**成本最低**的这一批(展示侧默认也只列前 8 套,故这个量足够宽裕)。
@@ -96,6 +151,89 @@ function hasSameFilm(picks: string[], filmKeyOf: (code: string) => string | null
     seen.add(key);
   }
   return false;
+}
+
+/** 检出**顺位撞车**:逐层查「各组第 k 场」里同一部片出现 ≥2 次(见 `RankClash`)。
+ *  `filmKeyOf` 返回 null 的场次**不参与判定**(数据换版查不到影片)—— 宁可不判,不误杀。
+ *  ⚠ 组大小不齐时,第 k 层只由**有第 k 场**的组构成;单组不成撞车。 */
+export function detectRankClashes(
+  groups: string[][],
+  filmKeyOf: (code: string) => string | null
+): RankClash[] {
+  const maxLayer = groups.reduce((n, g) => Math.max(n, g.length), 0);
+  const out: RankClash[] = [];
+  for (let layer = 1; layer <= maxLayer; layer++) {
+    const byFilm = new Map<string, number[]>();
+    groups.forEach((g, gi) => {
+      if (g.length < layer) return;
+      const key = filmKeyOf(g[layer - 1]);
+      if (key === null) return;
+      const arr = byFilm.get(key);
+      if (arr) arr.push(gi);
+      else byFilm.set(key, [gi]);
+    });
+    for (const [filmKey, gis] of byFilm) {
+      if (gis.length < 2) continue;
+      out.push({
+        layer,
+        filmKey,
+        spots: gis.map((gi) => ({
+          group: gi,
+          code: groups[gi][layer - 1],
+          // 优先在 `layer` 之后找让路候选 —— 不动更靠前的层(那些层可能已经排好了)
+          alt:
+            groups[gi].slice(layer).find((c) => filmKeyOf(c) !== filmKey) ??
+            groups[gi].find((c) => filmKeyOf(c) !== filmKey) ??
+            null,
+        })),
+      });
+    }
+  }
+  // 稳定顺序:先按层、再按首个槽位的组序 —— UI / 单测都据此可预期
+  out.sort((a, b) => a.layer - b.layer || a.spots[0].group - b.spots[0].group);
+  return out;
+}
+
+/** 一键修复的步数上限 —— 每步至少消掉一处撞车,正常远用不到;纯属防「贪心原地打转」的兜底 */
+const MAX_FIX_STEPS = 24;
+
+/** **一键全部修复**:贪心地把撞车一处处让路,直到干净或无处可让(见 `RankFixPlan`)。
+ *
+ *  每步在「所有撞车 × 所有可让路的槽位」里挑**让路后剩余撞车最少**的那个(并列时取先遇到的),
+ *  故同一部片在多层上打架时不会来回横跳。返回值是**预览**,不动入参 —— 用户确认后再落盘。
+ *
+ *  ⚠ 贪心不保证全局最优(这是 NP 难问题的启发式);步数上限 + `remaining` 让「修不完」可见。 */
+export function autoFixRanks(groups: string[][], filmKeyOf: (code: string) => string | null): RankFixPlan {
+  const cur = groups.map((g) => [...g]);
+  const original = groups.map((g) => [...g]);
+  let clashes = detectRankClashes(cur, filmKeyOf);
+  let steps = 0;
+  while (clashes.length > 0 && steps < MAX_FIX_STEPS) {
+    let best: { gi: number; order: string[]; score: number } | null = null;
+    for (const clash of clashes) {
+      for (const spot of clash.spots) {
+        if (spot.alt === null) continue;
+        const g = cur[spot.group];
+        const i = g.indexOf(spot.code);
+        const j = g.indexOf(spot.alt);
+        if (i < 0 || j < 0) continue;
+        const next = [...g];
+        [next[i], next[j]] = [next[j], next[i]];
+        const trial = cur.map((x, k) => (k === spot.group ? next : x));
+        const score = detectRankClashes(trial, filmKeyOf).length;
+        if (!best || score < best.score) best = { gi: spot.group, order: next, score };
+      }
+    }
+    if (!best) break; // 所有撞车都无处可让
+    cur[best.gi] = best.order;
+    clashes = detectRankClashes(cur, filmKeyOf);
+    steps++;
+  }
+  const changes: RankFixChange[] = [];
+  cur.forEach((g, gi) => {
+    if (original[gi].join("|") !== g.join("|")) changes.push({ group: gi, before: [...original[gi]], after: [...g] });
+  });
+  return { changes, groups: cur, remaining: clashes };
 }
 
 /**
@@ -150,6 +288,9 @@ export function buildPlanSet(
   }
   const common = all.filter((c) => !inGroup.has(c));
 
+  // 2.5) 第一顺位撞车(见文件头):组内已排好序,故 `g[0]` 即首选
+  const rankClashes = detectRankClashes(groups, filmKeyOf);
+
   // 3) 冲突对(逐套校验用)
   const pairSet = new Set<string>();
   for (const result of conflicts.values()) for (const [a, b] of result.pairs) pairSet.add(pairKey(a, b));
@@ -172,6 +313,7 @@ export function buildPlanSet(
       truncated: false,
       broken,
       droppedSameFilm: 0,
+      rankClashes,
     };
   }
 
@@ -230,5 +372,5 @@ export function buildPlanSet(
     droppedSameFilm = 0;
   }
 
-  return { groups, common, rankOf: rank, options, total, truncated, broken, droppedSameFilm };
+  return { groups, common, rankOf: rank, options, total, truncated, broken, droppedSameFilm, rankClashes };
 }
