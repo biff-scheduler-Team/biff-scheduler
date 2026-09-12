@@ -33,3 +33,10 @@ export const festivalDocument = sqliteTable("festival_document", {
 ]);
 
 export type SessionRow = typeof appSession.$inferSelect;
+
+// Account-scoped, shared across devices and editions. Only a committed import creates this row.
+export const accountImport = sqliteTable("account_import", {
+  subject: text().primaryKey().notNull(),
+  operation_id: text().notNull(),
+  imported_at: integer().notNull(),
+});
