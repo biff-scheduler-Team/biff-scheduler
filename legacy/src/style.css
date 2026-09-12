@@ -1,0 +1,727 @@
+/* P1-4 Tailwind v4 全量化:仅保留 token / theme / base / @utility 动态状态 / 关键帧。
+   标记 / 徽章 / 卡片等组件样式不再出现在 CSS 里 —— 全部由 markup 端的 Tailwind utility class 表达。
+   token 唯一色源 = :root;@theme 与 :root 同值 → utility 与组件同源。 */
+@import "tailwindcss/theme";
+@import "tailwindcss/utilities" source(none);
+@source "../index.html";
+@source "./";
+@source not "../docs";
+@source not "../dist";
+@source not "../*.md";
+@source not "../.workbuddy";
+
+/* P0-1 Design Token:颜色 / 圆角 / 阴影 / 字体 唯一来源 = :root。 */
+:root {
+  /* 品牌 · BIFF 红(基准 #ce1e36) */
+  --biff-red: #ce1e36;
+  --biff-red-2: #e32e2f;
+  --biff-red-hover: #b9151b;
+  /* 去饱和的品牌红(HSL 色相 / 明度不变,饱和度 75% → 55%)—— 「定位 ▸」这类**次要主操作**用:
+     同一族红保证「这是主操作」,但不再用亮红渐变抢眼(PLAN-20260910184745 §8 的按钮层级)。 */
+  --biff-red-muted: #b6354a;
+  --biff-red-soft: #fdecec;
+  --biff-red-line: #f3c3c7;
+  --biff-red-tint: #fdf0f1;
+  --biff-red-tint-3: #fbecec;
+  --biff-selection: #ffe1e3;
+
+  /* 状态(红绿灯:绿=已选 / 黄=时间紧张 / 红=冲突)—— 只回答「排得怎么样」 */
+  --status-danger: var(--biff-red);
+  --status-ok: #2f9e44;
+  --status-tight: #e6a800; /* 紧转场黄(网格「时间紧张」整卡底色源色) */
+
+  /* (档位色族 --pri-* 已于 2026-09-11 整体删除 —— 必看 / 备选 / 随缘随「档位」概念一起下线,
+     冲突决策改由「拖动顺位」承担,见 plans.ts) */
+
+  /* 观影等级(2025 Schedule Guide 图例色系:ALL 绿 / 12 橙 / 15 红 / 19 深红) */
+  --rate-all: #1e7b34;
+  --rate-all-soft: #e8f4ec;
+  --rate-12: #c2560a;
+  --rate-12-soft: #fdf1e4;
+  --rate-19: #6e1522;
+  --rate-19-soft: #f7eaec;
+
+  /* ---- 官方新版 Schedule Guide **实底**配色(2026-09-11)----
+     官网排期页把等级 / 字幕 / 场次特性都画成「彩底 + 白字」的实心标签,这里照搬。
+     ⚠ 必须与上面的 `--rate-*`(文字色)分开:后者暗色下会提亮,拿去当底会吃掉白字。
+     ⚠ 12 档官方是亮黄(#f0b429 那类),白字对比度只有 ~2:1 → 压深一档到 #c07a00(≈3.6:1),
+       仍是同一色相、仍读得出「黄 = 12」,但小字号下看得清。 */
+  --rate-all-solid: #2f9e44;
+  --rate-12-solid: #c07a00;
+  --rate-15-solid: #e8590c;
+  --rate-19-solid: #c92a2a;
+  /* 字幕四档:官方 KE 藏青 / KN 紫 / KK 棕 / NO 近黑 */
+  --subs-ke-solid: #233b8f;
+  --subs-kn-solid: #5b21b6;
+  --subs-kk-solid: #8b5e34;
+  --subs-no-solid: #3f3f46;
+  /* 场次特性:GV 官方紫 / 联映块(묶)近黑 */
+  --gv-solid: #7c3aed;
+  --batch-solid: #18181b;
+
+  /* 特别节目(Community BIFF 单元:Talk / Commentary / Event)—— 青绿族。
+     与档位(蓝/紫/灰蓝)、红绿灯(红/黄/绿)、观影等级(绿/橙/深红)三族都错开;
+     三个徽章同色不同重(实心 → 实线描边 → 虚线描边),见 badges.ts 的 BADGE_DEFS。 */
+  --ev-teal: #0f766e;
+  --ev-teal-soft: #e6f2f0;
+  /* 青绿**实底**(Talk / 联映章):必须与 `--ev-teal` 分开 —— 后者是「文字色」,
+     暗色下会提亮成 #5eead4,拿去当底就把白字吃掉了(白底白字)。
+     实底两套主题都用深青绿,保证 --text-on-brand 白字 ≥5:1。 */
+  --ev-teal-solid: #0f766e;
+
+  /* 中性面 */
+  --bg-page: #f4f4f5;
+  --bg-card: #ffffff;
+  --bg-hover: #fafafa;
+  --bg-hover-soft: #f0f2f5;
+  --bg-raised: #f0f0f0;
+  --bg-raised-hover: #e2e2e2;
+  --topbar-bg: rgb(255 255 255 / 92%);
+  --overlay-bg: rgb(15 23 42 / 45%);
+  --toast-bg: rgb(17 17 17 / 94%);
+
+  /* 描边(强 → 极细) */
+  --border-strong: #c9c9c9;
+  --border-default: #e0e0e0;
+  --border-soft: #eaeaea;
+  --border-faint: #f4f4f4;
+
+  /* 文本(主 → 最弱) */
+  --text-primary: #111111;
+  --text-secondary: #525252;
+  --text-muted: #737373;
+  --text-meta: #9a9a9a;
+  --text-faint: #a3a3a3;
+  --text-disabled: #adb5bd;
+  --text-on-brand: #ffffff;
+
+  /* 「墨实底」面 —— 实心深色块专用(选中标签 / 抽屉 tab / CODE 章 / GV 章 / 「方案 N」章)。
+     ⚠ **不可**复用 `--text-primary`(即 `bg-ink`):它在暗色下被提亮成 #ececf1,
+     这些块又是 `text-on-brand`(白字) → 白底白字看不清。
+     这里两套主题都保持「深底 + 白字」的语义,暗色下只把底抬离页面/卡片底色(见文件末尾 dark 块)。 */
+  --ink-solid: #111111;
+
+  /* 旧名别名(供旧 var() 引用零改动) */
+  --bg: var(--bg-page);
+  --panel: var(--bg-card);
+  --ink: var(--text-primary);
+  --muted: var(--text-muted);
+  --line: var(--border-default);
+  --line-soft: var(--border-soft);
+  --line-faint: var(--border-faint);
+  --brand: var(--biff-red);
+  --brand-2: var(--biff-red-2);
+  --brand-ink: var(--text-on-brand);
+  --gv: var(--text-primary);
+  --conf: var(--status-danger);
+
+  /* ---- 字阶 / 圆角阶梯(2026-09-10 起真正生效,见 PLAN-20260910235000)----
+     **值命名**(`--fs-12` = 12px / `--r-8` = 8px):CSS 自定义属性名不允许 `.`,
+     故半像素做不成 token;值命名同时避开 Tailwind 默认字号名(xs/sm/base/lg/xl/2xl)
+     与圆角名(xs/sm/md/lg/xl/2xl),不会悄悄改掉别人的语义。
+     字面值放这里、由 `@theme` 映射为 `text-N` / `rounded-N`(与颜色 token 同一套「:root 字面值 → @theme 映射」写法)。
+     ⚠ 只映射字号、**不设** `--text-N--line-height`:utility 只写 font-size,行高照旧继承(与旧 `text-[Npx]` 逐字等价)。 */
+  --fs-9: 9px;
+  --fs-10: 10px;
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-15: 15px;
+  --fs-16: 16px;
+  --fs-18: 18px;
+  --r-2: 2px;
+  --r-3: 3px;
+  --r-4: 4px;
+  --r-5: 5px;
+  --r-6: 6px;
+  --r-7: 7px;
+  --r-8: 8px;
+  --r-9: 9px;
+  --r-10: 10px;
+  --r-12: 12px;
+
+  /* 品牌红的「文字」用途 —— 浅色下与 --biff-red 同值(零视觉变化);
+     暗色下提亮(见文件末尾 dark 块),因为 #ce1e36 作为文字压在暗底上只有 ~3.6:1。
+     ⚠ 实底用途(bg-biff / 渐变 / bg-biff-muted)继续用 --biff-red:白字对比度靠它保证。 */
+  --biff-red-ink: var(--biff-red);
+
+  /* 阴影 / 字体 */
+  --shadow-card: 0 1px 2px rgb(17 17 17 / 5%), 0 1px 4px rgb(17 17 17 / 7%);
+  --shadow-hover: 0 2px 8px rgb(17 17 17 / 13%);
+  --shadow-modal: 0 20px 50px rgb(0 0 0 / 22%);
+  /* 面板阴影(选片抽屉专用,2026-09-11):抽屉与网格同为白卡,需要一层「浮起来」的投影
+     才有工作台的主次感 —— 比 --shadow-card 更散、更远,但不至于像弹层(--shadow-modal)。 */
+  --shadow-panel: 0 6px 24px rgb(17 17 17 / 12%), 0 1px 3px rgb(17 17 17 / 8%);
+  --shadow: var(--shadow-card);
+  --font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+/* P0-1 @theme 映射:全部 --color-* 由 token 驱动 → 所有 utility bg-/text-/border-/ring-/shadow- 同源。
+   圆角 / 阴影 不映射 → 用任意值或 var() 引用。 */
+@theme {
+  --color-biff: var(--biff-red);
+  --color-biff-2: var(--biff-red-2);
+  --color-biff-hover: var(--biff-red-hover);
+  --color-biff-muted: var(--biff-red-muted);
+  --color-biff-soft: var(--biff-red-soft);
+  --color-biff-line: var(--biff-red-line);
+  --color-biff-tint: var(--biff-red-tint);
+  --color-biff-tint-3: var(--biff-red-tint-3);
+  --color-ink: var(--text-primary);
+  --color-ink-2: var(--text-secondary);
+  --color-muted: var(--text-muted);
+  --color-meta: var(--text-meta);
+  --color-faint: var(--text-faint);
+  --color-disabled: var(--text-disabled);
+  --color-on-brand: var(--text-on-brand);
+  /* 实心深色块(bg-ink-solid / border-ink-solid)—— 两套主题都是深底 + 白字,见 :root 注释 */
+  --color-ink-solid: var(--ink-solid);
+  --color-page: var(--bg-page);
+  --color-card: var(--bg-card);
+  --color-hover: var(--bg-hover);
+  --color-raised: var(--bg-raised);
+  --color-raised-hover: var(--bg-raised-hover);
+
+  --color-line: var(--border-default);
+  --color-line-soft: var(--border-soft);
+  --color-line-strong: var(--border-strong);
+  --color-line-faint: var(--border-faint);
+  --color-ok: var(--status-ok);
+  --color-tight: var(--status-tight);
+  /* 冲突红:走 --conf(= --status-danger)而非 --biff-red —— 暗色下单独提亮,
+     让 text-conf / border-conf / in-conf 一起跟随(实底按钮不受影响) */
+  --color-conf: var(--conf);
+  --color-rate-all: var(--rate-all);
+  --color-rate-all-soft: var(--rate-all-soft);
+  --color-rate-12: var(--rate-12);
+  --color-rate-12-soft: var(--rate-12-soft);
+  --color-rate-19: var(--rate-19);
+  --color-rate-19-soft: var(--rate-19-soft);
+  /* 官方新版实底(彩底 + 白字,见 :root 注释) */
+  --color-rate-all-solid: var(--rate-all-solid);
+  --color-rate-12-solid: var(--rate-12-solid);
+  --color-rate-15-solid: var(--rate-15-solid);
+  --color-rate-19-solid: var(--rate-19-solid);
+  --color-subs-ke-solid: var(--subs-ke-solid);
+  --color-subs-kn-solid: var(--subs-kn-solid);
+  --color-subs-kk-solid: var(--subs-kk-solid);
+  --color-subs-no-solid: var(--subs-no-solid);
+  --color-gv-solid: var(--gv-solid);
+  --color-batch-solid: var(--batch-solid);
+  --color-ev-teal: var(--ev-teal);
+  --color-ev-teal-soft: var(--ev-teal-soft);
+  /* 青绿实底(白字)—— 不走会提亮的 --ev-teal,见 :root 注释 */
+  --color-ev-teal-solid: var(--ev-teal-solid);
+
+  /* 品牌红的「文字」色(暗色下提亮);实底仍走 --color-biff */
+  --color-biff-ink: var(--biff-red-ink);
+
+  /* 字阶 / 圆角阶梯(值命名 —— `text-12` = 12px / `rounded-8` = 8px,见 :root 注释) */
+  --text-9: var(--fs-9);
+  --text-10: var(--fs-10);
+  --text-11: var(--fs-11);
+  --text-12: var(--fs-12);
+  --text-13: var(--fs-13);
+  --text-14: var(--fs-14);
+  --text-15: var(--fs-15);
+  --text-16: var(--fs-16);
+  --text-18: var(--fs-18);
+  --radius-2: var(--r-2);
+  --radius-3: var(--r-3);
+  --radius-4: var(--r-4);
+  --radius-5: var(--r-5);
+  --radius-6: var(--r-6);
+  --radius-7: var(--r-7);
+  --radius-8: var(--r-8);
+  --radius-9: var(--r-9);
+  --radius-10: var(--r-10);
+  --radius-12: var(--r-12);
+}
+
+/* ---- base reset & element defaults ---- */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--font);
+    background: var(--bg-page);
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  button { font-family: inherit; cursor: pointer; }
+  a { color: var(--brand); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ::selection { background: var(--biff-selection); }
+  input, textarea, select { font-family: inherit; }
+  /* 底部 footer 链接:默认灰、hover 红 */
+  #page-foot a { color: var(--muted); }
+  #page-foot a:hover { color: var(--brand); text-decoration: none; }
+}
+
+/* ---- 关键帧(给动态状态类用) ---- */
+@keyframes biff-flash {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  30%, 70% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--biff-red) 70%, transparent); }
+}
+
+/* 反向定位专用:带底色闪烁(1s × 3 = 3s)+ 红色描边常驻。
+   底色用 **inset box-shadow 覆盖层** 而不是直接动 background-color —— 卡片底色是红绿灯
+   (说「排得怎么样」),直接改 background 会在动画首尾把它抹成透明 → 卡片短暂「掉色」。 */
+@keyframes biff-locate-flash {
+  0%, 100% {
+    box-shadow:
+      0 0 0 0 transparent,
+      inset 0 0 0 0 transparent;
+  }
+  35%, 65% {
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--biff-red) 70%, transparent),
+      inset 0 0 0 999px color-mix(in srgb, var(--biff-red) 20%, transparent);
+  }
+}
+
+/* ---- 动态状态类(JS 运行时切换,无法用静态 utility 表达) ---- */
+@utility is-hidden { display: none !important; }
+
+@utility panning {
+  cursor: grabbing;
+  user-select: none;
+  & * { pointer-events: none; }
+}
+
+/* 网格 ↔ 行程 双向 hover 联动:网格卡 → 红圈外晕,行程行 → 红圈外晕(无内嵌竖条,与 in-plan 底色化语言一致)
+   ⚠ 三处必须 !important:卡片/行自身带 Tailwind `hover:shadow-[var(--shadow-hover)]`(权重 (0,2,0))与
+   `hover:z-[2]`,而 @utility 只生成单类选择器(0,1,0)——不提升权重时,被 hover 的那一张会用自己的
+   hover 阴影吃掉本类的外晕(只剩 border-color 生效),表现为「联动单向亮」:hover 映后块两张都亮、
+   hover 正片卡/行程行只有对面亮。border-color 原本就有 !important,外晕与 z-index 补齐同一口径。 */
+@utility hl-card {
+  border-color: var(--color-biff) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-biff) 38%, transparent) !important;
+  z-index: 6 !important;
+}
+@utility hl-row {
+  border-color: var(--color-biff) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-biff) 35%, transparent) !important;
+}
+
+/* 冲突组拖动排序:被「拿起来」的那一行 —— 抬高 + 强投影 + 品牌色描边,与下面正在让位的行拉开层次。
+   ⚠ 必须 `!important`:`hl-row`(hover 联动)同为 !important,行在被拿起前若已被 hover 高亮,
+   非 important 的内联投影会被它压掉 —— 拿起的那一行就「没有浮起来」。
+   位移由 `agenda.ts::attachRankDrag` 内联 transform 驱动(逐帧跟手,不走过渡)。 */
+@utility rank-lift {
+  border-color: var(--color-biff) !important;
+  box-shadow: 0 12px 26px color-mix(in srgb, var(--color-ink) 24%, transparent) !important;
+  cursor: grabbing;
+}
+
+/* 红绿灯整卡底色语言(网格卡,与冲突/紧转场同一套交互;优先级不在网格染色 — 见行程行 seg):
+   绿 = 已选入当前方案;黄 = 时间紧张(相邻衔接不足/偏紧);红 = 完全冲突(时间重叠)。
+   三者均为 @utility + !important 压 .bg-card(同为类选择器、Tailwind 生成的 .bg-card 源序靠后,避免基础白底吃掉底色)。 */
+@utility in-plan {
+  background: color-mix(in srgb, var(--color-ok) 14%, var(--color-card)) !important;
+  border-color: color-mix(in srgb, var(--color-ok) 45%, var(--color-card));
+}
+
+@utility in-conf {
+  background: color-mix(in srgb, var(--color-conf) 14%, var(--color-card)) !important;
+}
+
+/* 放弃映后谈的 GV 谈块:块仍占槽位(表示该段物理存在),灰虚线已由 grid 端内联类给出,
+   此处整体淡出 + 文字删除线已在块内 label 上处理 —— 语义 = "我在但不参加这段" */
+@utility gv-talk-off {
+  opacity: 0.5;
+}
+
+/* 映后谈块 hover 恢复清晰度(仍在谈与弃谈块同感) */
+#grid-scroll [data-talk]:hover { opacity: 1; }
+
+/* 反向定位:卡片闪烁高亮(弹层场次行的「点到了」回执,1.1s × 2) */
+@utility flash {
+  border-color: var(--color-biff);
+  z-index: 6;
+  animation: biff-flash 1.1s ease 2;
+}
+
+/* 反向定位(时间轴):定位到的场次带底色闪烁 3s,描边保持红色作为「就是这场」的落点标记 */
+@utility flash-locate {
+  border-color: var(--color-biff);
+  z-index: 6;
+  animation: biff-locate-flash 1s ease-in-out 3;
+}
+
+/* 甘特时间选择:非选中小时段的场次淡化(仍可 hover / 点选,仅视觉降噪) */
+@utility hour-dim {
+  opacity: 0.35;
+  transition: opacity 120ms ease;
+  &:hover { opacity: 1; }
+}
+
+/* 甘特「现在」时刻参考线(纵向贯穿网格) */
+@utility now-line {
+  background: color-mix(in srgb, var(--color-biff) 78%, transparent);
+}
+
+/* C1:行程行「时段命中」(网格整点筛选联动):淡红整行底,标出与所选时段重叠的已选场次;
+   仅改底色、不动描边 —— 与 hover 双向联动(hl-*)及冲突行态并存不打架 */
+@utility slot-hit {
+  background: color-mix(in srgb, var(--color-biff) 8%, var(--color-card)) !important;
+}
+
+/* 悬停说明 tooltip(tip.ts 运行时单例,data-tip 触发)的宽度上限。
+   收在 320px:长句折成 2~3 行 → 近矩形而非「一整条」横条;窄屏退化为 100vw - 24px。
+   用 CSS 写 min()/calc() 而非 Tailwind 任意值(免去 `calc(100vw_-_24px)` 的下划线转义)。 */
+@utility tip-card {
+  max-width: min(320px, calc(100vw - 24px));
+}
+
+/* ★ 近全宽工作台(2026-09-11 二改 → 三改):`<main>` 去掉了 `max-w-[1280px] mx-auto`
+   (旧写法是「打开抽屉才把 main 上限放宽到 1680」;现在宽度不再有上限,抽屉与网格各占一侧,
+    不会再有「开抽屉净吃掉网格宽度」的问题)。
+   ⚠ **左右各留 `px-2`(8px)而不是贴死视口边缘**:二改时把内距清零 + 贴边侧圆角 / 描边归零,
+   结果两端的 8px 圆角整个消失、面板像被浏览器边缘「切掉」——用户当场否掉。
+   现在的口径:**留 8px 呼吸位 + 完整圆角 / 描边**(与卡片语言一致),既接近贴边又不被切。
+   `#grid-wrap` / `#picker-drawer` 的圆角与描边**全部交回 markup 的 `rounded-8 border border-line`**,
+   本文件不再对它们做任何贴边覆写(三改已撤销那批覆写)。 */
+
+/* ================= 选片抽屉:向右滑出动画 + 可拖拽调宽(2026-09-11,PLAN-20260911140342)=================
+   抽屉恒在 `<main>` 的**左侧**(flex 首子节点),「滑出」= 宽度从 0 过渡到 `--picker-w` ——
+   因为是**挤压式**布局,网格随宽度同步变窄,卡片始终可见可点(不遮挡,与旧口径一致)。
+   ⚠ 为什么不用 `transform: translateX` 做动画:挤压式下 translateX 不参与布局,抽屉会「滑走」
+     而网格宽度纹丝不动 → 留一个空洞。宽度过渡才是与挤压式自洽的做法。
+
+   `--picker-w` 由 `library.ts` 在**用户拖过之后**注入(读档 / 拖拽),**CSS 负责自适应默认宽度 + 过渡 + 折叠态**。
+   ⚠ 2026-09-11 五改:**默认宽度不再是写死的 520px**。原先 `var(--picker-w, 520px)` 的兜底是死值,
+      而 library.ts 又总在启动时把 `--picker-w` 写成 520 —— 两头都是魔数,「开箱宽度」永远钉死。
+      现在没拖过时 `--picker-w` 是**空的**,由这里的 `clamp()` 随视口走:
+        · 520px 下限 = 卡片排版成立的最小档(见 library.ts::PICKER_W_MIN);
+        · 36vw 跟随屏幕宽度 —— 窄屏不至于过宽、宽屏给足卡片呼吸位;
+        · 700px 上限 = 再宽卡片就拉得过长(用户反馈「卡片有点大」,42vw/760 已收一档)。
+      想再调,改这一个 `clamp()` 即可(拖拽 / 双击复位都照常工作)。
+      ⚠ 原先写在 markup 上的那两个固定宽度工具类已删掉、收口到本块:
+      `#picker-drawer`(1,0,0)权重高于 Tailwind 的单类(0,1,0),留在 markup 上会被本块压死,
+      出现「CSS 生效但 markup 写着别的值」的假象 —— 宽度只能有一处来源。
+   ⚠ 本注释**刻意不写出那些类的完整字面量**:Tailwind 连注释一起扫,会凭空生成死类。 */
+   #picker-drawer {
+   width: var(--picker-w, clamp(520px, 36vw, 700px));
+  /* 面板阴影 —— 抽屉与网格同为 `bg-card` 白卡,不给阴影就「糊在一起」、没有工作台的主次感 */
+  box-shadow: var(--shadow-panel);
+  transition:
+    width 240ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    margin-right 240ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    padding 240ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    border-width 240ms ease,
+    opacity 200ms ease;
+}
+
+/* 折叠态(width:0)—— 内距 / 右侧描边一并归零,否则 0 宽抽屉仍留 12+1px 的细条。
+   ⚠ `margin-right: -16px` 抵消 `<main>` 的 `gap-4`(16px):flex 的 gap 不受 item 宽度影响,
+     不减这一下,收起后网格左缘会永远空出 16px。 */
+#picker-drawer.is-collapsed {
+  width: 0;
+  margin-right: -16px;
+  padding-left: 0;
+  padding-right: 0;
+  border-right-width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 拖拽中:关掉过渡,宽度严格跟手(否则动画永远追不上指针,手感发飘) */
+#picker-drawer.is-resizing {
+  transition: none;
+}
+
+/* ---------- 拖拽抓手(2026-09-11 二改)----------
+   挂点从「抽屉右缘内侧」挪到 **`#main-col` 的左缘**,理由有二:
+     ① 抽屉带 `overflow-hidden`,手柄伸出盒外的部分会被裁掉 → 画不到两块卡片**中间的分割线**上;
+     ② 用户要的正是「调整线落在卡片之间的分割线上」—— 那 16px 缝隙的中央才是分割线。
+   `#main-col` 左缘 = 抽屉右缘 + 16px(gap),即那条缝相对 `#main-col` 是 `[-16px, 0]` ——
+   故 `left:-16px; width:16px` 恰好铺满整条缝,`::before` 的 1px 线正落在缝中央(= 分割线)。
+   `#main-col` 在 ≤1099px 是 `display:none` → 抓手随之消失(全宽面板本来也没得调)。 */
+#picker-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -16px;
+  width: 16px;
+  z-index: 6;
+  cursor: col-resize;
+  touch-action: none; /* 触屏拖动不触发页面滚动 */
+}
+
+/* 分割线本体:贯穿整条缝的 1px 竖线,常态极淡 —— 它是「两块卡片的分界」,不是装饰 */
+#picker-resizer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 7px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--border-default);
+  opacity: 0.6;
+  transition: background 120ms ease, opacity 120ms ease;
+}
+
+/* 抓手图标:竖直居中的小标签 + 三枚圆点(纯 CSS,不依赖字体)→ 用户一眼知道这里能拖 */
+#picker-resizer .picker-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  box-shadow: var(--shadow-card);
+  color: var(--text-meta);
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+#picker-resizer .picker-knob::after {
+  content: "";
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentcolor;
+  /* 三枚圆点(自身 + 上下各一枚)= 竖排抓手 */
+  box-shadow: 0 -6px 0 currentcolor, 0 6px 0 currentcolor;
+}
+
+#picker-resizer:hover::before,
+#picker-resizer.is-dragging::before {
+  background: var(--biff-red);
+  opacity: 1;
+}
+
+#picker-resizer:hover .picker-knob,
+#picker-resizer.is-dragging .picker-knob {
+  border-color: var(--biff-red);
+  color: var(--biff-red-ink);
+}
+
+/* 抽屉收起时抓手一并隐藏:此时 `#main-col` 顶到最左,`left:-16px` 整条会落在视口外 */
+main:not(.is-picker-open) #picker-resizer {
+  display: none;
+}
+
+/* 窄屏(≤1099px)放不下「抽屉 + 网格」并排 → 抽屉退化为全宽面板,主列暂时隐藏。
+   ⚠ 断点必须与下面两条媒体查询(`#main-col` 隐藏 / `@media (max-width: 768px)`)逐字一致,
+   否则会出现「主列已隐藏但抽屉仍是 520px」的半吊子态。
+   宽度 100% 时 `--picker-w` 不再参与,拖拽手柄一并隐藏(全宽面板没有可调宽度的意义)。 */
+@media (max-width: 1099px) {
+  main.is-picker-open #main-col {
+    display: none;
+  }
+
+  #picker-drawer {
+    width: 100%;
+  }
+
+  #picker-drawer.is-collapsed {
+    width: 0;
+  }
+
+  #picker-resizer {
+    display: none;
+  }
+}
+
+/* ---------- 滚动条统一收口(2026-09-11):抽屉面板 + 网格工作台 ----------
+   ① 抽屉(`#picker-panel`):列表很长(影片库 388 行),竖向滚动条原本走 macOS 的 **overlay** ——
+      滚动时浮在内容之上,正好压住卡片右缘的图标组(★ ⓘ ✕),用户反馈「滚轮遮挡电影卡片」。
+   ② 网格(`#grid-scroll`):工作台化后它同时横向 + 纵向滚动,overlay 滚动条会浮在最后一行卡片上。
+   ⚠ **定义 `::-webkit-scrollbar` 就等于关掉 overlay**:浏览器改用**占位式**滚动条,
+     内容自动让开这 8px,滚动条永远不再盖住卡片;同时收细 + 去轨道底色,降低存在感
+     (用户反馈「滚轮很长」—— 旧的原生滚动条又宽又抢眼)。
+   ⚠ 占位式会吃掉 8px 可用宽/高:`#grid-scroll` 的横向锚点换算全部读 `clientWidth`(已扣滚动条),
+     故不受影响;`pb-[6px]` 让最后一行卡片与滚动条之间仍有呼吸位。 */
+#picker-panel::-webkit-scrollbar,
+#grid-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+#picker-panel::-webkit-scrollbar-track,
+#grid-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 滑块:透明边框 + `background-clip: content-box` 把视觉宽度收到 4px —— 8px 的命中区不变,
+   但看起来只是一根细线,不与卡片抢视线。 */
+#picker-panel::-webkit-scrollbar-thumb,
+#grid-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 2px solid transparent;
+  border-radius: 4px;
+  background-clip: content-box;
+}
+
+#picker-panel::-webkit-scrollbar-thumb:hover,
+#grid-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+#picker-panel::-webkit-scrollbar-corner,
+#grid-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox 走**标准属性**(Chrome / Safari 走上面的 `::-webkit-scrollbar`)。
+   ⚠ 刻意用 `@supports not selector(::-webkit-scrollbar)` 隔开:两条路都声明会让 Chrome 在
+     「标准滚动条」与「自定义滚动条」之间二选一 —— 实测会退回 overlay(浮在内容上),反而失去占位。 */
+@supports not selector(::-webkit-scrollbar) {
+  #picker-panel,
+  #grid-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+}
+
+/* 横向滚动条隐藏：日期导航 / 滚动列表用，鼠标滚轮 / 拖拽 / 方向键仍可滚。
+   WebKit + Firefox 各自一套伪元素，全 hide 才彻底。 */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+/* ================= 暗色模式(亮色 / 暗色 / 跟随系统)=================
+   2026-09-10 加(PLAN-20260910235000);2026-09-11 改为**三态可切换**。实现方式:**只覆盖 token**,
+   零 utility 改动 —— 全站颜色都经 `@theme` → `var(--token)` 两级解析,覆盖 :root 字面值即全局生效。
+   ⚠ 必须写在 `:root` / `@theme` 之后(同权重靠源序取胜;本文件里的规则又都在 Tailwind 的
+   `@layer utilities` 之外,故也压得住 utility)。
+
+   ★ 选择器口径(唯一入口 = `<html data-theme>`):
+     · `data-theme="dark"` → 下面这块;`data-theme="light"` → 不动 token(即 :root 的亮色值)。
+     · **「跟随系统」不在 CSS 里判**:`src/theme.ts` 用 matchMedia 把系统深浅色**解析成 light / dark**
+       再落到 `data-theme` —— 三态共用同一套选择器,不必把整块暗色 token 抄两遍(媒体查询一份 +
+       显式暗色一份)。首屏由 index.html 的 <head> 内联脚本先落一次,避免闪白。
+     ⚠ **不要退回 `@media (prefers-color-scheme: dark)`**:那会让「用户显式选亮色」被系统暗色覆盖。
+
+   取色按 WCAG AA(小字 4.5:1);**实底品牌红 `--biff-red` 刻意不变** —— 白字按钮靠它保对比度,
+   作为文字的红改走 `--biff-red-ink`(`text-biff-ink`)。 */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* 品牌:实底不变,浅底族转深,文字色提亮 */
+  --biff-red-ink: #ff6b7d;
+  --biff-red-soft: #3a1418;
+  --biff-red-line: #5c2128;
+  --biff-red-tint: #2b1215;
+  --biff-red-tint-3: #331518;
+  --biff-selection: #4c1a21;
+
+  /* 红绿灯(绿=已选 / 黄=紧张 / 红=冲突):深底上提亮前景 */
+  --status-danger: #ff6b7d;
+  --status-ok: #4ade80;
+  --status-tight: #fbbf24;
+
+  /* 观影等级 */
+  --rate-all: #6ee7a0;
+  --rate-all-soft: #14301f;
+  --rate-12: #fdba74;
+  --rate-12-soft: #3a2413;
+  --rate-19: #fca5a5;
+  --rate-19-soft: #3a1a1e;
+
+  /* 特别节目(青绿) */
+  --ev-teal: #5eead4;
+  --ev-teal-soft: #12312e;
+
+  /* 中性面 */
+  --bg-page: #101114;
+  --bg-card: #1a1c20;
+  --bg-hover: #22252a;
+  --bg-hover-soft: #262a30;
+  --bg-raised: #2a2e35;
+  --bg-raised-hover: #343941;
+  /* 「墨实底」面:与实底品牌红同理**不跟随文字色提亮** —— 只从 #111 抬到
+     比 --bg-card(#1a1c20)/--bg-raised(#2a2e35) 更亮一档的灰,白字对比度 ~8:1,
+     且仍读得出「这是一块实心底」。 */
+  --ink-solid: #4a5058;
+  --topbar-bg: rgb(16 17 20 / 92%);
+  --overlay-bg: rgb(0 0 0 / 62%);
+  --toast-bg: rgb(38 41 47 / 96%);
+
+  /* 描边(强 → 极细) */
+  --border-strong: #4a5058;
+  --border-default: #343a42;
+  --border-soft: #2a2f36;
+  --border-faint: #23272d;
+
+  /* 文本(主 → 最弱);--text-on-brand 保持 #fff */
+  --text-primary: #ececf1;
+  --text-secondary: #b9bec7;
+  --text-muted: #9aa0a9;
+  --text-meta: #7d838d;
+  --text-faint: #6b717b;
+  --text-disabled: #565c66;
+
+  /* 阴影:深底上加深,否则卡片浮不起来 */
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 45%), 0 1px 4px rgb(0 0 0 / 35%);
+  --shadow-hover: 0 2px 8px rgb(0 0 0 / 55%);
+  --shadow-modal: 0 20px 50px rgb(0 0 0 / 65%);
+  /* 面板阴影:暗底上要更实(否则投影看不见),但比弹层浅 */
+  --shadow-panel: 0 6px 24px rgb(0 0 0 / 55%), 0 1px 3px rgb(0 0 0 / 45%);
+}
+
+/* 显式亮色:与 :root 同值(只声明 color-scheme,让表单控件 / 滚动条也走浅色)。
+   必须存在 —— 用户选「亮色」时系统可能是暗的,data-theme="light" 要能压住浏览器默认的暗色 UI。 */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+/* ================= 移动端(≤768px):列表优先 =================
+   2026-09-10 加(PLAN-20260910235000)。断点 768 与 `library.ts::isMobileDrawer()` 逐字一致。
+   「默认打开抽屉」的逻辑在 `main.ts::boot()`(需要 JS 才能开);这里只做纯样式收口。 */
+@media (max-width: 768px) {
+  /* 网格面板内距收窄:390px 视口下 14px×2 太奢侈 */
+  #grid-wrap {
+    padding: 10px;
+  }
+}
+
+/* 触屏没有 hover:`ui.ts::ICON_BTN` 的常态 `opacity-45` 在触屏上等于「一直半隐身」,
+   这里直接拉满 —— 只覆盖透明度,不动布局 / 不改 markup。 */
+@media (hover: none) {
+  .ui-icon-btn {
+    opacity: 1;
+  }
+}
+
+/* ================= 列表渲染优化(2026-09-11,PLAN-20260911000705)=================
+   `content-visibility: auto` = 浏览器跳过**视口外**元素的布局与绘制(原生版虚拟化),
+   250 行影片库 / 我的选片在手机上不再一次性铺开。
+   `contain-intrinsic-size: auto 116px` 给未渲染元素一个占位高度,`auto` 关键字会**记住上次渲染尺寸**
+   → 展开 / 折叠场次行后不会跳。
+   (2026-09-11 二改:92 → 116px。片名 / 副标题由单行 `truncate` 放开为**最多两行** `line-clamp-2`,
+    折叠卡实测高度随之涨约 24px;`auto` 会在首次渲染后自我修正,这个值只是「还没渲染过」时的初估。)
+   ⚠ **只加在抽屉列表行上,不加甘特卡**:网格的反向定位靠 `centerCardX` 读 `offsetLeft/offsetWidth`,
+     未渲染元素的尺寸是估算值 → 居中会算错。完整虚拟化另立一轮(见 PLAN §4)。
+   选择器:`#picker-drawer [data-key]` 精确命中 `filmRow`(`item.dataset.key = n.key`),
+   场次行用的是 `data-code`,不受影响。
+
+   ⚠ **2026-09-11 三改:只在窄屏(≤768px)启用**。
+   桌面端列表行本身渲染成本不高(388 个纯 div),而 `content-visibility` 的代价是
+   滚动到哪一行才渲染哪一行 —— 用户滚到列表底部时会看到内容「渐现」、滚动条长度随
+   `contain-intrinsic-size` 的估算值跳动,被描述为「划到底下会重新渲染」。
+   桌面全渲染后这个现象彻底消失;手机端保留虚拟化(那里才是它真正的收益场景)。 */
+@media (max-width: 768px) {
+  #picker-drawer [data-key] {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 116px;
+  }
+}
+
+/* 顶栏字标是纯黑 #111 的 SVG;暗色下反相成近白,透明底不受影响。 */
+:root[data-theme="dark"] .logo-wordmark {
+  filter: invert(1);
+}

@@ -24,7 +24,7 @@ function isRec(value: unknown): value is DoubanRec {
 /** 启动时调用一次。文件缺失 / 旧部署 → 空表,弹层不出现相关区。 */
 export async function loadRelated(): Promise<void> {
   try {
-    const res = await fetch("douban-related.json", { cache: "default" });
+    const res = await fetch("/douban-related.json", { cache: "default" });
     if (!res.ok) return;
     const parsed = (await res.json()) as { recs?: Record<string, unknown> };
     const recs = parsed?.recs;
