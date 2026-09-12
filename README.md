@@ -151,6 +151,7 @@ npm run preview      # 构建后用 wrangler dev 起本地 Worker 静态资源�
 ### 7. 豆瓣跳转
 
 - 影片资料弹层「豆瓣」区：**有映射** → 豆瓣条目直链；**无映射** → 「中文搜索 / 英文搜索」两个外链（跳 `douban.com/search`）。
+- 有映射时还会列出 **本届也在放**（豆瓣推荐里正好也在本届片目的,点开即进那部资料）和 **豆瓣也推荐**（其余外链,最多 6 条）。数据来自离线产物 `public/douban-related.json`。
 - 影片库「无排期目录片」行内也有一枚「豆瓣搜索 ↗」。
 - 映射是**离线产物** `public/douban.json`（`tools/build_douban_map.py` 用豆瓣**官方 API** 生成），**页面上不可编辑**；留空即全站走搜索兜底。
 - 评分徽章（`豆 x.x`）来自 `public/films.json` 的 `rating`（官方影片信息表），与映射无关。
@@ -267,7 +268,7 @@ npm run preview      # 构建后用 wrangler dev 起本地 Worker 静态资源�
 | `modal.ts` | 弹层栈（开新层压住下层、返回恢复滚动与筛选态）+ 宽度档 `md` / `lg` / `xl` |
 | `filters.ts` | 排片筛选（字幕 / 影厅 / GV）的状态与判定（网格与抽屉各持一份） |
 | `ui.ts` / `chips.ts` / `form.ts` / `toast.ts` | 按钮·tab·缩放控件类名与工厂 / 胶囊 chip 类名 / 表单行骨架 / Toast 的共享层 |
-| `data.ts` / `tip.ts` / `types.ts` / `util.ts` | 数据加载与归一（含豆瓣映射 `douban.json`）/ 悬停提示 / 类型 / 工具（含 `slackBetween()` 转场余量） |
+| `data.ts` / `related.ts` / `tip.ts` / `types.ts` / `util.ts` | 数据加载与归一（含豆瓣映射 `douban.json`）/ 豆瓣相关电影 / 悬停提示 / 类型 / 工具（含 `slackBetween()` 转场余量） |
 | `style.css` | 设计 token 唯一色源（`:root` 字面值 → `@theme` 映射）+ 原生语义类 |
 
 **样式与适配**：设计 token 是唯一色源；字阶 / 圆角走**值命名**阶梯（`text-12` = 12px、`rounded-8` = 8px，全站已无 `text-[Npx]` 任意值）；暗色**只覆盖 token**（零 utility 改动）；窄屏（≤768px）走**列表优先**（默认打开选片抽屉，网格降级为次级入口）。
@@ -281,7 +282,7 @@ npm run preview      # 构建后用 wrangler dev 起本地 Worker 静态资源�
 ```
 ├─ index.html              # 单页入口（含防闪白内联脚本）
 ├─ src/                    # 前端 TS 源码（见上表）
-├─ public/                 # 静态数据：schedule.json / venues.json / films.json / douban.json / festival-extras.json / brand/ / robots.txt
+├─ public/                 # 静态数据：schedule.json / venues.json / films.json / douban.json / douban-related.json / festival-extras.json / brand/ / robots.txt
 ├─ tools/                  # 离线数据管线：festival_common.py（通用底座）+ extract_schedule.py（BIFF 适配层）
 ├─ skills/                 # 项目能力（Skills）：数据管线 / 部署 / 无头验收 / 并行提交 / Tailwind 核对
 ├─ tests/                  # Vitest 单测（time / conflict / gv / ics / grid-state）
@@ -342,7 +343,7 @@ npm run deploy              # 构建 + wrangler deploy
 
 ## 九、数据从哪来（部署时**不需要**解析 PDF）
 
-**一句话**：部署链路与解析脚本无关。运行时数据就是仓库里的五个静态 JSON，它们**已经检入 git**，`npm run build` 时被 Vite 原样拷进 `dist/`，前端 `data.ts` 用 `fetch("schedule.json")` 加载。
+**一句话**：部署链路与解析脚本无关。运行时数据就是仓库里的静态 JSON，它们**已经检入 git**，`npm run build` 时被 Vite 原样拷进 `dist/`，前端 `data.ts` 用 `fetch("schedule.json")` 加载。
 
 | 文件 | 内容 | 由谁产出 |
 |---|---|---|
@@ -350,6 +351,7 @@ npm run deploy              # 构建 + wrangler deploy
 | `public/venues.json` | 影厅清单（厅 id / 影院 / 分区 / 官方代码） | 同上 |
 | `public/films.json` | 影片目录（片名 / 单元 / 年份 / 国家 / 导演 / 豆瓣分） | `tools/build_films.py`（官方影片信息 **xlsx**） |
 | `public/douban.json` | 豆瓣映射（**场次 code 与影片 `f###` 双键** → subject_id / 中文名 / 条目链接；**可为空**） | **`tools/build_douban_map.py`**（豆瓣官方 API，检索 `search/suggestion` + 详情 `movie/{id}` 确认） |
+| `public/douban-related.json` | 豆瓣相关电影（subject_id → `/recommendations` 精简列表；**可为空**） | **`tools/build_douban_related.py`**（对已映射 subject 拉 Frodo 推荐；「是否本届」前端对照 mappings 现查） |
 | `public/festival-extras.json` | 官网「排期之外」的辅助信息：**开票批次 / 票价 / 购票须知**（Booking Information）、**节目嘉宾**（Master Class / Actors' House / Cine Class / Special Talk）、**开闭幕式红毯时间表 + 交通管制** | **`tools/scrape_biff_extras.py`**（抓 biff.kr 官网 `page_num=11402` / `11218` / `11219` / `11366` / `11226` / `11223` / `11233`；只保留 `schedule.json` 里真实存在的 code，自动滤掉往届遗留条目） |
 
 ### 两条排期管线：官网抓取（现役）与 Catalogue PDF（历史）
@@ -376,6 +378,9 @@ cp /tmp/biff2026/{schedule.json,venues.json} public/
 
 # 豆瓣映射（官方 API；只写「片名命中 + 年份不矛盾」的高置信条目，其余留空走搜索兜底）
 python tools/build_douban_map.py --films public/films.json --out public/douban.json --delay 3
+
+# 豆瓣相关电影（对已映射 subject 拉 /recommendations；缺文件前端不报错）
+python tools/build_douban_related.py --delay 3
 ```
 
 自检会打印：场次总数 / 编号唯一性 / 厅数 / GV 与联映块数量 / **估算片长清单** / **目录匹配率**。

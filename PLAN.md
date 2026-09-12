@@ -3,8 +3,9 @@
 > 定位:自用釜山电影节排片工具 —— 解析官方 Ticket Catalogue → 可视化选片排期 → 冲突检测 → 导出 .ics → 一键跳豆瓣。
 > 栈:Cloudflare Workers 静态资源(**纯静态**,线上 = https://biff.lcandy.co,推 main 自动部署)+ Vite + TS(无框架)+ Tailwind v4(增量双轨)+ 静态 JSON。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-12(**导入支持 .ics + 已保存方案改横向**,见 §0 首条);
-> 上一轮 = 顺位撞车(逐层)+ 一键修复 · 保存方案 · 按方案导出;
+> 最后更新:2026-09-12(**豆瓣相关电影**,见 §0 首条);
+> 上一轮 = 导入支持 .ics + 已保存方案改横向;
+> 更早 = 顺位撞车(逐层)+ 一键修复 · 保存方案 · 按方案导出;
 > 更早 = 移动端极端适配 —— 窄屏改「单日纵向时间线」(见 §0 与 `docs/plans/PLAN-20260912002532.md`);
 > 更早 = 页脚贡献者署名(两个贡献者的 GitHub 主页外链,`PLAN-20260912001500`);
 > 更早 = 抢票信息接入(顶栏开票倒计时(北京时间 + 韩国时间)+ 抢票信息弹层 + 开票日历 `.ics`
@@ -16,6 +17,12 @@
 ## 0. 当前状态快照(2026-09-12)
 
 **✅ 已完成(已部署,线上可访问)**
+- **豆瓣相关电影(2026-09-12,`PLAN-20260912195707`)**:
+  离线拉 Frodo `GET /api/v2/movie/{id}/recommendations`(每部最多 20 条 movie),写入
+  `public/douban-related.json`(**220 subject / 162 有推荐 / 58 空 / 126 部能对上本届片目,共 676 对**);
+  资料弹层豆瓣区下方追加两段 —— **本届也在放**(推荐 id 命中当前 mappings,整行压栈打开那部资料)
+  与 **豆瓣也推荐**(其余最多 6 条外链)。`/related_subjects` 实测是原著/OST 且本届样例常空,不接。
+  文件缺失静默降级。单测 162 → **168**(`tests/related.test.ts`)。
 - **导入支持 .ics + 已保存方案改横向(2026-09-12)**:
   - 「导入数据备份」弹层**按内容自动识别类型**:带 `BEGIN:VCALENDAR` → **.ics 排片导入**,
     否则走备份 JSON;文件入口 `accept` 同时收 `.json / .ics`,粘贴文本同样识别。
@@ -208,13 +215,14 @@
   ├ venues.json(只读场馆)
   ├ films.json(只读目录)
   ├ douban.json(豆瓣映射,离线产物,可为空)
+  ├ douban-related.json(豆瓣相关电影,可为空)
   └ assets/(main.ts 打包)
 
 浏览器 localStorage(用户数据主存储,**不上云**):
   biff.picks.v2(选片+排片,唯一数据源) / biff.settings.v1 / biff.gvtalk*.v1
 ```
 
-**前端模块(src/,36 文件 + `style.css`)**:`main.ts` 装配+统一事件委托｜`state.ts` 全局 store + localStorage 持久化(**片单 / 已保存方案只存本地**)+ subscribe 订阅｜`grid.ts` 排片网格｜`timeline.ts` **移动端单日纵向时间线**(≤768px 替换二维网格,`PLAN-20260912002532`)｜`agenda.ts` 行程列表(绿框顺位卡拖动排序 + **顺位撞车提示/一键修复** + **已保存方案**)｜`library.ts` 影片库+我的选片(抽屉)｜`settings.ts` 设置弹层｜`share.ts` 分享文案｜**`export-panel.ts` 导出·分享弹层(先选已保存方案,再选 .ics / 文案 / 图)**｜`modal.ts` 弹层栈｜`row.ts` 场次行骨架｜`conflict.ts` 纯函数冲突检测｜`plans.ts` 顺位 + 冲突组 → 无冲突组合 / **逐层撞车检出** / **一键修复**(纯函数;同一部片只留一场)｜`score.ts` 行程质量分｜`ics.ts` 导出｜`gv.ts` 映后口径｜`badges.ts`/`legend.ts` 徽章与图例｜`ui.ts` 按钮/tab/缩放控件类名与工厂｜`chips.ts`/`form.ts`/`toast.ts` 共享 UI 片段｜`data.ts` JSON 加载(含豆瓣映射)｜`tip.ts` 悬停提示｜`types.ts`/`util.ts`/`style.css`
+**前端模块(src/,37 文件 + `style.css`)**:`main.ts` 装配+统一事件委托｜`state.ts` 全局 store + localStorage 持久化(**片单 / 已保存方案只存本地**)+ subscribe 订阅｜`grid.ts` 排片网格｜`timeline.ts` **移动端单日纵向时间线**(≤768px 替换二维网格,`PLAN-20260912002532`)｜`agenda.ts` 行程列表(绿框顺位卡拖动排序 + **顺位撞车提示/一键修复** + **已保存方案**)｜`library.ts` 影片库+我的选片(抽屉)｜`settings.ts` 设置弹层｜`share.ts` 分享文案｜**`export-panel.ts` 导出·分享弹层(先选已保存方案,再选 .ics / 文案 / 图)**｜`modal.ts` 弹层栈｜`row.ts` 场次行骨架｜`conflict.ts` 纯函数冲突检测｜`plans.ts` 顺位 + 冲突组 → 无冲突组合 / **逐层撞车检出** / **一键修复**(纯函数;同一部片只留一场)｜`score.ts` 行程质量分｜`ics.ts` 导出｜`gv.ts` 映后口径｜`badges.ts`/`legend.ts` 徽章与图例｜`ui.ts` 按钮/tab/缩放控件类名与工厂｜`chips.ts`/`form.ts`/`toast.ts` 共享 UI 片段｜`data.ts` JSON 加载(含豆瓣映射)｜`related.ts` 豆瓣相关电影｜`tip.ts` 悬停提示｜`types.ts`/`util.ts`/`style.css`
 
 > 2026-09-10 结构收口(PLAN-20260910232833):`library.ts` 1784→928、`main.ts` 1137→786;
 > 设置 / 抢票清单 / 质量分各自独立成文件;片名链 / 档位权重 / chip 类名 / 日期切段 / 时间标签收口到单一来源;补 `eslint` 门禁。
@@ -262,6 +270,15 @@ public/douban.json = {
 - **只写 `high`**(片名命中 + 年份不矛盾);`miss` 一律不写,前端走中英文搜索兜底
 - 条目**必须带 `title_en`**:`tools/prune_douban.py` 靠它判「换届撞号」并清掉失效映射
 - 风控(`code 103/1005/1309`)时脚本**立即停轮并保留进度**,不把失败写成 `miss`
+
+```json
+public/douban-related.json = {
+  "recs": { "<subject_id>": [ { id, title, year?, rating?, url } ] }
+}
+```
+- **生成**:`python3 tools/build_douban_related.py`(对 `douban.json` 里每个 unique subject 拉
+  `/recommendations`);「是不是本届」**不写进产物**,前端 `related.ts` 对照当前 mappings 现查
+- 只存 movie;缺文件 / 该片无推荐 → 弹层不出现相关区(与 extras 同,增强不是运行前提)
 
 **localStorage(片单唯一源)**:`biff.picks.v2` = `PickEntry[]`(`{key, picks:[{code}], note}` ——
 旧数据的 `group`(方案 A/B)/ `priority`(档位)字段读取时忽略,**零迁移**);

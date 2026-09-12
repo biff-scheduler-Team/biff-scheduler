@@ -3,10 +3,11 @@
 // (library.ts,那里同时给「定位 ▸」与三态「＋ 加入」),避免同一部片出现两份排片列表。
 // 全量化:overlay / modal / 资料弹层结构 全部 Tailwind utility。
 
-import type { Catalog, FilmItem, Mapping } from "./types";
+import type { Catalog, DoubanRec, FestRef, FilmItem, Mapping } from "./types";
 import { bilingualTitle, displayTitle, el, filmEnName, filmInfoOf } from "./util";
 import { doubanChip } from "./legend";
 import { KIND_LABEL, formatKrw, programOf } from "./extras";
+import { indexFestival, recsOf, splitRelated } from "./related";
 import { slotOf, store } from "./state";
 import { hideTip } from "./tip";
 
@@ -305,8 +306,8 @@ export function showFilmModal(code: string, ctx: FilmModalCtx): void {
   const prog = programOf(code);
   if (prog) body.appendChild(buildProgramBlock(prog));
 
-  // ---- 豆瓣区 ----
-  body.appendChild(buildDoubanBlock(code, anchor.title_zh || "", anchor.title_en));
+  // ---- 豆瓣区(条目直链 + 相关电影)----
+  body.appendChild(buildDoubanBlock(code, anchor.title_zh || "", anchor.title_en, ctx));
 
   openModal(`资料 · ${title}`, body, "lg");
 }
@@ -370,14 +371,15 @@ export function showCatalogFilmModal(
 
   // ---- 豆瓣区(code = 目录片 id,如 f001)----
   // 英文搜索用**官方英文名**(`filmEnName`);`title_orig` 在新 schema 里是原始韩/日文名,拿去搜豆瓣必空
-  body.appendChild(buildDoubanBlock(film.id, film.title_zh || "", filmEnName(film)));
+  body.appendChild(buildDoubanBlock(film.id, film.title_zh || "", filmEnName(film), ctx));
   openModal(`资料 · ${title}`, body, "lg");
 }
 
 /** 豆瓣区:有映射 → 条目直链;无映射 → 中英文搜索外链(兜底)。
  *  映射来自静态 `public/douban.json`(2026-09-11 起,D1 退役)—— **只读,无回填入口**。
+ *  有推荐产物时在直链下方追加「本届也在放 / 豆瓣也推荐」(见 `related.ts`)。
  *  code 可为排期 code(3 位)或目录片 id(f###)。 */
-function buildDoubanBlock(code: string, qZh: string, qEn: string): HTMLElement {
+function buildDoubanBlock(code: string, qZh: string, qEn: string, ctx: FilmModalCtx): HTMLElement {
   const block = el("div", "border-t border-line pt-3");
   block.appendChild(el("div", "text-13 font-bold mb-2", "豆瓣"));
 
@@ -390,6 +392,8 @@ function buildDoubanBlock(code: string, qZh: string, qEn: string): HTMLElement {
     a.className = "font-semibold";
     a.textContent = `豆瓣条目 ↗ ${map.title_cn ? "· " + map.title_cn : ""}`;
     block.appendChild(a);
+    const related = buildRelatedList(map.subject_id, ctx);
+    if (related) block.appendChild(related);
     return block;
   }
 
@@ -413,4 +417,85 @@ function buildDoubanBlock(code: string, qZh: string, qEn: string): HTMLElement {
   search.append(a1, a2);
   block.appendChild(search);
   return block;
+}
+
+const REL_ROW_CLS =
+  "w-full flex items-center gap-2 text-left py-[6px] px-1 -mx-1 rounded-6 hover:bg-hover border-0 bg-transparent text-ink no-underline cursor-pointer";
+
+/** 推荐列表:本届命中整行压栈打开资料;站外最多 6 条外链。两段都空 → null(不占位)。 */
+function buildRelatedList(subjectId: number | null, ctx: FilmModalCtx): HTMLElement | null {
+  if (subjectId == null) return null;
+  const sid = String(subjectId);
+  const fest = indexFestival(store.mappings);
+  const split = splitRelated(recsOf(sid), sid, fest);
+  if (!split.festival.length && !split.more.length) return null;
+
+  const box = el("div", "mt-3 grid gap-2");
+  box.dataset.related = "1";
+  if (split.festival.length) {
+    box.appendChild(relatedSection("本届也在放", "festival", split.festival.map((rec) => {
+      const ref = fest.get(rec.id);
+      const film = ref?.filmId ? ctx.cat.films.find((f) => f.id === ref.filmId) : undefined;
+      return relatedRow(rec, {
+        badge: "本届",
+        poster: film?.poster,
+        onOpen: ref ? () => openRelatedFilm(ref, ctx) : undefined,
+      });
+    })));
+  }
+  if (split.more.length) {
+    box.appendChild(relatedSection("豆瓣也推荐", "more", split.more.map((rec) => relatedRow(rec, {}))));
+  }
+  return box;
+}
+
+function relatedSection(title: string, kind: string, rows: HTMLElement[]): HTMLElement {
+  const box = el("div", "grid gap-[2px]");
+  box.dataset.relatedKind = kind;
+  box.appendChild(el("div", "text-12 font-bold text-muted", title));
+  for (const row of rows) box.appendChild(row);
+  return box;
+}
+
+function openRelatedFilm(ref: FestRef, ctx: FilmModalCtx): void {
+  hideTip();
+  if (ref.code) showFilmModal(ref.code, ctx);
+  else if (ref.filmId) showCatalogFilmModal(ref.filmId, ctx);
+}
+
+function relatedRow(
+  rec: DoubanRec,
+  opts: { badge?: string; poster?: string; onOpen?: () => void }
+): HTMLElement {
+  const isFest = Boolean(opts.onOpen);
+  const row = isFest ? el("button", REL_ROW_CLS) : document.createElement("a");
+  row.className = REL_ROW_CLS;
+  if (isFest) {
+    (row as HTMLButtonElement).type = "button";
+    row.addEventListener("click", () => opts.onOpen?.());
+    row.dataset.tip = "打开这部片的资料";
+    row.dataset.relatedOpen = rec.id;
+  } else {
+    const a = row as HTMLAnchorElement;
+    a.href = rec.url;
+    a.target = "_blank";
+    a.rel = "noreferrer";
+  }
+  if (opts.poster) {
+    const img = document.createElement("img");
+    img.src = opts.poster;
+    img.alt = "";
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.className = "w-9 h-[51px] object-cover rounded-5 border border-line bg-raised shrink-0";
+    row.appendChild(img);
+  }
+  const text = el("div", "min-w-0 flex-1");
+  text.appendChild(el("div", "text-13 font-semibold truncate", rec.title));
+  const bits = [rec.year, rec.rating != null ? `豆 ${rec.rating}` : ""].filter(Boolean);
+  if (bits.length) text.appendChild(el("div", "text-11 text-muted", bits.join("  ")));
+  row.appendChild(text);
+  if (opts.badge) row.appendChild(el("span", "text-11 font-bold text-biff shrink-0", opts.badge));
+  else if (!isFest) row.appendChild(el("span", "text-12 text-muted shrink-0", "↗"));
+  return row;
 }

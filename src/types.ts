@@ -138,6 +138,22 @@ export interface Mapping {
   douban_url: string | null;
 }
 
+/** 豆瓣 Frodo `/recommendations` 的一条(离线产物 `public/douban-related.json`)。
+ *  「是不是本届」不写进产物,前端用当前 mappings 现查。 */
+export interface DoubanRec {
+  id: string;
+  title: string;
+  year?: string;
+  rating?: number;
+  url: string;
+}
+
+/** 一个豆瓣 subject 在本届片目里的落点:目录 id 与(若有)一场排期 code。 */
+export interface FestRef {
+  filmId: string | null;
+  code: string | null;
+}
+
 /** 外观偏好:三态 —— 跟随系统 / 亮色(普通)/ 暗色。
  *  CSS 只认 `<html data-theme>`,解析与持久化见 `theme.ts`。 */
 export type ThemePref = "system" | "light" | "dark";

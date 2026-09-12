@@ -68,6 +68,7 @@ import { openSettings, openTalkMinModal } from "./settings";
 import { initTheme, isThemePref, setThemePref, themePref } from "./theme";
 import { openExportPanel } from "./export-panel";
 import { formatKrw, loadExtras, priceOf } from "./extras";
+import { loadRelated } from "./related";
 import { openTicketingModal, startTicketTicker } from "./ticketing";
 import { downloadBackup } from "./backup";
 import { openImportBackupModal } from "./backup-panel";
@@ -1129,8 +1130,9 @@ async function boot(): Promise<void> {
   loadPicks(filmKeyOfCode);
   // 豆瓣映射 = 静态 douban.json(2026-09-11,D1 退役):在首渲前灌好,避免片名「先英文后中文」跳变。
   await loadMappings();
-  // 官网「排期之外」的辅助信息(售票批次 / 节目嘉宾 / 开闭幕式):缺失即静默降级,不阻塞主流程。
-  await loadExtras();
+  // 官网「排期之外」的辅助信息(售票批次 / 节目嘉宾 / 开闭幕式)与豆瓣相关电影:
+  // 两份都是增强、互不依赖,缺失即静默降级,不阻塞主流程。
+  await Promise.all([loadExtras(), loadRelated()]);
 
   subscribe((domain) => renderAll(domain));
   // 选片抽屉开 / 收会改变网格可用宽度 → 补一次 renderGrid(横向锚点由 renderGrid 内的
