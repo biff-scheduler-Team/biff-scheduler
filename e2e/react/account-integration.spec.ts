@@ -25,7 +25,7 @@ test('account profile editing and automatic schedule sync remain connected to th
   await page.route('**/api/account/me',route=>route.fulfill({json:account}));
   await page.route('**/api/account/sync/biff-2026',async route=>{
     if(route.request().method()==='PUT'){records=route.request().postDataJSON().records;revision++;await route.fulfill({json:{revision}});}
-    else await route.fulfill({json:{subject:id,revision,records,updatedAt:0}});
+    else await route.fulfill({json:{subject:id,revision,records,updatedAt:0,importedAt:null}});
   });
   await page.route('**/api/account/profile',async route=>{
     const patch=route.request().postDataJSON();account.profile.displayName=patch.displayName;account.profile.bio=patch.bio;account.profile.version++;
