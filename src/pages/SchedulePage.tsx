@@ -1,11 +1,13 @@
+import { screeningMembers } from "../app/screening-members";
+import { ScreeningInfoPopover } from "../components/ScreeningInfoPopover";
+import { officialStills } from "../app/official-stills";
 import { useHighlight } from "../app/highlight";
 import { Component, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { useLocation, useNavigate } from "react-router";
 import { ActionButton, ToggleButton, ToastQueue } from "../components/spectrum";
 import {
   Badges,
-  ScreeningCard,
-  useFilmNavigation,
+  FilmBadge,
+  GvDurationButton,
 } from "../components/ScreeningCard";
 import { FilterBar } from "../components/FilterBar";
 import { useCatalog } from "../app/store";
@@ -18,13 +20,7 @@ import {
   type FilterState,
 } from "../filters";
 import {
-  clampZoom,
-  stepZoom,
-  fitZoomLevel,
-  ganttGeometry,
   cardStateOf,
-  ZOOM_MAX,
-  ZOOM_MIN,
 } from "../grid";
 import { effEndMin, filmEndMin, gvTalkMin, talkOnOf } from "../gv";
 import {
@@ -46,21 +42,27 @@ import {
 import { venueShort, venueTip } from "../legend";
 import { timelineEntries } from "../timeline";
 import type { Screening } from "../types";
-import { ganttScrollAnchor, ganttScrollPosition, screeningCenter, tightScreeningTips, type GanttScrollAnchor } from "../app/schedule-model";
+import { tightScreeningTips } from "../app/schedule-model";
+import { verticalGeometry, screeningLanes, captureVerticalAnchor, restoreVerticalAnchor, type VerticalAnchor, type VerticalGeometry } from "../app/vertical-schedule";
 import "./schedule-parity.css";
 
-function useScreeningToggle(onOpen: (code: string) => void) {
+const SIZE_OPTIONS = [{label: "小", zoom: 0.45}, {label: "默认", zoom: 0.55}, {label: "大", zoom: 0.75}];
+function scheduleZoom(value = 0.55) {
+  const saved = Number.isFinite(value) ? value : 0.55;
+  return SIZE_OPTIONS.reduce((nearest, option) => Math.abs(option.zoom - saved) < Math.abs(nearest.zoom - saved) ? option : nearest).zoom;
+}
+
+function ScheduleArtwork({ still, poster }: { still?: string; poster?: string }) {
+  const [failed, setFailed] = useState(false);
+  const source = (!failed && still) || poster;
+  if (!source) return null;
+  return <img src={source} alt="" loading="lazy" data-official-still={!failed && Boolean(still)} onError={() => setFailed(true)} />;
+}
+
+function useScreeningToggle() {
   const { cat } = useCatalog();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const compact = useMedia("(max-width: 1099px)");
   return (s: Screening) => {
-    const adding = !slotOf(s.code);
     toggleScreening(filmNodeKey(cat, s), s.code);
-    if (adding && !compact && location.pathname === "/schedule") {
-      onOpen(s.code);
-      navigate(`/agenda${location.search}`);
-    }
   };
 }
 
@@ -85,18 +87,17 @@ function flashScreenings(root: HTMLElement, codes: string[]) {
 
 function centerOf(viewport: HTMLElement, card: HTMLElement) {
   const rect = viewport.getBoundingClientRect();
-  return screeningCenter(
-    { ...rect.toJSON(), width: viewport.clientWidth, height: viewport.clientHeight,
-      scrollLeft: viewport.scrollLeft, scrollTop: viewport.scrollTop },
-    card.getBoundingClientRect(),
-    viewport.querySelector<HTMLElement>(".gantt-ruler")?.offsetHeight ?? 0,
-  );
+  const cardRect = card.getBoundingClientRect();
+  return {
+    left: viewport.scrollLeft + cardRect.left - rect.left - (viewport.clientWidth - cardRect.width) / 2,
+    top: window.scrollY + cardRect.top - 64 - (window.innerHeight - 64 - Math.min(cardRect.height, window.innerHeight - 100)) / 2,
+  };
 }
 
 interface GanttViewportProps {
   date: string;
   zoom: number;
-  geometry: ReturnType<typeof ganttGeometry>;
+  geometry: VerticalGeometry;
   viewportRef: RefObject<HTMLDivElement | null>;
   fitFromLeft: RefObject<boolean>;
   children: ReactNode;
@@ -105,26 +106,19 @@ interface GanttViewportProps {
 /** This lifecycle reads the old DOM before React mutates canvas dimensions.
  * A layout effect is too late: shrinking has already clamped scrollLeft/Top.
  */
-class GanttViewport extends Component<GanttViewportProps, object, GanttScrollAnchor | null> {
+class GanttViewport extends Component<GanttViewportProps, object, VerticalAnchor | null> {
   getSnapshotBeforeUpdate(previous: GanttViewportProps) {
     const viewport = this.props.viewportRef.current;
     if (!viewport || previous.zoom === this.props.zoom || previous.date !== this.props.date) return null;
-    return ganttScrollAnchor(
-      viewport,
-      previous.geometry,
-      viewport.querySelector<HTMLElement>(".gantt-ruler")?.offsetHeight ?? 0,
-    );
+    return captureVerticalAnchor({...previous.geometry, railWidth: 0}, {scrollLeft: viewport.scrollLeft, clientWidth: viewport.clientWidth, top: viewport.getBoundingClientRect().top + 64}, {scrollY: window.scrollY, height: window.innerHeight});
   }
 
-  componentDidUpdate(_previous: GanttViewportProps, _state: object, anchor: GanttScrollAnchor | null) {
+  componentDidUpdate(_previous: GanttViewportProps, _state: object, anchor: VerticalAnchor | null) {
     const viewport = this.props.viewportRef.current;
     if (viewport && anchor) {
-      viewport.scrollTo(ganttScrollPosition(
-        anchor,
-        this.props.geometry,
-        viewport.querySelector<HTMLElement>(".gantt-ruler")?.offsetHeight ?? 0,
-        this.props.fitFromLeft.current,
-      ));
+      const position = restoreVerticalAnchor(anchor, {...this.props.geometry, railWidth: 0}, viewport.getBoundingClientRect().top + window.scrollY + 64, this.props.fitFromLeft.current);
+      viewport.scrollLeft = position.left;
+      window.scrollTo({top: position.pageY});
     }
     this.props.fitFromLeft.current = false;
   }
@@ -142,26 +136,30 @@ function Gantt({
   date,
   filters,
   hour,
+  changeFilters,
 }: {
   date: string;
   filters: FilterState;
   hour: number | null;
+  changeFilters: (patch: Partial<FilterState>) => void;
 }) {
   const { cat, conflicts, codes } = useCatalog();
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const highlight = useHighlight();
-  const location = useLocation();
   const { params, update } = useQuery();
-  const openFilm = useFilmNavigation();
-  const pendingVisibleCode = useRef<string | null>(null);
-  const toggle = useScreeningToggle((code) => { pendingVisibleCode.current = code; });
+  const toggle = useScreeningToggle();
   const scroll = useRef<HTMLDivElement>(null);
-  const zoom = clampZoom(store.settings.zoom ?? 1);
-  const geometry = ganttGeometry(cat, date, zoom);
-  const { ppm, rowH, labelW, start, end, width } = geometry;
+  const zoom = scheduleZoom(store.settings.zoom);
+  const [viewportWidth, setViewportWidth] = useState(0);
+  const header = useRef<HTMLDivElement>(null);
   const day = cat.schedule.screenings.filter((s) => s.date === date);
   const venues = cat.venues.filter(
     (v) => venueAllowed(v.id, filters) && day.some((s) => s.venue_id === v.id),
   );
+  const geometry = verticalGeometry(cat, date, zoom, venues.length, viewportWidth + 72);
+  const { ppm, columnWidth, railWidth: labelW, topPad, start, end, width, height } = geometry;
+  const rowH = 112 * zoom;
+  const lanes = new Map(venues.flatMap(v => [...screeningLanes(day.filter(s => s.venue_id === v.id))]));
   const selected = codes
     .map((c) => cat.byCode.get(c)!)
     .filter((s) => s.date === date)
@@ -186,22 +184,20 @@ function Gantt({
   useEffect(() => {
     const viewport = scroll.current;
     if (!viewport) return;
-    const fit = () => {
-      const height = Math.max(
-        260,
-        window.innerHeight - viewport.getBoundingClientRect().top - 24,
-      );
-      viewport.style.maxHeight = `${Math.round(height)}px`;
+    const pinHeader = () => {
+      if (header.current) {
+        const top = Math.min(Math.max(0, -viewport.getBoundingClientRect().top), Math.max(0, viewport.clientHeight - 64));
+        header.current.style.opacity = "1";
+        header.current.style.transform = `translateY(${top}px)`;
+      }
     };
+    const fit = () => { setViewportWidth(viewport.clientWidth); pinHeader(); };
     const observer = new ResizeObserver(fit);
-    const panel = viewport.closest(".schedule-page");
-    if (panel) observer.observe(panel);
+    observer.observe(viewport);
+    window.addEventListener("scroll", pinHeader, {passive: true});
     window.addEventListener("resize", fit);
     fit();
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", fit);
-    };
+    return () => { observer.disconnect(); window.removeEventListener("scroll", pinHeader); window.removeEventListener("resize", fit); };
   }, []);
 
   const fitFromLeft = useRef(false);
@@ -210,18 +206,6 @@ function Gantt({
     scroll.current?.scrollTo({ left: 0, top: 0 });
   }, [date]);
 
-  useLayoutEffect(() => {
-    const viewport = scroll.current;
-    const code = pendingVisibleCode.current;
-    if (!viewport || !code) return;
-    const card = viewport.querySelector<HTMLElement>(`[data-grid-code="${CSS.escape(code)}"]`);
-    if (card) {
-      const parent = viewport.getBoundingClientRect(), rect = card.getBoundingClientRect();
-      if (rect.left < parent.left + 48 || rect.right > parent.right - 48)
-        viewport.scrollTo({ left: centerOf(viewport, card).left });
-    }
-    pendingVisibleCode.current = null;
-  }, [location.pathname]);
 
   const focus = params.get("focus");
   const focusDate = params.get("focusDate");
@@ -240,7 +224,8 @@ function Gantt({
     );
     if (focus && !target) return; // The parent may be restoring a hidden venue.
     const center = target ? centerOf(viewport, target) : { left: viewport.scrollLeft, top: 0 };
-    viewport.scrollTo({ left: center.left, top: focus ? center.top : 0 });
+    viewport.scrollLeft = center.left;
+    window.scrollTo({top: focus ? center.top : window.scrollY + viewport.getBoundingClientRect().top - 64});
     if (focus && target) target.focus({ preventScroll: true });
     flashScreenings(viewport, targets);
     lastLocate.current = request;
@@ -255,7 +240,9 @@ function Gantt({
       event.preventDefault();
       wheelAcc += event.deltaY;
       if (Math.abs(wheelAcc) < 60) return;
-      setSettings({ zoom: stepZoom(clampZoom(store.settings.zoom ?? 1), wheelAcc < 0 ? 1 : -1) });
+      const current = scheduleZoom(store.settings.zoom);
+      const next = wheelAcc < 0 ? SIZE_OPTIONS.find(option => option.zoom > current)?.zoom : [...SIZE_OPTIONS].reverse().find(option => option.zoom < current)?.zoom;
+      if (next !== undefined) setSettings({zoom: next});
       wheelAcc = 0;
     };
     let drag: { id: number; x: number; left: number } | null = null;
@@ -275,6 +262,7 @@ function Gantt({
       if (moved) {
         viewport.classList.add("schedule-panning");
         viewport.scrollLeft = drag.left - delta;
+
       }
     };
     const up = (event: PointerEvent) => {
@@ -313,58 +301,34 @@ function Gantt({
     };
   }, []);
   return (
-    <>
+    <div className="vertical-schedule">
       <div className="schedule-legend">
+        <ActionButton aria-expanded={filtersOpen} aria-controls="schedule-filter-fields" onPress={() => setFiltersOpen(open => !open)}>排片筛选</ActionButton>
         <span className="legend-selected">已选</span>
         <span className="legend-tight">时间紧张</span>
         <span className="legend-conflict">时间重叠</span>
         <span className="muted">韩国时间 KST</span>
-        <div className="zoom-controls">
-          <ActionButton
-            aria-label="缩小排片表"
-            isDisabled={zoom <= ZOOM_MIN}
-            onPress={() => setSettings({ zoom: stepZoom(zoom, -1) })}
-          >
-            −
-          </ActionButton>
-          <span aria-label="缩放比例">{Math.round(zoom * 100)}%</span>
-          <ActionButton
-            aria-label="放大排片表"
-            isDisabled={zoom >= ZOOM_MAX}
-            onPress={() => setSettings({ zoom: stepZoom(zoom, 1) })}
-          >
-            ＋
-          </ActionButton>
-          <ActionButton
-            onPress={() => {
-              const next = fitZoomLevel(cat, date, scroll.current?.clientWidth ?? 800);
-              fitFromLeft.current = next !== zoom;
-              if (scroll.current) scroll.current.scrollLeft = 0;
-              setSettings({ zoom: next });
-            }}
-          >
-            适应
-          </ActionButton>
-          <ActionButton onPress={() => setSettings({ zoom: 1 })}>
-            1:1
-          </ActionButton>
+        <div className="zoom-controls" role="group" aria-label="排片大小">
+          {SIZE_OPTIONS.map(option => <ToggleButton key={option.label}
+            isSelected={option === SIZE_OPTIONS.reduce((nearest, candidate) => Math.abs(candidate.zoom - zoom) < Math.abs(nearest.zoom - zoom) ? candidate : nearest)}
+            onChange={() => setSettings({zoom: option.zoom})}>{option.label}</ToggleButton>)}
         </div>
       </div>
-      <GanttViewport date={date} zoom={zoom} geometry={geometry} viewportRef={scroll} fitFromLeft={fitFromLeft}>
-        <div
-          className="gantt-canvas"
-          style={
-            {
-              width,
-              "--row-h": `${rowH}px`,
-              "--label-w": `${labelW}px`,
-              "--hour-w": `${ppm * 60}px`,
-              "--gantt-zoom": zoom,
-            } as CSSProperties
-          }
-        >
-          <div className="gantt-ruler">
-            <div className="gantt-corner">影厅 / 时间</div>
+      {filtersOpen && <div id="schedule-filter-fields" className="schedule-filter-fields"><FilterBar filters={filters} onChange={changeFilters} label="排片筛选" fieldsOnly /></div>}
+      <div className="schedule-grid" style={{"--label-w": `${labelW}px`, "--hour-w": `${ppm * 60}px`} as CSSProperties}>
+        <div className="schedule-time-column">
+          <div className="vertical-corner" style={{width: labelW}} title="横轴：影厅；纵轴：韩国时间 KST（UTC+9）" aria-label="横轴影厅，纵轴韩国时间 KST">
+            <svg className="axis-corner-diagram" viewBox="0 0 72 64" aria-hidden="true">
+              <path className="axis-divider" d="M0 0L72 64" />
+              <text className="axis-venue-label" x="47" y="21" textAnchor="middle">影厅</text>
+              <g className="axis-clock" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                <circle cx="16" cy="35" r="7" />
+                <path d="M16 31v4l3 2" />
+              </g>
+              <text className="axis-timezone" x="25" y="55" textAnchor="middle">KST</text>
+            </svg>
+          </div>
+          <div className="gantt-ruler" style={{width: labelW, height}}>
             <div className="ruler-track">
               {Array.from(
                 { length: (end - start) / 60 + 1 },
@@ -375,7 +339,7 @@ function Gantt({
                   type="button"
                   aria-label={`筛选 ${fmtEndClock(h * 60)} 时段`}
                   aria-pressed={hour === h}
-                  style={{ left: (h * 60 - start) * ppm }}
+                  style={{ top: topPad + (h * 60 - start) * ppm }}
                   onClick={() =>
                     update({ hour: hour === h ? null : String(h), focus: null, focusDate: null, locate: null }, true)
                   }
@@ -384,22 +348,39 @@ function Gantt({
                 </button>
               ))}
               {start < 1440 && end > 1440 && (
-                <span className="schedule-midnight" style={{ left: (1440 - start) * ppm }} title="跨午夜分界，右侧为次日凌晨" />
+                <span className="schedule-midnight" style={{ top: topPad + (1440 - start) * ppm }} title="跨午夜分界，下方为次日凌晨" />
               )}
               {nowX !== null && (
-                <span className="schedule-now-label" style={{ left: nowX }}>
+                <span className="schedule-now-label" style={{ top: topPad + nowX }}>
                   现在 {fmtEndClock(minute)}
                 </span>
               )}
             </div>
           </div>
-          {venues.map((v) => (
-            <div className="gantt-row" key={v.id}>
-              <div className="venue-label" title={venueTip(v)}>
-                <span className="code">{v.code}</span>
-                <strong>{venueShort(v)}</strong>
-              </div>
-              <div className="gantt-track">
+        </div>
+        <GanttViewport date={date} zoom={zoom} geometry={geometry} viewportRef={scroll} fitFromLeft={fitFromLeft}>
+          <div className="venue-header-scroll" ref={header} style={{width: width - labelW}}>
+            <div className="venue-headers" style={{width: width - labelW, height: 64}}>
+              {venues.map(v => <div className="vertical-venue" key={v.id} title={venueTip(v)} style={{width: columnWidth}}><span className="code venue-code">{v.code}</span><strong>{venueShort(v)}</strong></div>)}
+            </div>
+          </div>
+        <div
+          className="gantt-canvas"
+          style={
+            {
+              width: width - labelW, height,
+              "--row-h": `${rowH}px`,
+              "--label-w": `${labelW}px`,
+              "--hour-w": `${ppm * 60}px`,
+              "--gantt-zoom": zoom,
+            } as CSSProperties
+          }
+        >
+          {start > 8 * 60 && <div className="schedule-boundary schedule-boundary-before" style={{left: 0}}>{fmtEndClock(start)} 之前无影片</div>}
+          {end < 23 * 60 && <div className="schedule-boundary schedule-boundary-after" style={{left: 0, transform: `translateY(${height - 18}px)`}}>{fmtEndClock(end)} 之后无影片</div>}
+          {venues.map((v, venueIndex) => (
+            <div className="gantt-row" key={v.id} style={{left: venueIndex * columnWidth, width: columnWidth, height}}>
+              <div className="gantt-track" style={{height, backgroundPositionY: topPad}}>
                 {day
                   .filter((s) => s.venue_id === v.id)
                   .map((s) => {
@@ -411,6 +392,7 @@ function Gantt({
                       store.mappings.get(s.code),
                     );
                     const talk = gvTalkMin(s);
+                    const members = screeningMembers(cat, s);
                     const cardState = cardStateOf(s, {
                       cat, pxPerMin: ppm,
                       row: { rowH, fontScale: zoom, insetY: 4 * zoom, showBadges: rowH >= 80 },
@@ -456,9 +438,10 @@ function Gantt({
                         className={`gantt-slot ${dim ? "dimmed" : ""} ${tone}`}
                         key={s.code}
                         style={{
-                          left: (hmsToMin(s.start_time) - start) * ppm + 2,
-                          width:
-                            (bodyEnd - hmsToMin(s.start_time) + talk) * ppm - 4,
+                          top: topPad + (hmsToMin(s.start_time) - start) * ppm + 2,
+                          left: (lanes.get(s.code)?.lane ?? 0) * columnWidth / (lanes.get(s.code)?.count ?? 1) + 3,
+                          width: columnWidth / (lanes.get(s.code)?.count ?? 1) - 6,
+                          height: (bodyEnd - hmsToMin(s.start_time) + talk) * ppm - 4,
                         }}
                       >
                         <button
@@ -469,24 +452,20 @@ function Gantt({
                           aria-pressed={isSelected}
                           onClick={() => toggle(s)}
                           style={{
-                            width: (bodyEnd - hmsToMin(s.start_time)) * ppm - 4,
+                            height: (bodyEnd - hmsToMin(s.start_time)) * ppm - 6,
                           }}
                           title={detailTip}
                           aria-description={detailTip}
                         >
-                          {info.cats[0]?.poster && (
-                            <img
-                              src={info.cats[0].poster}
-                              alt=""
-                              loading="lazy"
-                            />
-                          )}
+                          {members.length ? <div className={`gantt-member-artwork ${members.length === 2 ? "gantt-member-pair" : ""}`} >{members.map(member => <ScheduleArtwork key={member.name} still={officialStills[member.name]} poster={member.film?.poster} />)}{members.length === 2 && <span className="member-plus" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M8 3v10M3 8h10" /></svg></span>}</div> : <ScheduleArtwork key={`${s.code}-${info.en}`} still={officialStills[info.en]} poster={info.cats[0]?.poster} />}
                           <span className="gantt-film-text">
                             <span className="gantt-time">
-                              <b>{s.code}</b> {s.start_time.slice(0, 5)}–
-                              {fmtEndClock(bodyEnd)}
+                              <FilmBadge kind="code" label={s.code} />
+                              <span>{s.start_time.slice(0, 5)}-{fmtEndClock(bodyEnd)}</span>
                             </span>
-                            <strong>{info.title}</strong>
+                            <strong className="gantt-bilingual-title">
+                              {members.length ? members.map(member => <span key={member.name} className="gantt-member-title">{member.name}{member.film?.title_zh && member.film.title_zh !== member.name && <span>{member.film.title_zh}</span>}</span>) : [...new Set([info.en, info.zh].map(name => name?.trim()).filter(Boolean))].map(name => <span key={name}>{name}</span>)}
+                            </strong>
                             <span className="gantt-details">
                               {s.duration_min} 分钟
                               {score ? `，豆瓣 ${score.rating.toFixed(1)}` : ""}
@@ -495,34 +474,30 @@ function Gantt({
                             <Badges screening={s} />
                           </span>
                         </button>
-                        <button
-                          className="gantt-info"
-                          type="button"
-                          aria-label={`场次 ${s.code} 影片资料`}
-                          onClick={() => openFilm(filmNodeKey(cat, s), s.code)}
-                        >
-                          ⓘ
-                        </button>
+                        <ScreeningInfoPopover screening={s} />
+                        {isSelected && s.is_gv && talk === 0 && <div className="grid-gv-duration" style={{bottom: 4}}><GvDurationButton screening={s} iconOnly /></div>}
                         {talk > 0 && (
+                          <div className="gantt-talk-section" style={{height: talk * ppm}}>
                           <button
                             type="button"
                             className={`gantt-talk ${talkOnOf(s.code) ? "" : "talk-off"}`}
-                            aria-label={isSelected ? `${talkOnOf(s.code) ? "放弃" : "参加"} ${s.code} 映后谈` : `仅加入 ${s.code} 正片，放弃映后谈`}
-                            aria-pressed={talkOnOf(s.code) && isSelected}
-                            title={cardState.talk?.tip}
-                            aria-description={cardState.talk?.tip}
-                            style={{ width: talk * ppm }}
+                            data-film-selected={isSelected}
+                            aria-label={`${s.code} 参加映后谈`}
+                            aria-pressed={talkOnOf(s.code)}
+                            title={isSelected ? "切换是否参加映后谈，保留正片选择" : "加入影片并参加映后谈"}
+                            style={{ height: "100%" }}
                             onClick={() => {
-                              if (!isSelected) toggle(s);
-                              setGvTalk(
-                                s.code,
-                                isSelected ? !talkOnOf(s.code) : false,
-                              );
+                              if (!isSelected) {
+                                toggle(s);
+                                setGvTalk(s.code, true);
+                              } else setGvTalk(s.code, !talkOnOf(s.code));
                             }}
                           >
-                            <span>映后</span>
-                            <span>{talk}′</span>
+                            <span className="gv-time-range">{fmtEndClock(filmEndMin(s))}-{fmtEndClock(filmEndMin(s) + talk)}</span>
+                            <span className="gv-attendance-label"><span aria-hidden="true">{talkOnOf(s.code) ? "✓" : "×"}</span> 映后 {talk}′</span>
                           </button>
+                          {isSelected && <div className="gv-inline-edit"><GvDurationButton screening={s} iconOnly /></div>}
+                          </div>
                         )}
                       </div>
                     );
@@ -534,13 +509,13 @@ function Gantt({
             <span
               className="schedule-now-line"
               aria-hidden="true"
-              style={{ left: labelW + nowX, height: venues.length * rowH + 44 }}
+              style={{ top: topPad + nowX, left: 0, width: width - labelW }}
             />
           )}
           <svg
             className="conflict-links"
-            width={width}
-            height={venues.length * rowH + 44}
+            width={width - labelW}
+            height={height}
             aria-hidden="true"
           >
             {conflicts.get(date)?.pairs.map(([a, b]) => {
@@ -556,21 +531,22 @@ function Gantt({
                     effEndMin(sb, talkOnOf(b)),
                   )) /
                 2;
-              const x = labelW + (mid - start) * ppm;
+              const y = topPad + (mid - start) * ppm;
               return (
                 <line
                   key={`${a}-${b}`}
-                  x1={x}
-                  x2={x}
-                  y1={44 + (ia + 0.5) * rowH}
-                  y2={44 + (ib + 0.5) * rowH}
+                  x1={(ia + 0.5) * columnWidth}
+                  x2={(ib + 0.5) * columnWidth}
+                  y1={y}
+                  y2={y}
                 />
               );
             })}
           </svg>
         </div>
       </GanttViewport>
-    </>
+      </div>
+    </div>
   );
 }
 
@@ -586,19 +562,12 @@ export function SchedulePage() {
     previousMobile.current = mobile;
     if (changed && hour !== null) update({ hour: null }, true);
   }, [mobile, hour, update]);
-  const entries = timelineEntries(cat, date, {
+  const dateCounts = new Map(cat.dates.map(d => [d, timelineEntries(cat, d, {
     filters,
     slots: store.slotIndex,
     gvTalkOf: talkOnOf,
     transitMin: store.settings.transitMin,
-  });
-  const shown = entries.filter(
-    (e) =>
-      hour === null ||
-      (hmsToMin(e.s.start_time) < (hour + 1) * 60 &&
-        effEndMin(e.s, talkOnOf(e.s.code)) > hour * 60),
-  );
-  const timeline = useRef<HTMLDivElement>(null);
+  }).length]));
   const focusCode = params.get("focus");
   const focusDate = params.get("focusDate");
   const locateRequest = params.get("locate") ?? `${date}|${focusCode}|${focusDate}`;
@@ -612,34 +581,14 @@ export function SchedulePage() {
       ToastQueue.neutral("已清除影厅筛选，目标场次所在影厅此前被隐藏。", { timeout: 5000 });
     }
   }, [cat, focusCode, locateRequest, filters, changeFilters]);
-  const timelineKey = shown.map((e) => e.s.code).join("|");
-  const selectedTimelineKey = shown.filter((e) => e.picked).map((e) => e.s.code).join("|");
-  const lastTimelineLocate = useRef("");
-  useLayoutEffect(() => {
-    const root = timeline.current;
-    if (!mobile || !root || (!focusCode && focusDate !== date)) return;
-    const request = locateRequest;
-    if (lastTimelineLocate.current === request) return;
-    const targets = focusCode ? [focusCode] : selectedTimelineKey.split("|").filter(Boolean);
-    const target = targets[0] && root.querySelector<HTMLElement>(`[data-timeline-code="${CSS.escape(targets[0])}"]`);
-    if (focusCode && !target) return;
-    if (focusCode && target) target.scrollIntoView({ block: "center" });
-    else root.scrollIntoView({ block: "start" });
-    flashScreenings(root, targets);
-    lastTimelineLocate.current = request;
-  }, [mobile, date, focusCode, focusDate, locateRequest, timelineKey, selectedTimelineKey]);
   return (
-    <section className="schedule-page panel" aria-label="排片表">
+    <section className="schedule-page" aria-label="排片表">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">
-            {cat.dates[0]} 至 {cat.dates.at(-1)}
-          </p>
-          <h1>排片表</h1>
+          <h1 className="schedule-title">排片表 <span>{date.slice(0, 4)} 年 {Number(date.slice(5, 7))} 月</span></h1>
         </div>
-        <span className="count">{entries.length} 场</span>
       </div>
-      <div className="date-strip" aria-label="排片日期">
+      <div className="date-strip calendar-strip" aria-label="排片日期">
         {cat.dates.map((d) => (
           <ToggleButton
             key={d}
@@ -647,11 +596,10 @@ export function SchedulePage() {
             onChange={() => update({ date: d, focus: null, focusDate: null, hour: null, locate: null })}
             aria-label={`选择日期 ${d}`}
           >
-            {dateInfo(d).label} {dateInfo(d).weekday}
+            <span className="calendar-day"><span className="calendar-weekday">{dateInfo(d).weekday}</span><span className="calendar-number">{Number(d.slice(-2))}</span><span className="calendar-count">{dateCounts.get(d)} 场</span></span>
           </ToggleButton>
         ))}
       </div>
-      <FilterBar filters={filters} onChange={changeFilters} label="排片筛选" />
       {hour !== null && (
         <div className="inline-actions">
           <p>正在查看 {fmtEndClock(hour * 60)} 时段</p>
@@ -660,45 +608,7 @@ export function SchedulePage() {
           </ActionButton>
         </div>
       )}
-      <h2 className="schedule-date">
-        {dateInfo(date).label} {dateInfo(date).weekday}
-        <span className="muted">韩国时间 KST</span>
-      </h2>
-      {mobile ? (
-        <div className="timeline" ref={timeline} aria-label="单日时间线">
-          {shown.length === 0 && (
-            <div className="empty-state">
-              <h2>这一天没有符合条件的场次</h2>
-              <p>调整筛选或选择其他日期。</p>
-            </div>
-          )}
-          {shown.map((e) => (
-            <div
-              className="timeline-entry"
-              key={e.s.code}
-              data-timeline-code={e.s.code}
-            >
-              <time className="timeline-time">
-                {e.s.start_time.slice(0, 5)}
-              </time>
-              <div>
-                {e.slack && (
-                  <p
-                    className={`gap-label ${e.slack.verdict === "ok" ? "" : "gap-warning"}`}
-                  >
-                    {e.overlapMin
-                      ? `与上一场重叠 ${e.overlapMin} 分钟`
-                      : `距上一场 ${e.slack.gap} 分钟${e.crossVenue ? `，跨馆缓冲 ${store.settings.transitMin} 分钟` : ""}`}
-                  </p>
-                )}
-                <ScreeningCard screening={e.s} controls={e.picked} wholeCard />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <Gantt date={date} filters={filters} hour={hour} />
-      )}
+      <Gantt date={date} filters={filters} hour={hour} changeFilters={changeFilters} />
     </section>
   );
 }

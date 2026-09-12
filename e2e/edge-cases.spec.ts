@@ -90,7 +90,6 @@ test("rank repairs preview changes before applying them", async ({ page }) => {
 
 test("screening location reveals the correct day and target", async ({
   page,
-  isMobile,
 }) => {
   await seed(page, {
     "biff.picks.v2": JSON.stringify([
@@ -100,13 +99,10 @@ test("screening location reveals the correct day and target", async ({
   await ready(page, "/agenda");
   await page.getByRole("button", { name: "定位场次 008", exact: true }).click();
   await expect(page).toHaveURL(
-    isMobile
-      ? /\/schedule\?.*date=2026-10-07.*focus=008/
-      : /\/agenda\?.*date=2026-10-07.*focus=008/,
+    /\/schedule\?.*date=2026-10-07.*focus=008/,
   );
-  if (isMobile)
-    await expect(page.locator('[data-timeline-code="008"]')).toBeVisible();
-  else await expect(page.locator('[data-grid-code="008"]')).toBeFocused();
+  await expect(page.locator('[data-grid-code="008"]')).toBeVisible();
+  await expect(page.locator('[data-grid-code="008"]')).toBeFocused();
 });
 
 test("film details retain the legacy informational role", async ({ page }) => {

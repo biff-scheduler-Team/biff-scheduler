@@ -27,6 +27,7 @@ test("search, select a film, add a screening, edit notes, refresh and remove", a
   await expect(
     page.getByRole("textbox", { name: "彼此的日夜 备注", exact: true }),
   ).toHaveValue("与朋友一起");
+  if (!await page.locator("#viewing-panel").count()) await page.getByRole("button", {name: "打开我的观影", exact: true}).click();
   await page.getByRole("link", { name: /^我的行程/ }).click();
   await expect(
     page
@@ -280,7 +281,7 @@ test("saved plans export text and a real PNG, and ticket reminders use UTC", asy
   expect(ics).toMatch(/DTSTART:\d{8}T\d{6}Z/);
 });
 
-test("desktop zoom and resizer preserve preferences; mobile never overflows the viewport", async ({
+test("desktop zoom and floating panel preserve preferences; mobile never overflows the viewport", async ({
   page,
   isMobile,
 }) => {
@@ -290,20 +291,14 @@ test("desktop zoom and resizer preserve preferences; mobile never overflows the 
   });
   await ready(page, "/library?date=2026-10-07");
   if (!isMobile) {
-    const resize = page.getByRole("separator", {
-      name: "调整选片面板宽度",
-      exact: true,
-    });
-    await resize.focus();
-    await resize.press("ArrowRight");
-    expect((await storage(page))["biff.pickerw.v1"]).toBe("660");
+    await page.getByRole("button", {name: "打开我的观影", exact: true}).click();
+    expect((await storage(page))["biff.pickerw.v1"]).toBe("640");
+    expect((await page.locator("#viewing-panel").boundingBox())!.width).toBe(640);
+    await page.getByRole("button", {name: "收起选片面板", exact: true}).click();
     await page.getByRole("button", { name: "放大排片表", exact: true }).click();
     expect(JSON.parse((await storage(page))["biff.settings.v1"]).zoom).toBe(
       0.9,
     );
-    await page
-      .getByRole("button", { name: "收起选片面板", exact: true })
-      .click();
     await page
       .getByRole("button", { name: "筛选 10:00 时段", exact: true })
       .click();
@@ -317,13 +312,13 @@ test("desktop zoom and resizer preserve preferences; mobile never overflows the 
       ),
     ).toBe(true);
     await page.getByRole("link", { name: "排片表", exact: true }).click();
-    await expect(page.getByLabel("单日时间线", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("排片时间表", { exact: true })).toBeVisible();
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
     ).toBe(true);
-    await expect(page.getByLabel("排片时间表", { exact: true })).toBeHidden();
+    await expect(page.getByLabel("排片时间表", { exact: true })).toBeVisible();
   }
 });
 

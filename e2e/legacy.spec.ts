@@ -54,6 +54,7 @@ test("the bare legacy URL redirects to the original app and legacy picks appear 
   await expect(
     page.getByRole("navigation", { name: "主要导航" }),
   ).toBeVisible();
+  if (!await page.locator("#viewing-panel").count()) await page.getByRole("button", {name: "打开我的观影", exact: true}).click();
   await page.getByRole("link", { name: /^我的行程/ }).click();
   await expect(
     page

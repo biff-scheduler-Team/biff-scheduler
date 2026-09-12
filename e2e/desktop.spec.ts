@@ -39,20 +39,12 @@ test("hover links a conflict group across the agenda and grid; dragging persists
   });
 });
 
-test("zoom preserves the time in the center of the viewport", async ({
-  page,
-}) => {
+test("time grows downward and screenings at the same time align across venues", async ({ page }) => {
   await ready(page, "/schedule?date=2026-10-07");
-  const grid = page.getByLabel("排片时间表", { exact: true });
-  await grid.evaluate((el) => {
-    el.scrollLeft = 600;
-  });
-  const before = await grid.evaluate(
-    (el) => (el.scrollLeft + el.clientWidth / 2 - 148) / 3,
-  );
-  await page.getByRole("button", { name: "缩小排片表", exact: true }).click();
-  const after = await grid.evaluate(
-    (el) => (el.scrollLeft + el.clientWidth / 2 - 148 * 0.9) / (3 * 0.9),
-  );
-  expect(Math.abs(after - before)).toBeLessThan(1);
+  const nine = await page.getByRole("button", {name: "筛选 09:00 时段", exact: true}).boundingBox();
+  const ten = await page.getByRole("button", {name: "筛选 10:00 时段", exact: true}).boundingBox();
+  expect(ten!.y - nine!.y).toBeCloseTo(240, 0);
+  expect(ten!.x).toEqual(nine!.x);
+  const film = await page.locator('[data-grid-code="008"]').boundingBox();
+  expect(film!.height).toBeCloseTo(135 * 4 - 6, 0);
 });

@@ -64,3 +64,11 @@ Post-restoration review result:8 confirmed P2,2 P3 behavior/text differences,1 n
 - Full production verification including new/legacy interchange: complete.
 
 Final review-fix/legacy result:200 unit tests and209 E2E executions passed,0 failures/0 skips; typecheck/lint/dual-entry build passed. /legacy redirects to /legacy/, both versions share biff.* storage and offline precache. No main checkout edits or deployment.
+
+## Follow-up: vertical time axis and page scrolling
+- User requested time on Y axis, venues on X; schedule must have no internal vertical scrolling.
+- Use one vertical resource grid at all widths; horizontal overflow stays in the grid, vertical scrolling belongs to the page.
+- Keep legacy entry unchanged and preserve picks, GV, conflicts, filters, routes, exports and storage.
+- Vertical geometry, page-scroll zoom anchors, sticky horizontal-synced headers: complete.
+- Renderer, horizontal pan, locate and GV duration controls: complete.
+- Orientation-specific tests, wheel/page-scroll assertions and desktop/mobile visual QA: complete. Typecheck, lint, 203 unit tests and 215 E2E executions passed on 2026-09-13.

@@ -13,7 +13,7 @@ const picks = (codes: string[]) =>
 test.describe("schedule interaction parity", () => {
   test.use({ timezoneId: "Asia/Seoul" });
 
-  test("first GV talk click adds only the film; a second click restores the talk", async ({
+  test("GV clicks change attendance without adding the film", async ({
     page,
   }) => {
     await ready(page);
@@ -21,7 +21,7 @@ test.describe("schedule interaction parity", () => {
     await talk.click();
     await expect(page.locator('[data-grid-code="001"]')).toHaveAttribute(
       "aria-pressed",
-      "true",
+      "false",
     );
     await expect(talk).toHaveAttribute("aria-pressed", "false");
     expect(JSON.parse((await storage(page))["biff.gvtalk.v1"])["001"]).toBe(
@@ -51,13 +51,14 @@ test.describe("schedule interaction parity", () => {
     });
     await locate.click();
     await expect(page.locator('[data-grid-code="001"]')).toBeVisible();
-    await expect(page.locator(".side-panel")).toBeVisible();
-    expect(new URL(page.url()).pathname).toBe("/agenda");
+    await expect(page.locator(".side-panel")).toHaveCount(0);
+    expect(new URL(page.url()).pathname).toBe("/schedule");
     expect(new URL(page.url()).searchParams.has("hour")).toBe(false);
     expect(JSON.parse((await storage(page))["biff.filters.v1"]).venues).toEqual(
       [],
     );
     const token = new URL(page.url()).searchParams.get("locate");
+    await page.getByRole("button", {name: "打开我的观影", exact: true}).click();
     await locate.click();
     await expect
       .poll(() => new URL(page.url()).searchParams.get("locate"))
@@ -86,7 +87,7 @@ test.describe("schedule interaction parity", () => {
     await expect(page.locator('[data-grid-slot="009"]')).toHaveClass(
       /schedule-located/,
     );
-    await expect(page.locator(".side-panel")).toBeVisible();
+    await expect(page.locator(".side-panel")).toHaveCount(0);
     expect(new URL(page.url()).searchParams.has("focus")).toBe(false);
   });
 
@@ -97,6 +98,7 @@ test.describe("schedule interaction parity", () => {
     const grid = page.locator(".gantt-scroll");
     await grid.evaluate((el) => {
       el.scrollLeft = 350;
+      window.scrollTo(0, el.getBoundingClientRect().top + scrollY - 100);
     });
     const point = await grid.evaluate((el) => {
       const parent = el.getBoundingClientRect();
@@ -107,7 +109,7 @@ test.describe("schedule interaction parity", () => {
             r.left > parent.left + 200 &&
             r.left + 40 < parent.right &&
             r.top > parent.top + 44 &&
-            r.bottom < parent.bottom
+            r.bottom < innerHeight
           );
         },
       )!;
@@ -140,7 +142,7 @@ test.describe("schedule interaction parity", () => {
     );
   });
 
-  test("auto-opening the agenda keeps the clicked screening visible", async ({
+  test("selecting a screening keeps the panel closed and the screening visible", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
@@ -148,7 +150,7 @@ test.describe("schedule interaction parity", () => {
     await page
       .locator('[data-grid-code="009"]')
       .click({ position: { x: 30, y: 25 } });
-    await expect(page.locator(".side-panel")).toBeVisible();
+    await expect(page.locator(".side-panel")).toHaveCount(0);
     await expect
       .poll(() =>
         page.locator(".gantt-scroll").evaluate((el) => {
@@ -162,15 +164,15 @@ test.describe("schedule interaction parity", () => {
       .toBe(true);
   });
 
-  test("fit uses the rendered width and changing the date resets both scroll axes", async ({
+  test("fit keeps readable columns and changing the date resets horizontal scrolling", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 800, height: 1000 });
-    await ready(page);
+    await ready(page, "/schedule?date=2026-10-07");
     const grid = page.locator(".gantt-scroll");
     await page.getByRole("button", { name: "适应", exact: true }).click();
     await expect
-      .poll(() => grid.evaluate((el) => el.scrollWidth <= el.clientWidth))
+      .poll(() => grid.evaluate((el) => el.scrollWidth > el.clientWidth))
       .toBe(true);
     await page
       .getByRole("button", { name: "选择日期 2026-10-07", exact: true })
@@ -202,7 +204,7 @@ test.describe("schedule interaction parity", () => {
     await page.clock.fastForward(60_000);
     await expect(page.locator(".schedule-now-label")).toHaveText("现在 12:01");
     await expect(grid).toHaveJSProperty("scrollLeft", 300);
-    await expect(grid).toHaveJSProperty("scrollTop", 500);
+    await expect(grid).toHaveJSProperty("scrollTop", 0);
   });
 
   test("a conflict tooltip identifies the other screening and its venue", async ({

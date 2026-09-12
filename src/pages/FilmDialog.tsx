@@ -1,3 +1,4 @@
+import {ScreeningMemberList} from "../components/ScreeningMemberList";
 import { useCallback, useRef } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 import {
@@ -127,18 +128,7 @@ export function FilmDialog() {
                     收录于合集 {film.block.title_en}，与合集内其他影片一同放映。
                   </p>
                 )}
-                {film.shows.some((s) => s.midnight_members?.length) && (
-                  <section>
-                    <h2>联映影片</h2>
-                    <ul>
-                      {film.shows
-                        .find((s) => s.midnight_members?.length)
-                        ?.midnight_members?.map((t) => (
-                          <li key={t}>{t}</li>
-                        ))}
-                    </ul>
-                  </section>
-                )}
+                {film.shows.find(s => s.midnight_members?.length) && <ScreeningMemberList screening={film.shows.find(s => s.midnight_members?.length)!} />}
                 {program && (
                   <section>
                     <h2>{KIND_LABEL[program.kind].replaceAll(" · ", "，")}</h2>

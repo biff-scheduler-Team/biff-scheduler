@@ -58,6 +58,7 @@ for (const height of [650, 450]) test(`returning from a related film restores re
   await expect(detail).toBeVisible();
   const related = detail.getByRole("button", { name: "终极面试，2026", exact: true });
   await related.scrollIntoViewIfNeeded();
+  await related.focus();
   const readingPosition = () => detail.locator(".film-detail").evaluate((node) => ({
     content: node.parentElement!.scrollTop,
     dialog: node.closest<HTMLElement>('[role="dialog"]')!.scrollTop,
