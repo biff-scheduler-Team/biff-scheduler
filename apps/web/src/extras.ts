@@ -16,7 +16,7 @@ let programByCode = new Map<string, ExtraProgram>();
 export async function loadExtras(): Promise<void> {
   try {
     // `default`(而非 `no-cache`):与 data.ts 同口径,交给 PWA 预缓存命中(现场断网可用)
-    const res = await fetch("festival-extras.json", { cache: "default" });
+    const res = await fetch("/festival-extras.json", { cache: "default" });
     if (!res.ok) return;
     const parsed = (await res.json()) as FestivalExtras;
     if (!parsed || !Array.isArray(parsed.programs)) return;

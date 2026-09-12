@@ -6,7 +6,7 @@ let bySubject = new Map<string, string>();
 /** 启动时调用一次。文件缺失 / 旧部署 → 空表,详情弹层不出现简介。 */
 export async function loadIntros(): Promise<void> {
   try {
-    const res = await fetch("douban-intros.json", { cache: "default" });
+    const res = await fetch("/douban-intros.json", { cache: "default" });
     if (!res.ok) return;
     const parsed = (await res.json()) as { intros?: Record<string, unknown> };
     const intros = parsed?.intros;

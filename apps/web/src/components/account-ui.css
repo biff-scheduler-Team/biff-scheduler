@@ -1,0 +1,18 @@
+@import "tailwindcss/utilities" source(none);
+@source "../account.ts";
+@theme inline {
+  --color-card: var(--surface);
+  --color-ink: var(--text);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-biff: var(--brand);
+  --color-on-brand: #fff;
+  --radius-6: 6px;
+  --text-12: 12px;
+  --text-13: 13px;
+  --text-14: 14px;
+  --text-16: 16px;
+  --spacing: 4px;
+}
+.account-content input, .account-content textarea, .account-content select { color: var(--text); background: var(--surface); }
+.account-content img { max-width: 100%; }

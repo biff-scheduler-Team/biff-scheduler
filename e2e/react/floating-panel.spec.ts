@@ -1,0 +1,52 @@
+import {test, expect} from '@playwright/test';
+import {ready} from './helpers';
+
+test('picking keeps the schedule width and position; the floating button opens a separate panel', async ({page}) => {
+  await ready(page, '/schedule?date=2026-10-07');
+  const grid = page.locator('.gantt-scroll');
+  const before = (await grid.boundingBox())!.width;
+  await page.locator('[data-grid-code="008"]').click();
+  await expect(page.locator('[data-grid-code="008"]')).toHaveAttribute('aria-pressed','true');
+  expect(new URL(page.url()).pathname).toBe('/schedule');
+  await expect(page.locator('#viewing-panel')).toHaveCount(0);
+  expect((await grid.boundingBox())!.width).toBe(before);
+  const position = await grid.evaluate(el=>({left:el.scrollLeft,y:scrollY}));
+  await page.getByRole('button',{name:'打开我的观影',exact:true}).click();
+  await expect(page.getByRole('complementary',{name:'我的观影'})).toBeVisible();
+  expect((await grid.boundingBox())!.width).toBe(before);
+  expect(await grid.evaluate(el=>({left:el.scrollLeft,y:scrollY}))).toEqual(position);
+  const panel = (await page.locator('#viewing-panel').boundingBox())!;
+  expect(panel.x).toBeGreaterThanOrEqual(0);
+  expect(panel.y).toBeGreaterThanOrEqual(0);
+  expect(panel.x + panel.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await page.locator("#viewing-panel").getByRole('link',{name:/^我的选片/}).click();
+  await expect(page.getByRole('region',{name:'我的选片',exact:true})).toBeVisible();
+  await page.locator("#viewing-panel").getByRole('link',{name:/^我的行程/}).click();
+  await page.getByRole('button',{name:'定位场次 008',exact:true}).click();
+  await expect(page.locator('#viewing-panel')).toHaveCount(0);
+  await expect(page.locator('[data-grid-slot="008"]')).toHaveClass(/schedule-located/);
+  await page.getByRole('button',{name:'打开我的观影',exact:true}).click();
+  await page.getByRole('button',{name:'收起选片面板',exact:true}).click();
+  await expect(page.getByRole('button',{name:'打开我的观影',exact:true})).toBeFocused();
+});
+
+test('navigation opens full pages while quick viewing stays optional', async ({page}) => {
+  await ready(page, '/schedule?date=2026-10-07');
+  const nav = page.getByRole('navigation',{name:'主要导航'});
+  await nav.getByRole('link',{name:'我的选片',exact:true}).click();
+  await expect(page.getByRole('region',{name:'我的选片',exact:true})).toBeVisible();
+  await expect(page.locator('#viewing-panel')).toHaveCount(0);
+  await expect(page.locator('.schedule-column')).toBeHidden();
+  await nav.getByRole('link',{name:'我的行程',exact:true}).click();
+  await expect(page.getByRole('region',{name:'我的行程',exact:true})).toBeVisible();
+  await page.reload();
+  await expect(page.locator('#viewing-panel')).toHaveCount(0);
+  await nav.getByRole('link',{name:'排片表',exact:true}).click();
+  await page.getByRole('button',{name:'打开我的观影',exact:true}).click();
+  await expect(page.locator('#viewing-panel')).toBeVisible();
+  await expect(page.locator('.schedule-column')).toBeVisible();
+  await page.getByRole('link',{name:'打开完整页面',exact:true}).click();
+  await expect(page.locator('#viewing-panel')).toHaveCount(0);
+  await expect(page.locator('.schedule-column')).toBeHidden();
+  expect(new URL(page.url()).searchParams.has('quick')).toBe(false);
+});

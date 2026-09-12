@@ -81,6 +81,7 @@ export interface VenuesFile {
 
 /** 影片目录(来自用户提供的影片信息表,先只接片名与元信息) */
 export interface FilmItem {
+  duration_min?: number | null;
   id: string; // f001…,目录序号
   /** **官网英文片名** —— 与 `Screening.title_en` 同源,是排期与片单之间的**唯一身份**。
    *  目录已改为由官网片目生成(见 tools/build_films_2026.py),故这一列必然存在;
