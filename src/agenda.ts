@@ -735,16 +735,30 @@ function buildSavedPlans(ctx: AgendaCtx): HTMLElement {
     return wrap;
   }
 
-  const list = el("div", "grid gap-[6px]");
+  const list = el("div", "flex gap-[8px] overflow-x-auto pb-[2px]");
   for (const p of savedPlans) list.appendChild(savedPlanRow(ctx, p));
   wrap.appendChild(list);
   return wrap;
 }
 
-/** 一行已保存方案:名称 + 概要(场次数 / 日期区间 / 失效场次)+ 删除。 */
+/** 一张已保存方案卡:名称 + 删除(贴右)+ 概要(场次数 / 日期区间 / 失效场次)。
+ *  ⚠ 走**横向滚动**而不是纵向堆叠 —— 方案会越存越多,纵向堆会把下面的行程一天天顶下去。 */
 function savedPlanRow(ctx: AgendaCtx, p: SavedPlan): HTMLElement {
-  const row = el("div", "flex items-center gap-[8px] rounded-7 border border-line bg-card px-[9px] py-[6px]");
-  row.appendChild(el("span", "text-12 font-bold text-ink shrink-0", p.name));
+  const card = el("div", "shrink-0 w-[212px] grid gap-[3px] rounded-8 border border-line bg-card px-[9px] py-[7px]");
+
+  const head = el("div", "flex items-center gap-[6px]");
+  head.appendChild(el("span", "text-12 font-bold text-ink flex-1 min-w-0 truncate", p.name));
+  const del = el(
+    "button",
+    "shrink-0 border-0 bg-transparent p-0 w-[18px] h-[18px] inline-flex items-center justify-center " +
+      "text-11 text-faint rounded-4 hover:text-conf hover:bg-[var(--bg-hover-soft)]",
+    "✕"
+  );
+  del.setAttribute("aria-label", `删除${p.name}`);
+  del.dataset.tip = `删除「${p.name}」(不影响行程)`;
+  del.addEventListener("click", () => deletePlan(p.id));
+  head.appendChild(del);
+  card.appendChild(head);
 
   const shows = p.codes
     .map((c) => ctx.cat.byCode.get(c))
@@ -758,21 +772,10 @@ function savedPlanRow(ctx: AgendaCtx, p: SavedPlan): HTMLElement {
     bits.push(first === last ? first : `${first}–${last}`);
   }
   if (gone > 0) bits.push(`${gone} 场已不在排期`);
-  const outline = el("span", "text-11 text-muted flex-1 min-w-0 truncate tabular-nums", bits.join(" · "));
+  const outline = el("span", "text-11 text-muted truncate tabular-nums", bits.join(" · "));
   outline.dataset.tip = p.codes.map((c) => shortCode(ctx, c)).join("\n");
-  row.appendChild(outline);
-
-  const del = el(
-    "button",
-    "shrink-0 border-0 bg-transparent p-0 w-[20px] h-[20px] inline-flex items-center justify-center " +
-      "text-12 text-faint rounded-4 hover:text-conf hover:bg-[var(--bg-hover-soft)]",
-    "✕"
-  );
-  del.setAttribute("aria-label", `删除${p.name}`);
-  del.dataset.tip = `删除「${p.name}」(不影响行程)`;
-  del.addEventListener("click", () => deletePlan(p.id));
-  row.appendChild(del);
-  return row;
+  card.appendChild(outline);
+  return card;
 }
 
 /* ---------------- 冲突组「顺位卡」 ---------------- */
