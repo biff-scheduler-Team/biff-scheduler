@@ -218,6 +218,11 @@ img {
   padding: 16px;
   gap: 16px;
   min-height: calc(100dvh - 190px);
+  /* 超宽屏回收：工作台上限 1600px 居中（PLAN-20260914003600） */
+  max-width: 1600px;
+  width: 100%;
+  margin-inline: auto;
+  box-sizing: border-box;
 }
 .panel {
   background: var(--surface);
@@ -1427,19 +1432,9 @@ img {
 }
 @media (pointer: coarse) { .version-link { min-height: 44px; } }
 
-/* The viewing panel overlays the schedule without changing its geometry. */
+/* 桌面 ≥1100：选片/行程 : 排片 = 1:3 挤压分栏；窄屏仍用右下角浮层。 */
 .floating-workspace .viewing-panel {
-  position: fixed;
-  right: 24px;
-  bottom: 88px;
-  top: auto;
-  width: var(--panel-width, 520px);
-  max-width: calc(100vw - 48px);
-  max-height: min(70dvh, calc(100dvh - 220px));
   overflow: auto;
-  z-index: 20;
-  box-shadow: 0 12px 48px #0003;
-  border-radius: 16px;
   overscroll-behavior: contain;
 }
 .viewing-panel-heading { position: sticky; top: 0; z-index: 6; background: var(--surface); display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line); }
@@ -1451,8 +1446,40 @@ img {
 .floating-workspace > .panel-resizer { display: none; }
 .library-workspace > .library-page { width: 100%; }
 .floating-workspace .schedule-column[hidden] { display: none; }
+
+@media (min-width: 1100px) {
+  .floating-workspace:not(.full-page-workspace) .viewing-panel {
+    position: sticky;
+    top: 16px;
+    right: auto;
+    bottom: auto;
+    flex: 1 1 0;
+    width: auto;
+    max-width: none;
+    max-height: calc(100dvh - 32px);
+    z-index: 2;
+    box-shadow: 0 4px 20px #00000005;
+    border-radius: 12px;
+  }
+  .floating-workspace:not(.full-page-workspace) .schedule-column {
+    flex: 3 1 0;
+    min-width: 0;
+  }
+}
+
 @media (max-width: 1099px) {
-  .floating-workspace .viewing-panel { right: 8px; bottom: 80px; width: calc(100% - 16px); max-width: none; max-height: min(72dvh, calc(100dvh - 360px)); }
+  .floating-workspace .viewing-panel {
+    position: fixed;
+    right: 8px;
+    bottom: 80px;
+    top: auto;
+    width: calc(100% - 16px);
+    max-width: none;
+    max-height: min(72dvh, calc(100dvh - 360px));
+    z-index: 20;
+    box-shadow: 0 12px 48px #0003;
+    border-radius: 16px;
+  }
   .viewing-fab { right: 16px; }
 }
 .ticket-countdown { display: inline-flex; align-items: center; gap: 12px; }
@@ -1540,3 +1567,17 @@ img {
 .venue-codes { display: flex; flex-wrap: wrap; gap: 4px; align-content: flex-start; }
 
 .preview-related ul { flex-direction: row; flex-wrap: wrap; gap: 4px 8px; padding: 0; list-style: none; }
+
+.want-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.want-count strong {
+  color: var(--text);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}

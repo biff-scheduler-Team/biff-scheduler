@@ -28,14 +28,15 @@ npx playwright test -c playwright.react.config.ts \
 |---|---|
 | `apps/web/src/pages/SchedulePage.tsx`<br>`apps/web/src/pages/schedule-parity.css`<br>`apps/web/src/grid.ts` | `parity-schedule` · `vertical-schedule` · `time-axis` · `night-axis` · `schedule-size` · `schedule-toolbar` · `combined-screenings` · `badge-tooltip` |
 | `apps/web/src/pages/AgendaPage.tsx`<br>`apps/web/src/pages/agenda-parity.css`<br>`apps/web/src/plans.ts`<br>`apps/web/src/timeline.ts` | `parity-agenda` · `review-schedule` · `combined-screenings` |
-| `apps/web/src/pages/LibraryPage.tsx` | `parity-library` · `review-library` · `screening-popover` |
-| `apps/web/src/pages/FilmDialog.tsx` | `parity-dialogs` · `screening-popover` |
+| `apps/web/src/pages/LibraryPage.tsx` | `parity-library` · `review-library` · `screening-popover` · ⚠ `want-counts`(不存在) |
+| `apps/web/src/pages/FilmDialog.tsx` | `parity-dialogs` · `screening-popover` · ⚠ `want-counts`(不存在) |
 | `apps/web/src/components/ScreeningCard.tsx`<br>`apps/web/src/components/ScreeningInfoPopover.tsx`<br>`apps/web/src/components/ScreeningMemberList.tsx` | `parity-agenda` · `parity-library` · `screening-popover` · `gv-popover` · `combined-screenings` |
 | `apps/web/src/components/ExportDialog.tsx`<br>`apps/web/src/components/SettingsDialog.tsx`<br>`apps/web/src/components/InfoDialogs.tsx`<br>`apps/web/src/components/FilterBar.tsx` | `review-state-export` · `review-shared` · `workflows` · `parity-dialogs` |
-| `apps/web/src/account.ts`<br>`apps/web/src/account-sync.ts`<br>`apps/web/src/sync-data.ts`<br>`apps/web/src/workspace-storage.ts`<br>`apps/web/src/components/AccountHost.tsx`<br>`apps/web/src/components/account-ui.css`<br>`apps/api/`<br>`packages/contracts/` | `account-integration` |
+| `apps/web/src/account.ts`<br>`apps/web/src/account-sync.ts`<br>`apps/web/src/sync-data.ts`<br>`apps/web/src/workspace-storage.ts`<br>`apps/web/src/components/AccountHost.tsx`<br>`apps/web/src/components/account-ui.css`<br>`apps/api/`<br>`packages/contracts/`<br>`apps/web/legacy/src/account-bridge.ts`<br>`apps/web/legacy/src/state.ts`<br>`apps/web/legacy/src/main.ts`<br>`apps/web/legacy/index.html` | `account-integration` · `legacy` |
 | `apps/web/src/app/`<br>`apps/web/src/main.tsx` | `persistent-header` · `floating-panel` · `desktop` · `edge-cases` |
 | `apps/web/src/state.ts`<br>`apps/web/src/backup.ts`<br>`apps/web/src/ics.ts`<br>`apps/web/src/share.ts` | `review-state-export` · `workflows` · `legacy` · `compatibility` |
 | `apps/web/public/manifest.webmanifest` | `offline` |
+| `apps/api/src/want-stats.ts`<br>`apps/api/src/want-store.ts`<br>`apps/web/src/want-counts.ts`<br>`apps/api/migrations/0003_film_want_stat.sql` | ⚠ `want-counts`(不存在) |
 | **任何改动都跑** | `smoke` |
 | **命中即全量** | `apps/web/src/style.css` · `apps/web/index.html` · `package.json` · `package-lock.json` · `playwright.react.config.ts` · `tsconfig.tests.json` · `vitest.config.ts` · `apps/web/vite.config.ts` |
 <!-- END GENERATED:test-map -->

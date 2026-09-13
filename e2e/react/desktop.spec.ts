@@ -41,10 +41,35 @@ test("hover links a conflict group across the agenda and grid; dragging persists
 
 test("time grows downward and screenings at the same time align across venues", async ({ page }) => {
   await ready(page, "/schedule?date=2026-10-07");
+  // 默认档位「默认」= zoom 0.55（SIZE_OPTIONS）；竖直轴 4px/min × zoom
+  const zoom = 0.55;
+  const ppm = 4 * zoom;
   const nine = await page.getByRole("button", {name: "筛选 09:00 时段", exact: true}).boundingBox();
   const ten = await page.getByRole("button", {name: "筛选 10:00 时段", exact: true}).boundingBox();
-  expect(ten!.y - nine!.y).toBeCloseTo(240, 0);
+  expect(ten!.y - nine!.y).toBeCloseTo(60 * ppm, 0);
   expect(ten!.x).toEqual(nine!.x);
   const film = await page.locator('[data-grid-code="008"]').boundingBox();
-  expect(film!.height).toBeCloseTo(135 * 4 - 6, 0);
+  expect(film!.height).toBeCloseTo(135 * ppm - 6, 0);
+});
+
+
+test("workspace stays within 1600px max-width on ultra-wide desktop", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await ready(page, "/schedule?date=2026-10-07");
+  const box = (await page.locator("#workspace").boundingBox())!;
+  expect(box.width).toBeLessThanOrEqual(1600);
+  expect(box.x).toBeGreaterThan(0);
+  expect(box.x + box.width).toBeLessThan(1920);
+});
+
+test("desktop viewing split is about one to three", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await ready(page, "/schedule?date=2026-10-07");
+  await page.getByRole("button", { name: "打开我的观影", exact: true }).click();
+  const panel = (await page.locator("#viewing-panel").boundingBox())!;
+  const schedule = (await page.locator(".schedule-column").boundingBox())!;
+  const total = panel.width + schedule.width;
+  expect(panel.width / total).toBeGreaterThan(0.2);
+  expect(panel.width / total).toBeLessThan(0.35);
+  expect(schedule.width / total).toBeGreaterThan(0.65);
 });

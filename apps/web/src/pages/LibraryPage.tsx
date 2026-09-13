@@ -1,4 +1,4 @@
-import { useDeferredValue, useLayoutEffect, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router";
 import {
   ActionButton,
@@ -18,6 +18,7 @@ import { setFilmExpanded, useLibraryExpansion } from "../app/library-state";
 import { hasActiveFilter, LS_FILTERS_LIB, matchesFilters } from "../filters";
 import { addPickFilm, removePick, setPickNote, store } from "../state";
 import { dateInfo, doubanScoreOf, doubanUrlOf, unitLabel } from "../util";
+import { loadWantCounts, onWantCountsChange, peekWantCounts } from "../want-counts";
 
 function FilmCard({
   film,
@@ -25,12 +26,14 @@ function FilmCard({
   shows,
   open,
   onExpandedChange,
+  wantCount,
 }: {
   film: FilmNode;
   pickedView: boolean;
   shows: FilmNode["shows"];
   open: boolean;
   onExpandedChange: (open: boolean) => void;
+  wantCount?: number;
 }) {
   const { params, update } = useQuery();
   const openFilm = useFilmNavigation();
@@ -58,6 +61,9 @@ function FilmCard({
             {unitLabel(film.cats[0]?.unit) || "特别节目"}
             {score && (
               <span className="score">豆瓣 {score.rating.toFixed(1)}</span>
+            )}
+            {typeof wantCount === "number" && wantCount > 0 && (
+              <span className="want-count" data-want-count={wantCount}>想看 <strong>{wantCount}</strong></span>
             )}
           </div>
           <div className="title-row">
@@ -213,6 +219,12 @@ export function LibraryPage({ picked = false }: { picked?: boolean }) {
   const targetKey = picked ? params.get("expand") : null;
   const listRef = useRef<HTMLDivElement>(null);
   const [limit, setLimit] = useState(40);
+  const [wantCounts, setWantCounts] = useState(peekWantCounts);
+  useEffect(() => {
+    void loadWantCounts().then(setWantCounts);
+    const stop = onWantCountsChange(() => setWantCounts({ ...peekWantCounts() }));
+    return () => { stop(); };
+  }, []);
   const units = libraryUnits(cat.films);
   const candidates = films.filter(
     (f) =>
@@ -342,6 +354,7 @@ export function LibraryPage({ picked = false }: { picked?: boolean }) {
                 shows={shows}
                 open={expanded.has(film.key) || film.key === targetKey || (!picked && query.trim() !== "")}
                 onExpandedChange={(open) => setFilmExpanded(tab, film.key, open)}
+                wantCount={wantCounts[film.key]}
               />
             ))}
           </div>

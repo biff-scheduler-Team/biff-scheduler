@@ -1,6 +1,7 @@
 {
   "revision": "8a952153b2ae1b0dff0ebd24697403b05c291327",
   "files": {
+    "src/account-bridge.ts": "bdfad3bd4d40f0ed20aa3d301b7e218a01ef3e4daf1ebd6253595fd66b48187d",
     "src/agenda.ts": "ef0b9944c5c203569942190d9dc1d8dbf51f4a4565bd614a0555533da8e07aaa",
     "src/backup-panel.ts": "351952075dd9f61c5eb917dede8a5609e7a4537331245aaedf2ea54a2b44c32c",
     "src/backup.ts": "7c8c41121478bece1a6c4066aeb2639c78adeeea16785d0e6a01f320ee9a5bfd",
@@ -19,7 +20,7 @@
     "src/intros.ts": "512af5d589a14ba1f9d14e0aebd40eb5b33e62d714f9128e4e59d075016bf2d3",
     "src/legend.ts": "e1df5df3dd51f0ecb763f19fc28627ec7f3b8d6db6695bd3dd08c5d1faf7ae56",
     "src/library.ts": "a960f986cd411c3712e624557d9e45698433efda6f800d0e24b758f7fd8669e9",
-    "src/main.ts": "98ad09799f08de642de2a5a97abbd33b1a44c35c21701c12afbc3fc088be231d",
+    "src/main.ts": "c1c8a0f1adaeaa6054716e9f972a4f2835f9aa553888a2e508a732f65c2f2124",
     "src/modal.ts": "c9405ba51bd41c8caa2ae133eef057eab0481e03fb50e55ad2114add0837a9f9",
     "src/plans.ts": "c5cdf51c57fdb3d2678b26485a40145ad106da2294dbd8fb51c8269c98e40461",
     "src/poster-panel.ts": "e88dbc8e56fb2047476a2886c231b198795be4aabec91ba545a3157cf8c20ce4",
@@ -29,7 +30,7 @@
     "src/score.ts": "0575bab53992d9653530114d6ec817484057f8ad7e6d2fb1e01f901a6b3d5c2c",
     "src/settings.ts": "00a401e4e15f4e834e0e60de626dd860b849a13a33d3bac597ece0d26469234e",
     "src/share.ts": "e3cc26529011a69b01194258794f8e15129df717721daa18cfc363cd7fb0ca28",
-    "src/state.ts": "2208b341924289e5b9bc8fd9885e4817287123430e6812335b402fc1ee5165cd",
+    "src/state.ts": "27419e159fad16a0881ebe592ea9692ed9671939afa6f32666d6f74629b7b8ad",
     "src/theme.ts": "a375bd8cc0e6e1a7100ec21de0817030426ac4b290655bc37c011a6cf879d5b0",
     "src/ticketing.ts": "644a66022d8815282706d352b7924acf1cd5150f92ab0f156e360957c393248e",
     "src/timeline.ts": "fe55b665db902029afd0c362cd375c4c7f9d841ba75b8449a6b7a1db4973e9da",

@@ -267,6 +267,8 @@ function scheduleNotify(domain: ChangeDomain): void {
 function saveLocal(): void {
   try {
     localStorage.setItem(LS_PICKS, JSON.stringify([...store.picks.values()]));
+    // 与新版同口径：通知账号同步（已登录时 debounce PUT）
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("iffday:workspace-change"));
   } catch {
     /* ignore */
   }

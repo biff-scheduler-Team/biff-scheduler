@@ -4,6 +4,7 @@
 import type { Catalog } from "./types";
 import { OK_SLACK, dateInfo, el, filmNodeKey, hmsToMin, pickDefaultDate, todayIsoLocal } from "./util";
 import { loadCatalog } from "./data";
+import { initLegacyAccount } from "./account-bridge";
 import { loadIntros } from "./intros";
 import { computeConflicts, conflictGroupFor, type ConflictResult, type Slot } from "./conflict";
 import { buildPlanSet, type PlanSet } from "./plans";
@@ -1192,6 +1193,7 @@ async function boot(): Promise<void> {
   updatePickerLabel();
   // 顶栏开票倒计时(每秒 tick;无 extras 数据时横幅保持隐藏)
   startTicketTicker(cat.schedule.festival.year);
+  void initLegacyAccount(() => loadPicks(filmKeyOfCode));
   toast(currentDate ? "排期取自 BIFF 官网实时页面 — 变动以现场公告为准" : "schedule.json 为空");
 
   // A5:跨分钟/跨天自动推进「现在」线 —— 仅在时间键变化且仍在看当天时重画网格(角标补零、进出轴窗口随渲染取当前时间)

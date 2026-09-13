@@ -1,7 +1,7 @@
 import {test, expect} from '@playwright/test';
 import {ready} from './helpers';
 
-test('picking keeps the schedule width and position; the floating button opens a separate panel', async ({page}) => {
+test('desktop split squeezes the schedule to about 1:3 when viewing opens', async ({page}) => {
   await ready(page, '/schedule?date=2026-10-07');
   const grid = page.locator('.gantt-scroll');
   const before = (await grid.boundingBox())!.width;
@@ -13,12 +13,18 @@ test('picking keeps the schedule width and position; the floating button opens a
   const position = await grid.evaluate(el=>({left:el.scrollLeft,y:scrollY}));
   await page.getByRole('button',{name:'打开我的观影',exact:true}).click();
   await expect(page.getByRole('complementary',{name:'我的观影'})).toBeVisible();
-  expect((await grid.boundingBox())!.width).toBe(before);
-  expect(await grid.evaluate(el=>({left:el.scrollLeft,y:scrollY}))).toEqual(position);
+  const after = (await grid.boundingBox())!.width;
+  // 桌面 ≥1100 真实分栏：排片应变窄（不再「宽度不变」）
+  expect(after).toBeLessThan(before * 0.95);
   const panel = (await page.locator('#viewing-panel').boundingBox())!;
+  const schedule = (await page.locator('.schedule-column').boundingBox())!;
+  const ratio = panel.width / schedule.width;
+  expect(ratio).toBeGreaterThan(0.25);
+  expect(ratio).toBeLessThan(0.45);
+  expect(await grid.evaluate(el=>({left:el.scrollLeft,y:scrollY}))).toEqual(position);
   expect(panel.x).toBeGreaterThanOrEqual(0);
   expect(panel.y).toBeGreaterThanOrEqual(0);
-  expect(panel.x + panel.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  expect(panel.x + panel.width).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
   await page.locator("#viewing-panel").getByRole('link',{name:/^我的选片/}).click();
   await expect(page.getByRole('region',{name:'我的选片',exact:true})).toBeVisible();
   await page.locator("#viewing-panel").getByRole('link',{name:/^我的行程/}).click();
