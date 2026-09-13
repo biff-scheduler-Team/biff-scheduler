@@ -2,6 +2,12 @@ import { hasImportableData } from "@biff/contracts/import";
 import { and, eq, gt, lt, notExists, sql } from "drizzle-orm";
 import { database } from "./db";
 import { accountImport, appSession, festivalDocument, oauthPending } from "./db/schema";
+import {
+  DEFAULT_WANT_EDITION,
+  pickFilmKeysFromRecords,
+  wantWeightFor,
+} from "./want-stats";
+import { clearContributorWants, readWantCounts, replaceContributorWants } from "./want-store";
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { bodyLimit } from "hono/body-limit";
@@ -331,10 +337,16 @@ app.post("/api/account/import", async (c) => {
   const imported = await db.select().from(accountImport).where(eq(accountImport.subject, subject)).get();
   if (!imported) return c.json({ error: "REVISION_CONFLICT" }, 409);
   const row = await db.select().from(festivalDocument).where(identity).get();
+  const importedRecords = row ? JSON.parse(row.records) as Record<string, string> : {};
+  c.executionCtx.waitUntil(
+    applyWantFromRecords(c.env, "biff-2026", subject, importedRecords).catch((error) =>
+      console.warn("want_stat_import_failed", error instanceof Error ? error.name : "UnknownError"),
+    ),
+  );
   return c.json({
     imported: imported.operation_id === operationId,
     subject, importedAt: imported.imported_at,
-    revision: row?.revision ?? 0, records: row ? JSON.parse(row.records) : {}, updatedAt: row?.updated_at ?? 0,
+    revision: row?.revision ?? 0, records: importedRecords, updatedAt: row?.updated_at ?? 0,
   });
 });
 app.put("/api/account/sync/biff-2026", async (c) => {
@@ -365,8 +377,80 @@ app.put("/api/account/sync/biff-2026", async (c) => {
       }).where(and(identity, eq(festivalDocument.revision, revision)))
         .returning({ revision: festivalDocument.revision });
   if (!result) return c.json({ error: "REVISION_CONFLICT" }, 409);
+  c.executionCtx.waitUntil(
+    applyWantFromRecords(c.env, "biff-2026", subject, records).catch((error) =>
+      console.warn("want_stat_sync_failed", error instanceof Error ? error.name : "UnknownError"),
+    ),
+  );
   return c.json({ revision: result.revision });
 });
+
+const wantPingSchema = z
+  .object({
+    edition: z.string().min(1).max(64).optional().default(DEFAULT_WANT_EDITION),
+    films: z.array(z.string().min(1).max(128)).max(500),
+  })
+  .strict();
+const wantAnonCookie = (config: ReturnType<typeof configuration>) =>
+  config.APP_ENV === "production" ? "__Host-biff.want" : "biff.want";
+
+async function applyWantFromRecords(
+  env: Env,
+  edition: string,
+  subject: string,
+  records: Record<string, string>,
+) {
+  const db = database(env.DB);
+  await replaceContributorWants(
+    db,
+    edition,
+    subject,
+    wantWeightFor(true),
+    pickFilmKeysFromRecords(records),
+  );
+}
+
+
+app.get("/api/stats/want-counts", async (c) => {
+  const edition = c.req.query("edition") || DEFAULT_WANT_EDITION;
+  if (edition.length > 64) return c.json({ error: "INVALID_EDITION" }, 422);
+  const counts = await readWantCounts(database(c.env.DB), edition);
+  return c.json({ edition, counts });
+});
+app.post("/api/stats/want-ping", async (c) => {
+  const parsed = wantPingSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "INVALID_WANT_PING" }, 422);
+  const { edition, films } = parsed.data;
+  const config = configuration(c.env);
+  const db = database(c.env.DB);
+  const session = await sessionFor(
+    c.env,
+    getCookie(c, sessionCookieName(config)),
+    c.req.header("cf-connecting-ip"),
+  );
+  let contributor: string;
+  let weight: number;
+  if (session) {
+    contributor = session.row.subject;
+    weight = wantWeightFor(true);
+    const anon = getCookie(c, wantAnonCookie(config));
+    if (anon) {
+      await clearContributorWants(db, edition, `anon:${await hash(anon)}`);
+      deleteCookie(c, wantAnonCookie(config), cookieOptions(config, 0));
+    }
+  } else {
+    weight = wantWeightFor(false);
+    let anon = getCookie(c, wantAnonCookie(config));
+    if (!anon) {
+      anon = randomToken();
+      setCookie(c, wantAnonCookie(config), anon, cookieOptions(config, 180 * 86400));
+    }
+    contributor = `anon:${await hash(anon)}`;
+  }
+  await replaceContributorWants(db, edition, contributor, weight, films);
+  return c.json({ ok: true, weight, count: films.length });
+});
+
 app.all("/api/*", (c) => c.json({ error: "NOT_FOUND" }, 404));
 app.notFound((c) => c.json({ error: "NOT_FOUND" }, 404));
 app.onError((error, c) => {
