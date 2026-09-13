@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # 与本地一致(v24.x);tests/schema.test.ts 依赖 node:sqlite
           node-version: 24
@@ -49,7 +49,7 @@ jobs:
         with:
           # affected-specs 要 diff 出 base 分支,浅克隆拿不到 merge-base
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
