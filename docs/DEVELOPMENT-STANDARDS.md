@@ -112,7 +112,7 @@ npm run verify:ui -- e2e/react/parity-library.spec.ts --project=desktop-chromium
 
 | 层 | 位置 | 覆盖对象 |
 |---|---|---|
-| 单测(Vitest) | `tests/**/*.test.ts`、`apps/web/tests/**` | **纯函数**口径:冲突检测 / GV 时长 / `.ics` / `util` / `plans` / `score` / 状态迁移 |
+| 单测(Vitest) | `apps/web/tests/**`、`apps/api/tests/**`、根 `tests/**` | **纯函数**口径:冲突检测 / GV 时长 / `.ics` / `util` / `plans` / `score` / 状态迁移 / 账号加解密与配置校验 / 共享序列化 |
 | E2E(Playwright) | `e2e/react/*.spec.ts`、`e2e/account.spec.ts` | DOM 交互:弹层栈 / 选片链路 / 导出 / 移动端时间轴 / 离线 PWA |
 
 ### 3.2 硬要求

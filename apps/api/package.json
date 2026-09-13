@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "wrangler dev -c wrangler.jsonc",
     "typecheck": "wrangler types && tsc --noEmit",
+    "test": "vitest run",
     "build": "wrangler deploy --dry-run --outdir dist -c wrangler.jsonc",
     "deploy": "wrangler deploy -c wrangler.jsonc",
     "db:generate": "drizzle-kit generate",
