@@ -108,17 +108,141 @@ const GROUP_AREA: Record<string, string> = {
   shinsegae: "CENTUM 主场区 · 新世界 Centum City 文化厅",
   dsumedia: "CENTUM 主场区 · 东西大学-KIT Centum Campus",
   megabox: "南浦洞 · MEGABOX Busan Theater",
-  sohyang: "南浦洞 · 东西大学 Sohyang Theatre",
-  bcm: "南浦洞 · 釜山市民媒体中心",
+  sohyang: "CENTUM 主场区 · 东西大学 Sohyang Theatre",
+  bcm: "CENTUM 主场区 · 釜山市民媒体中心",
+};
+
+const REGION_LABEL: Record<string, string> = {
+  centum: "CENTUM 主场区",
+  nampo: "南浦洞",
+};
+
+/** 影院级地点信息(按 `Venue.group` 聚合,同一影院下的多个厅共用同一地址)。
+ *
+ *  **来源**:BIFF 官网 Theater Regulations(`page_num=11238`,2026 口径)——
+ *  英文名 / 街道地址 / 楼层厅位均为官网原文;韩文地址供本地导航与复制。
+ *
+ *  ⚠ **2026 全部影院都在海云台区 Centum City 主会场一带**(南浦洞的 MEGABOX 本届未参与),
+ *  故当前数据里已无 `nampo` 分区 —— 跨区转场缓冲在 2026 排期下不会触发。
+ */
+export interface VenuePlace {
+  /** 影院官方英文名(与官网一致) */
+  name: string;
+  /** 影院中文名(无官方中文名时为译名,仅作提示) */
+  nameZh: string;
+  /** 韩文名(本地导航 / 复制用) */
+  nameKr: string;
+  /** 街道地址(英文,官网原文) */
+  address: string;
+  /** 街道地址(韩文) */
+  addressKr: string;
+  /** 建筑内位置(楼层 / 厅名,官网原文) */
+  location: string;
+  /** 分区:centum = CENTUM 主场区 / nampo = 南浦洞 */
+  region: "centum" | "nampo";
+}
+
+export const VENUE_PLACES: Record<string, VenuePlace> = {
+  bcc: {
+    name: "Busan Cinema Center",
+    nameZh: "电影殿堂",
+    nameKr: "영화의전당",
+    address: "120, Suyeonggangbyeon-daero, Haeundae-gu, Busan",
+    addressKr: "부산 해운대구 수영강변대로 120",
+    location: "主会场,开闭幕式与 BIFF Theatre 所在地",
+    region: "centum",
+  },
+  cgv: {
+    name: "CGV Centum City",
+    nameZh: "CGV Centum City",
+    nameKr: "CGV 센텀시티",
+    address: "35, Centum nam-daero, Haeundae-gu, Busan",
+    addressKr: "부산 해운대구 센텀남대로 35",
+    location: "新世界 Centum City 7F",
+    region: "centum",
+  },
+  lotte: {
+    name: "LOTTE CINEMA Centum City",
+    nameZh: "乐天影院 Centum City",
+    nameKr: "롯데시네마 센텀시티",
+    address: "59, Centum nam-daero, Haeundae-gu, Busan",
+    addressKr: "부산 해운대구 센텀남대로 59",
+    location: "乐天百货 Centum City 8F",
+    region: "centum",
+  },
+  kofic: {
+    name: "KOFIC Theater",
+    nameZh: "电影振兴委员会试映室",
+    nameKr: "영화진흥위원회 표준시사실",
+    address: "130, Suyeonggangbyeon-daero, Haeundae-gu, Busan",
+    addressKr: "부산 해운대구 수영강변대로 130",
+    location: "KOFIC 2F",
+    region: "centum",
+  },
+  shinsegae: {
+    name: "Culture Hall, Shinsegae Centum City",
+    nameZh: "新世界 Centum City 文化厅",
+    nameKr: "신세계 센텀시티 문화홀",
+    address: "35, Centum nam-daero, Haeundae-gu, Busan",
+    addressKr: "부산 해운대구 센텀남대로 35",
+    location: "新世界 Centum City 9F",
+    region: "centum",
+  },
+  dsumedia: {
+    name: "DSU-KIT Centum Campus",
+    nameZh: "东西大学 Centum 校区",
+    nameKr: "동서대학교 센텀캠퍼스",
+    address: "55, Centum jungang-ro, Haeundae-gu, Busan",
+    addressKr: "부산 해운대구 센텀중앙로 55",
+    location: "Book Cafe Lounge 4F",
+    region: "centum",
+  },
+  sohyang: {
+    name: "Sohyang Theatre Woori Bank Hall",
+    nameZh: "素香剧场 友利银行厅",
+    nameKr: "소향씨어터 우리은행홀",
+    address: "55, Centum jungang-ro, Haeundae-gu, Busan",
+    addressKr: "부산 해운대구 센텀중앙로 55",
+    location: "东西大学 Centum 校区内,우리은행홀",
+    region: "centum",
+  },
+  bcm: {
+    name: "Busan Community Media Center Open Hall",
+    nameZh: "釜山市民媒体中心 公开厅",
+    nameKr: "부산시청자미디어센터 공개홀",
+    address: "42, Centum jungang-ro, Haeundae-gu, Busan",
+    addressKr: "부산 해운대구 센텀중앙로 42",
+    location: "2F Open Hall",
+    region: "centum",
+  },
 };
 
 export function venueShort(v: Venue): string {
   return v.short || v.name;
 }
 
+export function regionLabel(region: string | undefined): string {
+  return (region && REGION_LABEL[region]) || "—";
+}
+
+export function venuePlace(group: string | undefined): VenuePlace | undefined {
+  return group ? VENUE_PLACES[group] : undefined;
+}
+
+/** Google Maps 检索链接 —— 用**地址查询**而非坐标(坐标无从核实,交给 Google 自行解析更稳)。
+ *  移动端打开会自动唤起已安装的 Google Maps App,否则回落到网页版。 */
+export function mapsUrl(place: VenuePlace): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${place.name} ${place.address}`)}`;
+}
+
 export function venueTip(v: Venue): string {
   const lines = [v.name_kr ? `${v.name} · ${v.name_kr}` : v.name];
   lines.push(`分区 — ${GROUP_AREA[v.group] ?? "—"}`);
+  const place = venuePlace(v.group);
+  if (place) {
+    lines.push(`地址 — ${place.address}`);
+    lines.push(`${place.addressKr} · ${place.location}`);
+  }
   if (v.code) {
     lines.push(`官方影院代码 ${v.code} — 与官方 Ticket Catalogue 对表用`);
   }

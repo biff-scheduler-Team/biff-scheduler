@@ -8,6 +8,7 @@ import {Badges} from './ScreeningCard';
 import {filmInfoOf, filmNodeKey, fmtEndClock} from '../util';
 import {effEndMin, talkOnOf} from '../gv';
 import {introOf} from '../intros';
+import {mapsUrl, regionLabel, venuePlace} from '../legend';
 import {indexFestival, relatedOf} from '../related';
 import {store} from '../state';
 import type {Screening} from '../types';
@@ -35,6 +36,8 @@ export function ScreeningInfoPopover({screening: s}: {screening: Screening}) {
     cancel();
     if (mode !== 'pinned') timer.current = setTimeout(() => setMode(current => current === 'pinned' ? current : 'closed'), 220);
   };
+  const venue = cat.venueById.get(s.venue_id);
+  const place = venuePlace(venue?.group);
   const info = filmInfoOf(cat,s,store.mappings.get(s.code));
   const mapping = store.mappings.get(s.code);
   const intro = introOf(mapping?.subject_id);
@@ -63,7 +66,8 @@ export function ScreeningInfoPopover({screening: s}: {screening: Screening}) {
           </div>
         </div>
         <p className="muted">{s.date} {s.start_time.slice(0,5)}-{fmtEndClock(effEndMin(s,talkOnOf(s.code)))} KST</p>
-        <p>{cat.venueById.get(s.venue_id)?.name}　{s.duration_min} 分钟</p>
+        <p>{venue?.name}　{s.duration_min} 分钟</p>
+        {place && <p className="muted preview-venue">{regionLabel(place.region)} · {place.location}<br />{place.address}<br /><a href={mapsUrl(place)} target="_blank" rel="noopener noreferrer">在 Google 地图打开</a></p>}
         <Badges screening={s} />
         <ScreeningMemberList screening={s} onOpen={() => {cancel();setMode('closed');}} />
         {info.meta && <p className="muted">{info.meta}</p>}
