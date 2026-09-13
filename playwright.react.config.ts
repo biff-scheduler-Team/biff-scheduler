@@ -49,5 +49,8 @@ export default defineConfig({
     url: "http://127.0.0.1:31029",
     reuseExistingServer: false,
     timeout: 30_000,
+    // 每轮跑完主动 SIGTERM 收掉 preview:否则 31029 残留会让下一轮 --strictPort 起不来,
+    // 只能靠 kill -9 救火,把单轮 E2E 拖成反复重跑
+    gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
   },
 });
