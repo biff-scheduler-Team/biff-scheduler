@@ -70,3 +70,36 @@
     transition: none;
   }
 }
+
+/* 行程场次卡的影院块 —— 出门照着找地方用:官方代码 + 影院全名 / 分区楼层 / 中韩文地址 + 地图入口。 */
+.screening-venue {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.screening-venue-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.screening-venue-head strong {
+  font-size: 13px;
+}
+.screening-venue p {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+.venue-map-link {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--brand);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.venue-map-link:hover {
+  text-decoration: underline;
+}

@@ -34,7 +34,7 @@ import {
   store,
   toggleScreening,
 } from "../state";
-import { RATING_DEFS, SUBS_DEFS, subsKeys, venueShort } from "../legend";
+import { RATING_DEFS, SUBS_DEFS, mapsUrl, regionLabel, subsKeys, venuePlace, venueShort, venueTip } from "../legend";
 import { BADGE_DEFS, screeningBadgeKeys, codeTip } from "../badges";
 import type { Screening } from "../types";
 
@@ -192,6 +192,7 @@ export function ScreeningCard({
   controls = false,
   pickable = true,
   wholeCard = false,
+  venueInfo = false,
   slotFilter,
 }: {
   screening: Screening;
@@ -200,6 +201,9 @@ export function ScreeningCard({
   controls?: boolean;
   pickable?: boolean;
   wholeCard?: boolean;
+  /** 展开影院块(官方代码 + 影院全名 / 分区楼层 / 中韩文地址 + Google 地图入口)——
+   *  「我的行程」出门时要照着找地方,故只在那里开;影片库里的场次行保持紧凑。 */
+  venueInfo?: boolean;
   slotFilter?: ScheduleSelection;
 }) {
   const { cat, conflicts } = useCatalog();
@@ -211,6 +215,7 @@ export function ScreeningCard({
   const score = doubanScoreOf(info.cats[0], store.mappings.get(s.code));
   const conflict = conflicts.get(s.date)?.codeSet.has(s.code);
   const venue = cat.venueById.get(s.venue_id);
+  const place = venuePlace(venue?.group);
   const inSelectedHour =
     slotFilter?.date === s.date && slotFilter.hour !== null
       ? hmsToMin(s.start_time) < (slotFilter.hour + 1) * 60 &&
@@ -269,7 +274,8 @@ export function ScreeningCard({
             {s.start_time.slice(0, 5)}–
             {fmtEndClock(effEndMin(s, talkOnOf(s.code)))}
           </time>
-          <span>{venue ? venueShort(venue) : s.venue_display}</span>
+          {/* 开了影院块就不再在这里重复影院名(下方那块带代码 / 地址 / 地图入口,信息更全) */}
+          {!venueInfo && <span>{venue ? venueShort(venue) : s.venue_display}</span>}
         </div>
         {showTitle && <h3>{info.title}</h3>}
         <div className="screening-meta">
@@ -282,6 +288,45 @@ export function ScreeningCard({
           )}
           <Badges screening={s} />
         </div>
+        {venueInfo && (venue || s.venue_display) && (
+          <div className="screening-venue" title={venue ? venueTip(venue) : undefined}>
+            <div className="screening-venue-head">
+              {venue && (
+                /* 加「影院」前缀:与卡片顶部的场次代码徽章(001)同为小代码块,不加前缀容易混 */
+                <span className="code venue-code" title="影院代码">
+                  影院 {venue.code ?? venue.id.toUpperCase()}
+                </span>
+              )}
+              <strong>{venue ? venueShort(venue) : s.venue_display}</strong>
+              {place && (
+                <>
+                  <span>
+                    {place.name}
+                    {place.nameZh && place.nameZh !== place.name
+                      ? ` · ${place.nameZh}`
+                      : ""}
+                  </span>
+                  <a
+                    className="venue-map-link"
+                    href={mapsUrl(place)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`在 Google 地图打开 —— 手机点按会直接唤起 Google Maps 导航\n${place.name}\n${place.address}\n${place.addressKr}`}
+                  >
+                    在 Google 地图打开 ↗
+                  </a>
+                </>
+              )}
+            </div>
+            {place && (
+              <p className="muted">
+                {regionLabel(place.region)} · {place.location}
+                <br />
+                {place.address} · {place.addressKr}
+              </p>
+            )}
+          </div>
+        )}
         {conflict && (
           <p className="conflict-label" title={conflictDescription}>
             时间重叠，需择一观看
