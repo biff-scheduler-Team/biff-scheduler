@@ -229,7 +229,21 @@ node scripts/check-repo.mjs --self-test   # 自检:证明检查器本身没坏
 - 复杂模块在文件头写清契约与不变量。
 - 新增项目能力 → 同步 `skills/README.md` 与根 `README.md` 的能力表。
 
-### 5.7 离线管线(Python)
+### 5.7 `legacy/` —— 只读回退件
+
+`apps/web/legacy/` 是 React 重写前的原版界面,冻结在 `8a95215`,挂在 `/legacy/`,
+是「新版出 P0 时同域、同 localStorage 的逃生舱」。12598 行,每轮构建都产出
+(`dist/assets/legacy-*.js` 174.70 kB + CSS 45.31 kB)。
+
+- **只接 P0 修复**(数据丢失 / 完全打不开),不接新功能、不接体验优化。
+- **不得**把新版 React 组件或样式引入它。
+- 改动必须同步更新 `legacy/source-manifest.json` —— `apps/web/tests/legacy-snapshot.test.ts`
+  逐文件比对 SHA-256,**不要为了让测试变绿去改测试**。
+- 不为它新增交互用例;`legacy.spec.ts` / `compatibility.spec.ts` 只保留「还能打开」与
+  「与新版权共享数据」这两层语义。
+- 冻结条款、退役判据(时间窗 / 访问量窗)与 8 步退役清单见 [`legacy-retirement.md`](./legacy-retirement.md)。
+
+### 5.8 离线管线(Python)
 
 - 遵循用户级 Python 规范:PEP8、4 空格、**每行 ≤ 120 字符**、UTF-8 + LF、`with` 管资源、禁止裸 `except:`、公共函数写 docstring 与类型提示。
 - 产物**检入仓库**;密钥 / token **只读环境变量**,绝不进仓库。
