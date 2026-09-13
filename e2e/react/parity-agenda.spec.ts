@@ -299,7 +299,8 @@ test("agenda cards carry the venue code, place details and a Google Maps entry",
   await expect(venue.locator(".venue-code")).toHaveText("影院 B1");
   await expect(venue).toContainText("BCC Cinema 1");
   await expect(venue).toContainText("Busan Cinema Center");
-  await expect(venue).toContainText("120, Suyeonggangbyeon-daero, Haeundae-gu, Busan");
+  // 卡面不再显示地址行(只留影院名 + 地图入口),地址仅在入口 title 里
+  await expect(venue).not.toContainText("120, Suyeonggangbyeon-daero");
   const map = venue.getByRole("link", { name: /在 Google 地图打开/ });
   await expect(map).toHaveAttribute(
     "href",

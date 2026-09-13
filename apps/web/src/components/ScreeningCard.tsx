@@ -34,7 +34,7 @@ import {
   store,
   toggleScreening,
 } from "../state";
-import { RATING_DEFS, SUBS_DEFS, mapsUrl, regionLabel, subsKeys, venuePlace, venueShort, venueTip } from "../legend";
+import { RATING_DEFS, SUBS_DEFS, mapsUrl, subsKeys, venuePlace, venueShort, venueTip } from "../legend";
 import { BADGE_DEFS, screeningBadgeKeys, codeTip } from "../badges";
 import type { Screening } from "../types";
 
@@ -318,13 +318,6 @@ export function ScreeningCard({
                 </>
               )}
             </div>
-            {place && (
-              <p className="muted">
-                {regionLabel(place.region)} · {place.location}
-                <br />
-                {place.address} · {place.addressKr}
-              </p>
-            )}
           </div>
         )}
         {conflict && (

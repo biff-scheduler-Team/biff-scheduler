@@ -88,10 +88,6 @@
 .screening-venue-head strong {
   font-size: 13px;
 }
-.screening-venue p {
-  margin: 4px 0 0;
-  overflow-wrap: anywhere;
-}
 .venue-map-link {
   margin-left: auto;
   flex-shrink: 0;
