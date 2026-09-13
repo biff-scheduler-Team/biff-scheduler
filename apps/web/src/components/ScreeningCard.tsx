@@ -322,8 +322,8 @@ export function ScreeningCard({
               )}
               <strong>{venue ? venueShort(venue) : s.venue_display}</strong>
               {place && (
-                <>
-                  <span>
+                <span className="venue-place-row">
+                  <span className="venue-place-name">
                     {place.name}
                     {place.nameZh && place.nameZh !== place.name
                       ? ` · ${place.nameZh}`
@@ -338,7 +338,7 @@ export function ScreeningCard({
                   >
                     在 Google 地图打开 ↗
                   </a>
-                </>
+                </span>
               )}
             </div>
           </div>

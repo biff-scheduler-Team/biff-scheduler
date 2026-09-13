@@ -1,7 +1,9 @@
 import {test, expect} from '@playwright/test';
 import {ready} from './helpers';
 
-test('desktop split squeezes the schedule to about 1:3 when viewing opens', async ({page}) => {
+test('desktop split squeezes the schedule to about 1:3 when viewing opens', async ({page, isMobile}) => {
+  test.skip(isMobile, '1:3 挤压分栏只在桌面 ≥1100；窄屏仍是浮层，宽度不应被挤');
+
   await ready(page, '/schedule?date=2026-10-07');
   const grid = page.locator('.gantt-scroll');
   const before = (await grid.boundingBox())!.width;
