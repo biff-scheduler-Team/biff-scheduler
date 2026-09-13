@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { ready } from "./helpers";
+import { ready, scheduleHeading } from "./helpers";
 
 test("loads the production app and renders a Spectrum dialog", async ({
   page,
@@ -7,9 +7,7 @@ test("loads the production app and renders a Spectrum dialog", async ({
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await ready(page);
-  await expect(
-    page.getByRole("heading", { name: "排片表", exact: true }),
-  ).toBeVisible();
+  await expect(scheduleHeading(page)).toBeVisible();
   await page.getByRole("link", { name: "影片库", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "影片库", exact: true }),
