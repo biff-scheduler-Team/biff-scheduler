@@ -6,7 +6,7 @@
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
 > 最后更新:2026-09-13(**IFFDAY 账号体系 + 前后端分仓**,见 §0 首条);
-> 上一轮 = 影片卡「豆瓣」外链移到操作行最右端;
+> 上一轮 = 「在 Google 地图打开 ↗」贴住影院地名(去掉行尾靠右);
 > 更早 = 排片表 / 时间线海报与评分 + 详情简介;
 > 更早 = 豆瓣相关电影;
 > 更早 = 导入支持 .ics + 已保存方案改横向;
@@ -46,6 +46,13 @@
   变成「片名 豆瓣 ↗」。底部操作行不再放外链。外链 URL 收敛到 `util.ts::doubanUrlOf(film, map)`
   (映射优先、否则按中文名→英文名搜索),资料弹层同步改用同一函数。
   单测 +4(`film-score.test.ts`);`parity-agenda` + `parity-library` 加回归,共 21 条全绿。
+- **「在 Google 地图打开 ↗」贴住影院地名(2026-09-13,`PLAN-20260913192048`)**:「我的行程」场次卡影院块
+  里,地图入口原本带 `margin-left: auto` 被顶到行右端,与左侧地名(`LOTTE 9` /
+  `LOTTE CINEMA Centum City · 乐天影院 Centum City`)之间隔出上百像素空白。用户要求它**像 `豆瓣 ↗`
+  紧贴片名那样紧靠着地名** —— `agenda-parity.css::.venue-map-link` 去掉 `margin-left: auto`,
+  外链退化为 flex 行里的普通项,只留 `.screening-venue-head` 的 8px 列间距(视觉 / `href` / `title` 不变)。
+  `parity-agenda` 加 1 条回归(`getBoundingClientRect` 量入口与前一兄弟的间距 ≤ 16px;改前实测 878px);
+  `verify:quick`(单测 224 + 4)与 `parity-agenda` 12 条全绿。
 - **移除行程最后一场不再连带删掉选片(2026-09-13,`PLAN-20260913180837`)**:`toggleScreening()`
   / `removeScreening()` 原先在「最后一场 + 无备注」时走 `isOrphan()` **整条删记录**,与 `types.ts`
   / 帮助弹层 / 卡片 tooltip 三处「移除场次 ≠ 取消选片」的承诺相左(用户实测:只排一场的片在行程里
