@@ -91,6 +91,20 @@
 /* 地图入口紧跟地名(2026-09-13,PLAN-20260913192048):原来是 `margin-left: auto` 顶到行右端,
    结果与左侧地名之间隔出一大片空白,用户要求「像豆瓣紧贴片名那样紧靠着地名」。
    去掉 auto 后它就是行里的普通项,只留 `.screening-venue-head` 的 8px 列间距。 */
+.venue-place-row {
+  /* 地名 + 地图入口捆成一组：窄屏也不拆行，避免「贴住」断言在 mobile 假红 */
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+.venue-place-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .venue-map-link {
   flex-shrink: 0;
   color: var(--brand);
