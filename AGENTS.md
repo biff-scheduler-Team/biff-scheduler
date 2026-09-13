@@ -88,6 +88,9 @@
   账号相关的 localStorage 键走 `iffday.workspace.*` 命名空间,**不占 `biff.*`**。
 - **24+ 时制**:午夜场 `"29:35"` = 次日 05:35,**不得对小时取模**;唯一归一化闸门 `data.ts::loadCatalog()`。
 - **依赖**:引入前量化 gzip 增量 + 实际调用点,成本 > 收益即否决。
+  **升级走 Dependabot**(`.github/dependabot.yml`,按月分组,`build(<dep>): …` 形态)——
+  一次只合一组,合并前必须让 CI 绿(`package-lock.json` 命中 TEST-MAP 的 allOn,PR 会跑全量 E2E)。
+  不要手动「顺手升一下」某个 pin 死的版本(如 `wrangler` / `@playwright/test`)。
 - **Tailwind v4**:token 是唯一色源;字阶 / 圆角走 `text-12` / `rounded-8`,禁止 `text-[Npx]` 任意值;
   只写字面量类名(禁止拼 `bg-${p}`);`@utility` 权重低于 `hover:`,JS 状态类需 `!important`;暗色只覆盖 token。
 - **React**:受控 / 无状态优先,禁止组件内藏状态副本;弹层 `role=dialog` + focus trap + 焦点归还;
