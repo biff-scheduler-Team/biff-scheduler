@@ -1497,4 +1497,7 @@ img {
 
 .venue-code { color: var(--brand); border-color: var(--brand); font-weight: 700; }
 
+/* 说明弹层「影院」区:一行影院聚合多个放映厅代码 */
+.venue-codes { display: flex; flex-wrap: wrap; gap: 4px; align-content: flex-start; }
+
 .preview-related ul { flex-direction: row; flex-wrap: wrap; gap: 4px 8px; padding: 0; list-style: none; }

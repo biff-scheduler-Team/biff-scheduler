@@ -98,8 +98,8 @@ VENUE_TABLE: dict[str, tuple[str, str, str, str, str, str]] = {
     "LOTTE CINEMA Centum City 10": ("l10", "L10", "LOTTE 10", "lotte", "centum", "롯데시네마 센텀시티 10관"),
     "KOFIC Theater": ("kt", "KT", "KOFIC Theater", "kofic", "centum", "영화진흥위원회 시사실"),
     "Culture Hall(9F), Shinsegae Centum City": ("sc", "SC", "Shinsegae Hall", "shinsegae", "centum", "신세계 센텀시티 문화홀"),
-    "Sohyang Theatre Woori Bank Hall": ("sh", "SH", "Sohyang Theatre", "sohyang", "nampo", "소향씨어터 우리은행홀"),
-    "Busan Community Media Center Open Hall": ("bcm", "BCM", "Busan Media Ctr", "bcm", "nampo", "부산영상위원회 오픈홀"),
+    "Sohyang Theatre Woori Bank Hall": ("sh", "SH", "Sohyang Theatre", "sohyang", "centum", "소향씨어터 우리은행홀"),
+    "Busan Community Media Center Open Hall": ("bcm", "BCM", "Busan Media Ctr", "bcm", "centum", "부산시청자미디어센터 공개홀"),
     "DSU-KIT Centum Campus": ("dm", "DM", "DSU-KIT", "dsumedia", "centum", "동서대-KIT 센텀캠퍼스"),
     "Book Cafe Lounge, 4F, DSU-KIT Centum Campus": ("dk", "DK", "DSU Book Cafe", "dsumedia", "centum", "동서대 북카페 라운지"),
 }

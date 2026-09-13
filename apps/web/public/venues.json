@@ -270,7 +270,7 @@
       "name_kr": "소향씨어터 우리은행홀",
       "short": "Sohyang Theatre",
       "group": "sohyang",
-      "region": "nampo",
+      "region": "centum",
       "code": "SH",
       "lat": null,
       "lng": null
@@ -278,10 +278,10 @@
     {
       "id": "bcm",
       "name": "Busan Community Media Center Open Hall",
-      "name_kr": "부산영상위원회 오픈홀",
+      "name_kr": "부산시청자미디어센터 공개홀",
       "short": "Busan Media Ctr",
       "group": "bcm",
-      "region": "nampo",
+      "region": "centum",
       "code": "BCM",
       "lat": null,
       "lng": null
