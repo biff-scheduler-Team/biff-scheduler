@@ -6,7 +6,8 @@
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
 > 最后更新:2026-09-13(**IFFDAY 账号体系 + 前后端分仓**,见 §0 首条);
-> 上一轮 = 规范新增「§9 与 AI 协作的约定」(需求怎么提 / AI 交什么);
+> 上一轮 = 把「靠人记住的规范」改成「机器能挡的闸门」(CI / 钩子 / check:repo / api 单测 / TEST-MAP / legacy 计划 / Dependabot);
+> 更早 = 规范新增「§9 与 AI 协作的约定」(需求怎么提 / AI 交什么);
 > 更早 = 「在 Google 地图打开 ↗」贴住影院地名(去掉行尾靠右);
 > 更早 = 排片表 / 时间线海报与评分 + 详情简介;
 > 更早 = 豆瓣相关电影;
@@ -47,6 +48,26 @@
   变成「片名 豆瓣 ↗」。底部操作行不再放外链。外链 URL 收敛到 `util.ts::doubanUrlOf(film, map)`
   (映射优先、否则按中文名→英文名搜索),资料弹层同步改用同一函数。
   单测 +4(`film-score.test.ts`);`parity-agenda` + `parity-library` 加回归,共 21 条全绿。
+- **把「靠人记住的规范」改成「机器能挡的闸门」(2026-09-13,`PLAN-20260913201727`)**:盘点后确认
+  **规范写得比执行得好** —— §0–§9 全是要人记住的条款,真正能挡错误的只有云端那一步 `npm run build`
+  (且不含 E2E)。本轮七项:
+  ① **仓库卫生**:删掉三个被误提交的会话草稿(`findings.md` / `progress.md` / `task_plan.md`,
+  来自 `fe82988` / `14c29b1`),新增 `scripts/check-repo.mjs`(根目录白名单 + 禁止被跟踪的
+  构建产物 / 密钥 / 缓存 / 日志,带 `--self-test` 正负对照),串进 `verify:quick` / `verify`
+  (刻意**不进** `build` —— 云端不保证有 `.git`,不能让卫生检查挡住生产部署);草稿落点定为
+  工具中立的 `.scratch/`(不绑定任何 IDE)。
+  ② **CI**:`.github/workflows/ci.yml` —— PR 跑 `verify:quick` + 受影响 spec(单浏览器),
+  `main` push 跑全量三浏览器。此前仓库里**根本没有 `.github/`**。
+  ③ **`apps/api` 单测**:+39 条(`crypto` 加解密与 purpose 隔离 / `config` origin 校验 /
+  `contracts` 序列化),落 `apps/api/tests/`(见该 PLAN 修订 1:放根 `tests/` 会因 DOM 类型程序
+  与 Workers 类型环境冲突而炸)。单测总数 228 → **267**。
+  ④ **`docs/TEST-MAP.md`**:改动路径 → 必跑 spec,机读源 `scripts/test-map.json`,
+  `--check` 断言两者同步(避免「同一口径两份实现」)。
+  ⑤ **提交门禁机械化**:`scripts/git-hooks/{commit-msg,pre-push}` + `install-git-hooks.mjs`
+  (挂 `prepare`,永不阻断构建);零依赖,刻意不引 husky / commitlint。
+  ⑥ **`docs/legacy-retirement.md`**:legacy 冻结条款 + 退役判据 + 8 步清单。
+  ⑦ **Dependabot**:按月分组升级。
+  规范三层(AGENTS.md / DEVELOPMENT-STANDARDS.md / RULE.mdc)同步更新。
 - **规范新增「§9 与 AI 协作的约定」(2026-09-13,`PLAN-20260913201058`)**:§0–§8 只定义「AI 拿到需求**之后**怎么做」,
   缺上游那一半 —— **需求怎么提 / 变更怎么记 / 交付物长什么样**。本轮补齐:`AGENTS.md` 与自动加载副本
   `RULE.mdc` 各加精简 §9,完整版落在 `docs/DEVELOPMENT-STANDARDS.md` §9(原「变更记录」顺延为 §10)。
@@ -578,7 +599,13 @@ public/douban-related.json = {
 | 文件 | 用途 |
 |---|---|
 | `PLAN.md`(本文件) | 当前状态/决策/待办/架构 —— **每轮开发先读这里,完成后更新 §0/§6/§7** |
+| `AGENTS.md` | 规范**入口**(受版本控制,对所有协作者与 AI 生效);`.codebuddy/rules/…/RULE.mdc` 是本机自动加载的等价副本 |
+| `docs/DEVELOPMENT-STANDARDS.md` | 规范**完整版**(含论证与范例);与 `CONVENTIONS.md` 冲突时以它为准 |
+| `docs/CONVENTIONS.md` | 具体口径细节(弹层 / 渲染 / 数据契约 / 踩坑) |
+| `docs/TEST-MAP.md` | **改动路径 → 必跑 spec**(机读源 `scripts/test-map.json`);`npm run specs:affected` 按 diff 输出 |
+| `docs/legacy-retirement.md` | `/legacy/` 的冻结条款、退役判据与 8 步退役清单 |
 | `docs/account-integration.md` | IFFDAY 账号接入:OIDC 流程 / 会话 / 云端同步与冲突 / Cloudflare 配置 / 本地联调 |
+| `skills/` | 可复用能力(无头验收 / PDF 管线 / 并行安全提交 / Tailwind 产物核对 / 部署) |
 | `docs/history/2026-09-09-开发落地记录.md` | §10~§20 全部历史轮次(视觉对齐/影片库/AI 排片/样式重构等)+ plans 执行蓝本附录;只读查询,不再追加 |
 | `data/` `tools/` | 离线管线脚本与产物(本地,不部署) |
 
