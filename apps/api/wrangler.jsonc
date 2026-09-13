@@ -7,7 +7,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "APP_ENV": "production",
-    "APP_ORIGIN": "https://biff.lcandy.co",
+    "APP_ORIGIN": "https://biff.lcandy.co,https://biff.iff.day",
     "IFFDAY_ORIGIN": "https://account.iff.day",
     "OIDC_CLIENT_ID": "biff-scheduler",
   },

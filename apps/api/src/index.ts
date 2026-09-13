@@ -75,9 +75,9 @@ app.use("/api/*", async (c, next) => {
   c.header("X-Content-Type-Options", "nosniff");
   c.header("Referrer-Policy", "no-referrer");
   const config = configuration(c.env);
-  if (new URL(c.req.url).origin !== config.APP_ORIGIN)
-    return c.json({ error: "INVALID_HOST" }, 403);
-  if (!["GET", "HEAD"].includes(c.req.method) && c.req.header("origin") !== config.APP_ORIGIN)
+  const origin = new URL(c.req.url).origin;
+  if (!config.origins.includes(origin)) return c.json({ error: "INVALID_HOST" }, 403);
+  if (!["GET", "HEAD"].includes(c.req.method) && c.req.header("origin") !== origin)
     return c.json({ error: "FORBIDDEN_ORIGIN" }, 403);
   await next();
 });
@@ -86,7 +86,7 @@ app.get("/api/health", async (c) => {
   return c.json({ status: "ok" });
 });
 app.get("/api/auth/login", async (c) => {
-  const p = provider(c.env, c.req.header("cf-connecting-ip"));
+  const p = provider(c.env, c.req.header("cf-connecting-ip"), new URL(c.req.url).origin);
   const as = await p.metadata();
   if (!as.authorization_endpoint || !as.code_challenge_methods_supported?.includes("S256"))
     throw new Error("Provider must support PKCE S256");
@@ -125,7 +125,7 @@ app.get("/api/auth/login", async (c) => {
   return c.redirect(url.toString());
 });
 app.get("/api/auth/callback", async (c) => {
-  const p = provider(c.env, c.req.header("cf-connecting-ip"));
+  const p = provider(c.env, c.req.header("cf-connecting-ip"), new URL(c.req.url).origin);
   const cookie = getCookie(c, pendingCookieName(p.config));
   deleteCookie(c, pendingCookieName(p.config), cookieOptions(p.config, 0));
   if (!cookie) {
@@ -269,7 +269,7 @@ app.on(["PUT", "DELETE"], "/api/account/avatar", async (c) => {
   });
 });
 app.post("/api/account/logout", async (c) => {
-  const p = provider(c.env, c.req.header("cf-connecting-ip"));
+  const p = provider(c.env, c.req.header("cf-connecting-ip"), new URL(c.req.url).origin);
   const { row, tokens } = c.get("session");
   await database(c.env.DB).delete(appSession).where(eq(appSession.token_hash, row.token_hash)).run();
   deleteCookie(c, sessionCookieName(p.config), cookieOptions(p.config, 0));

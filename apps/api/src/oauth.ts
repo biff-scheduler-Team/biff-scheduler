@@ -28,7 +28,7 @@ export const cookieOptions = (config: Configuration, maxAge: number) => ({
   maxAge,
 });
 
-export function provider(env: Env, clientIp?: string) {
+export function provider(env: Env, clientIp?: string, origin?: string) {
   const config = configuration(env);
   const issuer = new URL(`${config.IFFDAY_ORIGIN}/api/v1/auth`);
   const client: oauth.Client = { client_id: config.OIDC_CLIENT_ID };
@@ -50,7 +50,9 @@ export function provider(env: Env, clientIp?: string) {
     options,
     auth: oauth.ClientSecretBasic(config.OIDC_CLIENT_SECRET),
     resource: `${config.IFFDAY_ORIGIN}/api/v1/profile`,
-    redirectUri: `${config.APP_ORIGIN}/api/auth/callback`,
+    // Callback must return to the exact host the user started from, otherwise
+    // the browser is sent to a different origin and the pending cookie is lost.
+    redirectUri: `${origin ?? config.origins[0]}/api/auth/callback`,
     async metadata() {
       return oauth.processDiscoveryResponse(issuer, await oauth.discoveryRequest(issuer, options));
     },
