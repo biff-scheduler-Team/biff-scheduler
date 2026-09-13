@@ -73,7 +73,10 @@ function FilmCard({
               : film.shows.length
                 ? `共 ${film.shows.length} 场`
                 : "暂无排期"}
-            {entry ? `，已排 ${entry.picks.length} 场` : ""}
+            {/* 0 场写「未排场」而不是「已排 0 场」:移出行程后片仍在选片里(2026-09-13,
+                PLAN-20260913180837),这行是用户唯一能看出「片没丢、只是没排场」的地方,
+                说法与帮助弹层里的「标注『未排场』」逐字对齐。 */}
+            {entry && (entry.picks.length ? `，已排 ${entry.picks.length} 场` : "，未排场")}
           </p>
         </div>
       </div>

@@ -436,7 +436,14 @@ export function addPickFilm(key: string): void {
   commit(key, { key, picks: [], note: "" });
 }
 
-/** 网格 / 影片库场次行点选某场:已在 → 移出;不在 → 加入行程。 */
+/** 网格 / 影片库场次行点选某场:已在 → 移出;不在 → 加入行程。
+ *
+ *  ⚠ **移出只动 picks,记录一律保留**(2026-09-13,`PLAN-20260913180837`)——
+ *    哪怕这是该片最后一场、且没备注:`picks` 为空就是合法的「已选未排场」态
+ *    (与 `addPickFilm()` 建出的空记录同构),「我的选片」照常列出它。
+ *    原先这里在「最后一场 + 无备注」时整条删记录 —— 结果是用户只点错一下,
+ *    **整部片就从选片里消失**,且与 `types.ts` / 帮助文案 / 卡片 tooltip 三处承诺相左。
+ *    要连选片一起移除,走显式的「移除影片」(`removePick()`)。 */
 export function toggleScreening(key: string, code: string): void {
   const cur = store.picks.get(key);
   if (!cur) {
@@ -445,26 +452,20 @@ export function toggleScreening(key: string, code: string): void {
   }
   const has = cur.picks.some((p) => p.code === code);
   const picks = has ? cur.picks.filter((p) => p.code !== code) : [...cur.picks, { code }];
-  if (isOrphan({ ...cur, picks })) {
-    commit(key); // 只剩空壳 → 删记录
-    return;
-  }
   commit(key, { ...cur, picks });
 }
 
 /** 行程行 ✕:只移除该场,记录保留(该片仍留在「我的选片」里,标注「未排场」)。
- *  例外:这是该片最后一场且无备注 → 记录已无意义,一并删除。 */
+ *
+ *  ⚠ 与 `toggleScreening()` **同口径**(2026-09-13,`PLAN-20260913180837`):
+ *    最后一场移除后记录**不删**、备注**不动** —— 选片意向不丢。
+ *  (该函数 React 侧已无调用点,保留它是为了 state 公开 API 与 legacy 侧一致;口径必须同步。) */
 export function removeScreening(code: string): void {
   const hit = store.slotIndex.get(code);
   if (!hit) return;
   const cur = store.picks.get(hit.key);
   if (!cur) return;
-  const picks = cur.picks.filter((p) => p.code !== code);
-  if (isOrphan({ ...cur, picks })) {
-    commit(cur.key);
-    return;
-  }
-  commit(cur.key, { ...cur, picks });
+  commit(hit.key, { ...cur, picks: cur.picks.filter((p) => p.code !== code) });
 }
 
 /** 整片移除(记录 + 其全部场次) */
@@ -472,8 +473,13 @@ export function removePick(key: string): void {
   commit(key);
 }
 
-/** 清空全部已排场次。选片意向保留 —— 没排场的片仍留在「我的选片」里(标注「未排场」)。
- *  顺位随之被 `rebuildIndex()` prune(已无场次可排序)。 */
+/** 清空全部已排场次(**批量**动作):有备注的记录降级成「未排场」保留,没备注的空壳整条删。
+ *  顺位随之被 `rebuildIndex()` prune(已无场次可排序)。
+ *
+ *  ⚠ 与「移除某一场」(`toggleScreening` / `removeScreening`)口径**不同**,这是有意的
+ *    (2026-09-13,`PLAN-20260913180837`):单场移除是日常点选,不得弄丢选片意向;
+ *    这里是危险区里的一次性清空,设置弹层已**明示**「有备注的影片会保留,其他空记录会删除」。
+ *    改这里之前先改那句文案,别只改代码。 */
 export function clearScreeningSlots(): void {
   mutate(() => {
     for (const e of [...store.picks.values()]) {
