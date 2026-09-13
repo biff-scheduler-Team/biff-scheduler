@@ -6,7 +6,6 @@ import {
   SearchField,
   Picker,
   PickerItem,
-  Link,
   TextArea,
   ToastQueue,
 } from "../components/spectrum";
@@ -39,7 +38,6 @@ function FilmCard({
   const navigate = useNavigate();
   const entry = store.picks.get(film.key);
   const score = doubanScoreOf(film.cats[0], film.map);
-  const direct = film.map?.douban_url ?? store.mappings.get(film.cats[0]?.id ?? "")?.douban_url;
   const gone = entry?.picks.filter((p) => !film.shows.some((s) => s.code === p.code)).length ?? 0;
   return (
     <article className="film-card" data-film-key={film.key} tabIndex={-1}>
@@ -133,16 +131,8 @@ function FilmCard({
         >
           资料
         </ActionButton>
-        {/* 豆瓣外链排在最后一位、并由 CSS 顶到行右端(2026-09-13,PLAN-20260913183205):
-            它是纯文本外链,不是 ActionButton,夹在按钮之间会显得像没做完;
-            主操作按钮靠左成组、外链单独靠右,两边的视觉各自成组。 */}
-        <Link
-          href={direct || `https://www.douban.com/search?q=${encodeURIComponent((film.en || film.zh).trim())}`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {direct ? "豆瓣" : "豆瓣搜索"}
-        </Link>
+        {/* 豆瓣入口已于 2026-09-13 从这张卡移走(PLAN-20260913184357):影片卡是「挑片」的场景,
+            而查影评 / 看简介发生在「我的行程」——入口挪到场次卡的片名后面(见 ScreeningCard)。 */}
       </div>
       {pickedView && entry && (
         <div className="film-note">
