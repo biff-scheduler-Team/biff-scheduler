@@ -5,6 +5,11 @@ import { filmEndMin, gvTalkMin } from "../gv";
 
 export const TIME_RAIL_WIDTH = 72;
 export const VENUE_COLUMN_WIDTH = 260;
+/** 影厅列「填满视口」时的拉伸上限(基准宽的倍数)。
+ *  当日影厅很少时(如开幕式只有 1 个影厅)`(viewportWidth - rail) / venueCount` 会把这一列拉到整个视口宽
+ *  —— 卡片随之宽逾千像素,官方剧照按 100% 宽等比放大后被裁成一条,片名 / 时间反被挤出卡外。
+ *  设上限后少影厅的日子只在右侧留出画布空白,卡片宽度回到可读区间。 */
+export const VENUE_COLUMN_STRETCH_LIMIT = 2;
 export const VERTICAL_PX_PER_MIN = 4;
 export const GRID_TOP_PAD = 18;
 export const VENUE_HEADER_HEIGHT = 64;
@@ -14,7 +19,11 @@ export function verticalGeometry(cat: Catalog, date: string, zoom: number, venue
   const start = shows.length ? Math.max(0, Math.floor(Math.min(...shows.map(s => hmsToMin(s.start_time))) / 60) * 60) : 8 * 60;
   const end = ganttGeometry(cat, date, 1).end;
   const ppm = VERTICAL_PX_PER_MIN * zoom;
-  const columnWidth = Math.max(VENUE_COLUMN_WIDTH * zoom, venueCount ? (viewportWidth - TIME_RAIL_WIDTH) / venueCount : 0);
+  const stretch = venueCount ? (viewportWidth - TIME_RAIL_WIDTH) / venueCount : 0;
+  const columnWidth = Math.max(
+    VENUE_COLUMN_WIDTH * zoom,
+    Math.min(stretch, VENUE_COLUMN_WIDTH * zoom * VENUE_COLUMN_STRETCH_LIMIT),
+  );
   return {
     start, end, ppm, columnWidth,
     railWidth: TIME_RAIL_WIDTH,
