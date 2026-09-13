@@ -127,6 +127,15 @@ function FilmCard({
         >
           {open ? "收起场次" : "查看场次"}
         </ActionButton>
+        <ActionButton
+          aria-label={`${film.zh} 影片资料`}
+          onPress={() => openFilm(film.key)}
+        >
+          资料
+        </ActionButton>
+        {/* 豆瓣外链排在最后一位、并由 CSS 顶到行右端(2026-09-13,PLAN-20260913183205):
+            它是纯文本外链,不是 ActionButton,夹在按钮之间会显得像没做完;
+            主操作按钮靠左成组、外链单独靠右,两边的视觉各自成组。 */}
         <Link
           href={direct || `https://www.douban.com/search?q=${encodeURIComponent((film.en || film.zh).trim())}`}
           target="_blank"
@@ -134,12 +143,6 @@ function FilmCard({
         >
           {direct ? "豆瓣" : "豆瓣搜索"}
         </Link>
-        <ActionButton
-          aria-label={`${film.zh} 影片资料`}
-          onPress={() => openFilm(film.key)}
-        >
-          资料
-        </ActionButton>
       </div>
       {pickedView && entry && (
         <div className="film-note">
