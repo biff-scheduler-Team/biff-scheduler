@@ -93,6 +93,9 @@ npm run verify:ui -- e2e/react/parity-library.spec.ts --project=desktop-chromium
 
 补充纪律:
 
+- **「受影响 spec」有表可查**:`docs/TEST-MAP.md`(机读唯一来源 `scripts/test-map.json`,
+  `node scripts/affected-specs.mjs --check` 会断言两者同步,已串进 `verify:quick`)。
+  `npm run specs:affected` 按当前 diff 输出必跑 spec;`--files <path>` 可指定。
 - **单测是验证的一部分**,不是可选项;新增/修改纯函数口径 → 必须同步改对应 `*.test.ts`。
 - 测试失败时**先定位再改**,禁止「重跑一次看运气」。
 - **排查 E2E 失败只跑单文件 + 单浏览器**;全量三浏览器只在确认修复后跑**一次**,不要拿全量重跑做二分。

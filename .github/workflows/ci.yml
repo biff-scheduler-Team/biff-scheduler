@@ -1,0 +1,86 @@
+# CI 门禁(2026-09-13,PLAN-20260913201727)。
+#
+# 为什么要有它:Cloudflare Workers Builds 只在 push 后跑 `npm run build`(typecheck → lint →
+# 单测 → 构建),**E2E 一条都不跑**;PR 上此前没有任何检查。于是「改了 UI 要跑受影响 spec」
+# 这条规范完全取决于当天有没有人偷懒 —— 本文件是它的兜底。
+#
+# 两档:
+#   PR              → check:repo + check:test-map + typecheck + lint + 单测 + **受影响 spec**(chromium,快)
+#   push main / 手动 → 全量三浏览器体检(chromium + webkit,5–9 min)
+#
+# ⚠ 与 §2「推的时候直接推」的关系:CI 不改变本地门禁的职责划分 —— 测试仍然在开发阶段跑完。
+#   CI 只负责「人漏了」这种情况在合并前被挡住。Cloudflare 那边照旧只管部署。
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: 门禁(check:repo · check:test-map · typecheck · lint · 单测)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # 与本地一致(v24.x);tests/schema.test.ts 依赖 node:sqlite
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run verify:quick
+
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+    needs: gate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # affected-specs 要 diff 出 base 分支,浅克隆拿不到 merge-base
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: 安装浏览器
+        run: npx playwright install --with-deps ${{ github.event_name == 'pull_request' && 'chromium' || 'chromium webkit' }}
+      - name: 构建 web(E2E 吃 dist/,先 build 再 preview)
+        run: npm run build -w @biff/web
+
+      - name: 全量三浏览器(push main / 手动触发)
+        # 不调 `npm run verify:full`:那会再 build 一遍,而 `build --workspaces` 里的
+        # `@biff/api` 走的是 `wrangler deploy --dry-run` —— GitHub Actions 没有 Cloudflare
+        # 凭据,不该在 CI 里赌它能不能跑。typecheck / lint / 单测已由 gate 覆盖,
+        # api 的打包由 Cloudflare 自己的构建负责。
+        if: github.event_name != 'pull_request'
+        run: npx playwright test -c playwright.react.config.ts
+
+      - name: 受影响 spec · desktop-chromium(PR)
+        # ⚠ 只在 pull_request 上跑:`github.base_ref` 只在 PR 事件里有值。
+        if: github.event_name == 'pull_request'
+        run: |
+          SPECS=$(node scripts/affected-specs.mjs --base "origin/${{ github.base_ref }}" | grep '^e2e/' | tr '\n' ' ')
+          echo "必跑 spec:$SPECS"
+          npx playwright test -c playwright.react.config.ts $SPECS --project=desktop-chromium
+
+      - name: 失败时保留报告与 trace
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

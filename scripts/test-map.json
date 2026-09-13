@@ -1,0 +1,123 @@
+{
+  "note": "改动路径 → 必跑 E2E spec 的**机读唯一来源**。人读版 docs/TEST-MAP.md 由 `node scripts/affected-specs.mjs --write-doc` 生成,`--check` 会断言两者同步 —— 不要手改 md 里的表格。paths 以 / 结尾表示目录前缀,否则是精确文件。",
+  "always": ["smoke"],
+  "allOn": [
+    "apps/web/src/style.css",
+    "apps/web/index.html",
+    "package.json",
+    "package-lock.json",
+    "playwright.react.config.ts",
+    "tsconfig.tests.json",
+    "vitest.config.ts",
+    "apps/web/vite.config.ts"
+  ],
+  "rules": [
+    {
+      "id": "schedule-grid",
+      "note": "排片表二维网格(甘特)/ 时间轴 / 影厅列 / 缩放 / 小时筛选",
+      "paths": [
+        "apps/web/src/pages/SchedulePage.tsx",
+        "apps/web/src/pages/schedule-parity.css",
+        "apps/web/src/grid.ts"
+      ],
+      "specs": [
+        "parity-schedule",
+        "vertical-schedule",
+        "time-axis",
+        "night-axis",
+        "schedule-size",
+        "schedule-toolbar",
+        "combined-screenings",
+        "badge-tooltip"
+      ]
+    },
+    {
+      "id": "agenda",
+      "note": "我的行程(顺位 / 冲突组 / 方案对比 / 场次卡)",
+      "paths": [
+        "apps/web/src/pages/AgendaPage.tsx",
+        "apps/web/src/pages/agenda-parity.css",
+        "apps/web/src/plans.ts",
+        "apps/web/src/timeline.ts"
+      ],
+      "specs": ["parity-agenda", "review-schedule", "combined-screenings"]
+    },
+    {
+      "id": "library",
+      "note": "我的选片 / 影片库",
+      "paths": ["apps/web/src/pages/LibraryPage.tsx"],
+      "specs": ["parity-library", "review-library", "screening-popover"]
+    },
+    {
+      "id": "film-dialog",
+      "note": "影片资料弹层",
+      "paths": ["apps/web/src/pages/FilmDialog.tsx"],
+      "specs": ["parity-dialogs", "screening-popover"]
+    },
+    {
+      "id": "screening-card",
+      "note": "场次卡 / 场次信息弹层 / 同场成员(两个视图共用)",
+      "paths": [
+        "apps/web/src/components/ScreeningCard.tsx",
+        "apps/web/src/components/ScreeningInfoPopover.tsx",
+        "apps/web/src/components/ScreeningMemberList.tsx"
+      ],
+      "specs": [
+        "parity-agenda",
+        "parity-library",
+        "screening-popover",
+        "gv-popover",
+        "combined-screenings"
+      ]
+    },
+    {
+      "id": "dialogs",
+      "note": "设置 / 导出 / 说明类弹层",
+      "paths": [
+        "apps/web/src/components/ExportDialog.tsx",
+        "apps/web/src/components/SettingsDialog.tsx",
+        "apps/web/src/components/InfoDialogs.tsx",
+        "apps/web/src/components/FilterBar.tsx"
+      ],
+      "specs": ["review-state-export", "review-shared", "workflows", "parity-dialogs"]
+    },
+    {
+      "id": "account",
+      "note": "IFFDAY 账号 / 片单同步(前后端一起动);e2e/account.spec.ts 需真实账号服务,不在 CI 跑",
+      "paths": [
+        "apps/web/src/account.ts",
+        "apps/web/src/account-sync.ts",
+        "apps/web/src/sync-data.ts",
+        "apps/web/src/workspace-storage.ts",
+        "apps/web/src/components/AccountHost.tsx",
+        "apps/web/src/components/account-ui.css",
+        "apps/api/",
+        "packages/contracts/"
+      ],
+      "specs": ["account-integration"]
+    },
+    {
+      "id": "shell",
+      "note": "路由 / 布局 / 顶栏 / 浮动面板",
+      "paths": ["apps/web/src/app/", "apps/web/src/main.tsx"],
+      "specs": ["persistent-header", "floating-panel", "desktop", "edge-cases"]
+    },
+    {
+      "id": "state-export",
+      "note": "状态迁移 / 备份导入导出 / .ics",
+      "paths": [
+        "apps/web/src/state.ts",
+        "apps/web/src/backup.ts",
+        "apps/web/src/ics.ts",
+        "apps/web/src/share.ts"
+      ],
+      "specs": ["review-state-export", "workflows", "legacy", "compatibility"]
+    },
+    {
+      "id": "pwa",
+      "note": "离线 / Service Worker",
+      "paths": ["apps/web/public/manifest.webmanifest"],
+      "specs": ["offline"]
+    }
+  ]
+}
