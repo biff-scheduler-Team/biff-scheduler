@@ -23,6 +23,7 @@ import {
   filmInfoOf,
   fmtEndClock,
   doubanScoreOf,
+  doubanUrlOf,
   hmsToMin,
 } from "../util";
 import { effEndMin, gvTalkMin, talkOnOf } from "../gv";
@@ -277,7 +278,29 @@ export function ScreeningCard({
           {/* 开了影院块就不再在这里重复影院名(下方那块带代码 / 地址 / 地图入口,信息更全) */}
           {!venueInfo && <span>{venue ? venueShort(venue) : s.venue_display}</span>}
         </div>
-        {showTitle && <h3>{info.title}</h3>}
+        {showTitle && (
+          <div className="screening-title">
+            <h3>{info.title}</h3>
+            {/* 片名旁的豆瓣跳转(2026-09-13,PLAN-20260913184357):「我的行程」是出门前
+                真正在用的视图,查影评 / 看简介要一步到位,所以入口贴片名而不是埋在底部操作行。
+                `↗` 与本卡「在 Google 地图打开 ↗」同一套外跳视觉。
+                ⚠ 放在 <h3> 之外做兄弟:塞进标题会把标题的 accessible name 变成
+                「片名 豆瓣 ↗」,让 `getByRole("heading", { name, exact: true })` 一类断言漂移。 */}
+            <a
+              className="screening-douban"
+              href={doubanUrlOf(info, store.mappings.get(s.code))}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={
+                store.mappings.get(s.code)?.douban_url
+                  ? "在豆瓣打开这部片的条目页"
+                  : "未匹配豆瓣条目，将按片名搜索"
+              }
+            >
+              豆瓣 ↗
+            </a>
+          </div>
+        )}
         <div className="screening-meta">
           <span>{s.duration_min} 分钟</span>
           <span className="screening-price" title="票价以 BIFF 官方价目表为准">

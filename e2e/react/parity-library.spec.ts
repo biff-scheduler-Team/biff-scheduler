@@ -162,19 +162,3 @@ test("related films retain year and rating alongside navigation", async ({ page 
   await page.getByRole("button", { name: "返回", exact: true }).click();
   await expect(detail).toBeVisible();
 });
-
-test("the douban link is pinned to the right end of the film card action row", async ({ page }) => {
-  // 2026-09-13 用户反馈:影片卡底部操作行里「豆瓣」是纯文本外链,夹在两个按钮中间显得像没做完
-  // → 移到操作行最后一位并由 CSS 顶到行右端(PLAN-20260913183205)。
-  // 断言两件事:它是该行最后一个子元素;它的右边缘贴齐行右端(而不是紧跟「资料」)。
-  await ready(page, "/library?q=彼此的日夜");
-  const film = page.locator('[data-film-key="cat:f001"]');
-  const actions = film.locator(".film-actions");
-  const douban = actions.getByRole("link", { name: /^豆瓣/ });
-  await expect(douban).toBeVisible();
-  await expect(actions.locator("> :last-child")).toHaveAttribute("href", /douban\.com/);
-  const row = await actions.boundingBox();
-  const link = await douban.boundingBox();
-  if (!row || !link) throw new Error("操作行或豆瓣外链不可见,无法比对右边缘");
-  expect(Math.abs(row.x + row.width - (link.x + link.width))).toBeLessThanOrEqual(2);
-});

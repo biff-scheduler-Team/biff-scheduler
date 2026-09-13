@@ -376,11 +376,6 @@ img {
 .film-actions {
   margin-top: 14px;
 }
-/* 影片卡操作行里的豆瓣外链顶到行右端:主操作按钮靠左成组、外链单独靠右
-   (2026-09-13,PLAN-20260913183205)。该行只有这一个 <a>,选择器不会误伤按钮。 */
-.film-actions > a {
-  margin-left: auto;
-}
 .film-note {
   margin-top: 12px;
 }
@@ -427,6 +422,26 @@ img {
 }
 .screening-content h3 {
   margin: 7px 0;
+}
+/* 片名 + 豆瓣外链同一行(2026-09-13,PLAN-20260913184357):
+   入口贴片名、不额外占行;`baseline` 让 12px 的外链与标题文字坐在同一条基线上。 */
+.screening-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+/* 外跳指引:与本卡「在 Google 地图打开 ↗」同一套视觉(品牌色 / 无下划线 / hover 下划线),
+   让用户一眼看出「点了会离开本站」。 */
+.screening-douban {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--brand);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.screening-douban:hover {
+  text-decoration: underline;
 }
 .screening-meta {
   display: flex;

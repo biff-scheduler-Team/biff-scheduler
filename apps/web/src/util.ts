@@ -276,3 +276,17 @@ export function doubanScoreOf(film?: FilmItem | null, map?: Mapping | null): Dou
   const count = raw != null && raw > 0 ? raw : null;
   return { rating, count };
 }
+
+/** 豆瓣外链:映射有条目就用条目页,否则按片名搜索(中文名优先,退回英文名)。
+ *  ⚠ 全站「打开豆瓣」的 href **一律走它** —— 不要再各写一份 `douban.com/search?q=` 兜底
+ *    (2026-09-13,`PLAN-20260913184357`:场次卡 / 资料弹层两处原本各写了一份)。
+ *  资料弹层里那对「中文搜索 / 英文搜索」是**另一条口径**(让用户自己选搜哪个名字),不走这里。 */
+export function doubanUrlOf(
+  film?: { zh?: string | null; en?: string | null } | null,
+  map?: Mapping | null,
+): string {
+  if (map?.douban_url) return map.douban_url;
+  // 逐项 trim 后再回落:空白串(`"   "`)也是「没名字」,不能当成中文名去搜空关键词
+  const query = (film?.zh ?? "").trim() || (film?.en ?? "").trim();
+  return `https://www.douban.com/search?q=${encodeURIComponent(query)}`;
+}

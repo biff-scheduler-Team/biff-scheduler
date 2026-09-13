@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FilmItem, Mapping } from "../src/types";
-import { doubanScoreOf, fmtVoters } from "../src/util";
+import { doubanScoreOf, doubanUrlOf, fmtVoters } from "../src/util";
 
 const film = (p: Partial<FilmItem>): FilmItem => ({
   id: "f001",
@@ -55,5 +55,28 @@ describe("doubanScoreOf", () => {
     expect(doubanScoreOf(film({ rating: 0, rating_count: 12 }))).toBeNull();
     expect(doubanScoreOf(undefined, map({ rating: null }))).toBeNull();
     expect(doubanScoreOf()).toBeNull();
+  });
+});
+
+describe("doubanUrlOf", () => {
+  it("映射有条目就用条目页(搜索兜底不参与)", () => {
+    expect(
+      doubanUrlOf({ zh: "彼此的日夜", en: "The Table" }, map({ douban_url: "https://movie.douban.com/subject/1/" })),
+    ).toBe("https://movie.douban.com/subject/1/");
+  });
+  it("没有映射时按片名搜索,中文名优先", () => {
+    expect(doubanUrlOf({ zh: "彼此的日夜", en: "The Table" })).toBe(
+      "https://www.douban.com/search?q=%E5%BD%BC%E6%AD%A4%E7%9A%84%E6%97%A5%E5%A4%9C",
+    );
+  });
+  it("中文名空 / 只有空格时退回英文名,并 trim", () => {
+    expect(doubanUrlOf({ zh: "   ", en: "The Table: Day and Night" })).toBe(
+      "https://www.douban.com/search?q=The%20Table%3A%20Day%20and%20Night",
+    );
+    expect(doubanUrlOf({ en: "  Beneath  " })).toBe("https://www.douban.com/search?q=Beneath");
+  });
+  it("两个名字都没有 / 传空时给一个空搜索(调用方自己保证有名字)", () => {
+    expect(doubanUrlOf(null)).toBe("https://www.douban.com/search?q=");
+    expect(doubanUrlOf()).toBe("https://www.douban.com/search?q=");
   });
 });

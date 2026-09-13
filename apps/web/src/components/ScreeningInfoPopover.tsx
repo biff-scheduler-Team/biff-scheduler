@@ -5,7 +5,7 @@ import {useMedia} from '../app/hooks';
 import {useCatalog} from '../app/store';
 import {useFilmNavigation} from '../app/film-navigation';
 import {Badges} from './ScreeningCard';
-import {filmInfoOf, filmNodeKey, fmtEndClock} from '../util';
+import {doubanUrlOf, filmInfoOf, filmNodeKey, fmtEndClock} from '../util';
 import {effEndMin, talkOnOf} from '../gv';
 import {introOf} from '../intros';
 import {mapsUrl, regionLabel, venuePlace} from '../legend';
@@ -43,7 +43,7 @@ export function ScreeningInfoPopover({screening: s}: {screening: Screening}) {
   const intro = introOf(mapping?.subject_id);
   const related = relatedOf(mapping?.subject_id, store.mappings);
   const festival = indexFestival(store.mappings);
-  const doubanUrl = mapping?.douban_url || `https://www.douban.com/search?q=${encodeURIComponent(info.zh || info.en)}`;
+  const doubanUrl = doubanUrlOf(info, mapping);
   return <>
     <button ref={trigger} className="gantt-info" type="button"
       aria-label={`场次 ${s.code} 影片资料`} aria-haspopup="dialog" aria-expanded={mode !== 'closed'} aria-controls={mode !== 'closed' ? id : undefined}

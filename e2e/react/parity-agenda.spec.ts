@@ -327,3 +327,41 @@ test("the day-level locate says 定位当日 while the card-level one stays 定�
       .getByRole("button", { name: "定位场次 008", exact: true }),
   ).toHaveText("定位");
 });
+
+test("the agenda film name carries a douban jump link, and film cards no longer do", async ({
+  page,
+}) => {
+  // 2026-09-13 用户要求:豆瓣入口从影片卡操作行**搬**到「我的行程」的片名后面,
+  // 并做成一眼能看出是外跳的指引(PLAN-20260913184357)。
+  await page.route("**/douban.json", (route) =>
+    route.fulfill({
+      json: {
+        mappings: {
+          "001": {
+            subject_id: 1,
+            title_cn: "彼此的日夜",
+            douban_url: "https://movie.douban.com/subject/1/",
+          },
+        },
+      },
+    }),
+  );
+  await seed(page, { "biff.picks.v2": picks(["001"]) });
+  await ready(page, "/agenda");
+  const card = page.locator('[data-screening="001"]');
+  const link = card.locator(".screening-title .screening-douban");
+  await expect(link).toHaveText("豆瓣 ↗");
+  await expect(link).toHaveAttribute(
+    "href",
+    "https://movie.douban.com/subject/1/",
+  );
+  await expect(link).toHaveAttribute("target", "_blank");
+  // 入口是片名的**下一个兄弟** —— 在片名之后,且标题文本里不含「豆瓣」
+  // (塞进 <h3> 会把标题 accessible name 污染成「片名 豆瓣 ↗」,这里锁住不回归)
+  await expect(card.locator(".screening-title > h3")).toContainText("彼此的日夜");
+  await expect(card.locator(".screening-title > h3")).not.toContainText("豆瓣");
+  await expect(card.locator(".screening-title > h3 + .screening-douban")).toHaveCount(1);
+  // 影片卡(影片库 / 我的选片)的操作行里不再有豆瓣外链
+  await ready(page, "/library?q=彼此的日夜");
+  await expect(page.locator('[data-film-key="cat:f001"] .film-actions a')).toHaveCount(0);
+});
