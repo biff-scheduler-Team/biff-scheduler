@@ -1073,11 +1073,27 @@ img {
 }
 .app-footer {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 24px 20px;
+  gap: 4px 12px;
+  /* 右下角浮动「我的观影」胶囊固定在视口右下,页脚右侧留出等宽空档,避免「数据保存在当前浏览器」被遮挡 */
+  padding: 12px 200px 20px 24px;
   color: var(--muted);
   font-size: 11px;
+}
+.app-footer a {
+  color: inherit;
+  text-decoration: none;
+}
+.app-footer a:hover {
+  color: var(--brand);
+  text-decoration: underline;
+}
+@media (max-width: 1099px) {
+  /* 平板档胶囊右移量变小(16px),页脚空档同步收窄 */
+  .app-footer {
+    padding-right: 184px;
+  }
 }
 .app-loading {
   min-height: 80dvh;
@@ -1305,7 +1321,8 @@ img {
     gap: 12px;
   }
   .app-footer {
-    padding: 10px 14px 20px;
+    /* 窄屏折行后右侧空档会挤没正文宽度,改为在底部留出胶囊的高度,让整段文字浮在胶囊之上 */
+    padding: 10px 14px 88px;
     flex-direction: column;
     gap: 4px;
   }

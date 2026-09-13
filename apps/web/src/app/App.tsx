@@ -244,8 +244,18 @@ function Shell() {
         {panelOpen ? "收起" : `我的观影${codes.length ? ` ${codes.length}` : ""}`}
       </button>
       <footer className="app-footer">
-        BIFF {cat.schedule.festival.year}，釜山国际电影节{" "}
+        <span>BIFF {cat.schedule.festival.year}，釜山国际电影节</span>
         <span>数据保存在当前浏览器</span>
+        <span className="app-footer-credits">
+          by{" "}
+          <a href="https://github.com/gaaiyeoi" target="_blank" rel="noopener noreferrer">
+            @gaaiyeoi
+          </a>{" "}
+          和 by{" "}
+          <a href="https://github.com/lcandy2" target="_blank" rel="noopener noreferrer">
+            @citron
+          </a>
+        </span>
       </footer>
       <AccountHost />
       <ToastContainer />
