@@ -349,7 +349,7 @@ test("the agenda film name carries a douban jump link, and film cards no longer 
   await seed(page, { "biff.picks.v2": picks(["001"]) });
   await ready(page, "/agenda");
   const card = page.locator('[data-screening="001"]');
-  const link = card.locator(".screening-title .screening-douban");
+  const link = card.locator(".title-row .douban-jump");
   await expect(link).toHaveText("豆瓣 ↗");
   await expect(link).toHaveAttribute(
     "href",
@@ -358,10 +358,10 @@ test("the agenda film name carries a douban jump link, and film cards no longer 
   await expect(link).toHaveAttribute("target", "_blank");
   // 入口是片名的**下一个兄弟** —— 在片名之后,且标题文本里不含「豆瓣」
   // (塞进 <h3> 会把标题 accessible name 污染成「片名 豆瓣 ↗」,这里锁住不回归)
-  await expect(card.locator(".screening-title > h3")).toContainText("彼此的日夜");
-  await expect(card.locator(".screening-title > h3")).not.toContainText("豆瓣");
-  await expect(card.locator(".screening-title > h3 + .screening-douban")).toHaveCount(1);
-  // 影片卡(影片库 / 我的选片)的操作行里不再有豆瓣外链
+  await expect(card.locator(".title-row > h3")).toContainText("彼此的日夜");
+  await expect(card.locator(".title-row > h3")).not.toContainText("豆瓣");
+  await expect(card.locator(".title-row > h3 + .douban-jump")).toHaveCount(1);
+  // 影片卡的操作行里不再有豆瓣外链(它挪到了片名行,见 parity-library 的用例)
   await ready(page, "/library?q=彼此的日夜");
   await expect(page.locator('[data-film-key="cat:f001"] .film-actions a')).toHaveCount(0);
 });

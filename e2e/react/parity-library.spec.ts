@@ -162,3 +162,39 @@ test("related films retain year and rating alongside navigation", async ({ page 
   await page.getByRole("button", { name: "返回", exact: true }).click();
   await expect(detail).toBeVisible();
 });
+
+test("the douban jump link sits right after the film name in the card title row", async ({
+  page,
+}) => {
+  // 2026-09-13 用户反馈:在「我的选片」的影片卡上看不到豆瓣入口 —— 入口必须在**片名右侧**、
+  // 能直接点(PLAN-20260913184357)。同时锁住:它不在底部操作行的按钮堆里。
+  // 映射只给 `f001`(目录条目 id),走的是 `film.map` 缺省时回退 `cats[0].id` 的那条取值链。
+  await page.route("**/douban.json", (route) =>
+    route.fulfill({
+      json: {
+        mappings: {
+          f001: {
+            subject_id: 1,
+            title_cn: "彼此的日夜",
+            douban_url: "https://movie.douban.com/subject/1/",
+          },
+        },
+      },
+    }),
+  );
+  await seed(page, { "biff.picks.v2": JSON.stringify([pick("cat:f001")]) });
+  await ready(page, "/picks");
+  const film = page.locator('[data-film-key="cat:f001"]');
+  const link = film.locator(".title-row .douban-jump");
+  await expect(link).toHaveText("豆瓣 ↗");
+  await expect(link).toHaveAttribute(
+    "href",
+    "https://movie.douban.com/subject/1/",
+  );
+  await expect(link).toHaveAttribute("target", "_blank");
+  // 片名 h2 的文本里不含「豆瓣」(入口是它的下一个兄弟,不是标题的一部分)
+  await expect(film.locator(".title-row > h2")).toHaveText("彼此的日夜");
+  await expect(film.locator(".title-row > h2 + .douban-jump")).toHaveCount(1);
+  // 底部操作行仍然只有按钮,没有外链
+  await expect(film.locator(".film-actions a")).toHaveCount(0);
+});

@@ -279,7 +279,7 @@ export function ScreeningCard({
           {!venueInfo && <span>{venue ? venueShort(venue) : s.venue_display}</span>}
         </div>
         {showTitle && (
-          <div className="screening-title">
+          <div className="title-row">
             <h3>{info.title}</h3>
             {/* 片名旁的豆瓣跳转(2026-09-13,PLAN-20260913184357):「我的行程」是出门前
                 真正在用的视图,查影评 / 看简介要一步到位,所以入口贴片名而不是埋在底部操作行。
@@ -287,7 +287,7 @@ export function ScreeningCard({
                 ⚠ 放在 <h3> 之外做兄弟:塞进标题会把标题的 accessible name 变成
                 「片名 豆瓣 ↗」,让 `getByRole("heading", { name, exact: true })` 一类断言漂移。 */}
             <a
-              className="screening-douban"
+              className="douban-jump"
               href={doubanUrlOf(info, store.mappings.get(s.code))}
               target="_blank"
               rel="noopener noreferrer"
