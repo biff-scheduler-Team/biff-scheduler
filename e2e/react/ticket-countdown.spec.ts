@@ -2,7 +2,9 @@ import {test, expect} from '@playwright/test';
 import {ready} from './helpers';
 
 test('ticket timer ticks each second and advances to the next batch at opening', async ({page}) => {
-  await page.clock.install({time:new Date('2026-09-17T13:59:58+09:00')});
+  // install 后时钟仍随墙钟走；pauseAt 钉住再进页，避免 ready 耗时吞掉倒计时
+  await page.clock.install({time: new Date('2026-09-17T13:59:58+09:00')});
+  await page.clock.pauseAt(new Date('2026-09-17T13:59:58+09:00'));
   await ready(page, '/schedule');
   const timer = page.getByRole('timer');
   await expect(timer).toContainText('00:00:02');
@@ -15,7 +17,8 @@ test('ticket timer ticks each second and advances to the next batch at opening',
 });
 
 test('seconds appear only in the final hour, including the one-hour boundary', async ({page}) => {
-  await page.clock.install({time:new Date('2026-09-17T12:59:59+09:00')});
+  await page.clock.install({time: new Date('2026-09-17T12:59:59+09:00')});
+  await page.clock.pauseAt(new Date('2026-09-17T12:59:59+09:00'));
   await ready(page, '/schedule');
   const timer = page.getByRole('timer');
   await expect(timer).toHaveText('0天01:00');
