@@ -15,6 +15,8 @@
     "check:repo": "node scripts/check-repo.mjs",
     "check:test-map": "node scripts/affected-specs.mjs --check",
     "specs:affected": "node scripts/affected-specs.mjs",
+    "hooks:install": "node scripts/install-git-hooks.mjs",
+    "prepare": "node scripts/install-git-hooks.mjs",
     "build": "npm run typecheck && npm run lint && npm run test && npm run build --workspaces --if-present",
     "verify": "npm run check:repo && npm run check:test-map && npm run build",
     "verify:quick": "npm run check:repo && npm run check:test-map && npm run typecheck && npm run lint && npm test",

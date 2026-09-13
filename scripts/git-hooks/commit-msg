@@ -1,0 +1,36 @@
+#!/bin/sh
+# 校验提交信息格式(2026-09-13,PLAN-20260913201727)。
+#
+# §4 规定 `<type>(<scope>): <中文一句话描述>`,但此前纯靠自觉 ——
+# 机器能判的东西不该留给人。安装见 scripts/install-git-hooks.mjs。
+
+set -e
+
+message_file="$1"
+subject=$(head -n 1 "$message_file")
+
+# git 自己的机器生成信息放行(merge / revert / rebase 的 fixup 系列)
+case "$subject" in
+  Merge*|Revert*|"fixup!"*|"squash!"*|"amend!"*) exit 0 ;;
+esac
+
+types="feat|fix|refactor|perf|style|docs|test|chore|data|build"
+
+if printf '%s' "$subject" | grep -Eq "^($types)\([a-z0-9][a-z0-9-]*\): .+"; then
+  exit 0
+fi
+
+cat >&2 <<EOF
+✗ 提交信息不符合 §4 的格式。
+
+  期望:<type>(<scope>): <中文一句话描述>
+  实际:$subject
+
+  type  ∈ feat fix refactor perf style docs test chore data build
+  scope = 模块名(小写字母 / 数字 / 连字符),如 grid、agenda、library、api、repo
+  描述  = 中文,一句话说清改了什么
+
+  例:fix(schedule): 单影厅日的影厅列不再撑满视口
+  参考:AGENTS.md §4 · docs/DEVELOPMENT-STANDARDS.md §4.1
+EOF
+exit 1
