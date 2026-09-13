@@ -1,10 +1,10 @@
 # IFFDAY 账号接入
 
-BIFF Scheduler 使用 IFFDAY OIDC 登录。网站继续运行在 `https://biff.lcandy.co`，原有访客排片和离线使用方式保留。账号中心为 `https://account.iff.day`。
+BIFF Scheduler 使用 IFFDAY OIDC 登录。网站可运行在 `https://biff.lcandy.co` 和 `https://biff.iff.day`（`APP_ORIGIN` 为逗号分隔的白名单，两者并存期间都接受），原有访客排片和离线使用方式保留。账号中心为 `https://account.iff.day`。
 
 ## 登录与个人资料
 
-BIFF 后端使用授权码流程和 PKCE S256，校验 state、nonce、issuer、audience 与 ID token 签名。客户端 ID 为 `biff-scheduler`，唯一生产回调地址为 `https://biff.lcandy.co/api/auth/callback`。账号提供方使用 `@better-auth/oauth-provider`，客户端使用 `oauth4webapi`。
+BIFF 后端使用授权码流程和 PKCE S256，校验 state、nonce、issuer、audience 与 ID token 签名。客户端 ID 为 `biff-scheduler`，生产回调地址为 `https://biff.lcandy.co/api/auth/callback` 与 `https://biff.iff.day/api/auth/callback`（两者都需在账号系统登记；登录时按用户当前访问的域名选择，回调回到同一域名）。账号提供方使用 `@better-auth/oauth-provider`，客户端使用 `oauth4webapi`。
 
 BIFF cookie 为 `__Host-biff.session`，设置 Secure、HttpOnly、SameSite=Lax 和 Path=/。它只包含随机会话标识。OAuth token 在 BIFF D1 中加密存储，浏览器通过同源 `/api/account/*` 调用后端。后端通过 Cloudflare service binding 验证账号访问权限。整个登录过程不依赖第三方 cookie。
 
