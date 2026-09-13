@@ -29,6 +29,8 @@
   新版桌面 ≥1100 选片/行程:排片 = 1:3 挤压分栏、工作台 max-width 1600px；D1 `film_want_*` +
   `GET/POST /api/stats/want-*`（登录 1.0 / 匿名 0.75 film-key ping，`Math.round` 展示于影片库卡与详情）。
   ⚠ 本机 wrangler 若非 `62cbe67b…` 账号，**不改 account_id**；remote D1 migrate 随 main 部署。
+  分支 E2E 收口（`PLAN-20260914023243`）：恢复「体验新版」、面板宽改 1:3 比例断言、countdown `pauseAt`；
+  本地 desktop-chromium 指定 8 个 spec **32 passed**。
 - **main E2E 大面积失败修复(2026-09-13,`PLAN-20260913225149`)**:CI run `34757140825` 门禁绿、E2E 64 红。
   根因是测试未跟 UI 演进（标题含年月、`iffday.workspace.*` guest 缓存、`?quick=1` 浮层、三档排片大小 0.45/0.55/0.75、
   日轴裁剪、GV「未选→加入并参加」、legacy「体验新版」），外加边界标签 `height:0` 对人可见但对 Playwright hidden、

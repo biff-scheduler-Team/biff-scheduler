@@ -27,7 +27,14 @@ test("all legacy storage keys survive initial load, navigation, and reload byte 
   await expect(
     page.getByRole("button", { name: "展开行程 2026-10-07", exact: true }),
   ).toBeVisible();
-  if (!isMobile) expect((await page.locator("#viewing-panel").boundingBox())!.width).toBe(640);
+  if (!isMobile) {
+    // 桌面 ≥1100：选片:排片 ≈ 1:3，宽度跟 flex 走，不再等于 biff.pickerw.v1
+    const panel = (await page.locator("#viewing-panel").boundingBox())!;
+    const schedule = (await page.locator(".schedule-column").boundingBox())!;
+    const total = panel.width + schedule.width;
+    expect(panel.width / total).toBeGreaterThan(0.2);
+    expect(panel.width / total).toBeLessThan(0.35);
+  }
   const old = await legacyRead(page);
   expect(old.settings.customPreference).toBe("preserve-me");
   expect(old.picks).toHaveLength(5);

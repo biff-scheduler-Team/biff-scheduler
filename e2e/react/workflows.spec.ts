@@ -294,7 +294,12 @@ test("desktop zoom and floating panel preserve preferences; mobile never overflo
     await page.getByRole("link", { name: "排片表", exact: true }).click();
     await openViewingPanel(page);
     expect((await storage(page))["biff.pickerw.v1"]).toBe("640");
-    expect((await page.locator("#viewing-panel").boundingBox())!.width).toBe(640);
+    // 桌面分栏不再按 pickerw 定宽；比例契约与 floating-panel / desktop 一致
+    const panel = (await page.locator("#viewing-panel").boundingBox())!;
+    const schedule = (await page.locator(".schedule-column").boundingBox())!;
+    const total = panel.width + schedule.width;
+    expect(panel.width / total).toBeGreaterThan(0.2);
+    expect(panel.width / total).toBeLessThan(0.35);
     await page.getByRole("button", {name: "收起选片面板", exact: true}).click();
     await page.getByRole("group", { name: "排片大小" }).getByRole("button", { name: "大", exact: true }).click();
     expect(JSON.parse((await storage(page))["biff.settings.v1"]).zoom).toBe(
