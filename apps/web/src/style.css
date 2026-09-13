@@ -376,6 +376,11 @@ img {
 .film-actions {
   margin-top: 14px;
 }
+/* 影片卡操作行里的豆瓣外链顶到行右端:主操作按钮靠左成组、外链单独靠右
+   (2026-09-13,PLAN-20260913183205)。该行只有这一个 <a>,选择器不会误伤按钮。 */
+.film-actions > a {
+  margin-left: auto;
+}
 .film-note {
   margin-top: 12px;
 }
