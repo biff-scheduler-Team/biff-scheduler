@@ -5,8 +5,10 @@ import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  // 产物 / 依赖 / 离线管线 / Cloudflare Functions(独立 JS 运行时,另有一套全局)
-  { ignores: ["**/dist/**", "**/node_modules/**", "**/.wrangler/**", "**/worker-configuration.d.ts", "tools/**", "functions/**", "skills/**"] },
+  // 产物 / 依赖 / 离线管线(Python 管线另有自己的规范)/ skills(文档)
+  // ⚠ 曾经的 "functions/**"(Cloudflare Pages Functions)随 Pages 退役一并删除 ——
+  //   该目录已不存在,留着会让「新目录为什么没被 lint」这类排查白跑一趟。
+  { ignores: ["**/dist/**", "**/node_modules/**", "**/.wrangler/**", "**/worker-configuration.d.ts", "tools/**", "skills/**"] },
   ...tseslint.configs.recommended,
   {
     files: ["apps/**/*.{ts,tsx}", "packages/**/*.ts", "e2e/**/*.ts"],

@@ -16,6 +16,12 @@ dev-dist/
 .workbuddy/
 .codebuddy/
 
+# 会话草稿(不进版本库)。⚠ 落点必须**工具中立** —— 同事可能用 Codex / Cursor / 别的助手,
+# 所以不指定任何 IDE 专属目录;`.scratch/` 谁都能写,而且 `scripts/check-repo.mjs` 会挡住
+# 「又有人把它写回仓库根」的情况(2026-09-13 曾有 findings.md / progress.md / task_plan.md
+# 被误提交进根目录,见 PLAN-20260913201727)。
+.scratch/
+
 # 临时探针脚本(数据调研用,不进版本库)
 tools/_probe_*.py
 

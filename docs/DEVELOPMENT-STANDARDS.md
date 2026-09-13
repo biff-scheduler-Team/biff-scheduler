@@ -146,6 +146,25 @@ npm run verify:ui -- e2e/react/parity-library.spec.ts --project=desktop-chromium
 - ❌ 跳过 hooks(`--no-verify`)。
 - ❌ 把在途改动「搭车」提交(见 §7 并行协作)。
 
+### 4.3 会话草稿的落点(工具中立)
+
+AI 助手的会话草稿(`findings.md` / `progress.md` / `task_plan.md` / `notes.md` 一类)**不落仓库根**,
+一律落 **`.scratch/`**(已 gitignore)。
+
+**落点必须工具中立**:不得写成 `.codebuddy/`、`.workbuddy/` 这类**单个 IDE 的目录** ——
+协作者可能用 Codex / Cursor / 别的助手,绑定一家等于对其他人失效。
+
+根目录是**白名单制**,由机械检查兜底:
+
+```sh
+npm run check:repo              # 已串进 verify:quick / verify
+node scripts/check-repo.mjs --self-test   # 自检:证明检查器本身没坏
+```
+
+> 背景(2026-09-13,`PLAN-20260913201727`):`findings.md`(26 行)/ `progress.md`(69 行)/
+> `task_plan.md`(74 行)三个会话草稿被提交进根目录(`fe82988` / `14c29b1`),违反本节第一条却**无人发现**
+> —— 因为它们长得不像临时文件。**能机械拦住的,不要留给自觉。**
+
 ---
 
 ## 5. 前端代码规范(TypeScript / React)
