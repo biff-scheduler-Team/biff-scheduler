@@ -8,35 +8,38 @@
 
 ## 0. 总纲
 
-**先 PLAN → 后实现 → 写测试 → 跑门禁 → 再推送。**
+**先 PLAN → 后实现 → 写测试 → 再推送。**
 本仓库**没有 CI 兜底**:`git push origin main` 直接触发 Cloudflare Workers Builds 上线 `https://biff.lcandy.co`,
-所以门禁必须在本机跑绿。
+所以**测试必须在开发阶段跑完**;`push` 是纯发布动作,推的时候直接推。
 
 ## 1. 五步工作流(不可跳步)
 
 1. **写 PLAN**:`docs/plans/PLAN-<YYYYMMDDHHMMSS>.md`,必含 目标 / 范围(含「不做什么」)/ 方案取舍 / 验收标准。
    需求变了改 PLAN 文件,不要只在对话里改。**只读本需求的 PLAN,不整读 `PLAN.md` 活文档。**
 2. **实现**:代码 + 同步单测 / E2E。
-3. **验证**:见 §2。
-4. **提交推送**:Conventional Commits,见 §4。
+3. **验证**:跑测试(单测 + 受影响 spec 的 E2E),见 §2。
+4. **提交推送**:Conventional Commits → **直接推**,见 §4。
 5. **回写文档**:`PLAN.md` §0/§6/§7;口径变更同步 `docs/CONVENTIONS.md`。
 
-## 2. Push 前门禁(红线:`npm run verify` 未绿禁止 commit / push)
+## 2. 验证与推送(红线:没跑过测试禁止 push)
 
-门禁**按改动范围分档**:日常只跑必跑档(1–3 分钟);全量三浏览器 E2E 是**发布前体检**,不要求每次 push 都跑。
+> **原则**:测试是**开发阶段**的事,跑一次就够;`git push` 是纯发布动作,**推的时候直接推**,不在推送时重跑。
 
-| 档 | 场景 | 命令 | 耗时 |
-|---|---|---|---|
-| 必跑(每次 push) | 任何改动 | `npm run verify`(= typecheck → lint → 单测 → vite build) | 1–3 min |
-| 按需(改了 UI / 交互 / 样式 / 路由) | 只跑**受影响的 spec**、**单浏览器** | `npx playwright test -c playwright.react.config.ts --project=desktop-chromium e2e/react/<受影响的>.spec.ts` | 10–30 s |
-| 发布前(全量) | 大范围改动 / 动了共享口径(`row.ts` `util.ts` `ui.ts` `chips.ts` `data.ts`) / 对外发布 | `npm run verify:full`(= 上 + Playwright 三浏览器) | 5–9 min |
-| 改了 `tools/*.py` | — | 跑一遍脚本自检,输出须与基线一致或显式说明差异 | — |
-| 改了 `apps/web/public/*.json` | — | `npm run verify` | — |
+| 时机 | 做什么 | 命令 |
+|---|---|---|
+| 改完 / 开发中 | 跑与改动相关的测试 | 单测 `npm test`;改了 UI → 受影响 spec + 单浏览器 |
+| 收尾(该需求最后一次) | 跑一次完整门禁 | `npm run verify`(= typecheck → lint → 单测 → vite build,1–3 min) |
+| 大范围 / 发布前 | 全量三浏览器体检 | `npm run verify:full`(5–9 min) |
+| **push** | **直接推,不重跑** | `git push origin main` |
 
-门禁失败先定位再改,禁止「重跑一次看运气」;验证结果必须**贴出证据**(测试计数 / 断言汇总)。
+**「推的时候直接推」成立的前提:测试通过 → push 之间代码必须冻结。**
+跑完测试后又改了任何文件,那次测试即失效,必须重跑 —— 否则等于没测。
 
+- 测试失败先定位再改,禁止「重跑一次看运气」;验证结果必须**贴出证据**(测试计数 / 断言汇总)。
 - **排查 E2E 失败只跑单文件 + 单浏览器**;全量三浏览器只在确认修复后跑**一次**,不要拿全量重跑做二分。
 - E2E 跑完若 `31029` 端口仍被占用,说明 `webServer` 未优雅退出 —— 修配置,不要把 `kill -9` 当常规手段。
+- 改了 `tools/*.py` → 跑一遍脚本自检,输出须与基线一致或显式说明差异。
+- 改了 `apps/web/public/*.json` → 跑 `npm run verify`,产物必须能正常加载。
 
 ## 3. 测试要求
 
@@ -81,7 +84,7 @@
 
 ## 8. 红线(违反即返工)
 
-1. `npm run verify` 未绿就 commit / push。2. 无 PLAN 直接动手。3. 修 bug 不带回归测试。4. 为测试变绿改实现。
+1. 没跑过测试就 push;或测试通过后又改了代码,不重跑就 push。2. 无 PLAN 直接动手。3. 修 bug 不带回归测试。4. 为测试变绿改实现。
 5. 同一口径写第二份实现。6. 改 `biff.*` 结构不带迁移 / 不删旧 key。7. 把用户片单写回云端。8. 对小时取模。
 9. 动态拼 Tailwind 类名 / `text-[Npx]`。10. 未量化就引新依赖。11. 提交临时文件 / `dist/` / 密钥。
 12. `wrangler pages deploy` 直传。13. `push --force` 到 `main`。14. 为「看效果」反复起 dev server。
