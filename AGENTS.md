@@ -74,6 +74,9 @@
 - **会话草稿不落仓库根**:一律落 `.scratch/`(已 gitignore)。落点必须**工具中立** ——
   不得指定 `.codebuddy/` / `.workbuddy/` 这类单个 IDE 的目录,同事可能用别的助手。
   根目录是**白名单制**,由 `npm run check:repo`(`scripts/check-repo.mjs`,已串进 `verify:quick` / `verify`)机械拦截。
+- **钩子(机械约束)**:`npm install` 会自动装(`prepare` → `scripts/install-git-hooks.mjs`,手动重装 `npm run hooks:install`)。
+  `commit-msg` 校验本节格式;`pre-push` 跑 `verify:quick`(**不含 build / E2E** —— §2 反对的是在 push 时重跑完整门禁)。
+  它挡的正是红线 1;绕过它只能用 `--no-verify`,而那是红线 12。
 
 ## 5. 代码规范
 

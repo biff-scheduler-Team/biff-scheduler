@@ -149,7 +149,25 @@ npm run verify:ui -- e2e/react/parity-library.spec.ts --project=desktop-chromium
 - ❌ 跳过 hooks(`--no-verify`)。
 - ❌ 把在途改动「搭车」提交(见 §7 并行协作)。
 
-### 4.3 会话草稿的落点(工具中立)
+### 4.3 机械约束(git hooks)
+
+| 钩子 | 做什么 | 成本 |
+|---|---|---|
+| `commit-msg` | 校验 `<type>(<scope>): <描述>`;放行 Merge / Revert / `fixup!` / `squash!` / `amend!` 系列 | 即时 |
+| `pre-push` | 跑 `npm run verify:quick`(check:repo · check:test-map · typecheck · lint · 单测) | ~40s |
+
+由 `scripts/install-git-hooks.mjs` 安装,挂在 `package.json` 的 `prepare` 上 —— `npm install` 后自动生效;
+手动重装 `npm run hooks:install`。该脚本**任何情况下都不让构建失败**(Cloudflare 的 `npm ci` 也会跑它,
+那里没有 `.git` 就静默跳过)。
+
+**为什么 `pre-push` 只跑 `verify:quick`**:它要 ~40s,挂 `pre-commit` 会让人为改一行注释等 40 秒,
+最后必然被 `--no-verify` 绕开;挂 `pre-push` 则正好卡在红线 1 的位置。
+§2 反对的是「在 push 时重跑**完整**门禁」,不是「在 push 时发现红线 1」—— build / E2E 仍然只在开发阶段跑。
+
+**为什么自写而不用 husky + commitlint**:本仓库的格式是自定义的(type 白名单 + 小写 scope + 中文描述),
+自写 ~40 行零依赖即可,不值得为它引两个依赖 + 一层 `prepare` 生命周期(见 §5.3「未量化不引依赖」)。
+
+### 4.4 会话草稿的落点(工具中立)
 
 AI 助手的会话草稿(`findings.md` / `progress.md` / `task_plan.md` / `notes.md` 一类)**不落仓库根**,
 一律落 **`.scratch/`**(已 gitignore)。
