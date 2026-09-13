@@ -1,6 +1,8 @@
 {
   "note": "改动路径 → 必跑 E2E spec 的**机读唯一来源**。人读版 docs/TEST-MAP.md 由 `node scripts/affected-specs.mjs --write-doc` 生成,`--check` 会断言两者同步 —— 不要手改 md 里的表格。paths 以 / 结尾表示目录前缀,否则是精确文件。",
-  "always": ["smoke"],
+  "always": [
+    "smoke"
+  ],
   "allOn": [
     "apps/web/src/style.css",
     "apps/web/index.html",
@@ -40,19 +42,36 @@
         "apps/web/src/plans.ts",
         "apps/web/src/timeline.ts"
       ],
-      "specs": ["parity-agenda", "review-schedule", "combined-screenings"]
+      "specs": [
+        "parity-agenda",
+        "review-schedule",
+        "combined-screenings"
+      ]
     },
     {
       "id": "library",
       "note": "我的选片 / 影片库",
-      "paths": ["apps/web/src/pages/LibraryPage.tsx"],
-      "specs": ["parity-library", "review-library", "screening-popover"]
+      "paths": [
+        "apps/web/src/pages/LibraryPage.tsx"
+      ],
+      "specs": [
+        "parity-library",
+        "review-library",
+        "screening-popover",
+        "want-counts"
+      ]
     },
     {
       "id": "film-dialog",
       "note": "影片资料弹层",
-      "paths": ["apps/web/src/pages/FilmDialog.tsx"],
-      "specs": ["parity-dialogs", "screening-popover"]
+      "paths": [
+        "apps/web/src/pages/FilmDialog.tsx"
+      ],
+      "specs": [
+        "parity-dialogs",
+        "screening-popover",
+        "want-counts"
+      ]
     },
     {
       "id": "screening-card",
@@ -79,7 +98,12 @@
         "apps/web/src/components/InfoDialogs.tsx",
         "apps/web/src/components/FilterBar.tsx"
       ],
-      "specs": ["review-state-export", "review-shared", "workflows", "parity-dialogs"]
+      "specs": [
+        "review-state-export",
+        "review-shared",
+        "workflows",
+        "parity-dialogs"
+      ]
     },
     {
       "id": "account",
@@ -92,15 +116,30 @@
         "apps/web/src/components/AccountHost.tsx",
         "apps/web/src/components/account-ui.css",
         "apps/api/",
-        "packages/contracts/"
+        "packages/contracts/",
+        "apps/web/legacy/src/account-bridge.ts",
+        "apps/web/legacy/src/state.ts",
+        "apps/web/legacy/src/main.ts",
+        "apps/web/legacy/index.html"
       ],
-      "specs": ["account-integration"]
+      "specs": [
+        "account-integration",
+        "legacy"
+      ]
     },
     {
       "id": "shell",
       "note": "路由 / 布局 / 顶栏 / 浮动面板",
-      "paths": ["apps/web/src/app/", "apps/web/src/main.tsx"],
-      "specs": ["persistent-header", "floating-panel", "desktop", "edge-cases"]
+      "paths": [
+        "apps/web/src/app/",
+        "apps/web/src/main.tsx"
+      ],
+      "specs": [
+        "persistent-header",
+        "floating-panel",
+        "desktop",
+        "edge-cases"
+      ]
     },
     {
       "id": "state-export",
@@ -111,13 +150,35 @@
         "apps/web/src/ics.ts",
         "apps/web/src/share.ts"
       ],
-      "specs": ["review-state-export", "workflows", "legacy", "compatibility"]
+      "specs": [
+        "review-state-export",
+        "workflows",
+        "legacy",
+        "compatibility"
+      ]
     },
     {
       "id": "pwa",
       "note": "离线 / Service Worker",
-      "paths": ["apps/web/public/manifest.webmanifest"],
-      "specs": ["offline"]
+      "paths": [
+        "apps/web/public/manifest.webmanifest"
+      ],
+      "specs": [
+        "offline"
+      ]
+    },
+    {
+      "id": "want-counts",
+      "note": "想看人数加权统计 API + 影片库/详情展示",
+      "paths": [
+        "apps/api/src/want-stats.ts",
+        "apps/api/src/want-store.ts",
+        "apps/web/src/want-counts.ts",
+        "apps/api/migrations/0003_film_want_stat.sql"
+      ],
+      "specs": [
+        "want-counts"
+      ]
     }
   ]
 }

@@ -49,3 +49,24 @@ test("time grows downward and screenings at the same time align across venues", 
   // 正片 135′ × 4px/min × 默认 zoom − 卡片内边距
   expect(film!.height).toBeCloseTo(135 * 4 * 0.55 - 6, 0);
 });
+
+test("workspace stays within 1600px max-width on ultra-wide desktop", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await ready(page, "/schedule?date=2026-10-07");
+  const box = (await page.locator("#workspace").boundingBox())!;
+  expect(box.width).toBeLessThanOrEqual(1600);
+  expect(box.x).toBeGreaterThan(0);
+  expect(box.x + box.width).toBeLessThan(1920);
+});
+
+test("desktop viewing split is about one to three", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await ready(page, "/schedule?date=2026-10-07");
+  await page.getByRole("button", { name: "打开我的观影", exact: true }).click();
+  const panel = (await page.locator("#viewing-panel").boundingBox())!;
+  const schedule = (await page.locator(".schedule-column").boundingBox())!;
+  const total = panel.width + schedule.width;
+  expect(panel.width / total).toBeGreaterThan(0.2);
+  expect(panel.width / total).toBeLessThan(0.35);
+  expect(schedule.width / total).toBeGreaterThan(0.65);
+});
