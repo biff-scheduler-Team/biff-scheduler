@@ -52,8 +52,12 @@ npx playwright test -c playwright.react.config.ts \
 E2E 走上面的映射表;**单测不需要表** —— 它本来就是「一源一测」:
 
 - `apps/web/src/<name>.ts` ↔ `apps/web/tests/<name>.test.ts`(改纯函数必须同步改同名测试,见 §2 / §3.2)。
-- `apps/api/src/<name>.ts` / `packages/contracts/src/<name>.ts` ↔ 根 `tests/api-<name>.test.ts`
-  (根 `tests/` 是跨包单测的落点,与既有的 `tests/schema.test.ts` 同构)。
+- `apps/api/src/<name>.ts` ↔ `apps/api/tests/<name>.test.ts`。
+  ⚠ **必须留在本 workspace**,不能搬进根 `tests/`:根 `tests/` 继承 `apps/web/tsconfig.json`(DOM lib),
+  把 api 源码拉进那个程序会立刻报 `Uint8Array<ArrayBufferLike>` 不满足 `BufferSource`
+  (原因写在 `apps/api/vitest.config.ts` 的注释里)。
+- `packages/contracts/src/<name>.ts` 的单测跟着**调用方**走(`apps/api/tests/contracts.test.ts`)——
+  它是 api 的序列化口径,不是 web 的。
 - 改了 `apps/web/public/*.json` → 跑 `npm run verify`(产物必须能被 `data.ts` 正常加载)。
 - 改了 `tools/*.py` → 跑脚本自检,输出须与基线一致或显式说明差异。
 

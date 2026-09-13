@@ -10,7 +10,7 @@
     "dev:account": "node scripts/dev-account.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present && tsc --noEmit -p tsconfig.e2e.json && tsc --noEmit -p tsconfig.tests.json",
     "lint": "eslint apps packages e2e tests",
-    "test": "npm run test -w @biff/web && vitest run --config vitest.config.ts",
+    "test": "npm run test -w @biff/web && npm run test -w @biff/api && vitest run --config vitest.config.ts",
     "test:watch": "npm run test:watch -w @biff/web",
     "check:repo": "node scripts/check-repo.mjs",
     "check:test-map": "node scripts/affected-specs.mjs --check",
