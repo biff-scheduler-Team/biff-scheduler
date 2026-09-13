@@ -19,6 +19,10 @@ dev-dist/
 # 临时探针脚本(数据调研用,不进版本库)
 tools/_probe_*.py
 
+# 一次性脚本与日志(*.tmp.* 一律不进版本库 —— 省掉每次 git status 的心算)
+*.tmp.log
+*.tmp.mjs
+
 # 海报试看用的临时图(正式海报在 public/posters/,**要进版本库** ——
 # 未来走 Cloudflare Git 集成构建,CI 里没有本地文件,海报必须在仓库里)
 data/poster-preview/

@@ -50,7 +50,7 @@
 
 | 时机 | 做什么 | 命令 |
 |---|---|---|
-| 改完 / 开发中 | 跑与改动相关的测试 | 单测 `npm test`;改了 UI → 受影响 spec + 单浏览器 |
+| 改完 / 开发中 | 跑与改动相关的测试 | 单测 `npm test`;改了 UI → `npm run verify:ui -- <spec> --project=desktop-chromium` |
 | 收尾(该需求最后一次) | 跑一次完整门禁 | `npm run verify`(1–3 min) |
 | 大范围 / 发布前 | 全量三浏览器体检 | `npm run verify:full`(5–9 min) |
 | **push** | **直接推,不重跑** | `git push origin main` |
@@ -67,6 +67,25 @@ Cloudflare 会在云端重新构建一遍(见 §6 部署),`dist/` 也在 `.gitig
   而那时线上已经处于异常状态。
 
 反过来,`typecheck` / `lint` / 单测**每次改动都要过**,它们才是挡 bug 的主力。
+
+### 2.2 `verify:ui` —— 一次 build 两用,别拆成两条命令
+
+E2E 的 `webServer` 跑的是 `vite preview`,吃的是 `dist/`,**所以 E2E 之前必须先 build**;
+而 `npm run verify` 里已经 build 过一次 —— 先 `verify` 再 `test:e2e:react` 等于 build 两次(每次约 30–60s)。
+
+改了 UI 的收尾只跑一条:
+
+```
+npm run verify:ui -- e2e/react/parity-library.spec.ts --project=desktop-chromium
+```
+
+= typecheck + lint + 单测 + `build -w @biff/web` + 指定 spec / 浏览器(参数透传给 playwright)。
+它已经覆盖门禁,**不要**再补一次 `npm run verify`(除非本轮动到了 `apps/api`,需要验证 worker 打包)。
+小范围 bugfix 不要上 `verify:full`(5–9 min 三浏览器):只跑受影响 spec + 单浏览器,规范本来就只要求这些。
+
+- `verify:quick` = typecheck + lint + 单测,**不含 build**,是日常改完最快的完整门禁。
+- `build -w @biff/web` 只 build web,跳过 `postbuild`(`scripts/prepare-cloudflare.mjs`)——
+  它本地只写 `.wrangler/deploy/config.json`、不碰 `dist/`,E2E 不需要它。
 
 **「推的时候直接推」成立的前提:测试通过 → push 之间代码必须冻结。**
 跑完测试后又改了任何文件,那次测试即失效,必须重跑 —— 否则等于没测。

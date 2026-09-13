@@ -27,7 +27,7 @@
 
 | 时机 | 做什么 | 命令 |
 |---|---|---|
-| 改完 / 开发中 | 跑与改动相关的测试 | 单测 `npm test`;改了 UI → 受影响 spec + 单浏览器 |
+| 改完 / 开发中 | 跑与改动相关的测试 | 单测 `npm test`;改了 UI → `npm run verify:ui -- <spec> --project=desktop-chromium` |
 | 收尾(该需求最后一次) | 跑一次完整门禁 | `npm run verify`(= typecheck → lint → 单测 → vite build,1–3 min) |
 | 大范围 / 发布前 | 全量三浏览器体检 | `npm run verify:full`(5–9 min) |
 | **push** | **直接推,不重跑** | `git push origin main` |
@@ -35,6 +35,12 @@
 **关于 `vite build`**:它只用于验证「能打包」——本地产物不会被部署(Cloudflare 云端会重新构建,`dist/` 也在 gitignore 里)。
 所以**不是每次改动的必跑项**:日常跑 `npm test` + 受影响 spec 即可,build 放到收尾 / 推送前跑一次,用来提前发现打包错误。
 `typecheck` / `lint` / 单测才是每次必过。
+
+**`verify:ui` = 一次 build 两用,不要拆成两条命令**:E2E 的 `webServer` 跑 `vite preview`,吃的是 `dist/`,
+所以 E2E 之前必须 build;而 `npm run verify` 里已经 build 过一次 —— 先 `verify` 再 `test:e2e:react` 就是 build 两次。
+改了 UI 直接跑 `npm run verify:ui -- <spec> --project=<project>`(参数透传给 playwright),
+它 = typecheck + lint + 单测 + build web + 指定 spec,已经覆盖门禁;**不要**再补一次 `verify`
+(除非本轮还动到了 `apps/api`,需要验证 worker 打包)。小范围 bugfix 不要上 `verify:full`(5–9 min 三浏览器)。
 
 **「推的时候直接推」成立的前提:测试通过 → push 之间代码必须冻结。**
 跑完测试后又改了任何文件,那次测试即失效,必须重跑 —— 否则等于没测。

@@ -14,6 +14,8 @@
     "test:watch": "npm run test:watch -w @biff/web",
     "build": "npm run typecheck && npm run lint && npm run test && npm run build --workspaces --if-present",
     "verify": "npm run build",
+    "verify:quick": "npm run typecheck && npm run lint && npm test",
+    "verify:ui": "npm run verify:quick && npm run build -w @biff/web && playwright test -c playwright.react.config.ts",
     "verify:full": "npm run build && playwright test -c playwright.react.config.ts",
     "postbuild": "node scripts/prepare-cloudflare.mjs",
     "preview": "npm run build && wrangler dev -c apps/api/wrangler.jsonc -c apps/web/wrangler.jsonc",
