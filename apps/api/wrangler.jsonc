@@ -7,6 +7,8 @@
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "APP_ENV": "production",
+    // biff.iff.day 是迁移目标,已登记进白名单与账号系统的回调,但自定义域名尚未挂到本 Worker,
+    // 该子域当前无 DNS 解析 —— 生效域名只有 biff.lcandy.co。挂载后本行无需改动,详见 docs/account-integration.md。
     "APP_ORIGIN": "https://biff.lcandy.co,https://biff.iff.day",
     "IFFDAY_ORIGIN": "https://account.iff.day",
     "OIDC_CLIENT_ID": "biff-scheduler",

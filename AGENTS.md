@@ -9,8 +9,9 @@
 ## 0. 总纲
 
 **先 PLAN → 后实现 → 写测试 → 再推送。**
-本仓库**没有 CI 兜底**:`git push origin main` 直接触发 Cloudflare Workers Builds 上线 `https://biff.lcandy.co`,
-所以**测试必须在开发阶段跑完**;`push` 是纯发布动作,推的时候直接推。
+`git push origin main` 直接触发 Cloudflare Workers Builds,云端跑的构建命令就是 `npm run build`
+(= typecheck → lint → 单测 → 各 workspace 构建),**失败即不上线**;但云端失败**不会回滚已推送的提交**,
+只会把部署卡在那里 —— 所以**测试仍然必须在开发阶段跑完**,`push` 保持纯发布动作,推的时候直接推。
 
 ## 1. 五步工作流(不可跳步)
 
@@ -69,7 +70,10 @@
 
 - **口径单一来源**:片名 / 日期 / 场次行 / 卡片头 / 转场余量 / GV 时长 / 有效结束时间 / 颜色 token 只允许一处实现。
   新增视图复用既有构造器(`row.ts` / `util.ts` / `ui.ts` / `chips.ts`),不要另写骨架。
-- **数据契约**:`biff.*` key 只增不改;改结构必须「新 key + 一次性迁移 + 删旧 key」。**片单只存本地,不得回写云端。**
+- **数据契约**:`biff.*` key 只增不改;改结构必须「新 key + 一次性迁移 + 删旧 key」。
+  **片单默认只存本地**;仅当用户**主动登录 IFFDAY** 后,才同步到 `festival_document` 里**该账号自己
+  (`subject` 隔离)**的那一份 —— **不得未经登录就上传,不得写入任何共享 / 非本人位置**;
+  账号相关的 localStorage 键走 `iffday.workspace.*` 命名空间,**不占 `biff.*`**。
 - **24+ 时制**:午夜场 `"29:35"` = 次日 05:35,**不得对小时取模**;唯一归一化闸门 `data.ts::loadCatalog()`。
 - **依赖**:引入前量化 gzip 增量 + 实际调用点,成本 > 收益即否决。
 - **Tailwind v4**:token 是唯一色源;字阶 / 圆角走 `text-12` / `rounded-8`,禁止 `text-[Npx]` 任意值;
@@ -82,7 +86,17 @@
 
 ## 6. 部署
 
-- 唯一常规路径:`git push origin main` → Workers Builds 自动上线。**禁止** `wrangler pages deploy`。
+- **唯一常规路径:`git push origin main`**。完整链路(两个 Worker + 一次生产迁移都在里面):
+  1. Workers Builds 跑 `npm run build`(typecheck → lint → 单测 → 各 workspace 构建);
+  2. 成功后 npm 自动跑 `postbuild`(`scripts/prepare-cloudflare.mjs`)——**仅当 `WORKERS_CI_BRANCH=main`**
+     时执行生产 D1 迁移 `db:migrate:remote` 并部署前端 Worker `biff-scheduler-web`;
+     本地构建与预览分支**不迁移、不部署**;
+  3. 最后由仓库原有的 `npx wrangler deploy` 发布 API Worker `biff-scheduler`(公开入口;
+     非 `/api/*` 请求由它经 `WEB` service binding 转发给前端 Worker)。
+- **禁止** `wrangler pages deploy`(旧 Pages 已不在访问链路);**也禁止**拿 `npm run deploy` 当常规路径
+  (它是 `build → 迁移 → web → api` 的手动兜底,只在 Cloudflare 侧不可用时才用)。
+- 生效域名是 `https://biff.lcandy.co`;`biff.iff.day` 已进 `APP_ORIGIN` 白名单与账号系统回调登记,
+  但**自定义域名尚未挂到 Worker 上**(该子域无 DNS 解析),需人工在 CF 控制台挂载,详见 `docs/account-integration.md`。
 - 线上核对带 cache-buster;最强判据 = **asset hash 相同**(不是内容 grep)+ 自己新增字符串 + 阴性对照。
 - **用户约定:每次改动完成后必须重新部署,无需再问。**
 
@@ -95,7 +109,7 @@
 ## 8. 红线(违反即返工)
 
 1. 没跑过测试就 push;或测试通过后又改了代码,不重跑就 push。2. 无 PLAN 直接动手。3. 修 bug 不带回归测试。4. 为测试变绿改实现。
-5. 同一口径写第二份实现。6. 改 `biff.*` 结构不带迁移 / 不删旧 key。7. 把用户片单写回云端。8. 对小时取模。
+5. 同一口径写第二份实现。6. 改 `biff.*` 结构不带迁移 / 不删旧 key。7. 未经登录就上传片单,或把片单写入共享 / 非本人云端位置。8. 对小时取模。
 9. 动态拼 Tailwind 类名 / `text-[Npx]`。10. 未量化就引新依赖。11. 提交临时文件 / `dist/` / 密钥。
 12. `wrangler pages deploy` 直传。13. `push --force` 到 `main`。14. 为「看效果」反复起 dev server。
 15. 把流水账堆进 `PLAN.md`(应进 `docs/history/` 或本需求 PLAN)。

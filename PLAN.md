@@ -1,10 +1,13 @@
 # BIFF 排片工具(BIFF Scheduler)— 项目活文档
 
 > 定位:自用釜山电影节排片工具 —— 解析官方 Ticket Catalogue → 可视化选片排期 → 冲突检测 → 导出 .ics → 一键跳豆瓣。
-> 栈:Cloudflare Workers 静态资源(**纯静态**,线上 = https://biff.lcandy.co,推 main 自动部署)+ Vite + TS(无框架)+ Tailwind v4(增量双轨)+ 静态 JSON。
+> 栈:Cloudflare Workers(线上 = https://biff.lcandy.co,推 main 自动部署;2026-09-13 起是**两个 Worker** ——
+> API `biff-scheduler` + 静态资源 `biff-scheduler-web`)+ React / Router / Spectrum S2 + Vite + TS
+> + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-12(**TMDB 海报**,见 §0 首条);
-> 上一轮 = 排片表 / 时间线海报与评分 + 详情简介;
+> 最后更新:2026-09-13(**IFFDAY 账号体系 + 前后端分仓**,见 §0 首条);
+> 上一轮 = 影片卡「豆瓣」外链移到操作行最右端;
+> 更早 = 排片表 / 时间线海报与评分 + 详情简介;
 > 更早 = 豆瓣相关电影;
 > 更早 = 导入支持 .ics + 已保存方案改横向;
 > 更早 = 顺位撞车(逐层)+ 一键修复 · 保存方案 · 按方案导出;
@@ -19,11 +22,28 @@
 ## 0. 当前状态快照(2026-09-13)
 
 **✅ 已完成(已部署,线上可访问)**
-- **影片卡「豆瓣」外链移到操作行最右端(2026-09-13,`PLAN-20260913183205`)**:影片卡底部操作行里
-  「豆瓣」是纯文本外链(S2 `Link`),夹在 `查看场次` 与 `资料` 两个圆角按钮中间显得像没做完。
-  按用户要求移到该行**最后一位**并由 `.film-actions > a { margin-left: auto }` **顶到行右端** ——
-  主操作按钮靠左成组、外链单独靠右。仍是真 `<a href>`,可中键新窗口 / 复制链接。
-  `parity-library.spec.ts` 加 1 条回归(末位 + 右边缘贴齐,容差 2px),该 spec 10 条全绿。
+- **IFFDAY 账号体系 + 前后端分仓(2026-09-13,`cbead95` / `8a54eca` / `26b21e0`)**:仓库从「纯静态单页」改为
+  **npm workspaces 三包** —— `apps/web`(React + Router + Spectrum S2)、`apps/api`(Hono + Drizzle,既是公开入口
+  又是 `/api/*` 服务)、`packages/contracts`(前后端共享 Zod 契约 + canonical JSON)。**接入 IFFDAY OIDC**
+  (账号中心 `https://account.iff.day`,客户端 `biff-scheduler`):授权码 + PKCE S256,校验 state / nonce /
+  issuer / audience / ID token 签名;cookie `__Host-biff.session` 只存随机 token,OAuth token 加密存 D1;
+  后端靠 service binding `IFFDAY_API` 校验身份,全程不依赖第三方 cookie。**片单同步**:访客仍只存本机,
+  **登录后**同步到该账号自己的 D1 文档(`festival_document`,`edition=biff-2026`,revision 乐观锁 +
+  operationId 幂等),`account_import` 保证每账号只自动导入一次本机数据,且「写片单 + 标记已导入」在同一
+  D1 batch 内原子提交;`iffday.workspace.owner.v1` 按 owner 隔离缓存,切换账号不会把上一位用户的片单传上去。
+  详见 `docs/account-integration.md`。
+  ⚠ **域名**:生效的是 `https://biff.lcandy.co`;`biff.iff.day` 已进 `APP_ORIGIN` 白名单与账号系统回调登记,
+  但**自定义域名未挂到 Worker 上**(该子域无 DNS 解析),需人工在 CF 控制台挂载。
+  ⚠ 本条目是 **2026-09-13 文档漂移修复**(`PLAN-20260913190500`)的回写 —— 此前 §1/§4 仍写「零后端 / 没有 API」,
+  已一并订正。
+- **豆瓣入口落在「我的行程」片名后面(2026-09-13,`PLAN-20260913184357`)**:用户先要求把影片卡操作行里的
+  「豆瓣」外链顶到行右端(`PLAN-20260913183205`,该放置已被本次取代),看完效果后改为**搬到「我的行程」**。
+  最终口径:**影片卡(`/library` `/picks`)操作行不再有豆瓣外链**;`ScreeningCard` 在 `showTitle` 时把
+  `豆瓣 ↗` 放在片名 `<h3>` 的**下一个兄弟**(`.screening-title` 一行内)—— 塞进标题会污染标题的
+  accessible name,所以刻意不做;视觉沿用本卡「在 Google 地图打开 ↗」的外跳语言(品牌色 + `↗`、hover 下划线)。
+  外链 URL 收敛到 `util.ts::doubanUrlOf(film, map)`(映射优先、否则按中文名→英文名搜索),
+  资料弹层同步改用同一函数。单测 +4(`film-score.test.ts`);`parity-agenda` 加 1 条回归
+  (入口在片名之后 + 影片卡不再有外链),`parity-agenda` + `parity-library` 共 20 条全绿。
 - **移除行程最后一场不再连带删掉选片(2026-09-13,`PLAN-20260913180837`)**:`toggleScreening()`
   / `removeScreening()` 原先在「最后一场 + 无备注」时走 `isOrphan()` **整条删记录**,与 `types.ts`
   / 帮助弹层 / 卡片 tooltip 三处「移除场次 ≠ 取消选片」的承诺相左(用户实测:只排一场的片在行程里
@@ -154,7 +174,9 @@
   **影片库接入同一份状态**(`src/filters.ts` 单一模块,网格铺开三行 / 抽屉可折叠);控件是**圆角矩形**(不是胶囊)
 - **海报(2026-09-11)**:`films.json` 的 `poster` 按豆瓣 subject_id 对齐 `public/posters/` 的本地图(**174/250**);
   影片库卡片 44×62 缩略图 + 资料弹层 124×175 大图;缺图不留空列(见 `PLAN-20260911170000`)
-- 脚手架:Vite+TS 无框架;部署目录 `dist/`(wrangler.toml `[assets] directory = "./dist"`);**纯静态**(functions + D1 已于 2026-09-11 退役)
+- 脚手架:Vite+TS(**2026-09-13 起前端为 React**,旧的无框架版仍在 `apps/web/legacy/` 且仍在产物里);
+  部署目录 `dist/`(前端 Worker `biff-scheduler-web` 的 `[assets] directory = "./dist"`);
+  无账号时代的 `functions/` 已于 2026-09-11 退役;D1 于 2026-09-13 因账号同步重新引入(**仅存账号片单**)
 - 核心排片:自研 CSS Grid 网格(影院×时间)、点选加入行程、时间重叠红标(冲突组 + 跨行连线)
 - 行程视图:自研议程列表(按日分组;冲突组折叠成**绿框顺位卡**,**拖动排顺位 → N 套方案并列对比**)—— 不用 FullCalendar(见 §2 决策)
 - 导出:`.ics`(UTC、GV 场次时长已含 +25min);分享文案复制(贴微信)
@@ -175,7 +197,9 @@
   字阶/圆角**值命名 token** 生效、按钮类名收敛到 `ui.ts`
 - **零后端(2026-09-11,PLAN-20260911001107)**:D1 整体退役 —— 豆瓣映射改静态 `public/douban.json`
   (`/api/mapping*`、`functions/`、`migrations/`、`wrangler.toml` 的 D1 绑定、`migrate:remote` 全部删除);
-  弹层豆瓣区只读(条目直链 / 中英文搜索兜底);顶栏 `#sync-dot` 与 `renderSync()` 删除
+  弹层豆瓣区只读(条目直链 / 中英文搜索兜底);顶栏 `#sync-dot` 与 `renderSync()` 删除。
+  ⚠ **该状态已于 2026-09-13 部分回退**:账号同步重新引入 D1(`biff-account-data`)与 `/api/account/*`,
+  但**豆瓣映射 / 排期仍是静态 JSON**,`/api/mapping*` 与 `functions/` **没有回来**(见 §4)
 - **工程化(2026-09-11,PLAN-20260911000705)**:接入 **PWA**(预缓存产物 + 只读 JSON → 现场断网可用;
   方形 PNG 图标 192/512 + iOS 180);**Vitest 单测**(24+ 时制 / GV 有效结束 / 冲突)并接入 `build` 门禁;
   抽屉列表行加 `content-visibility: auto`(渲染优化,非完整虚拟化);
@@ -232,23 +256,45 @@
 
 ## 1. 架构总览
 
+**2026-09-13 起是 npm workspaces 三包**(`apps/*` + `packages/*`),不再是单页静态站。
+
 ```
 离线管线(本机,非部署):Catalogue PDF → tools/extract_schedule.py → schedule.json / venues.json / films.json / douban.json(检入仓库)
-在线应用(Cloudflare Workers 静态资源,**纯静态**):
-  dist/(Vite 产物)
-  ├ schedule.json(只读排期)
-  ├ venues.json(只读场馆)
-  ├ films.json(只读目录)
-  ├ douban.json(豆瓣映射,离线产物,可为空)
-  ├ douban-related.json(豆瓣相关电影,可为空)
-  ├ douban-intros.json(豆瓣简介,可为空)
-  └ assets/(main.ts 打包)
 
-浏览器 localStorage(用户数据主存储,**不上云**):
-  biff.picks.v2(选片+排片,唯一数据源) / biff.settings.v1 / biff.gvtalk*.v1
+Cloudflare(账号 62cbe67b…),两个 Worker:
+  biff-scheduler(API + 公开入口,apps/api,有 D1 与 OAuth secret)
+    ├ /api/*  → Hono 自己处理(登录 / 资料 / 同步)
+    └ 其余    → service binding WEB 转发给 biff-scheduler-web
+  biff-scheduler-web(纯静态资源,apps/web,**无 D1 / 无 secret**)
+    └ dist/(Vite 产物):index.html + legacy/ + assets/ + 只读 JSON
+        ├ schedule.json / venues.json / films.json
+        └ douban.json / douban-related.json / douban-intros.json / festival-extras.json(均可为空,缺失静默降级)
+
+D1 `biff-account-data`(**只存账号片单,不存排期**):
+  festival_document(subject, edition='biff-2026', revision, records)  ← 每账号每届一份,revision 乐观锁
+  account_import(subject PK)                                          ← 每账号只自动导入一次本机数据
+  app_session / oauth_pending                                         ← 会话与 OAuth 中间态
+
+浏览器 localStorage:
+  biff.*(片单唯一源,见 §3)+ iffday.workspace.owner.v1 / iffday.workspace.cache.v1:<owner>
+  → 访客**不上云**;登录后同步到**该账号自己的** festival_document,他人不可读
 ```
 
-**前端模块(src/,38 文件 + `style.css`)**:`main.ts` 装配+统一事件委托｜`state.ts` 全局 store + localStorage 持久化(**片单 / 已保存方案只存本地**)+ subscribe 订阅｜`grid.ts` 排片网格｜`timeline.ts` **移动端单日纵向时间线**(≤768px 替换二维网格,`PLAN-20260912002532`)｜`agenda.ts` 行程列表(绿框顺位卡拖动排序 + **顺位撞车提示/一键修复** + **已保存方案**)｜`library.ts` 影片库+我的选片(抽屉)｜`settings.ts` 设置弹层｜`share.ts` 分享文案｜**`export-panel.ts` 导出·分享弹层(先选已保存方案,再选 .ics / 文案 / 图)**｜`modal.ts` 弹层栈｜`row.ts` 场次行骨架｜`conflict.ts` 纯函数冲突检测｜`plans.ts` 顺位 + 冲突组 → 无冲突组合 / **逐层撞车检出** / **一键修复**(纯函数;同一部片只留一场)｜`score.ts` 行程质量分｜`ics.ts` 导出｜`gv.ts` 映后口径｜`badges.ts`/`legend.ts` 徽章与图例｜`ui.ts` 按钮/tab/缩放控件类名与工厂｜`chips.ts`/`form.ts`/`toast.ts` 共享 UI 片段｜`data.ts` JSON 加载(含豆瓣映射)｜`related.ts` 豆瓣相关电影｜`intros.ts` 豆瓣简介｜`tip.ts` 悬停提示｜`types.ts`/`util.ts`/`style.css`
+身份 = IFFDAY OIDC(`https://account.iff.day`),客户端 `biff-scheduler`;协议细节、会话与冲突处理见
+`docs/account-integration.md`。
+
+**前端模块**:`apps/web/src` 是 React 应用 —— `app/`(装配 + 路由 + store + 从 localStorage hydrate)｜
+`components/`(ScreeningCard / ScreeningInfoPopover / ExportDialog / PosterPreview / FilmDialog / ScreeningMemberList …)｜
+`pages/`｜`account.ts` / `account-sync.ts`(账号面板 + 同步引擎)｜`workspace-storage.ts`(写盘即广播同步事件);
+**纯逻辑与视图工具**沿用旧版口径,仍在 `apps/web/src`:`state.ts` 全局 store + localStorage 持久化 + subscribe 订阅｜
+`grid.ts` 排片网格｜`timeline.ts` **移动端单日纵向时间线**(≤768px 替换二维网格,`PLAN-20260912002532`)｜
+`conflict.ts` 纯函数冲突检测｜`plans.ts` 顺位 + 冲突组 → 无冲突组合 / **逐层撞车检出** / **一键修复**｜
+`score.ts` 行程质量分｜`ics.ts` 导出｜`gv.ts` 映后口径｜`badges.ts`/`legend.ts` 徽章与图例｜
+`data.ts` JSON 加载(含豆瓣映射)｜`related.ts` / `intros.ts`｜`share.ts` 分享文案｜`poster.ts` 行程图｜
+`types.ts` / `util.ts` / `units.ts` / `filters.ts` / `backup.ts` / `clipboard.ts` / `style.css`。
+`apps/web/legacy/` = **旧版无框架实现,但仍在构建产物里**(`vite.config.ts` 的 rollup `input` 含
+`legacy/index.html`,`App.tsx` 里有指向 `/legacy/` 的版本链接);`tests/legacy-snapshot.test.ts` 用 sha256
+锁住它与 `8a95215` 快照一致 —— **是现场兜底的备用视图,不是死代码**;改共享口径时要留意两侧同步。
 
 > 2026-09-10 结构收口(PLAN-20260910232833):`library.ts` 1784→928、`main.ts` 1137→786;
 > 设置 / 抢票清单 / 质量分各自独立成文件;片名链 / 档位权重 / chip 类名 / 日期切段 / 时间标签收口到单一来源;补 `eslint` 门禁。
@@ -265,8 +311,8 @@
 | # | 决策 | 结论 |
 |---|---|---|
 | D1 | 前端形态 | Vite+TS 无框架;网格自研;FullCalendar 只用免费的都嫌重 → 行程=自研列表(**v1 偏差:未引 FullCalendar**,增 ~300KB 且样式难融) |
-| D2 | 排期数据 | 静态 JSON(只读、版本化);**D1 已于 2026-09-11 整体退役** —— 全站零后端(PLAN-20260911001107) |
-| D5 | 片单存储 | **只存 localStorage**(2026-09-10,PLAN-20260910235630):曾双写 D1 `user_pick`,但旧的 `syncFromCloud` 是云端为准 + 每次部署换 origin → 已清掉的片单被同步回来、离线删除被覆盖;故云端片单整体退役(`/api/pick*` 删除) |
+| D2 | 排期数据 | 静态 JSON(只读、版本化),**始终不落库**。D1 曾于 2026-09-11 整体退役(PLAN-20260911001107);2026-09-13 因账号同步**重新引入 D1**(`biff-account-data`),但**只存账号片单文档,不存排期** |
+| D5 | 片单存储 | **访客只存 localStorage;登录 IFFDAY 后同步到该账号自己的云端文档**(2026-09-13)。旧口径「只存本地、云端 `user_pick` 整体退役」(2026-09-10,PLAN-20260910235630)针对的是**无账号时代的全局共享片单** —— 那时 `syncFromCloud` 云端为准 + 每次部署换 origin,导致已清掉的片单被同步回来;账号体系下每个用户读写的都是 `festival_document` 里**自己 `subject` 那一条**,他人不可读,原问题不复现。⚠ **仍然禁止**:未经登录就上传、或写入任何共享 / 非本人位置 |
 | D6 | 豆瓣映射 | **只读静态 `public/douban.json`**(2026-09-11,PLAN-20260911001107):D1 `douban_map` + `/api/mapping*` + 页面粘贴回填全部退役;留空即走中英文搜索兜底 |
 | D3 | 访问保护 | 无鉴权 + `noindex`;介意再加 PIN 门 |
 | D4 | LLM 兜底/中文译名 | 在 WorkBuddy 对话代跑(零配置),不自备 API key |
@@ -279,7 +325,8 @@
 
 ## 3. 数据契约
 
-**静态 JSON(无数据库)** —— D1 已于 2026-09-11 整体退役(PLAN-20260911001107):
+**静态 JSON(排期侧无数据库)** —— 排期 / 场馆 / 目录 / 豆瓣映射一律只读静态文件;D1 曾于 2026-09-11 整体退役
+(PLAN-20260911001107),2026-09-13 因账号同步重新引入,但**只存账号片单文档**(见本节末的「云端文档契约」):
 ```json
 public/douban.json = {
   "mappings": {
@@ -306,21 +353,31 @@ public/douban-related.json = {
   `/recommendations`);「是不是本届」**不写进产物**,前端 `related.ts` 对照当前 mappings 现查
 - 只存 movie;缺文件 / 该片无推荐 → 弹层不出现相关区(与 extras 同,增强不是运行前提)
 
-**localStorage(片单唯一源)**:`biff.picks.v2` = `PickEntry[]`(`{key, picks:[{code}], note}` ——
+**localStorage(访客片单唯一源;登录后镜像到云端)**:`biff.picks.v2` = `PickEntry[]`(`{key, picks:[{code}], note}` ——
 旧数据的 `group`(方案 A/B)/ `priority`(档位)字段读取时忽略,**零迁移**);
 另:`biff.settings.v1` / `biff.gvtalk.v1` / `biff.gvtalkmin.v1` / `biff.ranks.v1`(抢票顺位)/ `biff.agendafold.v1`。
+**账号相关键刻意不在 `biff.*` 命名空间**(避免污染片单契约与备份导出):
+`iffday.workspace.owner.v1`(当前 owner)/ `iffday.workspace.cache.v1:<owner>`(每账号一份 base/local 缓存)/
+`iffday.workspace.import.v1:<owner>`(待导入的访客数据)/ `iffday.workspace.import-backup.v1:<owner>`。
 
 **`biff.savedplans.v1`(已保存方案,2026-09-12)**:`SavedPlan[]` = `{id, name, codes, createdAt}` ——
 `codes` = **第一顺位方案**的场次集合(每个冲突组取顺位 1 + 共同场次),**集合去重**(顺序无关),
 自动命名「方案 N」;导出 / 分享按所选方案导出(见 §5)。⚠ 快照语义:行程之后怎么改都不动已保存方案。
 旧 key `biff.plan.v1` 仅作一次性迁移源(只迁场次与备注,`biff.wish.v1` 的档位已随档位概念一起废弃),**迁移后即删**。
 
+**云端文档契约(2026-09-13,`apps/api` + D1)**:服务端**不认 `biff.*` 字面 key**,只认四种前缀的扁平记录 ——
+`pick:` / `plan:` / `local:biff.` / `raw:biff.`(见 `apps/api/src/index.ts::recordsSchema`);
+`festival_document.records` 存该账号整份 JSON 快照,写入走 `revision` 乐观锁 + `operationId` 幂等,
+单份序列化上限 **450 KiB**(超限 413)。前端 `sync-data.ts` 负责 `biff.*` ↔ 上述记录的映射与三方合并
+(common ancestor / local / remote),冲突逐条让用户选保留哪版。**`account_import` 保证每账号只自动导入一次**,
+且「写片单 + 标记已导入」在同一 D1 batch 内原子提交。
+
 **schedule.json Screening**:`code / title_en / title_kr / title_zh / date / start_time / end_time / duration_min / venue_id / venue_display / is_gv / tags?`
 - **GV/映后:解析阶段就 end_time = start + duration(+25min)**(保证 .ics 与冲突检测一致,前端不临时补)
 - `tags?`:gv/masterclass/premiere/open_talk(见 badges.ts 注册表;未注册键静默忽略)
 
 **venues.json**(2026):`id / name / name_kr / short / group / region / code` —— **26 厅**(id = 官方代码小写,如 `b1`/`c3`/`l10`;2026 无南浦洞 MEGABOX,新增 Roof Theater `br` / Shinsegae `sc` / DSU-KIT `dk`)
-**films.json**:250 部目录(unit 需按前缀归并:广角镜×3/Vision×2/Korean Cinema Today×2/亚洲电影人奖 2026~2029 四连脏数据 → 18 组;归并在 `library.ts::unitKey()`)
+**films.json**:250 部目录(unit 需按前缀归并:广角镜×3/Vision×2/Korean Cinema Today×2/亚洲电影人奖 2026~2029 四连脏数据 → 18 组;归并在 `app/model.ts::unitKey()`,旧版同名函数在 `legacy/src/library.ts`)
 
 **festival-extras.json**(2026-09-11 新增):官网「排期之外」的辅助信息 —— **不是排期**,
 时间 / 厅 / 片名仍以 `schedule.json` 为准,这里只补排期页不印的东西:
@@ -356,9 +413,32 @@ public/douban-related.json = {
 
 ## 4. API
 
-**没有 API**(2026-09-11,PLAN-20260911001107):选片 / 排片只落 localStorage,豆瓣映射是静态文件。
-`functions/` 目录已删除;`/api/pick*`(2026-09-10)与 `/api/mapping*`(2026-09-11)均已退役。
-旧的 `/api/plan*`(场次级,0003 退役)与 `/api/pick*`(影片级)均已删除。
+**2026-09-13 起有 API**(`apps/api`,Hono + Drizzle + D1),但**只有账号相关这一组**;
+排期 / 场馆 / 目录 / 豆瓣映射**仍然是静态 JSON**(§3)——`/api/pick*`、`/api/mapping*`、`/api/plan*`
+这些无账号时代的口子**没有回来,也不要加回来**。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/health` | D1 连通性自检 |
+| GET | `/api/auth/login` | 302 到 IFFDAY 授权端点(授权码 + PKCE S256;`?prompt=login` 强制重登) |
+| GET | `/api/auth/callback` | 校验 state / nonce / issuer / audience / ID token 签名 → 建 `app_session` → 回 `/?account=connected` |
+| GET | `/api/account/me` | 当前用户 `{user, profile}`;未登录 401 |
+| PATCH | `/api/account/profile` | 改昵称 / 简介(`profile:write`,带 `expectedVersion`) |
+| PUT / DELETE | `/api/account/avatar` | 头像(仅 `image/jpeg`) |
+| POST | `/api/account/logout` | 删会话 + 撤销 refresh token |
+| GET | `/api/account/sync/biff-2026` | 取本账号本届文档(`revision` / `records` / `importedAt`) |
+| PUT | `/api/account/sync/biff-2026` | 提交整份记录(revision 乐观锁 + operationId 幂等) |
+| POST | `/api/account/import` | 一次性把访客本机数据并入并标记 `account_import`(同一 D1 batch,原子) |
+
+**两条硬约束(改前必读)**:
+
+1. `/api/*` 有**同源 + Origin 校验**(`APP_ORIGIN` 白名单),写请求必须带同源 `Origin` 头。
+2. `/api/account/*` 全部经鉴权中间件,**`subject` 一律取自会话,请求体里的 subject 与会话不符直接 409**
+   —— 即**当前没有任何「读他人数据」的接口**。所以将来做影评 / 留言板 / 红黑榜这类 UGC,
+   必须**新开一层公开读 API + 新表**,**不能复用 `festival_document`**
+   (那是「单人整份文档 + revision 乐观锁」模型,与「多写者 + 聚合读」不同构)。
+
+非 `/api/*` 的请求由 `apps/api/src/worker.ts` 转发给 `WEB` service binding(前端 Worker)。
 
 ---
 
@@ -388,9 +468,11 @@ public/douban-related.json = {
 - **导入分两类**(2026-09-12,同一弹层**按内容自动识别**):**备份 JSON**(`biff.*` 全量键 → 整体替换本机)
   / **`.ics` 排片**(只反解场次 `UID:<code>@biff-2026` → 合并或替换二选一,**默认合并**)。
   `.ics` 恢复不了备注 / 顺位 / 已保存方案 / 设置(格式里根本没有),见 `backup.ts` 文件头
-- **存储分工(2026-09-11)**:片单(选片 / 排片)= **只存 localStorage**,`commit()` 落盘即完成、**没有云端回写**;
+- **存储分工(2026-09-11;2026-09-13 修订)**:**访客**片单(选片 / 排片)= 只存 localStorage,`commit()` 落盘即完成;
+  **登录 IFFDAY 后**由 `account-sync.ts` 同步到该账号自己的 `festival_document`(见 §3 云端文档契约)。
   豆瓣映射 = 静态 `public/douban.json`(`loadMappings()` 在首渲前灌好);设置 / GV 覆写 = 本地。
-  → 清空片单后刷新 / 重新部署**不会复活**(旧版会从 `user_pick` 同步回来)。**全站零后端。**
+  → **访客**清空片单后刷新 / 重新部署**不会复活**(旧版会从全局 `user_pick` 同步回来);
+  ⚠ **登录状态下清空会同步到云端** —— 那是账号同步的预期行为(云端是本账号的副本),不是 bug。
 - localStorage keys:`biff.picks.v2`(片单唯一源)/ `biff.settings.v1` / `biff.gvtalk.v1` / `biff.gvtalkmin.v1` /
   `biff.ranks.v1`(抢票顺位)/ `biff.savedplans.v1`(**已保存方案快照**,2026-09-12)/
   `biff.agendafold.v1`(行程按日收起)/ `biff.pickerw.v1`(抽屉宽度);
@@ -408,6 +490,7 @@ public/douban-related.json = {
 | M2 | 核心排片+导出 | ✅(mock 全链路;待真机验证) |
 | M2.5 | ~~AI 排片~~(2026-09-11 已整体下线) | ❌ 已移除 |
 | M3 | 增强:Transit Matrix/豆瓣批量回填 | ⏳ 部分(M3 剩余见 §7) |
+| M4 | 账号体系(IFFDAY OIDC + 云端片单同步) | ✅(2026-09-13,见 §0 首条与 `docs/account-integration.md`) |
 
 ---
 
@@ -461,7 +544,9 @@ public/douban-related.json = {
    **已不在访问链路上**,传上去没人访问;本机 `npm run deploy`(= `wrangler deploy`)也会因「账号里没这个 Worker」而失败。
    判别谁在服务:Pages 的 HTML 响应带 `access-control-allow-origin` / `referrer-policy` / `content-type: text/html; charset=utf-8`,
    Workers 静态资源三者都没有(只有 `content-type: text/html` + `cf-cache-status`)
-3. D1 已退役(2026-09-11):~~`d1 execute --command` 只跑第一条 SQL~~ / ~~本地调试别传 `--d1`~~ 两条作废
+3. ~~D1 已退役(2026-09-11)~~ **已于 2026-09-13 部分回退**:账号同步重新引入 D1(`biff-account-data`,**仅存账号片单**);
+   迁移走 `npm run db:migrate:remote`(生产只在 `main` 分支构建里自动执行),**不要**对生产跑 `drizzle-kit push`。
+   ~~`d1 execute --command` 只跑第一条 SQL~~ / ~~本地调试别传 `--d1`~~ 两条仍作废
 4. 豆瓣**网页口**必撞 CAPTCHA / 静默限流 → 已改用**官方 Frodo 口**离线回填(`tools/frodo_client.py` +
    `douban_match.py`,见 `PLAN-20260911223200`);前端仍只做链接跳转(浏览器设不了 UA + 跨域被拦 + 密钥会外泄)。
    ⚠ **接口风控两处**:`search/subjects` 跑约 100 次即 `403 need_login`(**登录流程未恢复,别用这个口**);
@@ -476,6 +561,7 @@ public/douban-related.json = {
 | 文件 | 用途 |
 |---|---|
 | `PLAN.md`(本文件) | 当前状态/决策/待办/架构 —— **每轮开发先读这里,完成后更新 §0/§6/§7** |
+| `docs/account-integration.md` | IFFDAY 账号接入:OIDC 流程 / 会话 / 云端同步与冲突 / Cloudflare 配置 / 本地联调 |
 | `docs/history/2026-09-09-开发落地记录.md` | §10~§20 全部历史轮次(视觉对齐/影片库/AI 排片/样式重构等)+ plans 执行蓝本附录;只读查询,不再追加 |
 | `data/` `tools/` | 离线管线脚本与产物(本地,不部署) |
 
