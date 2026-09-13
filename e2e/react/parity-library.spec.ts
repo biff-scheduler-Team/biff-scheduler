@@ -38,6 +38,26 @@ test("removing a scheduled film can be cancelled and confirms before deleting it
   expect(JSON.parse((await storage(page))["biff.picks.v2"])).toEqual([]);
 });
 
+test("removing the only screening keeps the film in my picks, marked unscheduled", async ({ page }) => {
+  // 2026-09-13 用户实测回归:一部片只排了一场,移出行程后**整部片从「我的选片」消失**
+  // (旧实现把「最后一场 + 无备注」的记录整条删了,与帮助里「选片保留、标注未排场」相左)。
+  await seed(page, { "biff.picks.v2": JSON.stringify([pick("cat:f001", ["001"])]) });
+  await ready(page, "/picks?expand=cat%3Af001");
+  const picks = page.getByRole("region", { name: "我的选片", exact: true });
+  const film = picks.locator('[data-film-key="cat:f001"]');
+  await film.getByRole("button", { name: "移出场次 001", exact: true }).click();
+  // 片还在,状态行明说「未排场」,场次行可再次加入
+  await expect(film).toBeVisible();
+  await expect(film).toContainText("未排场");
+  await expect(film.locator("[data-screening]")).toHaveCount(4);
+  await expect(
+    film.getByRole("button", { name: "加入场次 001", exact: true }),
+  ).toBeVisible();
+  expect(JSON.parse((await storage(page))["biff.picks.v2"])).toEqual([
+    { key: "cat:f001", picks: [], note: "" },
+  ]);
+});
+
 test("multiple selected dates filter picks only and disappear when no picked film offers them", async ({ page }) => {
   await seed(page, { "biff.picks.v2": JSON.stringify([pick("cat:f001"), pick("cat:f002")]) });
   await ready(page, "/picks?expand=cat%3Af001");
@@ -53,7 +73,9 @@ test("multiple selected dates filter picks only and disappear when no picked fil
   const library = page.getByRole("region", { name: "影片库", exact: true });
   await expect(library.locator('[data-film-key="cat:f002"]')).toBeVisible();
   await expect(library.getByRole("button", { name: /选片日期/ })).toHaveCount(0);
-  if (!await page.locator("#viewing-panel").count()) await page.getByRole("button", {name: "打开我的观影", exact: true}).click();
+  // /library 与 /picks 都是整页视图(App.tsx::fullPage):「打开我的观影」胶囊在这两条路由上
+  // 是 hidden 的 —— 旧用例照 legacy 的抽屉假设写,自 945bd06 起就点不到。回选片走顶栏导航。
+  // (2026-09-13 随 PLAN-20260913180837 修正;与本需求无关,只是这两条用例一直是红的。)
   await page.getByRole("link", { name: /^我的选片/ }).click();
   await page.getByRole("button", { name: "移除影片 彼此的日夜", exact: true }).click();
   await expect(page.locator('[data-film-key="cat:f002"]')).toBeVisible();
@@ -78,7 +100,9 @@ test("film expansion survives tab switches and temporary search filters", async 
   const film = page.locator('[data-film-key="cat:f001"]');
   await film.getByRole("button", { name: "展开 彼此的日夜 场次", exact: true }).click();
   await expect(film.locator("[data-screening]")).toHaveCount(4);
-  if (!await page.locator("#viewing-panel").count()) await page.getByRole("button", {name: "打开我的观影", exact: true}).click();
+  // /library 与 /picks 都是整页视图(App.tsx::fullPage):「打开我的观影」胶囊在这两条路由上
+  // 是 hidden 的 —— 旧用例照 legacy 的抽屉假设写,自 945bd06 起就点不到。回选片走顶栏导航。
+  // (2026-09-13 随 PLAN-20260913180837 修正;与本需求无关,只是这两条用例一直是红的。)
   await page.getByRole("link", { name: /^我的选片/ }).click();
   await page.getByRole("link", { name: "影片库", exact: true }).click();
   await expect(film.locator("[data-screening]")).toHaveCount(4);
