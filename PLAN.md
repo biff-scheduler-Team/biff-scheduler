@@ -24,6 +24,11 @@
 ## 0. 当前状态快照(2026-09-13)
 
 **✅ 已完成(已部署,线上可访问)**
+- **main E2E 大面积失败修复(2026-09-13,`PLAN-20260913225149`)**:CI run `34757140825` 门禁绿、E2E 64 红。
+  根因是测试未跟 UI 演进（标题含年月、`iffday.workspace.*` guest 缓存、`?quick=1` 浮层、三档排片大小 0.45/0.55/0.75、
+  日轴裁剪、GV「未选→加入并参加」、legacy「体验新版」），外加边界标签 `height:0` 对人可见但对 Playwright hidden、
+  资料弹层滚动恢复被 Spectrum autofocus 盖掉。产品侧修边界盒模型 + FilmDialog 多帧恢复；E2E helpers 排除 `iffday.*`
+  并补 `scheduleHeading` / `openViewingPanel`。desktop-chromium 先前红簇 **53 passed**。
 - **IFFDAY 账号体系 + 前后端分仓(2026-09-13,`cbead95` / `8a54eca` / `26b21e0`)**:仓库从「纯静态单页」改为
   **npm workspaces 三包** —— `apps/web`(React + Router + Spectrum S2)、`apps/api`(Hono + Drizzle,既是公开入口
   又是 `/api/*` 服务)、`packages/contracts`(前后端共享 Zod 契约 + canonical JSON)。**接入 IFFDAY OIDC**
