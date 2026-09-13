@@ -207,6 +207,11 @@ node scripts/check-repo.mjs --self-test   # 自检:证明检查器本身没坏
 
 - 引入任何新依赖前**必须先量化**:gzip 增量 + 实际调用点。成本 > 收益即否决(范例:tailwind-merge 实测 +9.7KB / 0 调用点 → 已撤)。
 - 优先自研 / 平台能力,保持「零重依赖」。
+- **升级走 Dependabot**(`.github/dependabot.yml`):按月跑、按 `react` / `tooling` 分组、
+  提交信息 `build(<dep>): …`。一次只合一组,合并前必须让 CI 绿 ——
+  `package-lock.json` 命中 `docs/TEST-MAP.md` 的 `allOn`,所以这类 PR 会跑全量 E2E。
+  **不要手动「顺手升一下」** pin 死的版本(`wrangler` / `@playwright/test` 等):
+  那样既没有 changelog 上下文,也绕过了分组升级的节奏。
 
 ### 5.4 样式(Tailwind v4)
 
