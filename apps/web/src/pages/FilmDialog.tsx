@@ -39,10 +39,19 @@ export function FilmDialog() {
       if (dialog) dialog.scrollTop = saved?.dialog ?? 0;
     };
     restore();
-    // Dialog autofocus runs during mounting; restore after it has placed focus.
-    const frame = requestAnimationFrame(restore);
+    // Spectrum 会在挂载后异步 focus 标题，单次 rAF 常被盖掉；连跑两帧 + 微延迟再对齐。
+    const frames: number[] = [];
+    let timer = 0;
+    frames.push(requestAnimationFrame(() => {
+      restore();
+      frames.push(requestAnimationFrame(() => {
+        restore();
+        timer = window.setTimeout(restore, 50);
+      }));
+    }));
     return () => {
-      cancelAnimationFrame(frame);
+      for (const frame of frames) cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
       readingPositions.current.set(location.key, {
         content: content.scrollTop,
         dialog: dialog?.scrollTop ?? 0,

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-import { keyOf, legacyData, openExport, ready, seed, storage } from "./helpers";
+import { keyOf, legacyData, openExport, openViewingPanel, ready, seed, storage } from "./helpers";
 
 test("search, select a film, add a screening, edit notes, refresh and remove", async ({
   page,
@@ -27,8 +27,7 @@ test("search, select a film, add a screening, edit notes, refresh and remove", a
   await expect(
     page.getByRole("textbox", { name: "彼此的日夜 备注", exact: true }),
   ).toHaveValue("与朋友一起");
-  if (!await page.locator("#viewing-panel").count()) await page.getByRole("button", {name: "打开我的观影", exact: true}).click();
-  await page.getByRole("link", { name: /^我的行程/ }).click();
+  await page.getByRole("navigation", { name: "主要导航" }).getByRole("link", { name: "我的行程", exact: true }).click();
   await expect(
     page
       .getByRole("region", { name: "我的行程", exact: true })
@@ -291,13 +290,15 @@ test("desktop zoom and floating panel preserve preferences; mobile never overflo
   });
   await ready(page, "/library?date=2026-10-07");
   if (!isMobile) {
-    await page.getByRole("button", {name: "打开我的观影", exact: true}).click();
+    // /library 整页隐藏 FAB：回排片表再开浮层
+    await page.getByRole("link", { name: "排片表", exact: true }).click();
+    await openViewingPanel(page);
     expect((await storage(page))["biff.pickerw.v1"]).toBe("640");
     expect((await page.locator("#viewing-panel").boundingBox())!.width).toBe(640);
     await page.getByRole("button", {name: "收起选片面板", exact: true}).click();
-    await page.getByRole("button", { name: "放大排片表", exact: true }).click();
+    await page.getByRole("group", { name: "排片大小" }).getByRole("button", { name: "大", exact: true }).click();
     expect(JSON.parse((await storage(page))["biff.settings.v1"]).zoom).toBe(
-      0.9,
+      0.75,
     );
     await page
       .getByRole("button", { name: "筛选 10:00 时段", exact: true })

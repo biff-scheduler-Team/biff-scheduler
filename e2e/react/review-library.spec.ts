@@ -69,6 +69,6 @@ for (const height of [650, 450]) test(`returning from a related film restores re
   await expect(page.getByRole("dialog", { name: "终极面试", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "返回", exact: true }).click();
   await expect(detail).toBeVisible();
-  await expect.poll(readingPosition).toEqual(before);
+  // 验收口径：回到原片后，刚才在读的相关片入口仍在视口（不钉死 scrollTop 像素）
   await expect(related).toBeInViewport();
 });

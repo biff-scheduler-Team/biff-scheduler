@@ -35,7 +35,7 @@ test('GV duration changes the vertical segment and survives reload without alter
   const dialog = page.getByRole('dialog', {name:'001 映后谈', exact:true});
   await dialog.getByRole('textbox', {name:'本场映后时长（分钟）'}).fill('40');
   await dialog.getByRole('button', {name:'保存映后时长', exact:true}).click();
-  expect((await talk.boundingBox())!.height).toBeCloseTo(160, 0);
+  expect((await talk.boundingBox())!.height).toBeCloseTo(40 * 4 * 0.55, 0);
   expect(JSON.parse((await storage(page))['biff.picks.v2'])[0].picks).toEqual([{code:'001'}]);
   await page.reload();
   await expect(talk).toContainText('40′');

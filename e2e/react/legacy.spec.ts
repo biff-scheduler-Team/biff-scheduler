@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { legacyData, ready, seed, storage, keyOf } from "./helpers";
+import { legacyData, openViewingPanel, ready, seed, storage, keyOf } from "./helpers";
 
 test("legacy entry is an independent old app and reads the same localStorage", async ({
   page,
@@ -21,7 +21,7 @@ test("legacy entry is an independent old app and reads the same localStorage", a
     ),
   ).toBeUndefined();
   expect(await storage(page)).toEqual(initial);
-  await page.getByRole("link", { name: "返回新版", exact: true }).click();
+  await page.getByRole("link", { name: "体验新版", exact: true }).click();
   await expect(
     page.getByRole("navigation", { name: "主要导航" }),
   ).toBeVisible();
@@ -50,11 +50,11 @@ test("the bare legacy URL redirects to the original app and legacy picks appear 
       ),
     )
     .toContain("001");
-  await page.getByRole("link", { name: "返回新版", exact: true }).click();
+  await page.getByRole("link", { name: "体验新版", exact: true }).click();
   await expect(
     page.getByRole("navigation", { name: "主要导航" }),
   ).toBeVisible();
-  if (!await page.locator("#viewing-panel").count()) await page.getByRole("button", {name: "打开我的观影", exact: true}).click();
+  await openViewingPanel(page);
   await page.locator("#viewing-panel").getByRole("link", { name: /^我的行程/ }).click();
   await expect(
     page
