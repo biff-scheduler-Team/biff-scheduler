@@ -94,10 +94,13 @@ export async function seed(page: Page, data: Record<string, string>) {
     sessionStorage.setItem("e2e-seeded", "yes");
   }, data);
 }
+/** 应用数据契约快照：排除 iffday.workspace.* 账号缓存（AGENTS.md §5）。 */
 export async function storage(page: Page): Promise<Record<string, string>> {
   return page.evaluate(() =>
     Object.fromEntries(
-      Object.keys(localStorage).map((k) => [k, localStorage.getItem(k)!]),
+      Object.keys(localStorage)
+        .filter((k) => !k.startsWith("iffday."))
+        .map((k) => [k, localStorage.getItem(k)!]),
     ),
   );
 }
@@ -107,6 +110,26 @@ export async function ready(page: Page, path = "/schedule") {
     page.getByRole("navigation", { name: "主要导航" }),
   ).toBeVisible();
 }
+/** 排片表页标题含年月（「排片表 2026 年 10 月」）。 */
+export function scheduleHeading(page: Page) {
+  return page.getByRole("heading", { name: /^排片表/ });
+}
+/** 打开「我的观影」浮层；整页路由上 FAB 被隐藏时先回排片表。 */
+export async function openViewingPanel(page: Page) {
+  if (await page.locator("#viewing-panel").count()) return;
+  const fab = page.getByRole("button", { name: "打开我的观影", exact: true });
+  if (await fab.isVisible()) {
+    await fab.click();
+    return;
+  }
+  await page.getByRole("link", { name: "排片表", exact: true }).click();
+  await fab.click();
+}
+/** 纵向排片默认档 zoom（与 SchedulePage SIZE_OPTIONS「默认」一致）。 */
+export const DEFAULT_SCHEDULE_ZOOM = 0.55;
+export const VERTICAL_PX_PER_MIN = 4;
+export const hourTickPx = (zoom = DEFAULT_SCHEDULE_ZOOM) =>
+  60 * VERTICAL_PX_PER_MIN * zoom;
 export async function openExport(page: Page) {
   await page.getByRole("button", { name: "导出与分享", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "导出与分享" })).toBeVisible();

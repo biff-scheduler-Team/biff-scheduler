@@ -59,7 +59,7 @@ test("legacy and rewrite remain switchable offline on the same origin", async ({
     await page.goto(`${baseURL}/legacy`);
     await expect(page.locator("#topbar")).toBeVisible();
     await expect(page.locator("#grid-scroll")).toBeVisible();
-    await page.getByRole("link", { name: "返回新版", exact: true }).click();
+    await page.getByRole("link", { name: "体验新版", exact: true }).click();
     await expect(
       page.getByRole("navigation", { name: "主要导航" }),
     ).toBeVisible();
