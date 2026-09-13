@@ -5,7 +5,8 @@
 > API `biff-scheduler` + 静态资源 `biff-scheduler-web`)+ React / Router / Spectrum S2 + Vite + TS
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-13(**IFFDAY 账号体系 + 前后端分仓**,见 §0 首条);
+> 最后更新:2026-09-14(**桌面分栏 + 账号一体 + 想看人数**,见 §0 首条);
+> 更早 = 2026-09-13(**IFFDAY 账号体系 + 前后端分仓**);
 > 上一轮 = 把「靠人记住的规范」改成「机器能挡的闸门」(CI / 钩子 / check:repo / api 单测 / TEST-MAP / legacy 计划 / Dependabot);
 > 更早 = 规范新增「§9 与 AI 协作的约定」(需求怎么提 / AI 交什么);
 > 更早 = 「在 Google 地图打开 ↗」贴住影院地名(去掉行尾靠右);
@@ -21,9 +22,15 @@
 
 ---
 
-## 0. 当前状态快照(2026-09-13)
+## 0. 当前状态快照(2026-09-14)
 
 **✅ 已完成(已部署,线上可访问)**
+- **双前端账号一体 + 桌面 1:3 分栏 + 想看人数加权(2026-09-14,`PLAN-20260914003600`)**:Legacy 薄登录/同步桥（共享 cookie + `biff.*` + sync 核心）；
+  新版桌面 ≥1100 选片/行程:排片 = 1:3 挤压分栏、工作台 max-width 1600px；D1 `film_want_*` +
+  `GET/POST /api/stats/want-*`（登录 1.0 / 匿名 0.75 film-key ping，`Math.round` 展示于影片库卡与详情）。
+  ⚠ 本机 wrangler 若非 `62cbe67b…` 账号，**不改 account_id**；remote D1 migrate 随 main 部署。
+  分支 E2E 收口（`PLAN-20260914023243`）：恢复「体验新版」、面板宽改 1:3 比例断言、countdown `pauseAt`；
+  本地 desktop-chromium 指定 8 个 spec **32 passed**。
 - **main E2E 大面积失败修复(2026-09-13,`PLAN-20260913225149`)**:CI run `34757140825` 门禁绿、E2E 64 红。
   根因是测试未跟 UI 演进（标题含年月、`iffday.workspace.*` guest 缓存、`?quick=1` 浮层、三档排片大小 0.45/0.55/0.75、
   日轴裁剪、GV「未选→加入并参加」、legacy「体验新版」），外加边界标签 `height:0` 对人可见但对 Playwright hidden、

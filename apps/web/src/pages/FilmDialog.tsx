@@ -1,5 +1,5 @@
 import {ScreeningMemberList} from "../components/ScreeningMemberList";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 import {
   ActionButton,
@@ -19,6 +19,7 @@ import { indexFestival, relatedOf } from "../related";
 import { KIND_LABEL, programOf, formatKrw } from "../extras";
 import { store } from "../state";
 import { doubanScoreOf, filmNodeKey, fmtVoters } from "../util";
+import { loadWantCounts, onWantCountsChange, peekWantCounts } from "../want-counts";
 
 export function FilmDialog() {
   const { filmKey = "" } = useParams();
@@ -68,6 +69,13 @@ export function FilmDialog() {
       });
     }
   };
+  const [wantCounts, setWantCounts] = useState(peekWantCounts);
+  useEffect(() => {
+    void loadWantCounts().then(setWantCounts);
+    const stop = onWantCountsChange(() => setWantCounts({ ...peekWantCounts() }));
+    return () => { stop(); };
+  }, []);
+  const wantCount = wantCounts[filmKey] ?? 0;
   const film = filmByKey.get(filmKey);
   const anchor = filmDetailAnchor(film, new URLSearchParams(location.search).get(FILM_CODE_PARAM));
   const mapping = anchor
@@ -102,6 +110,11 @@ export function FilmDialog() {
                         {score.count
                           ? `，${fmtVoters(score.count)} 人评分`
                           : ""}
+                      </p>
+                    )}
+                    {wantCount > 0 && (
+                      <p className="want-count" data-want-count={wantCount}>
+                        想看 <strong>{wantCount}</strong> 人
                       </p>
                     )}
                     <div className="inline-actions">
