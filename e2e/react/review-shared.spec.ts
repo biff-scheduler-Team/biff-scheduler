@@ -13,7 +13,7 @@ test("hour selection highlights only same-day agenda cards using the official sl
     "biff.picks.v2": picks(["001", "008", "011"]),
     "biff.gvtalk.v1": '{"008":false}',
   });
-  await ready(page, "/agenda?date=2026-10-07");
+  await ready(page, "/agenda?date=2026-10-07&quick=1");
   await page
     .getByRole("button", { name: "筛选 11:00 时段", exact: true })
     .click();

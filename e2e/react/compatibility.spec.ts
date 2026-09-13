@@ -5,7 +5,9 @@ import {
   legacyData,
   legacyRead,
   openExport,
+  openViewingPanel,
   ready,
+  scheduleHeading,
   seed,
   storage,
 } from "./helpers";
@@ -15,7 +17,8 @@ test("all legacy storage keys survive initial load, navigation, and reload byte 
   isMobile,
 }) => {
   await seed(page, legacyData);
-  await ready(page, "/agenda?date=2026-10-07");
+  // quick=1：浮层打开时才渲染 #viewing-panel（整页 /agenda 无面板）
+  await ready(page, "/agenda?date=2026-10-07&quick=1");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(
     page.getByRole("heading", { name: "我的行程", exact: true }),
@@ -40,9 +43,7 @@ test("all legacy storage keys survive initial load, navigation, and reload byte 
   ).toBeVisible();
   await page.getByRole("link", { name: "排片表", exact: true }).click();
   await page.reload();
-  await expect(
-    page.getByRole("heading", { name: "排片表", exact: true }),
-  ).toBeVisible();
+  await expect(scheduleHeading(page)).toBeVisible();
   expect(await storage(page)).toEqual(legacyData);
 });
 
@@ -56,8 +57,8 @@ test("new UI writes remain readable by the original implementation", async ({
     exact: true,
   });
   await note.fill("React 改过的备注\n兼容旧版本");
-  if (!await page.locator("#viewing-panel").count()) await page.getByRole("button", {name: "打开我的观影", exact: true}).click();
-  await page.getByRole("link", { name: /^我的行程/ }).click();
+  // /picks 整页时 FAB 隐藏：用主导航进行程，不依赖浮层
+  await page.getByRole("navigation", { name: "主要导航" }).getByRole("link", { name: "我的行程", exact: true }).click();
   await page
     .getByRole("button", { name: "提高 008 顺位", exact: true })
     .click();

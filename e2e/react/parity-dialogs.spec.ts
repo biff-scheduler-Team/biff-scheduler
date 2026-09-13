@@ -40,7 +40,7 @@ test("cancel discards settings drafts and reopening reads current preferences", 
     await appearance.getByRole("button", { name: /外观/ }).click();
     await page.getByRole("option", { name: "暗色", exact: true }).click();
     await appearance.getByRole("button", { name: "保存设置", exact: true }).click();
-    await page.getByRole("button", { name: "放大排片表", exact: true }).click();
+    await page.getByRole("group", { name: "排片大小" }).getByRole("button", { name: "大", exact: true }).click();
   }
   await page.getByRole("button", { name: "设置", exact: true }).click();
   dialog = page.getByRole("dialog", { name: "设置", exact: true });
@@ -52,7 +52,7 @@ test("cancel discards settings drafts and reopening reads current preferences", 
   await dialog.getByRole("button", { name: "保存设置", exact: true }).click();
   expect(JSON.parse((await storage(page))["biff.settings.v1"])).toEqual({
     ...settings,
-    ...(!isMobile ? { theme: "dark", zoom: 0.9 } : {}),
+    ...(!isMobile ? { theme: "dark", zoom: 0.75 } : {}),
   });
 });
 

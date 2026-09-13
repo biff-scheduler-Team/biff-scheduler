@@ -18,11 +18,14 @@ test.describe("schedule interaction parity", () => {
   }) => {
     await ready(page);
     const talk = page.locator('[data-grid-slot="001"] .gantt-talk');
+    const film = page.locator('[data-grid-code="001"]');
+    // 未选：点映后 = 加入并参加
     await talk.click();
-    await expect(page.locator('[data-grid-code="001"]')).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    await expect(film).toHaveAttribute("aria-pressed", "true");
+    await expect(talk).toHaveAttribute("aria-pressed", "true");
+    // 已选：再点只关映后，保留正片
+    await talk.click();
+    await expect(film).toHaveAttribute("aria-pressed", "true");
     await expect(talk).toHaveAttribute("aria-pressed", "false");
     expect(JSON.parse((await storage(page))["biff.gvtalk.v1"])["001"]).toBe(
       false,
@@ -137,9 +140,9 @@ test.describe("schedule interaction parity", () => {
       }, modifier);
       expect(prevented).toBe(true);
     }
-    await expect(page.getByLabel("缩放比例", { exact: true })).toHaveText(
-      "70%",
-    );
+    await expect(
+      page.getByRole("group", { name: "排片大小" }).getByRole("button", { name: "小", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
   });
 
   test("selecting a screening keeps the panel closed and the screening visible", async ({
@@ -170,7 +173,7 @@ test.describe("schedule interaction parity", () => {
     await page.setViewportSize({ width: 800, height: 1000 });
     await ready(page, "/schedule?date=2026-10-07");
     const grid = page.locator(".gantt-scroll");
-    await page.getByRole("button", { name: "适应", exact: true }).click();
+    // React 排片表已无「适应」按钮：窄视口下仍应可横向滚动影厅列
     await expect
       .poll(() => grid.evaluate((el) => el.scrollWidth > el.clientWidth))
       .toBe(true);
