@@ -92,6 +92,9 @@
   只写字面量类名(禁止拼 `bg-${p}`);`@utility` 权重低于 `hover:`,JS 状态类需 `!important`;暗色只覆盖 token。
 - **React**:受控 / 无状态优先,禁止组件内藏状态副本;弹层 `role=dialog` + focus trap + 焦点归还;
   断点 768 / 1099 / 720 的 JS 与 CSS 值逐字一致;「常态淡显 hover 显现」的控件挂 `ui-icon-btn`。
+- **`legacy/` 是只读回退件**:只接 P0 修复(数据丢失 / 完全打不开),不接新功能;
+  不得引入新版 React 组件 / 样式;改它必须同步更新 `legacy/source-manifest.json`
+  (否则 `apps/web/tests/legacy-snapshot.test.ts` 会红)。冻结条款与退役判据 / 步骤见 `docs/legacy-retirement.md`。
 - **注释一律中文,写「为什么」**。
 - **Python 离线管线**:PEP8、4 空格、每行 ≤ 120 字符、`with` 管资源、禁止裸 `except:`、写 docstring 与类型提示;
   产物检入仓库,密钥只读环境变量;遇 API 风控必须停轮保进度,不得把失败写成 `miss`。
