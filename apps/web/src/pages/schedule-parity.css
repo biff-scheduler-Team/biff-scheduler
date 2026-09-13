@@ -221,7 +221,9 @@
 .gantt-bilingual-title > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
 
 .vertical-schedule .gantt-time { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
-.vertical-schedule .gantt-film > img[data-official-still="true"] { width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; }
+/* 官方剧照(16:9)封顶在一个「基准影厅列」的宽度(260px × 缩放):影厅列窄时(常见日子)仍是 100% 满宽、
+   外观不变;影厅列被拉宽时(见 vertical-schedule.ts 的 VENUE_COLUMN_STRETCH_LIMIT)剧照不再跟着放大。 */
+.vertical-schedule .gantt-film > img[data-official-still="true"] { width: min(100%, calc(260px * var(--gantt-zoom))); height: auto; aspect-ratio: 16 / 9; object-fit: cover; }
 .schedule-boundary { margin: 8px 0; padding-left: 84px; color: var(--muted); font-size: 11px; }
 
 .vertical-schedule .schedule-boundary {
