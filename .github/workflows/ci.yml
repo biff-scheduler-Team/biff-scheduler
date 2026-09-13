@@ -31,7 +31,7 @@ jobs:
     name: 门禁(check:repo · check:test-map · typecheck · lint · 单测)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           # 与本地一致(v24.x);tests/schema.test.ts 依赖 node:sqlite
@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: gate
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # affected-specs 要 diff 出 base 分支,浅克隆拿不到 merge-base
           fetch-depth: 0
