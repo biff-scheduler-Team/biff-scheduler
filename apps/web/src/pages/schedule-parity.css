@@ -227,14 +227,16 @@
 .schedule-boundary { margin: 8px 0; padding-left: 84px; color: var(--muted); font-size: 11px; }
 
 .vertical-schedule .schedule-boundary {
+  /* 非零高度：文案对人可见，也对 a11y / Playwright toBeVisible 可见；不用 height:0 + 溢出伪可见 */
   position: sticky;
   z-index: 4;
-  height: 0;
+  height: 16px;
   margin: 0;
   padding: 0;
   text-align: center;
   line-height: 16px;
   pointer-events: none;
+  overflow: visible;
 }
 .vertical-schedule .schedule-boundary-before { top: auto; transform: translateY(1px); }
 .vertical-schedule .schedule-boundary-after { top: auto; }

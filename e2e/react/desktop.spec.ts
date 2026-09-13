@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { keyOf, ready, seed, storage } from "./helpers";
+import { hourTickPx, keyOf, ready, seed, storage } from "./helpers";
 
 test("hover links a conflict group across the agenda and grid; dragging persists its order", async ({
   page,
@@ -13,7 +13,7 @@ test("hover links a conflict group across the agenda and grid; dragging persists
       })),
     ),
   });
-  await ready(page, "/agenda?date=2026-10-07");
+  await ready(page, "/agenda?date=2026-10-07&quick=1");
   const first = page
     .getByRole("region", { name: "我的行程", exact: true })
     .locator('[data-screening="008"]');
@@ -43,8 +43,9 @@ test("time grows downward and screenings at the same time align across venues", 
   await ready(page, "/schedule?date=2026-10-07");
   const nine = await page.getByRole("button", {name: "筛选 09:00 时段", exact: true}).boundingBox();
   const ten = await page.getByRole("button", {name: "筛选 10:00 时段", exact: true}).boundingBox();
-  expect(ten!.y - nine!.y).toBeCloseTo(240, 0);
+  expect(ten!.y - nine!.y).toBeCloseTo(hourTickPx(), 0);
   expect(ten!.x).toEqual(nine!.x);
   const film = await page.locator('[data-grid-code="008"]').boundingBox();
-  expect(film!.height).toBeCloseTo(135 * 4 - 6, 0);
+  // 正片 135′ × 4px/min × 默认 zoom − 卡片内边距
+  expect(film!.height).toBeCloseTo(135 * 4 * 0.55 - 6, 0);
 });
