@@ -21,16 +21,22 @@
 4. **提交推送**:Conventional Commits,见 §4。
 5. **回写文档**:`PLAN.md` §0/§6/§7;口径变更同步 `docs/CONVENTIONS.md`。
 
-## 2. Push 前门禁(红线:未全绿禁止 commit / push)
+## 2. Push 前门禁(红线:`npm run verify` 未绿禁止 commit / push)
 
-| 场景 | 必跑 |
-|---|---|
-| 任何改动 | `npm run verify`(= typecheck → lint → 单测 → vite build) |
-| 改了 UI / 交互 / 样式 / 路由 | `npm run verify:full`(= 上 + Playwright 三浏览器) |
-| 改了 `tools/*.py` | 跑一遍脚本自检,输出须与基线一致或显式说明差异 |
-| 改了 `apps/web/public/*.json` | `npm run verify` |
+门禁**按改动范围分档**:日常只跑必跑档(1–3 分钟);全量三浏览器 E2E 是**发布前体检**,不要求每次 push 都跑。
+
+| 档 | 场景 | 命令 | 耗时 |
+|---|---|---|---|
+| 必跑(每次 push) | 任何改动 | `npm run verify`(= typecheck → lint → 单测 → vite build) | 1–3 min |
+| 按需(改了 UI / 交互 / 样式 / 路由) | 只跑**受影响的 spec**、**单浏览器** | `npx playwright test -c playwright.react.config.ts --project=desktop-chromium e2e/react/<受影响的>.spec.ts` | 10–30 s |
+| 发布前(全量) | 大范围改动 / 动了共享口径(`row.ts` `util.ts` `ui.ts` `chips.ts` `data.ts`) / 对外发布 | `npm run verify:full`(= 上 + Playwright 三浏览器) | 5–9 min |
+| 改了 `tools/*.py` | — | 跑一遍脚本自检,输出须与基线一致或显式说明差异 | — |
+| 改了 `apps/web/public/*.json` | — | `npm run verify` | — |
 
 门禁失败先定位再改,禁止「重跑一次看运气」;验证结果必须**贴出证据**(测试计数 / 断言汇总)。
+
+- **排查 E2E 失败只跑单文件 + 单浏览器**;全量三浏览器只在确认修复后跑**一次**,不要拿全量重跑做二分。
+- E2E 跑完若 `31029` 端口仍被占用,说明 `webServer` 未优雅退出 —— 修配置,不要把 `kill -9` 当常规手段。
 
 ## 3. 测试要求
 
@@ -75,7 +81,7 @@
 
 ## 8. 红线(违反即返工)
 
-1. 门禁未绿就 commit / push。2. 无 PLAN 直接动手。3. 修 bug 不带回归测试。4. 为测试变绿改实现。
+1. `npm run verify` 未绿就 commit / push。2. 无 PLAN 直接动手。3. 修 bug 不带回归测试。4. 为测试变绿改实现。
 5. 同一口径写第二份实现。6. 改 `biff.*` 结构不带迁移 / 不删旧 key。7. 把用户片单写回云端。8. 对小时取模。
 9. 动态拼 Tailwind 类名 / `text-[Npx]`。10. 未量化就引新依赖。11. 提交临时文件 / `dist/` / 密钥。
 12. `wrangler pages deploy` 直传。13. `push --force` 到 `main`。14. 为「看效果」反复起 dev server。

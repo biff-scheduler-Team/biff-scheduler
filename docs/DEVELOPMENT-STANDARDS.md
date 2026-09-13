@@ -23,7 +23,7 @@
 |---|---|---|
 | 1 | **写 PLAN** | `docs/plans/PLAN-<YYYYMMDDHHMMSS>.md` |
 | 2 | **实现** | 代码 + 单测 / E2E |
-| 3 | **验证** | `npm run build`(必)+ `npm run test:e2e:react`(改 UI 必) |
+| 3 | **验证** | `npm run verify`(必)+ 受影响 spec 的单浏览器 E2E(改 UI 必,见 §2) |
 | 4 | **提交推送** | Conventional Commits → `git push origin main` |
 | 5 | **回写文档** | `PLAN.md` §0/§6/§7(状态)、本文件 / `CONVENTIONS.md`(口径) |
 
@@ -42,22 +42,28 @@
 
 ---
 
-## 2. Push 前门禁(前端 push check)
+## 2. Push 前门禁
 
-> **红线**:门禁未全绿,**禁止** `git commit` / `git push`。不接受「先推上去让自动构建兜」。
+> **红线**:`npm run verify` 未绿,**禁止** `git commit` / `git push`。不接受「先推上去让自动构建兜」。
+>
+> 门禁**按改动范围分档**:日常改动只跑必跑档(1–3 分钟);全量三浏览器 E2E 属于**发布前体检**,
+> 不要求每次 push 都跑 —— 它是上线前的把关,不是每次提交的仪式。
 
-| 场景 | 必跑命令 | 内容 |
-|---|---|---|
-| **任何改动** | `npm run verify` | = `npm run build` = `typecheck` → `lint` → 单测 → `vite build` |
-| **改了 UI / 交互 / 样式 / 路由** | `npm run verify:full` | = 上面 + `test:e2e:react`(Playwright:desktop-chromium / mobile-chromium / mobile-webkit) |
-| **改了离线管线(`tools/*.py`)** | `python3 tools/<script>.py --help` + 跑一遍自检 | 自检输出必须与基线数字一致或显式说明差异 |
-| **改了数据产物(`apps/web/public/*.json`)** | `npm run verify` | 产物必须能被 `data.ts` 正常加载(单测 + 页面不报错) |
+| 档 | 场景 | 命令 | 耗时 |
+|---|---|---|---|
+| **必跑(每次 push)** | 任何改动 | `npm run verify` | 1–3 min |
+| **按需(改了 UI / 交互 / 样式 / 路由)** | 只跑**受影响的 spec**、**单浏览器** | `npx playwright test -c playwright.react.config.ts --project=desktop-chromium e2e/react/<受影响的>.spec.ts` | 10–30 s |
+| **发布前(全量)** | 大范围改动 / 动了共享口径(`row.ts` `util.ts` `ui.ts` `chips.ts` `data.ts`) / 对外发布 | `npm run verify:full` | 5–9 min |
+| **改了离线管线(`tools/*.py`)** | — | `python3 tools/<script>.py --help` + 跑一遍自检 | 自检输出须与基线数字一致或显式说明差异 |
+| **改了数据产物(`apps/web/public/*.json`)** | — | `npm run verify` | 产物必须能被 `data.ts` 正常加载(单测 + 页面不报错) |
 
 补充纪律:
 
-- **单测是构建门禁的一部分**,不是可选项;新增/修改纯函数口径 → 必须同步改对应 `*.test.ts`。
+- **单测是 `verify` 的一部分**,不是可选项;新增/修改纯函数口径 → 必须同步改对应 `*.test.ts`。
 - 门禁失败时**先定位再改**,禁止「重跑一次看运气」。
-- 时间/资源紧张时也不降级门禁 —— 宁可缩小提交范围。
+- **排查 E2E 失败只跑单文件 + 单浏览器**;全量三浏览器只在确认修复后跑**一次**,不要拿全量重跑做二分。
+- E2E 跑完若 `31029` 端口仍被占用,说明 `webServer` 未优雅退出 —— 属配置问题,修配置,不要把 `kill -9` 当常规手段。
+- 时间/资源紧张时也不降级**必跑档** —— 宁可缩小提交范围。
 
 ---
 
@@ -180,7 +186,7 @@
 
 ## 8. 禁止清单(红线)
 
-1. 门禁未绿就 commit / push。
+1. `npm run verify` 未绿就 commit / push。
 2. 无 PLAN 直接动手(除纯错别字 / 单行修复)。
 3. 修 bug 不带回归测试。
 4. 为了测试变绿而改实现(掩盖真实行为)。
@@ -203,3 +209,4 @@
 | 版本 | 日期 | 内容 |
 |---|---|---|
 | v1 | 2026-09-13 | 首版:五步工作流、push 门禁、测试分层、提交格式、前端/数据/样式/React 规范、部署与并行协作、红线 15 条 |
+| v2 | 2026-09-13 | 门禁分档:全量三浏览器 E2E 由「每次 push 必跑」降级为「发布前按需跑」;日常 = `verify` + 受影响 spec 单浏览器;补 webServer 优雅退出纪律 |
