@@ -424,23 +424,25 @@ img {
   margin: 7px 0;
 }
 /* 片名 + 豆瓣外链同一行(2026-09-13,PLAN-20260913184357):
-   入口贴片名、不额外占行;`baseline` 让 12px 的外链与标题文字坐在同一条基线上。 */
-.screening-title {
+   入口贴片名、不额外占行;`baseline` 让 12px 的外链与标题文字坐在同一条基线上。
+   「我的行程」的场次卡(片名 = h3)与影片卡的片名行(h2)共用这一对类,
+   别再各写一份 —— 外链视觉只允许一处实现。 */
+.title-row {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
   gap: 2px 8px;
 }
-/* 外跳指引:与本卡「在 Google 地图打开 ↗」同一套视觉(品牌色 / 无下划线 / hover 下划线),
+/* 外跳指引:与卡片里「在 Google 地图打开 ↗」同一套视觉(品牌色 / 无下划线 / hover 下划线),
    让用户一眼看出「点了会离开本站」。 */
-.screening-douban {
+.douban-jump {
   font-size: 12px;
   font-weight: 500;
   color: var(--brand);
   text-decoration: none;
   white-space: nowrap;
 }
-.screening-douban:hover {
+.douban-jump:hover {
   text-decoration: underline;
 }
 .screening-meta {

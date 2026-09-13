@@ -17,7 +17,7 @@ import { filmInUnit, libraryUnits, searchFilm, type FilmNode } from "../app/mode
 import { setFilmExpanded, useLibraryExpansion } from "../app/library-state";
 import { hasActiveFilter, LS_FILTERS_LIB, matchesFilters } from "../filters";
 import { addPickFilm, removePick, setPickNote, store } from "../state";
-import { dateInfo, doubanScoreOf, unitLabel } from "../util";
+import { dateInfo, doubanScoreOf, doubanUrlOf, unitLabel } from "../util";
 
 function FilmCard({
   film,
@@ -38,6 +38,9 @@ function FilmCard({
   const navigate = useNavigate();
   const entry = store.picks.get(film.key);
   const score = doubanScoreOf(film.cats[0], film.map);
+  // 豆瓣映射:优先这个片节点的映射(排期片 = 场次 code,目录片 = `f###`),
+  // 再退回目录条目 id —— 与改版前影片卡操作行里那条外链的取值链逐字一致。
+  const map = film.map ?? store.mappings.get(film.cats[0]?.id ?? "");
   const gone = entry?.picks.filter((p) => !film.shows.some((s) => s.code === p.code)).length ?? 0;
   return (
     <article className="film-card" data-film-key={film.key} tabIndex={-1}>
@@ -57,7 +60,22 @@ function FilmCard({
               <span className="score">豆瓣 {score.rating.toFixed(1)}</span>
             )}
           </div>
-          <h2>{film.zh}</h2>
+          <div className="title-row">
+            <h2>{film.zh}</h2>
+            {/* 片名旁的豆瓣外跳(2026-09-13,PLAN-20260913184357):用户要的是「片名后面能直接点」,
+                放在 <h2> **之外**做兄弟 —— 塞进标题会把标题的可访问名变成「片名 豆瓣 ↗」,
+                读屏与 `getByRole("heading", { name, exact: true })` 都会跟着变吵。
+                视觉与「我的行程」场次卡的同一个入口共用 `.douban-jump`(只此一处实现)。 */}
+            <a
+              className="douban-jump"
+              href={doubanUrlOf(film, map)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={map?.douban_url ? "在豆瓣打开这部片的条目页" : "未匹配豆瓣条目，将按片名搜索"}
+            >
+              豆瓣 ↗
+            </a>
+          </div>
           {film.en !== film.zh && <p className="film-en">{film.en}</p>}
           {film.names.length > 0 && <p className="muted">{film.names.join(" / ")}</p>}
           {film.meta && (
@@ -131,8 +149,9 @@ function FilmCard({
         >
           资料
         </ActionButton>
-        {/* 豆瓣入口已于 2026-09-13 从这张卡移走(PLAN-20260913184357):影片卡是「挑片」的场景,
-            而查影评 / 看简介发生在「我的行程」——入口挪到场次卡的片名后面(见 ScreeningCard)。 */}
+        {/* 豆瓣入口不在这排按钮里(2026-09-13,PLAN-20260913184357):它挪到了上面的片名行
+            (`.title-row` 里那个 `豆瓣 ↗`)。这排只留「对本卡做动作」的按钮,
+            外跳链接夹在中间会显得像没做完。 */}
       </div>
       {pickedView && entry && (
         <div className="film-note">
