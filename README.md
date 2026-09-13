@@ -310,6 +310,8 @@ npm run typecheck           # tsc --noEmit
 npm run lint                # eslint src tests
 npm run test                # vitest run（纯函数口径单测）
 npm run build               # typecheck + lint + test + vite build
+npm run verify              # push 前必跑（= build，全绿才可提交）
+npm run verify:full         # 改了 UI / 交互必跑（= verify + Playwright 三浏览器）
 npm run preview             # 构建 + wrangler dev（前后端 Worker）
 
 # 部署 = git push（唯一常规路径）
@@ -325,7 +327,12 @@ npm run deploy              # 构建 + wrangler deploy
 > 不要再 `wrangler pages deploy` 直传 —— 传上去也没有人访问（排查方式：Pages 的 HTML 响应带
 > `access-control-allow-origin` / `referrer-policy` / `content-type: text/html; charset=utf-8` 三个默认头，Workers 静态资源没有）。
 
-**改代码前建议先读**：[`docs/CONVENTIONS.md`](./docs/CONVENTIONS.md)（数据契约 / 弹层交互 / 渲染约定 / 基础设施踩坑）与 [`PLAN.md`](./PLAN.md)（当前状态与决策记录）。
+**改代码前必须先读**：
+- [`AGENTS.md`](./AGENTS.md) —— **开发规范（强制）速查**：五步工作流（先 PLAN → 写测试 → 跑门禁 → 推送）、push 前门禁、提交格式、代码 / 数据 / 样式 / 部署 / 并行协作规范与 15 条红线。
+- [`docs/DEVELOPMENT-STANDARDS.md`](./docs/DEVELOPMENT-STANDARDS.md) —— 规范完整版（含示例与论证）。
+- [`docs/CONVENTIONS.md`](./docs/CONVENTIONS.md)（数据契约 / 弹层交互 / 渲染约定 / 基础设施踩坑）与 [`PLAN.md`](./PLAN.md)（当前状态与决策记录）。
+
+> AI 助手会自动加载 `.codebuddy/rules/biff-development-standards/RULE.mdc`（`alwaysApply`，内容与 `AGENTS.md` 等价）。
 
 ---
 
