@@ -311,6 +311,30 @@ test("agenda cards carry the venue code, place details and a Google Maps entry",
   await expect(card.locator(".screening-meta").first()).not.toContainText("BCC Cinema 1");
 });
 
+test("the Google Maps entry hugs the place name instead of being pushed to the row end", async ({
+  page,
+}) => {
+  await seed(page, { "biff.picks.v2": picks(["008"]) });
+  await ready(page, "/agenda");
+  const head = page.locator('[data-screening="008"] .screening-venue-head');
+  await expect(head).toHaveCount(1);
+  // 回归(PLAN-20260913192048):入口原本带 `margin-left: auto`,被顶到行右端,
+  // 与左侧地名之间隔出上百像素空白。断言它紧跟在前一个兄弟(地名 span)之后 ——
+  // 只剩 flex 的 8px 列间距,且二者落在同一行。
+  const metrics = await head.evaluate((node) => {
+    const link = node.querySelector<HTMLElement>("a.venue-map-link")!;
+    const place = link.previousElementSibling as HTMLElement;
+    const linkBox = link.getBoundingClientRect();
+    const placeBox = place.getBoundingClientRect();
+    return {
+      gap: linkBox.left - placeBox.right,
+      sameLine: Math.abs(linkBox.top - placeBox.top) < 4,
+    };
+  });
+  expect(metrics.sameLine).toBe(true);
+  expect(metrics.gap).toBeLessThanOrEqual(16);
+});
+
 test("the day-level locate says 定位当日 while the card-level one stays 定位", async ({
   page,
 }) => {
