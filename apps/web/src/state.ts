@@ -1,4 +1,5 @@
 import {writeWorkspaceItem, removeWorkspaceItem} from "./workspace-storage";
+import {scheduleWantPing} from "./want-counts";
 // 应用状态:选片记录 / 抢票顺位 / 豆瓣映射 / 设置。
 //
 // 单一数据源 = store.picks:「我的选片」(按片看)与「我的行程」(按场次看)是同一份数据的两个视图。
@@ -268,6 +269,8 @@ function scheduleNotify(domain: ChangeDomain): void {
 function saveLocal(): void {
   try {
     writeWorkspaceItem(LS_PICKS, JSON.stringify([...store.picks.values()]));
+    // 匿名只上报 film key，不上传完整片单（红线 7）
+    scheduleWantPing(store.picks.keys());
   } catch {
     /* ignore */
   }

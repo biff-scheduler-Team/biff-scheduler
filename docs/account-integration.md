@@ -92,3 +92,8 @@ npm run deploy -w @biff/api
 `npm run dev` 提供前端 Vite 热更新，适合访客功能开发。完整账号联调使用 `IFFDAY_ACCOUNT_PATH=/path/to/account npm run dev:account`，同时运行前端、BIFF API 和本地 IFFDAY。BIFF 本地密钥在 `apps/api/.dev.vars`，本地 D1 在 `apps/api/.wrangler/state`。迁移旧本地环境时，可将原根目录 `.dev.vars` 和 `.wrangler/state` 分别复制到以上位置；切勿上传到 Git。
 
 `scripts/cloudflare-targets.json` 记录两个 Worker 的非敏感资源 ID。构建脚本先核对账号和 API Worker，再为前端部署设置它自己的 Wrangler 身份校验值；API 的最终部署仍由原生 Workers Builds 完成。若重新创建 Worker，需要更新该文件中的 ID。
+
+
+## Legacy 同域同会话（薄桥）
+
+新版与 `/legacy/` 共享 `__Host-biff.session`（`Path=/`）与 `biff.*` localStorage。Legacy 顶栏提供「登录 IFFDAY」与同步状态文案，内部调用与新版同一套 `account-sync` 核心（**不**引入 React / Spectrum）。在 legacy 改片单会派发 `iffday:workspace-change`，已登录时 debounce 上传到本人 `festival_document`。资料编辑仍在新版或 [IFFDAY 账号中心](https://account.iff.day/account)。
