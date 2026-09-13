@@ -78,7 +78,7 @@ test.describe("schedule interaction parity", () => {
       el.scrollTop = 600;
     });
     await page
-      .getByRole("button", { name: "定位日期 2026-10-07", exact: true })
+      .getByRole("button", { name: "定位当日 2026-10-07", exact: true })
       .click();
     await expect.poll(() => grid.evaluate((el) => el.scrollTop)).toBe(0);
     await expect(page.locator('[data-grid-slot="008"]')).toHaveClass(

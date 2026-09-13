@@ -206,6 +206,7 @@ function RankGroup({ codes }: { codes: string[] }) {
               screening={cat.byCode.get(code)!}
               locate
               controls
+              venueInfo
               slotFilter={slotFilter}
             />
           </li>
@@ -476,11 +477,12 @@ export function AgendaPage() {
                     {dateInfo(date).label} {dateInfo(date).weekday}
                   </h2>
                   <span className="agenda-day-count">{rows.length} 场</span>
+                  {/* 与场次卡里的「定位」（定位单场）区分：这里定位的是整日排片,故文案写明「当日」 */}
                   <ActionButton
-                    aria-label={`定位日期 ${date}`}
+                    aria-label={`定位当日 ${date}`}
                     onPress={() => locateDate(date)}
                   >
-                    定位
+                    定位当日
                   </ActionButton>
                   <div className="agenda-day-summary">
                     {overlapCount > 0 && (
@@ -516,6 +518,7 @@ export function AgendaPage() {
                             screening={item.screening}
                             locate
                             controls
+                            venueInfo
                             slotFilter={slotFilter}
                           />
                         </div>

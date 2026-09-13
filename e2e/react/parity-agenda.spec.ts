@@ -286,3 +286,43 @@ test("after the final batch the ticket banner says tickets are on sale", async (
     page.getByRole("button", { name: /BIFF 2026 售票中/ }),
   ).toBeVisible();
 });
+
+test("agenda cards carry the venue code, place details and a Google Maps entry", async ({
+  page,
+}) => {
+  await seed(page, { "biff.picks.v2": picks(["008", "033"]) });
+  await ready(page, "/agenda");
+  const card = page.locator('[data-screening="008"]');
+  const venue = card.locator(".screening-venue");
+  await expect(venue).toHaveCount(1);
+  // 「影院」前缀用于和卡片顶部的场次代码徽章(001)区分
+  await expect(venue.locator(".venue-code")).toHaveText("影院 B1");
+  await expect(venue).toContainText("BCC Cinema 1");
+  await expect(venue).toContainText("Busan Cinema Center");
+  await expect(venue).toContainText("120, Suyeonggangbyeon-daero, Haeundae-gu, Busan");
+  const map = venue.getByRole("link", { name: /在 Google 地图打开/ });
+  await expect(map).toHaveAttribute(
+    "href",
+    /^https:\/\/www\.google\.com\/maps\/search\/\?api=1&query=/,
+  );
+  await expect(map).toHaveAttribute("target", "_blank");
+  // 影院名不再在时间行重复出现(交给影院块)
+  await expect(card.locator(".screening-meta").first()).not.toContainText("BCC Cinema 1");
+});
+
+test("the day-level locate says 定位当日 while the card-level one stays 定位", async ({
+  page,
+}) => {
+  await seed(page, { "biff.picks.v2": picks(["008", "033"]) });
+  await ready(page, "/agenda");
+  const day = page.locator(".agenda-day").first();
+  // 两者功能不同(整日 vs 单场),可见文案必须能区分,否则用户无从判断按哪个
+  await expect(
+    day.getByRole("button", { name: "定位当日 2026-10-07", exact: true }),
+  ).toHaveText("定位当日");
+  await expect(
+    day
+      .locator('[data-screening="008"]')
+      .getByRole("button", { name: "定位场次 008", exact: true }),
+  ).toHaveText("定位");
+});
