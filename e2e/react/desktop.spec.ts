@@ -28,6 +28,12 @@ test("hover links a conflict group across the agenda and grid; dragging persists
       .locator(".gantt-slot")
       .filter({ has: page.locator('[data-grid-code="033"]') }),
   ).toHaveAttribute("data-highlighted", "true");
+  // ⚠ 这里刻意用 `dragTo` 而不是手动鼠标手势：它在拖拽中途会把目标行滚进视口，
+  // 恰好覆盖「拖拽期间页面滚动」这条路径 —— 顺位判定若沿用 pointerdown 时刻捕获的
+  // 视口 rect，滚动后它与后续 `clientY` 就不再同源，阈值整体偏移、排序静默失效
+  // （2026-09-14 CI run 34842131579 红在此；`AgendaPage.startDrag` 改用「相对容器」
+  // 坐标后转绿）。手动手势要自己造滚动，而行程页有 window + 内部列表两层滚动容器，
+  // 滚动量没法稳定控制，反而更脆。
   await page
     .getByRole("button", { name: "拖动场次 033 排序", exact: true })
     .dragTo(page.locator('[data-rank-code="008"]'), {

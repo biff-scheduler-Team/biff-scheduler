@@ -96,8 +96,16 @@ function RankGroup({ codes }: { codes: string[] }) {
     const rows = Array.from(container.children) as HTMLLIElement[];
     const from = codes.indexOf(code);
     const row = rows[from];
-    const rects = rows.map((element) => element.getBoundingClientRect());
-    const startY = event.clientY;
+    // ⚠ 判定坐标必须与容器同基准:拖拽中途页面可能被滚动(拖到视口边缘的自动滚动 /
+    //   浏览器把目标元素滚进视口),此时 pointerdown 时刻捕获的视口 rect 与后续的
+    //   `e.clientY` 不再是同一坐标系,阈值会整体偏移、顺位判定错位。
+    //   这里统一换算成「相对容器顶」的局部坐标,滚动量由 paint() 里重新读取的容器 rect 吸收。
+    const containerTop = container.getBoundingClientRect().top;
+    const rects = rows.map((element) => {
+      const rect = element.getBoundingClientRect();
+      return { top: rect.top - containerTop, height: rect.height };
+    });
+    const startY = event.clientY - containerTop;
     const centerY = rects[from].top + rects[from].height / 2;
     const gap = Number.parseFloat(getComputedStyle(container).rowGap) || 0;
     let target = from;
@@ -111,7 +119,8 @@ function RankGroup({ codes }: { codes: string[] }) {
       /* Window listeners also retain the gesture. */
     }
     const paint = (y: number) => {
-      const dy = y - startY;
+      // 容器 rect 每次现取:页面在拖拽期间滚动时,行与指针一起位移,差值才是真实拖拽距离
+      const dy = y - container.getBoundingClientRect().top - startY;
       target = rects.filter(
         (rect, i) => i !== from && rect.top + rect.height / 2 < centerY + dy,
       ).length;
