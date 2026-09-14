@@ -5,9 +5,10 @@
 > API `biff-scheduler` + 静态资源 `biff-scheduler-web`)+ React / Router / Spectrum S2 + Vite + TS
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-14(**桌面分栏 + 账号一体 + 想看人数**,见 §0 首条);
+> 最后更新:2026-09-14(**规范补两条:大改动走 PR + 大重构前打 checkpoint**,见 §0 首条);
+> 更早 = 2026-09-14(**桌面分栏 + 账号一体 + 想看人数**);
 > 更早 = 2026-09-13(**IFFDAY 账号体系 + 前后端分仓**);
-> 上一轮 = 把「靠人记住的规范」改成「机器能挡的闸门」(CI / 钩子 / check:repo / api 单测 / TEST-MAP / legacy 计划 / Dependabot);
+> 更早 = 把「靠人记住的规范」改成「机器能挡的闸门」(CI / 钩子 / check:repo / api 单测 / TEST-MAP / legacy 计划 / Dependabot);
 > 更早 = 规范新增「§9 与 AI 协作的约定」(需求怎么提 / AI 交什么);
 > 更早 = 「在 Google 地图打开 ↗」贴住影院地名(去掉行尾靠右);
 > 更早 = 排片表 / 时间线海报与评分 + 详情简介;
@@ -25,6 +26,17 @@
 ## 0. 当前状态快照(2026-09-14)
 
 **✅ 已完成(已部署,线上可访问)**
+- **规范补两条:大改动走 PR + 大重构前打 checkpoint(2026-09-14,`PLAN-20260914101945`)**:提交复盘
+  (`gaaiyeoi` 121 条 vs `citron` 14 条;平均 5.2 文件 / 148 行 vs **157.8 文件 / 4637 行**)后,把 citron 侧
+  **两条值得保留的做法**补进三层规范 —— ① **§4.5 PR 流程**:默认仍直接 push main,但**大规模重构 /
+  涉及 `apps/api` 或 D1 迁移 / 依赖升级**三类走 PR,换 Review 记录 + Verified 签名 + 「CI 在合并前跑」
+  (`prepare-cloudflare.mjs` 只在 `WORKERS_CI_BRANCH=main` 时迁移 + 部署,PR 分支天然不碰生产);
+  ② **§4.6 checkpoint 提交**:大重构动手前打 `chore(<scope>): checkpoint before <重构名>`,自身必须全绿、
+  不含半成品,作用是出问题时 `git reset --hard <checkpoint>`,且**不能替代原子提交**(反例:`4feda07`
+  打了 checkpoint,紧随的 `fe82988` 仍是 128 文件 / 18806 行的单提交)。
+  ⚠ 顺带订正:AGENTS.md / RULE.mdc 里「绕过 `pre-push` 只能用 `--no-verify`,而那是**红线 12**」编号有误
+  (`--no-verify` 不在 §8 红线清单里,红线 12 是 `wrangler pages deploy`),改为指向 §4 禁止项。
+  纯文档改动,`git diff` 只含 `*.md`。
 - **双前端账号一体 + 桌面 1:3 分栏 + 想看人数加权(2026-09-14,`PLAN-20260914003600`)**:Legacy 薄登录/同步桥（共享 cookie + `biff.*` + sync 核心）；
   新版桌面 ≥1100 选片/行程:排片 = 1:3 挤压分栏、工作台 max-width 1600px；D1 `film_want_*` +
   `GET/POST /api/stats/want-*`（登录 1.0 / 匿名 0.75 film-key ping，`Math.round` 展示于影片库卡与详情）。

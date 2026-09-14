@@ -186,6 +186,60 @@ node scripts/check-repo.mjs --self-test   # 自检:证明检查器本身没坏
 > `task_plan.md`(74 行)三个会话草稿被提交进根目录(`fe82988` / `14c29b1`),违反本节第一条却**无人发现**
 > —— 因为它们长得不像临时文件。**能机械拦住的,不要留给自觉。**
 
+### 4.5 PR 流程(大改动走 PR,小改动直接 push)
+
+**默认仍是直接 `push main`**(§0 / §2)。**必须走 PR** 的只有三类:
+
+| 走 PR 的改动 | 为什么 |
+|---|---|
+| **大规模重构 / 跨视图改造**(§9.3 第二档) | 需要 Review 记录 + 「零影响」逐条核对;CI 在**合并前**跑,而不是合并后才发现 |
+| 涉及 `apps/api` 或 **D1 迁移** | 迁移**不可逆**;而 `prepare-cloudflare.mjs` 只在 `WORKERS_CI_BRANCH=main` 时迁移 + 部署 → **PR 分支天然不碰生产** |
+| **依赖升级** | Dependabot 自动开 PR(§5.3);`package-lock.json` 命中 TEST-MAP 的 `allOn`,这类 PR 会跑全量 E2E |
+
+**PR 比直接 push 多出来的三样东西**(即 `citron` 那批提交的形态):
+
+1. **Review 记录** —— 谁在什么时候看过哪一版(`Merge pull request #9 from biff-scheduler-Team/…`)。
+2. **Verified 签名** —— 提交带签名时 GitHub 显示 `Verified`;直接 push 的本地提交默认是 `Unverified`。
+   零配置做法 = 在 GitHub 网页上完成 merge(产生的提交由 GitHub web-flow 签名);
+   想让**本地提交**也 Verified,配一次即可:
+
+   ```sh
+   git config --global gpg.format ssh
+   git config --global user.signingkey ~/.ssh/id_ed25519.pub
+   git config --global commit.gpgsign true
+   ```
+
+   然后把同一把公钥作为 **Signing Key** 加到 GitHub(与 Authentication Key 分开登记)。
+3. **CI 在合并前跑** —— PR 上跑 `verify:quick` + 受影响 spec(单浏览器);`main` push 才跑全量三浏览器。
+   ⚠ 但 **PR 不能替代本地门禁**:§2 的口径不变 —— 测试仍在**开发阶段**跑完,CI 只负责挡住「人漏了」。
+
+**与 §2「推的时候直接推」不冲突**:PR merge 到 `main` 就是一次 push main,照样触发 Workers Builds;
+「推的时候直接推」管的是 **merge 那一刻**不要再重跑完整门禁。
+
+**分支命名**:`fix/<范围>` / `feat/<范围>`(与 `fix/main-mobile-e2e` / `feat/desktop-split-account-want` 同形)。
+
+### 4.6 checkpoint 提交(大重构前先留干净落点)
+
+**什么时候打**:§9.3 第二档(大规模重构 / 跨视图改造)**动手前**;或一次要动 > 20 个文件、
+要碰 `state.ts` / `style.css` / `grid.ts` 这类高耦合文件时。
+
+**格式**:`chore(<scope>): checkpoint before <重构名>`
+(范例:`4feda07 chore: checkpoint before integrating React scheduler`)。
+
+**三条硬要求**:
+
+1. **checkpoint 自身必须全绿** —— `npm run verify:quick` 通过。否则别人 `git pull` 到的是坏 HEAD(§7)。
+2. **不含半成品** —— 未完成的重构残留、调试代码、被注释掉的旧实现一律不进 checkpoint。
+   它是「已知良好状态」,不是「先随便存一下」。
+3. **打完立即开重构**,checkpoint 与重构的首个提交之间不夹无关改动。
+
+**它买到什么**:出问题时 `git reset --hard <checkpoint>` 一次回到已知良好状态 ——
+不必在一堆「重构 + 顺带修复 + 格式化」的混合改动里逐 hunk 挑拣。
+
+⚠ **checkpoint 不能替代原子提交(§4.1)**:它只保证「能回去」,不保证「能干净地回退其中某一部分」。
+反例:`4feda07` 打了 checkpoint,但紧随其后的 `fe82988` 是 **128 文件 / 18806 行**的单提交 ——
+checkpoint 起作用了,粒度问题依然在。**两者要一起用。**
+
 ---
 
 ## 5. 前端代码规范(TypeScript / React)
@@ -260,6 +314,8 @@ node scripts/check-repo.mjs --self-test   # 自检:证明检查器本身没坏
 
 - **唯一常规路径**:`git push origin main` → Cloudflare Workers Builds 自动构建上线 `https://biff.lcandy.co`。
 - ❌ **禁止** `wrangler pages deploy`(旧 Pages 项目已不在访问链路,传上去没人访问)。
+- **PR / 预览分支不部署**:`scripts/prepare-cloudflare.mjs` 只在 `WORKERS_CI_BRANCH=main` 时执行生产 D1 迁移
+  并部署前端 Worker,所以 PR 分支的构建**不会**碰生产、也不会上线;生产只发生在 merge 到 `main` 之后(§4.5)。
 - 部署前确认工作区**没有别人的在途改动**搭车上线(见 §7)。
 - 线上核对:
   - 必须带 cache-buster:`curl -sL "https://biff.lcandy.co/<f>.json?cb=$(date +%s)"`。
@@ -321,7 +377,7 @@ node scripts/check-repo.mjs --self-test   # 自检:证明检查器本身没坏
 | 档位 | 人怎么说 | AI 必须先交 | 收口证据 |
 |---|---|---|---|
 | **普通功能 / bug** | 「<入口> 现在 <现象>,应该 <期望>;不要动 <范围>」+ 截图或原话 | PLAN(四节,见 §9.5)→ 代码 + 回归测试 | 单测计数 + 受影响 spec 全绿 |
-| **大规模重构 / 跨视图改造** | 「<症状>」+「硬约束:不能影响 <X>」+「先出 PLAN 再实现」 | 现状(代码事实 + 行号,**禁止推测**)/「为什么当初这么设计」/ 形态取舍表(采纳 vs 否决 + 理由)/ 集成点清单(既有机制逐条怎么处理)/ 复用清单 / 明确不做 / 「零影响」的核对手段 | 单一开关 + 逐处守卫 + 逐 hunk 复核 |
+| **大规模重构 / 跨视图改造** | 「<症状>」+「硬约束:不能影响 <X>」+「先出 PLAN 再实现」 | 现状(代码事实 + 行号,**禁止推测**)/「为什么当初这么设计」/ 形态取舍表(采纳 vs 否决 + 理由)/ 集成点清单(既有机制逐条怎么处理)/ 复用清单 / 明确不做 / 「零影响」的核对手段 / **动手前先打 checkpoint(§4.6)** | 单一开关 + 逐处守卫 + 逐 hunk 复核 |
 | **推送 / 发布** | 不用提 —— 按 §2 / §6 默认执行 | 无(测试已在开发阶段跑完) | 测试计数 / asset hash |
 
 **大重构那一档的「必须先交」逐条有出处**(以 `PLAN-20260912002532` 为范例):
@@ -335,6 +391,10 @@ node scripts/check-repo.mjs --self-test   # 自检:证明检查器本身没坏
 | 复用清单 | §1「既有可复用资产(避免重造)」:先盘点能用的构造器,再决定写什么 |
 | 明确不做 | §3「不改 `grid.ts` / 不改 `style.css` / 不改断点 / 不做虚拟滚动」 |
 | 零影响的核对手段 | §6「单一开关 + 逐处守卫」,6 条可核对条款 + 提交前逐 hunk 复核 |
+
+**大重构的启动动作 = 先打 checkpoint(§4.6)**:`chore(<scope>): checkpoint before <重构名>`,全绿后再开重构。
+`PLAN-20260912002532` 的对应形态是「`grid.ts` / `style.css` 一行不改 + 所有新逻辑挂在 `isMobileDrawer()` 之后」——
+即**用单一开关保住旧路径**,与 checkpoint 是同一目的的两层保险(一层能回退,一层能共存)。
 
 ### 9.4 五条话术纪律
 
@@ -403,3 +463,4 @@ node scripts/check-repo.mjs --self-test   # 自检:证明检查器本身没坏
 | v4 | 2026-09-13 | 新增 §2.1:说明 `vite build` 只验证「能打包」(本地产物不被部署),不是每次改动的必跑项;typecheck / lint / 单测才是每次必过 |
 | v5 | 2026-09-13 | 新增 §9「与 AI 协作的约定」:补齐上游那一半(需求怎么提 / 变更怎么记 / 交付物清单 / 反模式);原 §9 变更记录顺延为 §10 |
 | v6 | 2026-09-13 | 把规范变成闸门(PLAN-20260913201727):§2 补「受影响 spec 有表可查」与 CI 兜底;§3.1 单测分层补 `apps/api/tests`;§4.3 新增 git hooks(commit-msg + pre-push);§4.4 会话草稿落点工具中立 + `check:repo`;§5.3 依赖升级走 Dependabot;§5.7 新增 `legacy/` 只读回退件(原「离线管线」顺延为 §5.8) |
+| v7 | 2026-09-14 | 补两条来自提交复盘的做法(`PLAN-20260914101945`):**§4.5 PR 流程**(大规模重构 / `apps/api` 与 D1 迁移 / 依赖升级三类走 PR,换 Review 记录 + Verified 签名 + 合并前 CI)、**§4.6 checkpoint 提交**(大重构前留全绿落点,且不能替代原子提交);§6 补「PR 分支不部署」;§9.3 大重构档位补 checkpoint 启动动作 |
