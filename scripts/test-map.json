@@ -179,6 +179,19 @@
       "specs": [
         "want-counts"
       ]
+    },
+    {
+      "id": "feedback",
+      "note": "建议反馈留言板（/feedback + /api/feedback）",
+      "paths": [
+        "apps/web/src/pages/FeedbackPage.tsx",
+        "apps/api/src/feedback.ts",
+        "apps/api/src/feedback-store.ts",
+        "apps/api/migrations/0004_feedback_board.sql"
+      ],
+      "specs": [
+        "feedback"
+      ]
     }
   ]
 }
