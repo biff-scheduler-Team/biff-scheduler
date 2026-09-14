@@ -76,7 +76,14 @@
   根目录是**白名单制**,由 `npm run check:repo`(`scripts/check-repo.mjs`,已串进 `verify:quick` / `verify`)机械拦截。
 - **钩子(机械约束)**:`npm install` 会自动装(`prepare` → `scripts/install-git-hooks.mjs`,手动重装 `npm run hooks:install`)。
   `commit-msg` 校验本节格式;`pre-push` 跑 `verify:quick`(**不含 build / E2E** —— §2 反对的是在 push 时重跑完整门禁)。
-  它挡的正是红线 1;绕过它只能用 `--no-verify`,而那是红线 12。
+  它挡的正是红线 1;绕过它只能用 `--no-verify`,而那是本节禁止项之一。
+- **大改动走 PR**(完整版见 `DEVELOPMENT-STANDARDS.md` §4.5):默认仍直接 push main;**大规模重构 /
+  涉及 `apps/api` 或 D1 迁移 / 依赖升级**三类走 PR —— 换 Review 记录 + Verified 签名 + 「CI 在合并前跑」。
+  `prepare-cloudflare.mjs` 只在 `WORKERS_CI_BRANCH=main` 时迁移 + 部署,PR 分支天然不碰生产;
+  merge 到 main 才部署,§2「推的时候直接推」不变。
+- **大重构前先打 checkpoint**(完整版见 §4.6):`chore(<scope>): checkpoint before <重构名>`,
+  自身必须**全绿**、不含半成品;作用是出问题时 `git reset --hard <checkpoint>`。
+  **它不能替代原子提交** —— 只保证「能回去」,不保证「能干净地回退其中某一部分」。
 
 ## 5. 代码规范
 
@@ -147,6 +154,9 @@
 | **普通功能 / bug** | 「<入口> 现在 <现象>,应该 <期望>;不要动 <范围>」+ 截图或原话 | PLAN(四节,见 §9.3)→ 代码 + 回归测试 | 单测计数 + 受影响 spec 全绿 |
 | **大规模重构 / 跨视图改造** | 「<症状>」+「硬约束:不能影响 <X>」+「先出 PLAN 再实现」 | 现状(代码事实 + 行号,**禁止推测**)/「为什么当初这么设计」/ 形态取舍表(采纳 vs 否决 + 理由)/ 集成点清单(既有机制逐条怎么处理)/ 复用清单 / 明确不做 / 「零影响」的核对手段 | 单一开关 + 逐处守卫 + 逐 hunk 复核 |
 | **推送 / 发布** | 不用提 —— 按 §2 / §6 默认执行 | 无(测试已在开发阶段跑完) | 测试计数 / asset hash |
+
+> 大重构的启动动作 = **先打 checkpoint**(§4.6):全绿落点 → 再开重构;
+> 与「单一开关保住旧路径」是同一目的的两层保险(一层能回退,一层能共存)。
 
 ### 9.2 五条话术纪律
 
