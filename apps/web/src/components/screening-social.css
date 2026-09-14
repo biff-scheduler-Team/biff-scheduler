@@ -90,18 +90,6 @@
 .discussion-notice p { margin: 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
 .discussion-notice-actions { display: flex; justify-content: flex-end; }
 
-/* 常驻隐私提示(发帖框旁) */
-.discussion-privacy {
-  margin: 0;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--raised);
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
 .discussion-composer { display: grid; gap: 8px; }
 .discussion-categories { display: flex; flex-wrap: wrap; gap: 6px; }
 .discussion-category {
@@ -181,7 +169,7 @@
   gap: 8px;
 }
 
-/* ---------- 社区约定 / 免责(讨论弹层内) ---------- */
+/* ---------- 社区提醒(讨论弹层内,一次一条、可关闭) ---------- */
 .discussion-notice-list {
   margin: 0;
   padding-left: 18px;
@@ -191,8 +179,6 @@
   line-height: 1.6;
   color: var(--muted);
 }
-.discussion-privacy > strong { display: block; margin-bottom: 4px; font-size: 12px; color: var(--text); }
-.discussion-privacy > ul { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
 
 /* ---------- 转票补入弹层 ---------- */
 .transfer-dialog { display: grid; gap: 10px; max-height: 60vh; overflow: auto; }
