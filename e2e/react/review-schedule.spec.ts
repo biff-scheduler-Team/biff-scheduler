@@ -59,7 +59,14 @@ test("a date initialized without a query survives both responsive layouts", asyn
 
 test("the mobile default survives midnight, selecting a screening, and resizing to desktop", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.clock.install({ time: new Date("2026-10-10T23:59:59+09:00") });
+  const midnight = new Date("2026-10-10T23:59:59+09:00");
+  await page.clock.install({ time: midnight });
+  // ⚠ `install` 之后时钟仍按真实时间流逝，而这里的起点距午夜只剩 1 秒 ——
+  //   页面加载只要慢过 1 秒，`todayIsoLocal()` 就已经是 10-11（10-11 也在 dates 里），
+  //   mobile 默认日期随之漂到 10-11，断言必红。CI 上 webkit + 3 workers 抢 CPU 时偶发，
+  //   2026-09-14 run 34842131579 的 mobile-webkit 就红在这里。
+  //   先冻结在起点，跨午夜交给下面的 `fastForward` 显式推进。
+  await page.clock.pauseAt(midnight);
   await ready(page, "/schedule");
   await expect(page.getByRole("button", { name: "选择日期 2026-10-10", exact: true })).toHaveAttribute("aria-pressed", "true");
   const first = page.locator("[data-grid-code]").first();
