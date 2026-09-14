@@ -122,10 +122,26 @@ test("saved snapshots retain catalog validity, date range, and inspectable codes
   await ready(page, "/agenda");
   const saved = page.getByRole("region", { name: "已保存方案", exact: true });
   await expect(saved).toContainText("2 场，OCT 6–OCT 7，1 场已不在排期");
-  await saved.locator("summary").click();
-  await expect(saved.locator("details p")).toHaveText(
-    "18:00 · 001\n08:40 · 008\n99999",
-  );
+  // 「查看场次」是弹层(2026-09-14):内容与分享图片同源 —— 有效结束时间 / 片名 / 影院 / GV 标记,
+  // 不再是内联 <details> 里的「HH:MM · CODE」纯文本。
+  await saved
+    .getByRole("button", { name: "查看「方案 7」的场次", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(
+    dialog.getByRole("heading", { name: "方案 7", exact: true }),
+  ).toBeVisible();
+  await expect(dialog).toContainText("OCT 6–OCT 7 · 共 2 场 / 2 部");
+  // 001:18:00 起 + 80 分钟正片 + 25 分钟默认映后谈 → 有效结束 19:45(与分享图片同一口径)
+  await expect(dialog).toContainText("18:00–19:45");
+  await expect(dialog).toContainText("The Table: Day and Night · 彼此的日夜");
+  await expect(dialog).toContainText("BCC Roof · 001");
+  await expect(dialog).toContainText("GV 含映后谈");
+  await expect(dialog).toContainText("08:40–11:20");
+  await expect(dialog).toContainText("You, Like a Star · 宛如星辰的你");
+  await expect(dialog).toContainText("BCC Cinema 1 · 008");
+  // 换版残留的 code 不能静默消失
+  await expect(dialog).toContainText("1 场已不在当前排期：99999");
   await expect(saved).not.toContainText("已不在当前行程");
 });
 

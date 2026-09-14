@@ -47,17 +47,87 @@
 .rank-clash-item {
   margin-top: 12px;
 }
-.saved-plan-details {
-  margin-top: 6px;
+/* 「已保存方案」的「查看场次」弹层 —— 与分享图片同一份信息(有效结束时间 / 片名 / 影院 / GV / 备注 / 海报)。
+   限高 + 滚动放在这里:方案可能几十场,不能指望弹层外层一定滚得动。 */
+.plan-shows {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.plan-shows-day h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.plan-shows-day h3 span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.plan-shows-day ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.plan-shows-day li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.plan-shows-poster {
+  flex: none;
+  width: 48px;
+  height: 72px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--raised);
+}
+.plan-shows-poster-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.plan-shows-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+.plan-shows-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.plan-shows-gv {
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--selected);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+.plan-shows-meta,
+.plan-shows-note {
   color: var(--muted);
   font-size: 12px;
 }
-.saved-plan-details summary {
-  cursor: pointer;
-}
-.saved-plan-details p {
-  white-space: pre-line;
-  font-variant-numeric: tabular-nums;
+/* 备注用与海报同一个琥珀色口径,一眼区分「场次信息」与「我自己的备注」 */
+.plan-shows-note {
+  color: var(--tight-line);
 }
 @media (pointer: coarse) {
   .rank-group .drag-handle {
