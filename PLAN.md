@@ -31,6 +31,21 @@
 ## 0. 当前状态快照(2026-09-14)
 
 **✅ 已完成(已部署,线上可访问)**
+- **修「我的行程」顺位拖拽在页面滚动后判定错位(2026-09-14,`PLAN-20260914205901`,已推送)**:CI 全量 E2E
+  连续红在 `e2e/react/desktop.spec.ts:4` —— 拖完 `biff.ranks.v1` **根本没写入**(`"undefined" is not valid JSON`)。
+  根因:`AgendaPage.startDrag()` 拿 pointerdown 时刻捕获的**视口 rect** 去比后续的 `e.clientY`;拖拽中途页面
+  一旦被滚动(拖到视口边缘的自动滚动 / 浏览器把目标行滚进视口 / Playwright 的 `scrollIntoViewIfNeeded`),
+  两者就不再同源,阈值整体偏移、排序静默失效 —— **真实用户同样会踩到**。改为统一换算成「相对容器顶」的
+  局部坐标,滚动量由 `paint()` 里现取的容器 rect 吸收。
+  ⚠ 试过把测试改成手动鼠标手势来绕过,但行程页有 `window` + 内部列表**两层滚动容器**
+  (探针实测 `scrollIntoViewIfNeeded` 只改内部容器:`scrollY` 仍为 0 而目标行从 728 移到 176;
+  `window.scrollBy` 只改 window),滚动量没法稳定控制、反而更脆 —— 故保留 `dragTo`(它天然覆盖这条路径)。
+  顺带稳定化 `review-schedule.spec.ts:60` 的 **flaky**:`page.clock.install({time})` 之后时钟**仍按真实时间
+  流逝**,而该用例起点是 `23:59:59`(距午夜只剩 1 秒),页面加载慢过 1 秒 `todayIsoLocal()` 就已跨日 →
+  mobile 默认日期漂到 10-11(10-11 也在 `dates` 里);改为 `install` 后立刻 `pauseAt` 冻结,跨午夜交给
+  原本就有的 `fastForward(2000)`。
+  证据:撤掉实现修复 → `1 failed`(与 CI run 34842131579 报错逐字一致);带修复 → `4 passed`;
+  `review-schedule.spec`(两个 chromium 视口)`12 passed`;`npm test` 361 passed;`npm run verify` 全链通过。
 - **排期数据更新提示(2026-09-14,`PLAN-20260914192552`;⚠ 本地验收通过但**尚未推送**)**:排期 750→830 后,
   **已选好片的用户**看不到「自己那场变了什么」。新增 `tools/build_changelog.py`(对比 git HEAD 与当前排期 →
   `public/changelog.json`,本轮 **added 80 / changed 9**)与 `src/changelog.ts` + 顶栏「数据更新」入口
@@ -696,11 +711,10 @@ public/douban-related.json = {
 - P2-9 视觉 5 件套微统一(Badge/Button/seg 三态、gap-bar/conf 读 status token、字阶收敛 --text-*)
 
 **7.5 同场观影 & 场次讨论 的收尾(2026-09-14,`PLAN-20260914164050`)**
-9. **`0005_screening_social.sql` 生产迁移与线上部署待随 main 推送执行**:本地 D1 已 apply 通过;
-   remote 由 `postbuild`(`scripts/prepare-cloudflare.mjs`,**仅** `WORKERS_CI_BRANCH=main`)在推送后自动跑。
-   ⚠ 本轮用户明确「先本地看效果、先不推送」,故**生产库与线上尚未包含**这两组接口
-   (`/api/stats/screening-counts*`、`/api/screenings/*/discussion*`);未推送前前端会静默降级
-   (人数 / 讨论数不显示、讨论弹层拉不到列表)。
+9. ✅ **`0005_screening_social.sql` 生产迁移已随 main 推送执行(2026-09-14 核实)**:`postbuild`
+   (`scripts/prepare-cloudflare.mjs`,**仅** `WORKERS_CI_BRANCH=main`)在推送后自动跑迁移并部署前端。
+   线上实测 `GET /api/stats/screening-counts?codes=008` → `200`(该接口依赖新表,证明迁移已生效),
+   人数 / 讨论数不再是静默降级状态。
    ⚠ 迁移 `0006_screening_report.sql` 已随举报功能一并删除,本地 D1 里曾建出的 `screening_report`
    表也已 `DROP`;生产库**从未** apply 过 0006,故**无需**任何线上清理。
 10. **无待办的人工步骤**(原「推送前必须配 `ADMIN_SUBJECTS` secret」已作废 —— 举报后台删除后这个
