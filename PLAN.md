@@ -27,6 +27,21 @@
 ## 0. 当前状态快照(2026-09-14)
 
 **✅ 已完成(已部署,线上可访问)**
+- **对齐 BIFF 官网口径:修 4 处错 + 补票务信息(2026-09-14,`PLAN-20260914143817`)**:逐条对官网
+  (Newsletter Vol.6–10 / 票务页 11402 / 节目页 11223·11226 / 开闭幕式页 11233 / 排期页 / Selection List)
+  核对后修掉 4 处会误导用户的口径 —— ① `festival-extras` 混入 **2025 遗留的 Carte Blanche**(code 338/408
+  被本届复用,只按 code 过滤挡不住),改为**按 `dateText` 是否落在展期内**拦
+  (`scrape_biff_extras.py::month_day_in_range`);② 影院说明「南浦洞的 MEGABOX 本届未参与」是错的 ——
+  Community BIFF(10/8–10/11)就在南浦洞,票务页写明其放映只能在 MEGABOX 4F 票亭预订;③ 大圣崛起 /
+  The Violinist 的 `unit` 被 xlsx 覆盖改错(与官网 prog_view 相反,两条正好互换),加 `UNIT_OVERRIDE`
+  人工裁决表(不动「xlsx 更细」的通用规则 —— 实测 89 处有价值的细化);④ 开闭幕式弹层原样展示官网典礼页的
+  20:20,与排期页 001 场次(18:00)并列会自相矛盾,补口径说明。同时补全票务信息:**购票入口 `ticket.biff.kr`**
+  (此前 `.ics` 里写的「购票入口」其实是官方说明页)、在线售票期、**取消与退款三档**、折扣三档适用条件、
+  数字弱势群体服务台、客服邮箱;折扣年龄口径订正为官网票务页的「**1961 年及以前出生**」(newsletter 的 1960 不采)。
+  新增 `apps/web/tests/festival-extras-parity.test.ts`(10 例,先红后绿:**修复前 6 failed / 4 passed**);
+  受影响 5 个 spec desktop-chromium **23 passed**;单测 **36 文件**全过;`npm run verify` 全绿。
+  ⚠ 官网自身两处口径冲突已按「节目页 > newsletter」定夺:491 安圣基对谈 = **10/12**(Vol.10 写 10/11);
+  开票**只有 9/17 与 9/21 两批**(Vol.8/9 提到的 9/11 不采)。
 - **素香剧场分区口径修正 + 新版残留清理(2026-09-14,`PLAN-20260914141643`)**:现场反馈「东西大学 Sohyang Theatre
   显示分区在南浦洞」。实读定位:**错的只有旧版** —— `legacy/src/legend.ts::GROUP_AREA` 把 `sohyang`/`bcm` 归到
   nampo(与官方三区模型 `docs/history/2026-09-09-开发落地记录.md:263` 相左,是 2025 导入时的误归),
@@ -450,7 +465,7 @@ public/douban-related.json = {
 - **GV/映后:解析阶段就 end_time = start + duration(+25min)**(保证 .ics 与冲突检测一致,前端不临时补)
 - `tags?`:gv/masterclass/premiere/open_talk(见 badges.ts 注册表;未注册键静默忽略)
 
-**venues.json**(2026):`id / name / name_kr / short / group / region / code` —— **26 厅**(id = 官方代码小写,如 `b1`/`c3`/`l10`;2026 无南浦洞 MEGABOX,新增 Roof Theater `br` / Shinsegae `sc` / DSU-KIT `dk`)
+**venues.json**(2026):`id / name / name_kr / short / group / region / code` —— **26 厅**(id = 官方代码小写,如 `b1`/`c3`/`l10`;2026 **常规放映**无南浦洞厅,新增 Roof Theater `br` / Shinsegae `sc` / DSU-KIT `dk`。⚠ 别读成「本届没有南浦洞」—— Community BIFF(10/8–10/11)在南浦洞 BIFF 广场 / MEGABOX Busan Theater / Catholic Center Space 101.1,只是那批排期不在本数据集内)
 **films.json**:250 部目录(unit 需按前缀归并:广角镜×3/Vision×2/Korean Cinema Today×2/亚洲电影人奖 2026~2029 四连脏数据 → 18 组;归并在 `app/model.ts::unitKey()`,旧版同名函数在 `legacy/src/library.ts`)
 
 **festival-extras.json**(2026-09-11 新增):官网「排期之外」的辅助信息 —— **不是排期**,
@@ -461,7 +476,14 @@ public/douban-related.json = {
   "ticketing": {
     "batches": [{ "includes": "Opening & Closing Ceremony / …", "openText": "Sep 17(Thu) 14:00 (KST)" }],
     "prices":  [{ "label": "Opening & Closing Ceremony", "krw": 30000 }],
-    "discountKrw": 3000, "notes": ["…"], "callCenter": "1666-9177", "url": "…page_num=11402"
+    "discountKrw": 3000, "notes": ["…"], "callCenter": "1666-9177", "email": "cs@biff.kr",
+    "bookingUrl": "https://ticket.biff.kr/",   // ★ 真正下单的站点;`url` 是官方购票说明页,两者不可混用
+    "salesPeriod": { "period": "9.17 ~ 10.15", "hours": "24 Hours", "payment": "Credit card / Debit card" },
+    "refund": { "deadline": "…up to 60 minutes before screening.", "howTo": ["…"],
+                "fees": [{ "when": "6+ days before screening", "fee": "Free", "note": "" }], "notes": ["…"] },
+    "discounts": [{ "who": "Accessible, Senior, Veterans", "terms": ["…"] }],
+    "serviceDesk": { "location": "…", "eligible": "…", "screenings": "…", "notes": ["…"] },
+    "url": "…page_num=11402"
   },
   "programs": [{ "code": "811", "kind": "master_class", "title": "…", "guest": "NA Hong-jin",
                  "guestZh": "罗泓轸", "dateText": "Oct 8 (Thu) 11:00 - 12:30", "priceKrw": 15000,
@@ -472,7 +494,14 @@ public/douban-related.json = {
 }
 ```
 - **生成**:`python3 tools/scrape_biff_extras.py`(抓 `page_num=11402/11218/11219/11366/11226/11223/11233`,
-  `--offline` 复用 `data/_cache/extras/*.html`);**只保留 `schedule.json` 里真实存在的 code** → 往届遗留条目自动滤掉
+  `--offline` 复用 `data/_cache/extras/*.html`);过滤有**两道闸** —— ① 只保留 `schedule.json` 里真实存在的 code;
+  ② `dateText` 的「月 日」必须落在展期内(`month_day_in_range`,展期从排期推导、不硬编码年份)。
+  ⚠ **第 ② 道不能省**:官网节目页常年挂着往届条目,而编号会被下一届复用(实测 2025 的 Carte Blanche
+  占了 2026 的 338 / 408)→ 只按 code 过滤时,去年的嘉宾会被挂到今年的场次上
+- **票务字段来源**:`bookingUrl` / `email` **只存在于 HTML 的 `href` 里**,`page_lines` 已剥标签 → 必须回原始 HTML 取
+  (取不到留空、前端自动隐藏,不编造链接);`discounts` / `refund` / `salesPeriod` / `serviceDesk` 用**正文锚点**定位 ——
+  ⚠ 页内 `Online` / `Discount Policy` 会**先出现在表格列头与左侧菜单锚点**,`lines.index()` 取到的是那一处(实测解析为空),
+  故分别改用「期段模式」与「下一行以 `Discount Amount` 开头」判定
 - **开票时刻**:官网只印「月日 + KST 时分」(不带年)→ 前端 `extras.ts::ticketOpens(year)` 用 festival 年份组装;
   **同时给北京时间(KST−1h)与韩国时间** —— 官网印 KST、国内看 KST−1h,倒计时横幅两者并排
 - **票价**:`extras.ts::priceOf()` 是唯一口径 —— **官网节目页优先**,其次按场次类型推断

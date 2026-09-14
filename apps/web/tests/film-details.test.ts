@@ -35,10 +35,17 @@ describe("screening-specific film details", () => {
   });
 
   it("uses the first show for a library card even when a later show has an activity", () => {
-    const anchor = filmDetailAnchor(nodes.get("cat:f114"), null)!;
+    const film = nodes.get("cat:f114")!;
+    const anchor = filmDetailAnchor(film, null)!;
     expect(anchor.code).toBe("162");
     expect(programOf(anchor.code)).toBeUndefined();
-    expect(programOf("338")).toBeDefined();
+    // ⚠ 2026-09-14(PLAN-20260914143817):此处原为 `expect(programOf("338")).toBeDefined()`,
+    // 它依赖一条**错数据** —— 338 被 2025 遗留的 Carte Blanche 串上(编号被本届复用,
+    // 见 tools/scrape_biff_extras.py::month_day_in_range),让 Elephants in the Fog 的
+    // 第三场看起来像活动场。展期校验剔除后该片四场都没有活动,故改用「场次顺序」锁住
+    // 「卡片取第一场」这一行为,并显式断言 338 已不再是活动场。
+    expect(film.shows.map((show) => show.code)).toEqual(["162", "338", "406", "552"]);
+    expect(programOf("338")).toBeUndefined();
   });
 
   it("does not borrow another film's screening from a stale detail URL", () => {

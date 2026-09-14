@@ -107,6 +107,24 @@ RE_CODE = re.compile(r"^\d{3}$")
 RE_DATE_TIME = re.compile(r"^([A-Z][a-z]{2} \d+ \([A-Za-z]{3}\))\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$")
 RE_MONEY = re.compile(r"KRW\s*([\d,]+)")
 RE_PERSON_PREFIX = re.compile(r"^(Actor|Director|Guest|Moderator)\s+(.+)$")
+# `dateText` 里的「月 日」—— 用于判定该节目是否落在本届展期内(见 month_day_in_range)
+RE_MONTH_DAY = re.compile(
+    r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})\b", re.I
+)
+MONTH_NUM: dict[str, int] = {
+    "jan": 1,
+    "feb": 2,
+    "mar": 3,
+    "apr": 4,
+    "may": 5,
+    "jun": 6,
+    "jul": 7,
+    "aug": 8,
+    "sep": 9,
+    "oct": 10,
+    "nov": 11,
+    "dec": 12,
+}
 
 
 def fetch(page_num: str, cache_dir: Path, offline: bool, delay: float) -> str:
@@ -155,6 +173,25 @@ def money(text: str) -> Optional[int]:
 
 def guest_zh(name: str) -> Optional[str]:
     return GUEST_ZH.get(name)
+
+
+def month_day_in_range(text: str, first: tuple[int, int], last: tuple[int, int]) -> bool:
+    """`dateText` 里的「月 日」是否落在展期内 —— 挡往届遗留节目的通用闸门。
+
+    为什么需要它:节目页(11218 / 11219 / 11223 / 11226 / 11366)会**同时挂着往届条目**。
+    只按 code 过滤挡不住 —— 2026 排期恰好复用了 2025 用过的编号(实测 338 / 408),
+    于是 2025 的 Carte Blanche 会串到今年的场次上,前端把去年的嘉宾挂到今年的片子上。
+    按日期判定与编号无关,编号怎么复用都不会再漏。
+
+    解析不出日期的条目**一律丢弃**(宁可少一条,也不显示一个错的时间)。
+    """
+    m = RE_MONTH_DAY.search(text or "")
+    if not m:
+        return False
+    mon = MONTH_NUM.get(m.group(1).lower())
+    if not mon:
+        return False
+    return first <= (mon, int(m.group(2))) <= last
 
 
 def next_value(lines: list[str], start: int, limit: int = 6) -> str:
@@ -258,8 +295,141 @@ def parse_programs(lines: list[str], kind: str) -> list[dict[str, Any]]:
     return out
 
 
-def parse_ticketing(lines: list[str]) -> dict[str, Any]:
-    """售票页 → 开票批次 / 售票期 / 票价 / 折扣 / 须知。"""
+def parse_sales_period(lines: list[str]) -> dict[str, str]:
+    """在线售票期 / 时长 / 支付方式。
+
+    ⚠ 定位靠**期段模式**(`9.17` + `~` + `10.15`),不要用 `lines.index("Online")` ——
+    页内 `Online` 先出现在票亭表的**列头**(在含期段的数据行之前),`index` 会取到列头,
+    从那里往后切出来的片段里根本没有期段(实测解析为空)。按模式找与行的先后无关。
+    """
+    out = {"period": "", "hours": "", "payment": ""}
+    for i in range(len(lines) - 2):
+        if not re.fullmatch(r"\d{1,2}\.\d{1,2}", lines[i]):
+            continue
+        if lines[i + 1] != "~" or not re.fullmatch(r"\d{1,2}\.\d{1,2}", lines[i + 2]):
+            continue
+        out["period"] = f"{lines[i]} ~ {lines[i + 2]}"
+        seg = lines[i + 3 : i + 8]
+        out["hours"] = "24 Hours" if "24 Hours" in seg else ""
+        out["payment"] = " / ".join(x for x in seg if x in ("Credit card", "Debit card", "Cash"))
+        break
+    return out
+
+
+def parse_refunds(lines: list[str]) -> dict[str, Any]:
+    """取消与退款:截止口径 / 取消方式 / 三档取消费。
+
+    费用表以「…before screening」结尾的行为锚点,紧跟一行是费用(可能带括号的典礼加价),
+    再一行可能是 `※` 备注 —— 三条恰好覆盖官网表格的三行。
+    """
+    deadline = ""
+    for line in lines:
+        if line.startswith("Cancellations are accepted"):
+            deadline = line
+            break
+    how_to: list[str] = []
+    if "How to Cancel" in lines:
+        i = lines.index("How to Cancel")
+        for j in range(i + 1, min(len(lines), i + 6)):
+            if lines[j] == "Cancellation Fee":
+                break
+            how_to.append(lines[j])
+    fees: list[dict[str, str]] = []
+    for i, line in enumerate(lines):
+        if not line.endswith("before screening") or i + 1 >= len(lines):
+            continue
+        fee = lines[i + 1]
+        k = i + 2
+        if k < len(lines) and lines[k].startswith("("):
+            fee = f"{fee} {lines[k]}"
+            k += 1
+        note = lines[k] if k < len(lines) and lines[k].startswith("※") else ""
+        fees.append({"when": line, "fee": fee, "note": note})
+    notes: list[str] = []
+    if "Cancellation Fee" in lines:
+        i = lines.index("Cancellation Fee")
+        notes = [
+            x
+            for x in lines[i:]
+            if x.startswith(("Reservations are possible", "(For combined", "In the case of screening"))
+        ]
+    return {"deadline": deadline, "howTo": how_to, "fees": fees, "notes": notes}
+
+
+def parse_discounts(lines: list[str]) -> list[dict[str, Any]]:
+    """折扣三档(无障碍/高龄/退伍 · BCC 付费会员 · 轮椅位)及各自适用条件。
+
+    结构是「组名 → 条件若干 → `※` 备注若干」。组名与条件的区分靠**开头词**:
+    条件行一律以 Applies/Applicable/Pre-registration/Discount/ID 起头,组名是短名词短语。
+    """
+    if "Discount Policy" not in lines:
+        return []
+    # ⚠ 取「正文标题」而非「左侧菜单锚点」:菜单里那个 `Discount Policy` 在页首,
+    # 紧跟的是 `Ticket Booking Information`,循环会当场 break(实测返回 0 组)。
+    # 正文标题的判据 = 下一行以 `Discount Amount` 开头。
+    i = -1
+    for j, line in enumerate(lines):
+        if line == "Discount Policy" and j + 1 < len(lines) and lines[j + 1].startswith("Discount Amount"):
+            i = j
+            break
+    if i < 0:
+        return []
+    groups: list[dict[str, Any]] = []
+    who = ""
+    terms: list[str] = []
+    for j in range(i + 1, len(lines)):
+        cand = lines[j]
+        if cand == "Ticket Booking Information":
+            break
+        if cand.startswith("Discount Amount"):
+            continue
+        if cand.startswith("※"):
+            if who:
+                terms.append(cand)
+            continue
+        if cand.startswith(("Applies to", "Applicable", "Pre-registration", "Discount applicable", "ID,")):
+            if who:
+                terms.append(cand)
+            continue
+        if who:
+            groups.append({"who": who, "terms": terms})
+        who = cand
+        terms = []
+    if who:
+        groups.append({"who": who, "terms": terms})
+    return groups
+
+
+def parse_service_desk(lines: list[str]) -> dict[str, Any]:
+    """数字弱势群体服务台:地点 / 适用人群 / 可购场次 / 备注。"""
+    title = "Service Desks for Digitally Excluded Audiences"
+    if title not in lines:
+        return {}
+    tail = lines[lines.index(title) :]
+
+    def after(label: str) -> str:
+        return tail[tail.index(label) + 1] if label in tail else ""
+
+    notes = [
+        x
+        for x in tail
+        if x.startswith("※")
+        or x.startswith(("On the Opening day", "Community BIFF screenings", "Operating hours"))
+    ]
+    return {
+        "location": after("Location"),
+        "eligible": after("Eligible Users"),
+        "screenings": after("Screenings Available for Purchase"),
+        "notes": notes,
+    }
+
+
+def parse_ticketing(lines: list[str], raw: str = "") -> dict[str, Any]:
+    """售票页 → 开票批次 / 售票期 / 票价 / 折扣 / 退款 / 须知。
+
+    `raw` = 原始 HTML:**购票入口与客服邮箱只存在于 `href` 里**,`page_lines` 已把标签剥掉,
+    所以这两项必须回原始 HTML 取 —— 取不到就留空(前端自动隐藏),绝不编造链接。
+    """
     batches: list[dict[str, Any]] = []
     for i, line in enumerate(lines):
         if line == "OPEN" and i > 0 and i + 1 < len(lines):
@@ -303,12 +473,22 @@ def parse_ticketing(lines: list[str]) -> dict[str, Any]:
         if m:
             call_center = m.group(1)
             break
+    m = re.search(r'href="(https://ticket\.biff\.kr/[^"]*)"', raw)
+    booking_url = m.group(1) if m else ""
+    m = re.search(r'href="mailto:([^"]+)"', raw)
+    email = m.group(1) if m else ""
     return {
         "batches": batches,
         "prices": prices,
         "discountKrw": discount,
+        "discounts": parse_discounts(lines),
+        "refund": parse_refunds(lines),
+        "salesPeriod": parse_sales_period(lines),
+        "serviceDesk": parse_service_desk(lines),
         "notes": notes,
         "callCenter": call_center,
+        "email": email,
+        "bookingUrl": booking_url,
         "url": PAGE_URL.format(num=PAGE_BOOKING),
     }
 
@@ -359,14 +539,23 @@ def main() -> int:
     cache_dir = Path(args.cache_dir)
     out_path = Path(args.out)
 
-    # 有效 code 集合:以排期为准,自动滤掉官网页面上的往届遗留节目
+    # 有效 code 集合 + 展期:以排期为准,自动滤掉官网页面上的往届遗留节目
     schedule_path = out_path.parent / "schedule.json"
     valid_codes: set[str] = set()
+    fest_days: list[str] = []
     if schedule_path.exists():
         data = json.loads(schedule_path.read_text(encoding="utf-8"))
-        valid_codes = {str(s.get("code")) for s in data.get("screenings", [])}
+        screenings = data.get("screenings", [])
+        valid_codes = {str(s.get("code")) for s in screenings}
+        fest_days = sorted({str(s["date"]) for s in screenings if s.get("date")})
     else:
         print(f"⚠ 未找到 {schedule_path} —— 不做 code 过滤", file=sys.stderr)
+
+    # 展期从排期推导(不硬编码年份):`YYYY-MM-DD` → `(月, 日)`
+    first_md = (int(fest_days[0][5:7]), int(fest_days[0][8:10])) if fest_days else (0, 0)
+    last_md = (int(fest_days[-1][5:7]), int(fest_days[-1][8:10])) if fest_days else (0, 0)
+    if not fest_days:
+        print("⚠ 排期无日期 —— 不做展期过滤", file=sys.stderr)
 
     programs: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -377,12 +566,15 @@ def main() -> int:
             if p["code"] in seen:
                 continue
             if valid_codes and p["code"] not in valid_codes:
-                continue  # 往届遗留(如 2025 的 Camellia Award)
+                continue  # 往届遗留(如 2025 的 Camellia Award 得主)
+            if not month_day_in_range(p.get("dateText", ""), first_md, last_md):
+                continue  # 编号被本届复用 → code 过滤失效,改按日期拦(如 338 / 408)
             seen.add(p["code"])
             programs.append(p)
     programs.sort(key=lambda p: p["code"])
 
-    ticketing = parse_ticketing(page_lines(fetch(PAGE_BOOKING, cache_dir, args.offline, args.delay)))
+    booking_html = fetch(PAGE_BOOKING, cache_dir, args.offline, args.delay)
+    ticketing = parse_ticketing(page_lines(booking_html), booking_html)
     ceremony = parse_ceremony(page_lines(fetch(PAGE_CEREMONY, cache_dir, args.offline, args.delay)))
 
     payload = {
@@ -398,6 +590,12 @@ def main() -> int:
     # 自检:关键字段缺失要当场看见,而不是留到前端才发现是空壳
     print(f"✓ 写出 {out_path}")
     print(f"  开票批次 {len(ticketing['batches'])} · 票价 {len(ticketing['prices'])} 档 · 须知 {len(ticketing['notes'])} 条")
+    print(
+        f"  售票期 {ticketing['salesPeriod']['period'] or '-'}"
+        f" · 退款档 {len(ticketing['refund']['fees'])} · 折扣组 {len(ticketing['discounts'])}"
+        f" · 购票入口 {'有' if ticketing['bookingUrl'] else '缺'}"
+        f" · 邮箱 {'有' if ticketing['email'] else '缺'}"
+    )
     print(f"  节目 {len(programs)} 场(Actors' House / Master Class / Cine Class / Special Talk)")
     for p in programs:
         missing = [k for k in ("title", "dateText", "priceKrw") if not p.get(k)]

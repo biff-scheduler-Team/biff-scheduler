@@ -63,6 +63,24 @@ WEB_UNIT: dict[str, str] = {
 
 CATALOG_FIELDS = ("title_zh", "title_orig", "unit", "remark", "year", "rating", "rating_count", "country", "director")
 
+# 官网 section 与 xlsx 单元冲突时的人工裁决表(2026-09-14)
+# ---------------------------------------------------------------------------
+# 通用规则是「xlsx 覆盖官网」—— 因为 xlsx 更细(`Vision–Korea` / `广角镜 - 纪录片放映` /
+# `KCT – Panorama`,实测 89 处有价值的细化)。但 xlsx 偶尔会**改错**,这时必须让官网赢。
+# 键 = 官网片名(`title_en`),值 = 最终 `unit`。
+#
+# 为什么这两条由官网赢(证据,均取自官网 prog_view 的 section):
+#   · `Spirit Guardians: The Last Secret Of The First Emperor`(大圣崛起)官网 = A Window on
+#     Asian Cinema,且 4 个场次(161/316/419/641)全在 BCM / LOTTE,无屋顶剧场场次 ——
+#     不可能是 Open Cinema。
+#   · `The Violinist` 官网 = Open Cinema,且有屋顶剧场场次(325)。
+#   两条正好互换:修前「亚洲电影之窗 27 部(含 The Violinist)、Open Cinema 5 部(含大圣崛起)」,
+#   修后两单元同时归位(27 / 5),与官网 prog_view 的计数一致。
+UNIT_OVERRIDE: dict[str, str] = {
+    "Spirit Guardians: The Last Secret Of The First Emperor": "亚洲电影之窗",
+    "The Violinist": "Open Cinema",
+}
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import film_match  # noqa: E402  (同目录工具,需先补 sys.path)
 
@@ -278,6 +296,12 @@ def main() -> int:
     # 出现「中文名一条(无排期)+ 英文名一条(有排期)」的重复对,正是用户要消灭的现象。
     # 所以这里**只报不写**:配不上的片以官网英文名出现在表里(用户口径:不映射就用英文)。
     leftover = [f for f in catalog if f["id"] not in used_catalog]
+
+    # ---- 3b) 人工裁决:xlsx 把单元改错的个案(见 UNIT_OVERRIDE 头注) ----
+    for f in films:
+        override = UNIT_OVERRIDE.get(f["title_en"])
+        if override:
+            f["unit"] = override
 
     # ---- 4) 编号:有排期的按首次开映时间排,其余(纯目录/合集成员)按目录序排在后面 ----
     first_code = {}

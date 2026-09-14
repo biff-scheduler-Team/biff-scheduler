@@ -1,6 +1,6 @@
 {
   "source": "https://www.biff.kr/eng/",
-  "generated_at": "2026-09-11T23:33:04+0800",
+  "generated_at": "2026-09-14T14:42:29+0800",
   "ticketing": {
     "batches": [
       {
@@ -31,6 +31,85 @@
       }
     ],
     "discountKrw": 3000,
+    "discounts": [
+      {
+        "who": "Accessible, Senior, Veterans",
+        "terms": [
+          "Applies to individuals aged 65 or older (born in 1961 or earlier), persons with disabilities, and veterans only",
+          "ID, Disability card, or Veterans certificate required",
+          "※ Discounted tickets (Accessible/Senior/Veterans) require ID/document verification at the BIFF Ticket Box before mobile tickets can be used.",
+          "※ If you cannot present valid ID or are not the eligible attendee, you must pay the price difference.",
+          "※ The discount is available for online purchases as well as at the BIFF Ticket Box."
+        ]
+      },
+      {
+        "who": "Paid-up members of Busan Cinema Center",
+        "terms": [
+          "Applicable to the member only",
+          "Discount applicable only for General Screenings and Open Cinema(outdoor screenings) at Busan Cinema Center",
+          "※ Excludes Opening/Closing Ceremonies and Midnight Passion",
+          "※ Discount applies only at the BIFF Outdoor Ticket Box and Cine Mountain 6F",
+          "※ Physical/mobile membership card and ID required"
+        ]
+      },
+      {
+        "who": "Wheelchair seat",
+        "terms": [
+          "Applicable to the individual only",
+          "Pre-registration priority & On-site for remaining seats only",
+          "※ Online booking unavailable",
+          "※ Disability card required for discount"
+        ]
+      }
+    ],
+    "refund": {
+      "deadline": "Cancellations are accepted up to 60 minutes before screening.",
+      "howTo": [
+        "Mobile ticket",
+        "BIFF ticket website(biff.kr) → Login → My page → Details → Select the ticket → Reservation Cancel",
+        "Paper ticket",
+        "Printed tickets must be returned to the BIFF Ticket Box for cancellation."
+      ],
+      "fees": [
+        {
+          "when": "6+ days before screening",
+          "fee": "Free",
+          "note": ""
+        },
+        {
+          "when": "5 to 3 days before screening",
+          "fee": "1,000 KRW (3,000 KRW for Opening/Closing Ceremonies)",
+          "note": "※ Free if cancelled on the day of purchase"
+        },
+        {
+          "when": "2 days to 60 minutes before screening",
+          "fee": "3,000 KRW (9,000 KRW for Opening/Closing Ceremonies)",
+          "note": "※ No same-day exemption"
+        }
+      ],
+      "notes": [
+        "Reservations are possible for up to two tickets per screening code and partial cancellation is allowed per ticket.",
+        "(For combined payments with promotional vouchers and credit or debit cards, only full cancellation is possible.)",
+        "In the case of screening schedule changes or cancellations announced by BIFF, full refunds will be offered without any fees."
+      ]
+    },
+    "salesPeriod": {
+      "period": "9.17 ~ 10.15",
+      "hours": "24 Hours",
+      "payment": "Credit card / Debit card"
+    },
+    "serviceDesk": {
+      "location": "All BIFF Ticket Box",
+      "eligible": "Seniors aged 65 and over (born in 1961 or earlier), persons with disabilities",
+      "screenings": "Same-day & Next-day general screenings",
+      "notes": [
+        "※ ID or Disability card required",
+        "※ Excludes paid events such as the Opening & Closing Ceremonies, Actors’ House, Master Class.",
+        "Operating hours vary by location; please check the BIFF Ticket Box schedule for each venue.",
+        "On the Opening day, October 6, only tickets for Next-day general screenings are available at the BIFF Outdoor Ticket Box of Busan Cinema Center.",
+        "Community BIFF screenings can only be booked at the MEGABOX Busan Theater 4F Ticket Box."
+      ]
+    },
     "notes": [
       "Recommends using Chrome for online (PC/mobile) bookings.",
       "If the booking page does not appear, please check the pop-up blocking settings on your browser.",
@@ -41,6 +120,8 @@
       "If booking details cannot be found, contact the BIFF Call Center(1666-9177)."
     ],
     "callCenter": "1666-9177",
+    "email": "cs@biff.kr",
+    "bookingUrl": "https://ticket.biff.kr/",
     "url": "https://www.biff.kr/eng/addon/10000001/page.asp?page_num=11402"
   },
   "programs": [
@@ -93,32 +174,6 @@
       "priceKrw": null,
       "language": "English, Korean",
       "venue": "Busan Cinema Center Cinema 1",
-      "moderator": "",
-      "bio": ""
-    },
-    {
-      "code": "338",
-      "kind": "special_talk",
-      "title": "Carte Blanche: Small, Slow But Steady x EUN Huigyeong",
-      "guest": "EUN Huigyeong",
-      "guestZh": null,
-      "dateText": "Sep 22 (Mon) After the 16:30 screening",
-      "priceKrw": null,
-      "language": "English, Korean",
-      "venue": "Cinema 3, Busan Cinema Center",
-      "moderator": "",
-      "bio": ""
-    },
-    {
-      "code": "408",
-      "kind": "special_talk",
-      "title": "Carte Blanche: Eureka (remastered) x BONG Joon-ho",
-      "guest": "BONG Joon-ho",
-      "guestZh": "奉俊昊",
-      "dateText": "Sep 23 (Tue) After the 18:00 screening",
-      "priceKrw": null,
-      "language": "English, Korean",
-      "venue": "Cinema 1, Busan Cinema Center",
       "moderator": "",
       "bio": ""
     },
