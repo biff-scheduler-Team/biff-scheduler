@@ -5,7 +5,8 @@
 > API `biff-scheduler` + 静态资源 `biff-scheduler-web`)+ React / Router / Spectrum S2 + Vite + TS
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-14(**规范补两条:大改动走 PR + 大重构前打 checkpoint**,见 §0 首条);
+> 最后更新:2026-09-14(**建议反馈留言板 PR**,见 §0 首条);
+> 更早 = 2026-09-14(**规范补两条:大改动走 PR + 大重构前打 checkpoint**);
 > 更早 = 2026-09-14(**桌面分栏 + 账号一体 + 想看人数**);
 > 更早 = 2026-09-13(**IFFDAY 账号体系 + 前后端分仓**);
 > 更早 = 把「靠人记住的规范」改成「机器能挡的闸门」(CI / 钩子 / check:repo / api 单测 / TEST-MAP / legacy 计划 / Dependabot);
@@ -26,6 +27,9 @@
 ## 0. 当前状态快照(2026-09-14)
 
 **✅ 已完成(已部署,线上可访问)**
+- **建议反馈留言板(进行中 / PR,`PLAN-20260914134700`)**:`/feedback` 公开可读；登录后发帖与五类 emoji 反应（👍❤️🎉💡👀）；
+  D1 `feedback_post` / `feedback_reaction`（不复用 `festival_document`）；顶栏「建议」入口。
+  remote 迁移随 main Builds；本机不改 wrangler `account_id`。
 - **规范补两条:大改动走 PR + 大重构前打 checkpoint(2026-09-14,`PLAN-20260914101945`)**:提交复盘
   (`gaaiyeoi` 121 条 vs `citron` 14 条;平均 5.2 文件 / 148 行 vs **157.8 文件 / 4637 行**)后,把 citron 侧
   **两条值得保留的做法**补进三层规范 —— ① **§4.5 PR 流程**:默认仍直接 push main,但**大规模重构 /

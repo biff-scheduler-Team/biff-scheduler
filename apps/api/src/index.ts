@@ -8,7 +8,20 @@ import {
   wantWeightFor,
 } from "./want-stats";
 import { clearContributorWants, readWantCounts, replaceContributorWants } from "./want-store";
-import { Hono } from "hono";
+import {
+  isAllowedEmoji,
+  normalizeFeedbackBody,
+  writeAuthError,
+} from "./feedback";
+import {
+  createFeedbackPost,
+  deleteFeedbackPost,
+  listFeedbackPosts,
+  parseFeedbackCursor,
+  parseFeedbackLimit,
+  toggleFeedbackReaction,
+} from "./feedback-store";
+import { Hono, type MiddlewareHandler } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
@@ -202,7 +215,8 @@ app.get("/api/auth/callback", async (c) => {
     return c.redirect("/?account_error=authorization");
   }
 });
-app.use("/api/account/*", async (c, next) => {
+/** 与 /api/account/* 相同：会话 + IFFDAY profile；反馈写路径复用。 */
+const requireIdentity: MiddlewareHandler<AppEnv> = async (c, next) => {
   const config = configuration(c.env);
   const session = await sessionFor(
     c.env,
@@ -228,7 +242,8 @@ app.use("/api/account/*", async (c, next) => {
   c.set("session", session);
   c.set("profile", profile);
   await next();
-});
+};
+app.use("/api/account/*", requireIdentity);
 app.get("/api/account/me", (c) => {
   const { row, tokens } = c.get("session");
   return c.json({
@@ -410,6 +425,60 @@ async function applyWantFromRecords(
   );
 }
 
+
+
+app.get("/api/feedback", async (c) => {
+  const config = configuration(c.env);
+  const session = await sessionFor(
+    c.env,
+    getCookie(c, sessionCookieName(config)),
+    c.req.header("cf-connecting-ip"),
+  );
+  const result = await listFeedbackPosts(database(c.env.DB), {
+    limit: parseFeedbackLimit(c.req.query("limit")),
+    cursor: parseFeedbackCursor(c.req.query("cursor")),
+    mySubject: session?.row.subject ?? null,
+  });
+  return c.json(result);
+});
+app.post("/api/feedback", requireIdentity, async (c) => {
+  if (writeAuthError(c.get("session"))) return c.json({ error: "UNAUTHENTICATED" }, 401);
+  const payload = await c.req.json().catch(() => null);
+  const body = normalizeFeedbackBody(payload && typeof payload === "object" ? (payload as { body?: unknown }).body : null);
+  if (!body) return c.json({ error: "INVALID_BODY" }, 422);
+  const profile = c.get("profile");
+  const post = await createFeedbackPost(database(c.env.DB), {
+    subject: c.get("session").row.subject,
+    displayName: profile.displayName,
+    body,
+  });
+  return c.json(post, 201);
+});
+app.delete("/api/feedback/:id", requireIdentity, async (c) => {
+  const id = c.req.param("id");
+  const subject = c.get("session").row.subject;
+  const result = await deleteFeedbackPost(database(c.env.DB), id, subject);
+  if (result.status === "missing") return c.json({ error: "NOT_FOUND" }, 404);
+  if (result.status === "forbidden") return c.json({ error: "FORBIDDEN" }, 403);
+  return c.json({ ok: true });
+});
+app.post("/api/feedback/:id/reactions", requireIdentity, async (c) => {
+  const payload = await c.req.json().catch(() => null);
+  const emoji = payload && typeof payload === "object" ? (payload as { emoji?: unknown }).emoji : null;
+  if (typeof emoji !== "string" || !isAllowedEmoji(emoji))
+    return c.json({ error: "INVALID_EMOJI" }, 422);
+  const result = await toggleFeedbackReaction(database(c.env.DB), {
+    postId: c.req.param("id"),
+    subject: c.get("session").row.subject,
+    emoji,
+  });
+  if (result.status === "missing") return c.json({ error: "NOT_FOUND" }, 404);
+  return c.json({
+    active: result.active,
+    reactionCounts: result.reactionCounts,
+    myReactions: result.myReactions,
+  });
+});
 
 app.get("/api/stats/want-counts", async (c) => {
   const edition = c.req.query("edition") || DEFAULT_WANT_EDITION;
