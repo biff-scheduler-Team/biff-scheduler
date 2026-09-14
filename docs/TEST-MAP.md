@@ -37,6 +37,7 @@ npx playwright test -c playwright.react.config.ts \
 | `apps/web/src/state.ts`<br>`apps/web/src/backup.ts`<br>`apps/web/src/ics.ts`<br>`apps/web/src/share.ts` | `review-state-export` · `workflows` · `legacy` · `compatibility` |
 | `apps/web/public/manifest.webmanifest` | `offline` |
 | `apps/api/src/want-stats.ts`<br>`apps/api/src/want-store.ts`<br>`apps/web/src/want-counts.ts`<br>`apps/api/migrations/0003_film_want_stat.sql` | `want-counts` |
+| `apps/web/src/pages/FeedbackPage.tsx`<br>`apps/api/src/feedback.ts`<br>`apps/api/src/feedback-store.ts`<br>`apps/api/migrations/0004_feedback_board.sql` | `feedback` |
 | **任何改动都跑** | `smoke` |
 | **命中即全量** | `apps/web/src/style.css` · `apps/web/index.html` · `package.json` · `package-lock.json` · `playwright.react.config.ts` · `tsconfig.tests.json` · `vitest.config.ts` · `apps/web/vite.config.ts` |
 <!-- END GENERATED:test-map -->
