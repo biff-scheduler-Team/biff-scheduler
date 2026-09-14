@@ -62,3 +62,27 @@ export const filmWantStat = sqliteTable("film_want_stat", {
 }, (table) => [
   primaryKey({ columns: [table.edition, table.film_key] }),
 ]);
+
+/** 建议反馈留言：独立表，不复用 festival_document。 */
+export const feedbackPost = sqliteTable("feedback_post", {
+  id: text().primaryKey().notNull(),
+  subject: text().notNull(),
+  display_name: text().notNull(),
+  body: text().notNull(),
+  created_at: integer().notNull(),
+  updated_at: integer().notNull(),
+}, (table) => [
+  index("feedback_post_created").on(table.created_at),
+  index("feedback_post_subject").on(table.subject),
+]);
+
+/** 每用户每帖每种 emoji 至多一条；再点即取消。 */
+export const feedbackReaction = sqliteTable("feedback_reaction", {
+  post_id: text().notNull(),
+  subject: text().notNull(),
+  emoji: text().notNull(),
+  created_at: integer().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.post_id, table.subject, table.emoji] }),
+  index("feedback_reaction_post").on(table.post_id),
+]);
