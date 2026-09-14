@@ -687,9 +687,9 @@ public/douban-related.json = {
    npx wrangler secret delete ADMIN_SUBJECTS -c apps/api/wrangler.jsonc
    ```
    不删也无害(没有任何代码读它)。「看到不良信息」的出口就是帖子上的「👎」。
-11. **`e2e/react/screening-social.spec.ts` 尚未纳入 `git ls-files`**:`scripts/affected-specs.mjs` 靠
-    `git ls-files` 发现 spec,故提交前 `npm run specs:affected` 会提示「映射里有磁盘上不存在的 spec」——
-    提交后即消失(不是配置错)。
+11. ✅ **`e2e/react/screening-social.spec.ts` 已纳入 `git ls-files`**(随本轮提交入库):`scripts/affected-specs.mjs`
+    靠 `git ls-files` 发现 spec —— 入库前它会被判成「映射里有磁盘上不存在的 spec」,入库后该提示消失,
+    `docs/TEST-MAP.md` 里那条「⚠ `screening-social`(不存在)」的注记也随之消失(同一轮内已同步生成表格)。
 
 ---
 
