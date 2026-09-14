@@ -5,7 +5,8 @@
 > API `biff-scheduler` + 静态资源 `biff-scheduler-web`)+ React / Router / Spectrum S2 + Vite + TS
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-14(**修 `sessionFor` 刷新把健康会话打成 401**,见 §0 首条);
+> 最后更新:2026-09-14(**同场观影 & 场次讨论** —— 票务三态 / 实际行程 / 同场人数 / 场次讨论,见 §0 首条);
+> 更早 = 2026-09-14(**修 `sessionFor` 刷新把健康会话打成 401**);
 > 更早 = 2026-09-14(**建议反馈留言板 PR**);
 > 更早 = 2026-09-14(**规范补两条:大改动走 PR + 大重构前打 checkpoint**);
 > 更早 = 2026-09-14(**桌面分栏 + 账号一体 + 想看人数**);
@@ -41,6 +42,33 @@
   本次修掉的是**可避免**的那部分。新增 `apps/api/tests/oauth-session.test.ts`(14 例,`node:sqlite` 当 D1 替身跑真 SQL);
   **修复前 5 failed / 9 passed**(核心两条:并发败者删会话、租约被踩)。顺带修掉 `crypto.test.ts` 一条**既有 flake**
   (篡改 base64url 末位字符有时解出相同字节,实测 5.8% 假失败)。
+- **同场观影 & 场次讨论(2026-09-14,`PLAN-20260914164050`;⚠ 本地验收通过但**尚未推送**,见 §7.5)**:「我的行程」叠加
+  票务结果层 —— `biff.tickets.v1`(`已抢到 / 没抢到 / 放弃` + `转票` 来源,场次级独立键)+「添加转票场次」弹层
+  (按 code / 中英韩片名检索,一步「加入行程并标记转票」)+「仅看实际行程」切换(纯视图筛选 `state === "got"`;
+  该视图下不摆顺位卡 —— 票都抢完了)。**正面推翻 2026-09-11 删除抢票三态的决策**(`state.ts` 原注释):它不再是
+  本地孤岛,而是新功能的共享数据底座;仍**不复活「售罄」**这类票务系统内部状态。
+  同场人数 = 该场**出现在多少人的行程里**(**不看票务状态**,用户拍板「口径最宽」),权重沿用「想看人数」的
+  登录 1.0 / 匿名 0.75,**只回聚合数字不回名单**;`GET /api/stats/screening-counts`(人数 + 讨论数一次拿)+
+  `POST /api/stats/screening-attendance-ping`(只发 code,1200ms 防抖)。场次讨论 = 公开读 / 登录写,D1 新表
+  `screening_post` + `screening_reaction`(**不复用 `festival_document`**),四分类(无料交换 / 物品互换 / 临时约伴 /
+  其他)+ 六种 emoji 反应(含点踩 `👎`)+ 作者可删;隐私提示常驻 + 首次说明一次。顺带把「反应 emoji 白名单」「游标分页」
+  「讨论分类」三处**上提为唯一来源**(`@biff/contracts/reactions` / `apps/api/src/pagination.ts` /
+  `@biff/contracts/screening`)—— 此前 `FeedbackPage` 手抄了一份 emoji 名单。
+  ⚠ 迁移 `0005_screening_social.sql` 是**手工裁剪**的:drizzle 只认 `meta/0002_snapshot.json`(0003 / 0004 没留
+  snapshot),原样输出会重复创建 `feedback_*` / `film_want_*` 四张**已存在**的表;本地 `db:migrate` 已实跑通过。
+  单测 web **30 文件 / 251 例** + api **9 文件 / 68 例**全绿;受影响 19 个 spec desktop-chromium **78 passed**。
+  ⚠ 期间修掉一个真 bug:`DialogTrigger` 会**无条件渲染 children**,讨论弹层挂载即拉列表 → 行程页每张卡都发一次
+  请求(并**打断顺位拖拽手势**,`parity-agenda` 那条拖拽用例先红后绿);改为 `isOpen` 受控 + 打开时才挂载。
+- **同场观影 & 场次讨论 · 追加:社区约定 / 免责 + 点踩(2026-09-14,同一 PLAN 修订 1 / 2)**:讨论弹层加
+  **常驻提示 + 首次说明**(四条:只聊电影 / 勿发个人信息 / **本站只是信息发布平台、不对由此产生的任何纠纷负责**
+  —— 无论本站还是引流到私下 / 看到不良信息点「👎」)。负反馈**只做点踩** —— `👎` 就是
+  `@biff/contracts/reactions` 白名单里的第六个 emoji,走与其它反应**完全相同**的 toggle 路径,
+  没有独立的表 / 路由 / 计数口径。
+  ⚠ **同日稍晚整体移除「举报 + 管理员后台」**(用户:「先不用管后台了 去掉吧 也不需要举报了 点踩就行」):
+  `screening_report` 表与迁移 `0006`、`POST .../reports`、`GET /api/admin/reports`、`ADMIN_SUBJECTS` secret、
+  `requireAdmin`、`/admin` 页与顶栏入口、`@biff/contracts/reports` 全部删除 —— 维护「记录 → 后台 → 人工裁决」
+  的成本高于收益,要做审核时用作者账号删帖即可。详见该 PLAN 修订 2 与 `docs/CONVENTIONS.md`。
+  单测 web **30 文件 / 251 例** + api **9 文件 / 68 例**全绿;受影响 19 个 spec desktop-chromium **78 passed**。
 - **Umami 分析接入(2026-09-14,`PLAN-20260914160700`)**:`anaritikusu.citrons.cc` script + website-id；
   React Router / Vite 按[官方 SPA 指南](https://docs.umami.is/docs/guides/track-single-page-apps)只在 `index.html`（含 legacy）挂一次，靠 History API 自动 pageview，**不**在 `useLocation` 里手写 `umami.track()`；`data-domains` 限 `biff.lcandy.co,biff.iff.day`。
 
@@ -644,6 +672,24 @@ public/douban-related.json = {
 - P2-7 冲突文案细分(kind: same-venue/cross-venue-overlap/transit)
 - P2-8 自建 5 个内联 SVG(alert/check/x/chevron/info)替换 ⚠✓×▸ⓘ
 - P2-9 视觉 5 件套微统一(Badge/Button/seg 三态、gap-bar/conf 读 status token、字阶收敛 --text-*)
+
+**7.5 同场观影 & 场次讨论 的收尾(2026-09-14,`PLAN-20260914164050`)**
+9. **`0005_screening_social.sql` 生产迁移与线上部署待随 main 推送执行**:本地 D1 已 apply 通过;
+   remote 由 `postbuild`(`scripts/prepare-cloudflare.mjs`,**仅** `WORKERS_CI_BRANCH=main`)在推送后自动跑。
+   ⚠ 本轮用户明确「先本地看效果、先不推送」,故**生产库与线上尚未包含**这两组接口
+   (`/api/stats/screening-counts*`、`/api/screenings/*/discussion*`);未推送前前端会静默降级
+   (人数 / 讨论数不显示、讨论弹层拉不到列表)。
+   ⚠ 迁移 `0006_screening_report.sql` 已随举报功能一并删除,本地 D1 里曾建出的 `screening_report`
+   表也已 `DROP`;生产库**从未** apply 过 0006,故**无需**任何线上清理。
+10. **无待办的人工步骤**(原「推送前必须配 `ADMIN_SUBJECTS` secret」已作废 —— 举报后台删除后这个
+   secret 不再被任何代码读取)。若此前在 Cloudflare 或 `apps/api/.dev.vars` 里配过,可以顺手删掉:
+   ```sh
+   npx wrangler secret delete ADMIN_SUBJECTS -c apps/api/wrangler.jsonc
+   ```
+   不删也无害(没有任何代码读它)。「看到不良信息」的出口就是帖子上的「👎」。
+11. **`e2e/react/screening-social.spec.ts` 尚未纳入 `git ls-files`**:`scripts/affected-specs.mjs` 靠
+    `git ls-files` 发现 spec,故提交前 `npm run specs:affected` 会提示「映射里有磁盘上不存在的 spec」——
+    提交后即消失(不是配置错)。
 
 ---
 

@@ -385,6 +385,47 @@
   —— 10 字段,**无** `runtime_min`/`title_kr`/`codes`。`displayTitle` = `title_zh || mappingTitleCn || title_en`。
   `library.ts::unitKey()` 对未知 unit **回退原字符串**,故英文单元名安全。
 
+- **★ 票务结果 = 用户自述三态(2026-09-14,`PLAN-20260914164050`)**:`biff.tickets.v1` =
+  `Record<场次 code, {state: "got" | "missed" | "dropped", via?: "self" | "transfer"}>`,
+  与 `biff.ranks.v1` 同形(独立键、场次级、`rebuildIndex()` 就地 prune)。
+  · **正面推翻 2026-09-11 的删除决策**:当时的理由是「抢票在票务系统里完成,本地追踪是多余的中间态」;
+    现在它不再是孤岛 —— 「同场观影人数」与「场次讨论」都建立在这份状态上。
+    **仍然不复活「售罄」**这类票务系统内部状态,三态全是用户自述结果。
+  · 「实际行程」**只是视图筛选**(`tickets.ts::actualCodeSet`,`state === "got"`),**不是第二份场次清单** ——
+    数据仍在 `biff.picks.v2` 那一份行程里。该视图下**不摆顺位卡**:票都抢完了,再显示「顺位 1 / 备选」只会误导。
+  · 读取一律走 `tickets.ts::normalizeTicketRecord()`:状态非法整条丢弃;`via` 缺省 / 非法退回「自己抢到」(**不写回 `self`**)。
+- **★ 同场观影人数口径(2026-09-14)**:该场**出现在多少人的行程里**,**不看票务状态**(用户拍板「口径最宽」);
+  权重与「想看人数」**同一套**(登录 1.0 / 匿名 0.75,`want-stats.ts`),展示 `Math.round`。
+  · **只回聚合数字,不回名单** —— 直接呼应需求里的「提醒用户保护个人隐私」。
+  · 上报 `POST /api/stats/screening-attendance-ping` 只发**场次 code 列表**(1200ms 防抖),与 want-ping 同一条隐私边界;
+    读取 `GET /api/stats/screening-counts` 一次拿「人数 + 讨论数」。
+  · ⚠ **登录时要同时清掉两张贡献表里的匿名行**(`screening-stats-store.ts::clearAnonContributions`)——
+    两个 ping 都会删匿名 cookie,只清一张的话同一人会以「匿名 0.75 + 登录 1.0」被算两次。
+  · ⚠ 上报挂在 `state.ts::rebuildIndex()` **末尾**(`store.allIndex` 唯一的新鲜点),不能放 `saveLocal()` ——
+    后者跑在索引重建**之前**,拿到的是上一轮快照。
+- **★ 场次讨论 = 公开读 / 登录写(2026-09-14)**:D1 新表 `screening_post` + `screening_reaction`,
+  **不复用 `festival_document`**(见 `PLAN.md` §4 硬约束:那是「单人整份文档 + revision 乐观锁」)。
+  分类白名单与正文长度在 `@biff/contracts/screening`(前后端同一 import);反应 emoji 白名单在
+  `@biff/contracts/reactions`,服务端判定在 `apps/api/src/reactions.ts` —— **建议反馈与场次讨论共用一份**
+  (此前 `FeedbackPage.tsx` 手抄了一份 emoji 名单,已改为 import)。
+  · 游标分页口径 `${created_at}_${id}` 与反馈同源(`apps/api/src/pagination.ts`)。
+  · **弹层必须「打开时才挂载」**(`isOpen` 受控 + 条件渲染):`DialogTrigger` 会**无条件渲染 children**,
+    而弹层挂载即拉列表 —— 实测踩过「行程页每张卡都发一次请求 + N 条失败 toast」,还会**打断顺位拖拽手势**。
+- **★ 隐私提醒(2026-09-14)**:发帖框旁**常驻**提示 + 首次打开弹层的一次性说明(已读标记 `biff.discussionprivacy.v1`,
+  纯视图偏好,不混进片单契约)。**刻意不做自动检测 / 拦截** —— 误伤正常表述的代价高于收益。
+- **★ 社区约定 / 免责(2026-09-14,`PLAN-20260914164050` 修订 1)**:场次讨论的**常驻提示**与**首次说明**都要写全四条 ——
+  ① 只聊电影(不要讨论电影以外的内容);② 勿发个人信息(手机号 / 微信号 / 二维码 / 住址);
+  ③ 本站只是**信息发布平台**,**不对由此产生的任何纠纷负责** —— 无论在本站联系还是引流到私下;
+  ④ 看到不良信息**点「👎」**(见下条:举报与后台已移除,点踩是唯一负反馈手段)。文案改一处要同步另一处,
+  并同步 E2E 断言(`ScreeningDiscussionDialog.tsx` 的 `.discussion-privacy` 与 `.discussion-notice-list`)。
+- **★ 负反馈只做「点踩」(2026-09-14,`PLAN-20260914164050` 修订 2)**:`👎` 就是白名单里的第六个 emoji
+  (`@biff/contracts/reactions`),走与其它反应**完全相同**的 toggle 路径,没有独立的表 / 路由 / 计数口径。
+  · ⚠ **不做举报,也不做管理员后台**(2026-09-14 用户决定):此前实现的 `screening_report` 表、
+    `POST .../reports`、`ADMIN_SUBJECTS` secret、`requireAdmin`、`/admin` 页与顶栏入口**已整体移除**
+    (迁移 `0006` 一并删除)。理由:维护一套「记录 → 后台 → 人工裁决」的成本高于收益,
+    而点踩已经足够表达「这条不好」;要做审核时用作者账号删帖即可。
+  · 这条与「同一口径只允许一处实现」同向:**别为了「更正式」再引入第二套负反馈机制**。
+
 ## 四、渲染 / 样式
 
 - **甘特画布底板 `--bg-page`(#f4f4f5)**:`grid.ts` 的 `scroll` 容器 + 粘性场馆列 `LABEL_BOX_CLS` 都挂 `bg-page`

@@ -1,5 +1,7 @@
 import {writeWorkspaceItem, removeWorkspaceItem} from "./workspace-storage";
 import {scheduleWantPing} from "./want-counts";
+import {scheduleScreeningPing} from "./screening-counts";
+import {normalizeTicketRecord, staleTicketCodes} from "./tickets";
 // 应用状态:选片记录 / 抢票顺位 / 豆瓣映射 / 设置。
 //
 // 单一数据源 = store.picks:「我的选片」(按片看)与「我的行程」(按场次看)是同一份数据的两个视图。
@@ -15,7 +17,7 @@ import {scheduleWantPing} from "./want-counts";
 //   冲突决策改由**场次级「抢票顺位」**承担(拖动冲突组内的场次排序,见 `plans.ts`),
 //   档位在非冲突场景里只剩排序噪声,两套排序机制并存只会互相打架。
 
-import type { Mapping, PickEntry, PickSlot, Settings } from "./types";
+import type { Mapping, PickEntry, PickSlot, Settings, TicketRecord, TicketState, TicketVia } from "./types";
 import { loadDoubanMappings } from "./data";
 
 const LS_PICKS = "biff.picks.v2";
@@ -24,6 +26,7 @@ const LS_GV_TALK = "biff.gvtalk.v1"; // GV 映后谈单场覆写(code → 是否
 const LS_GV_TALK_MIN = "biff.gvtalkmin.v1"; // GV 映后谈单场时长覆写(code → 分钟);缺省跟随 Settings.gvTalkMin
 const LS_AGENDA_FOLD = "biff.agendafold.v1"; // 「我的行程」按日收起:已收起的日期集合(纯视图偏好,独立键)
 const LS_RANKS = "biff.ranks.v1"; // 抢票顺位:场次 code → 组内序号(1-based);独立键,与 gvtalk 同口径
+const LS_TICKETS = "biff.tickets.v1"; // 票务结果:场次 code → {state, via};独立键,与 ranks 同口径
 /** 旧版数据的 localStorage key —— 仅作一次性迁移源(迁移后即删) */
 const LS_PLAN_LEGACY = "biff.plan.v1";
 const LS_WISH_LEGACY = "biff.wish.v1";
@@ -104,8 +107,60 @@ export function setRanks(codes: string[]): void {
   scheduleNotify("picks");
 }
 
-/* (原「抢票结果」三态状态已于 2026-09-11 删除 —— 抢票在票务系统里完成,
- *  在排片工具里追踪「已抢到 / 售罄」是多余的中间态;冲突组仍保留聚合与顺位排序。) */
+/* ---------- 票务结果(2026-09-14,PLAN-20260914164050) ----------
+ * 场次 code → {state, via}。**独立 localStorage 键**(`biff.tickets.v1`,与 ranks / gvtalk 同口径)。
+ *
+ * ⚠ 原「抢票结果」三态已于 2026-09-11 删除,理由是「抢票在票务系统里完成,本地追踪是多余的中间态」。
+ *   2026-09-14 **正面推翻**该决策:它不再是本地孤岛 —— 「同场观影人数」与「场次讨论」都建立在这份
+ *   状态之上,需求也要求区分「计划行程」与「实际行程」。仍然**不复活「售罄」**这类票务系统内部状态:
+ *   三态全是用户自述结果。
+ * ⚠ 场次被移出行程后其状态已无意义 → 由 `rebuildIndex()` 就地 prune。 */
+export const tickets = new Map<string, TicketRecord>();
+
+export function loadTickets(): void {
+  const raw = readJson<Record<string, unknown>>(LS_TICKETS);
+  if (!raw || typeof raw !== "object") return;
+  for (const [code, value] of Object.entries(raw)) {
+    if (!code) continue;
+    const record = normalizeTicketRecord(value);
+    if (record) tickets.set(code, record);
+  }
+}
+
+function saveTickets(): void {
+  try {
+    writeWorkspaceItem(LS_TICKETS, JSON.stringify(Object.fromEntries(tickets)));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 某场的票务状态;未标记 → undefined。 */
+export function ticketOf(code: string): TicketRecord | undefined {
+  return tickets.get(code);
+}
+
+/** 设置票务状态;`state` 传 null 等价于「清回未标记」。
+ *  `via` 省略时**保留原来源** —— 把「已抢到」改成「放弃」不该顺手弄丢「转票」标记。 */
+export function setTicket(code: string, state: TicketState | null, via?: TicketVia): void {
+  if (!state) {
+    clearTicket(code);
+    return;
+  }
+  const prev = tickets.get(code);
+  const resolvedVia = via ?? prev?.via;
+  const next: TicketRecord = resolvedVia === "transfer" ? { state, via: "transfer" } : { state };
+  if (prev && prev.state === next.state && prev.via === next.via) return;
+  tickets.set(code, next);
+  saveTickets();
+  scheduleNotify("picks");
+}
+
+export function clearTicket(code: string): void {
+  if (!tickets.delete(code)) return;
+  saveTickets();
+  scheduleNotify("picks");
+}
 
 /** GV 映后谈单场覆写:code → 参加(true)/放弃(false);无条目 = 跟随全局默认 */
 export const gvTalk = new Map<string, boolean>();
@@ -297,6 +352,15 @@ function rebuildIndex(): void {
     pruned = true;
   }
   if (pruned) saveRanks();
+
+  // 票务状态同理:场次已移出行程,留着就是脏数据(localStorage 只增不减)
+  const staleTickets = staleTicketCodes(tickets, (code) => store.slotIndex.has(code));
+  for (const code of staleTickets) tickets.delete(code);
+  if (staleTickets.length) saveTickets();
+
+  // ⚠ 同场观影人数上报只能放这里:`store.allIndex` 刚重建完,是唯一的新鲜点
+  //   (`saveLocal()` 跑在 rebuildIndex 之前,那一刻 allIndex 还是上一轮的快照)。
+  scheduleScreeningPing(store.allIndex);
 }
 
 /** 空壳记录(无场次 / 无备注)= 已无意义 → 可整条删除 */

@@ -1,16 +1,13 @@
-/** 建议反馈：白名单 / 正文校验 / 反应 toggle 判定（纯函数，供路由与单测共用）。 */
-
-export const FEEDBACK_EMOJIS = ["👍", "❤️", "🎉", "💡", "👀"] as const;
-export type FeedbackEmoji = (typeof FEEDBACK_EMOJIS)[number];
+/**
+ * 建议反馈:正文校验 / 写权限(纯函数,供路由与单测共用)。
+ *
+ * ⚠ 反应(emoji)相关判定已于 2026-09-14 **上提**:白名单在 `@biff/contracts/reactions`
+ *   (前后端唯一来源),服务端判定在 `./reactions` —— 因为「场次讨论」要用同一套,
+ *   留在这里就会被迫复制第二份。
+ */
 
 export const FEEDBACK_BODY_MIN = 1;
 export const FEEDBACK_BODY_MAX = 2000;
-
-const emojiSet = new Set<string>(FEEDBACK_EMOJIS);
-
-export function isAllowedEmoji(value: string): value is FeedbackEmoji {
-  return emojiSet.has(value);
-}
 
 /** trim 后长度须在 1–2000；非法返回 null。 */
 export function normalizeFeedbackBody(raw: unknown): string | null {
@@ -28,24 +25,4 @@ export function writeAuthError(session: unknown): "UNAUTHENTICATED" | null {
 /** 仅作者可删本帖。 */
 export function canDeleteFeedbackPost(postSubject: string, sessionSubject: string): boolean {
   return postSubject === sessionSubject;
-}
-
-/** 已有行再点 → 取消；否则插入。 */
-export function decideReactionToggle(alreadyActive: boolean): "add" | "remove" {
-  return alreadyActive ? "remove" : "add";
-}
-
-/** 把反应行聚合成 counts + 当前用户的 myReactions。 */
-export function aggregateReactions(
-  rows: Array<{ emoji: string; subject: string }>,
-  mySubject: string | null,
-): { counts: Record<string, number>; myReactions: FeedbackEmoji[] } {
-  const counts: Record<string, number> = {};
-  const mine: FeedbackEmoji[] = [];
-  for (const row of rows) {
-    if (!isAllowedEmoji(row.emoji)) continue;
-    counts[row.emoji] = (counts[row.emoji] ?? 0) + 1;
-    if (mySubject && row.subject === mySubject) mine.push(row.emoji);
-  }
-  return { counts, myReactions: mine };
 }

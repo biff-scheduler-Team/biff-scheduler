@@ -1,4 +1,5 @@
 import { hasImportableData } from "@biff/contracts/import";
+import { isReactionEmoji } from "@biff/contracts/reactions";
 import { and, eq, gt, lt, notExists, sql } from "drizzle-orm";
 import { database } from "./db";
 import { accountImport, appSession, festivalDocument, oauthPending } from "./db/schema";
@@ -7,12 +8,27 @@ import {
   pickFilmKeysFromRecords,
   wantWeightFor,
 } from "./want-stats";
-import { clearContributorWants, readWantCounts, replaceContributorWants } from "./want-store";
+import { readWantCounts, replaceContributorWants } from "./want-store";
 import {
-  isAllowedEmoji,
   normalizeFeedbackBody,
   writeAuthError,
 } from "./feedback";
+import { MAX_SCREENING_CODES_PER_PING } from "./screening-stats";
+import {
+  clearAnonContributions,
+  readScreeningCounts,
+  replaceContributorScreenings,
+} from "./screening-stats-store";
+import { normalizeDiscussionPost } from "./screening-discussion";
+import {
+  createScreeningPost,
+  deleteScreeningPost,
+  listScreeningPosts,
+  parseDiscussionCursor,
+  parseDiscussionLimit,
+  readDiscussionCounts,
+  toggleScreeningReaction,
+} from "./screening-discussion-store";
 import {
   createFeedbackPost,
   deleteFeedbackPost,
@@ -465,7 +481,7 @@ app.delete("/api/feedback/:id", requireIdentity, async (c) => {
 app.post("/api/feedback/:id/reactions", requireIdentity, async (c) => {
   const payload = await c.req.json().catch(() => null);
   const emoji = payload && typeof payload === "object" ? (payload as { emoji?: unknown }).emoji : null;
-  if (typeof emoji !== "string" || !isAllowedEmoji(emoji))
+  if (typeof emoji !== "string" || !isReactionEmoji(emoji))
     return c.json({ error: "INVALID_EMOJI" }, 422);
   const result = await toggleFeedbackReaction(database(c.env.DB), {
     postId: c.req.param("id"),
@@ -504,7 +520,9 @@ app.post("/api/stats/want-ping", async (c) => {
     weight = wantWeightFor(true);
     const anon = getCookie(c, wantAnonCookie(config));
     if (anon) {
-      await clearContributorWants(db, edition, `anon:${await hash(anon)}`);
+      // 两张贡献表都要清(见 clearAnonContributions):只清 want 的话,
+      // 同一人会以「匿名 0.75 + 登录 1.0」被同场观影人数算两次。
+      await clearAnonContributions(db, edition, `anon:${await hash(anon)}`);
       deleteCookie(c, wantAnonCookie(config), cookieOptions(config, 0));
     }
   } else {
@@ -518,6 +536,139 @@ app.post("/api/stats/want-ping", async (c) => {
   }
   await replaceContributorWants(db, edition, contributor, weight, films);
   return c.json({ ok: true, weight, count: films.length });
+});
+
+/* ---------------- 同场观影人数(2026-09-14,PLAN-20260914164050) ----------------
+ * 口径:该场次出现在多少人的行程里,**不看票务状态**;权重与「想看人数」同源
+ * (登录 1.0 / 匿名 0.75,见 want-stats.ts)。只回聚合数字,不回名单 —— 呼应「保护个人隐私」。 */
+
+app.get("/api/stats/screening-counts", async (c) => {
+  const edition = c.req.query("edition") || DEFAULT_WANT_EDITION;
+  if (edition.length > 64) return c.json({ error: "INVALID_EDITION" }, 422);
+  const db = database(c.env.DB);
+  const [attendance, discussions] = await Promise.all([
+    readScreeningCounts(db, edition),
+    readDiscussionCounts(db, edition),
+  ]);
+  return c.json({ edition, attendance, discussions });
+});
+
+const screeningPingSchema = z
+  .object({
+    edition: z.string().min(1).max(64).optional().default(DEFAULT_WANT_EDITION),
+    codes: z.array(z.string().min(1).max(64)).max(MAX_SCREENING_CODES_PER_PING),
+  })
+  .strict();
+
+app.post("/api/stats/screening-attendance-ping", async (c) => {
+  const parsed = screeningPingSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "INVALID_SCREENING_PING" }, 422);
+  const { edition, codes } = parsed.data;
+  const config = configuration(c.env);
+  const db = database(c.env.DB);
+  const session = await sessionFor(
+    c.env,
+    getCookie(c, sessionCookieName(config)),
+    c.req.header("cf-connecting-ip"),
+  );
+  let contributor: string;
+  let weight: number;
+  if (session) {
+    contributor = session.row.subject;
+    weight = wantWeightFor(true);
+    const anon = getCookie(c, wantAnonCookie(config));
+    if (anon) {
+      await clearAnonContributions(db, edition, `anon:${await hash(anon)}`);
+      deleteCookie(c, wantAnonCookie(config), cookieOptions(config, 0));
+    }
+  } else {
+    weight = wantWeightFor(false);
+    let anon = getCookie(c, wantAnonCookie(config));
+    if (!anon) {
+      anon = randomToken();
+      setCookie(c, wantAnonCookie(config), anon, cookieOptions(config, 180 * 86400));
+    }
+    contributor = `anon:${await hash(anon)}`;
+  }
+  await replaceContributorScreenings(db, edition, contributor, weight, codes);
+  return c.json({ ok: true, weight, count: codes.length });
+});
+
+/* ---------------- 场次讨论(2026-09-14,PLAN-20260914164050) ----------------
+ * 公开读 + 登录写 + 作者可删 + emoji 反应 toggle;与 /api/feedback 同一套形状,
+ * 但按「场次 code + edition」收窄。分类白名单在 `@biff/contracts/screening`。 */
+
+app.get("/api/screenings/:code/discussion", async (c) => {
+  const code = c.req.param("code");
+  if (!code || code.length > 64) return c.json({ error: "INVALID_SCREENING" }, 422);
+  const edition = c.req.query("edition") || DEFAULT_WANT_EDITION;
+  if (edition.length > 64) return c.json({ error: "INVALID_EDITION" }, 422);
+  const config = configuration(c.env);
+  const session = await sessionFor(
+    c.env,
+    getCookie(c, sessionCookieName(config)),
+    c.req.header("cf-connecting-ip"),
+  );
+  const result = await listScreeningPosts(database(c.env.DB), {
+    edition,
+    code,
+    limit: parseDiscussionLimit(c.req.query("limit")),
+    cursor: parseDiscussionCursor(c.req.query("cursor")),
+    mySubject: session?.row.subject ?? null,
+  });
+  return c.json(result);
+});
+
+app.post("/api/screenings/:code/discussion", requireIdentity, async (c) => {
+  if (writeAuthError(c.get("session"))) return c.json({ error: "UNAUTHENTICATED" }, 401);
+  const code = c.req.param("code");
+  if (!code || code.length > 64) return c.json({ error: "INVALID_SCREENING" }, 422);
+  const payload = await c.req.json().catch(() => null);
+  const post = normalizeDiscussionPost(payload);
+  if (!post) return c.json({ error: "INVALID_POST" }, 422);
+  const rawEdition = payload && typeof payload === "object" ? (payload as { edition?: unknown }).edition : null;
+  const edition =
+    typeof rawEdition === "string" && rawEdition.length > 0 && rawEdition.length <= 64
+      ? rawEdition
+      : DEFAULT_WANT_EDITION;
+  const created = await createScreeningPost(database(c.env.DB), {
+    edition,
+    code,
+    subject: c.get("session").row.subject,
+    displayName: c.get("profile").displayName,
+    category: post.category,
+    body: post.body,
+  });
+  return c.json(created, 201);
+});
+
+app.delete("/api/screenings/:code/discussion/:id", requireIdentity, async (c) => {
+  const result = await deleteScreeningPost(
+    database(c.env.DB),
+    c.req.param("id"),
+    c.get("session").row.subject,
+  );
+  if (result.status === "missing") return c.json({ error: "NOT_FOUND" }, 404);
+  if (result.status === "forbidden") return c.json({ error: "FORBIDDEN" }, 403);
+  return c.json({ ok: true });
+});
+
+app.post("/api/screenings/:code/discussion/:id/reactions", requireIdentity, async (c) => {
+  const payload = await c.req.json().catch(() => null);
+  const emoji = payload && typeof payload === "object" ? (payload as { emoji?: unknown }).emoji : null;
+  if (typeof emoji !== "string" || !isReactionEmoji(emoji))
+    return c.json({ error: "INVALID_EMOJI" }, 422);
+  const result = await toggleScreeningReaction(database(c.env.DB), {
+    postId: c.req.param("id"),
+    subject: c.get("session").row.subject,
+    emoji,
+  });
+  if (result.status === "missing") return c.json({ error: "NOT_FOUND" }, 404);
+  return c.json({
+    active: result.active,
+    reactionCounts: result.reactionCounts,
+    myReactions: result.myReactions,
+  });
 });
 
 app.all("/api/*", (c) => c.json({ error: "NOT_FOUND" }, 404));

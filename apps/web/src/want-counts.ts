@@ -1,6 +1,6 @@
 /** Client cache for GET /api/stats/want-counts + minimal anon film-key ping. */
 
-const EDITION = "biff-2026";
+import { EDITION } from "./edition";
 let cache: Record<string, number> | null = null;
 let loading: Promise<Record<string, number>> | null = null;
 let pingTimer: number | undefined;

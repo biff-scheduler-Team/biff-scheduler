@@ -1,0 +1,213 @@
+/* 同场观影 & 场次讨论的样式(2026-09-14,PLAN-20260914164050)。
+ *
+ * ⚠ 刻意**独立成文件**而不是追加进 `style.css`:`style.css` 命中 TEST-MAP 的 allOn,
+ *   改它会触发三浏览器全量 E2E(5–9 min)。这里只复用既有 token,不新增视觉语言。 */
+
+/* ---------- 票务三态(场次卡上) ---------- */
+.ticket-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.ticket-control-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+.ticket-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.ticket-chip:hover { border-color: var(--muted); color: var(--text); }
+/* 三档各自的选中态:已抢到=品牌红实底,没抢到=墨色实底,放弃=灰底(语义强弱递减) */
+.ticket-chip.active[data-ticket-state="got"] {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
+}
+.ticket-chip.active[data-ticket-state="missed"] {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--surface);
+}
+.ticket-chip.active[data-ticket-state="dropped"] {
+  border-color: var(--muted);
+  background: var(--line);
+  color: var(--text);
+}
+.ticket-transfer {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--brand);
+  border-radius: 999px;
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* ---------- 「同场 N 人」:与 .want-count 同形 ---------- */
+.same-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.same-count strong {
+  color: var(--text);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 讨论弹层 ---------- */
+.discussion-dialog { display: grid; gap: 12px; max-height: 60vh; overflow: auto; }
+.discussion-subject { margin: 0; font-size: 15px; font-weight: 600; }
+.discussion-when { margin: 0; color: var(--muted); font-size: 12px; }
+
+/* 首次进入的一次性说明(确认后写本地标记,不再出现) */
+.discussion-notice {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--brand);
+  border-radius: 8px;
+  background: var(--raised);
+}
+.discussion-notice strong { font-size: 13px; }
+.discussion-notice p { margin: 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.discussion-notice-actions { display: flex; justify-content: flex-end; }
+
+/* 常驻隐私提示(发帖框旁) */
+.discussion-privacy {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.discussion-composer { display: grid; gap: 8px; }
+.discussion-categories { display: flex; flex-wrap: wrap; gap: 6px; }
+.discussion-category {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.discussion-category:hover { border-color: var(--muted); }
+.discussion-category.active {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+.discussion-composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.discussion-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.discussion-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.discussion-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+.discussion-card-head time { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.discussion-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.discussion-body {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.55;
+  font-size: 14px;
+}
+.discussion-reactions { display: flex; flex-wrap: wrap; gap: 6px; }
+.discussion-card-actions { display: flex; justify-content: flex-end; }
+.discussion-empty { padding: 16px 0; color: var(--muted); font-size: 13px; }
+
+/* 行程页顶部的操作行(添加转票场次 / 仅看实际行程)—— 由 AgendaPage 使用 */
+.agenda-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---------- 社区约定 / 免责(讨论弹层内) ---------- */
+.discussion-notice-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.discussion-privacy > strong { display: block; margin-bottom: 4px; font-size: 12px; color: var(--text); }
+.discussion-privacy > ul { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+
+/* ---------- 转票补入弹层 ---------- */
+.transfer-dialog { display: grid; gap: 10px; max-height: 60vh; overflow: auto; }
+.transfer-hint { margin: 0; color: var(--muted); font-size: 12px; }
+.transfer-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.transfer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.transfer-row-main { display: grid; gap: 2px; min-width: 0; }
+.transfer-row-main strong { font-size: 13px; }
+.transfer-row-main span { color: var(--muted); font-size: 12px; }

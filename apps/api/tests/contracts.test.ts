@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { canonical } from "@biff/contracts/canonical";
 import { hasImportableData } from "@biff/contracts/import";
+import { REACTION_EMOJIS, isReactionEmoji } from "@biff/contracts/reactions";
+import {
+  DISCUSSION_CATEGORIES,
+  discussionCategoryLabel,
+  normalizeDiscussionBody,
+} from "@biff/contracts/screening";
 
 // `packages/contracts` 是前后端共享的**序列化口径**,此前没有任何单测。
 // 放在 `apps/api/tests/` 而不是 `packages/contracts/tests/`:调用方是 api(见 vitest.config.ts 的说明)。
@@ -89,5 +95,39 @@ describe("hasImportableData", () => {
 
   it("空记录 → false", () => {
     expect(hasImportableData({})).toBe(false);
+  });
+});
+
+// 2026-09-14 新增:反应白名单与讨论分类上提到 contracts,前后端同一 import。
+describe("reactions contract", () => {
+  it("五个热门 emoji + 点踩,未知 emoji 不合法", () => {
+    expect([...REACTION_EMOJIS]).toEqual(["👍", "❤️", "🎉", "💡", "👀", "👎"]);
+    expect(isReactionEmoji("👀")).toBe(true);
+    expect(isReactionEmoji("👎")).toBe(true);
+    expect(isReactionEmoji("🔥")).toBe(false);
+  });
+});
+
+describe("screening discussion contract", () => {
+  it("四类讨论分类与中文标签", () => {
+    expect(DISCUSSION_CATEGORIES).toEqual([
+      { key: "gift", label: "无料交换" },
+      { key: "swap", label: "物品互换" },
+      { key: "buddy", label: "临时约伴" },
+      { key: "other", label: "其他" },
+    ]);
+    expect(discussionCategoryLabel("gift")).toBe("无料交换");
+  });
+
+  it("⚠ 当前实际行为:未知分类 key 原样返回标签,不抛错", () => {
+    // 旧数据 / 将来删分类时的兜底 —— 断言写下来,免得日后当成 bug 去「修」
+    expect(discussionCategoryLabel("nope")).toBe("nope");
+  });
+
+  it("正文 trim 后 1–2000 字", () => {
+    expect(normalizeDiscussionBody("  换无料  ")).toBe("换无料");
+    expect(normalizeDiscussionBody("   ")).toBeNull();
+    expect(normalizeDiscussionBody("a".repeat(2001))).toBeNull();
+    expect(normalizeDiscussionBody(null)).toBeNull();
   });
 });

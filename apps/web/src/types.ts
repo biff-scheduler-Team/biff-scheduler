@@ -132,6 +132,21 @@ export interface PickEntry {
   note: string;
 }
 
+/** 票务结果 —— 「我的行程」每场一条**用户自述**的状态。
+ *  ⚠ 刻意**不含**「售罄」这类票务系统内部状态:2026-09-11 曾以「本地追踪是多余的中间态」
+ *    为由整体删除过抢票三态,2026-09-14 重新引入(PLAN-20260914164050)—— 它不再是本地孤岛,
+ *    而是「同场观影人数 + 场次讨论」的共享数据底座。 */
+export type TicketState = "got" | "missed" | "dropped";
+
+/** 票的来源:自己抢到 / 他人转票。缺省视为 `self`(读取时归一,**不写回**)。 */
+export type TicketVia = "self" | "transfer";
+
+/** 存储形状 = `Record<场次 code, TicketRecord>`(localStorage `biff.tickets.v1`)。 */
+export interface TicketRecord {
+  state: TicketState;
+  via?: TicketVia;
+}
+
 export interface Mapping {
   code: string;
   subject_id: number | null;

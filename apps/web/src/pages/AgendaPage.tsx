@@ -2,6 +2,7 @@ import { useScheduleSelection } from "../app/schedule-selection";
 import {
   useEffect,
   useRef,
+  useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router";
@@ -14,7 +15,9 @@ import {
   Heading,
   Content,
   ToastQueue,
+  ToggleButton,
 } from "../components/spectrum";
+import { TransferAddEntry } from "../components/TransferAddDialog";
 import { ScreeningCard } from "../components/ScreeningCard";
 import { useCatalog } from "../app/store";
 import { useScheduleNavigation } from "../app/navigation";
@@ -31,8 +34,10 @@ import {
   savedPlans,
   setRanks,
   store,
+  tickets,
   toggleAgendaFold,
 } from "../state";
+import { actualCodeSet } from "../tickets";
 import { autoFixRanks } from "../plans";
 import {
   dateInfo,
@@ -208,6 +213,7 @@ function RankGroup({ codes }: { codes: string[] }) {
               controls
               venueInfo
               slotFilter={slotFilter}
+              social
             />
           </li>
         ))}
@@ -362,7 +368,12 @@ export function AgendaPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { locateDate } = useScheduleNavigation();
+  // 「仅看实际行程」(2026-09-14,PLAN-20260914164050):只显示票务状态标了「已抢到」的场次。
+  // 纯视图筛选 —— 数据仍在同一份行程里,票务状态存在独立键 `biff.tickets.v1`。
+  const [actualOnly, setActualOnly] = useState(false);
+  const actual = actualCodeSet(tickets);
   const selected = codes
+    .filter((code) => !actualOnly || actual.has(code))
     .map((code) => cat.byCode.get(code)!)
     .sort(
       (a, b) =>
@@ -391,12 +402,21 @@ export function AgendaPage() {
         <div className="summary-strip">
           <span>{new Set(selected.map((s) => keyOf(s.code))).size} 部电影</span>
           <span>{groupByDate(selected, (s) => s.date).length} 天</span>
+          <span title="票务状态标为「已抢到」的场次（含转票补入）">
+            实际 {actual.size} 场
+          </span>
           <span>{formatKrw(selected.reduce((n, s) => n + priceOf(s), 0))}</span>
           <span
             title={`场次 ${score.count} + GV ${score.gv} − 紧转场 ${score.tight}`}
           >
             质量分 {score.total}
           </span>
+        </div>
+        <div className="agenda-actions">
+          <TransferAddEntry />
+          <ToggleButton isSelected={actualOnly} onChange={setActualOnly}>
+            仅看实际行程（{actual.size}）
+          </ToggleButton>
         </div>
         {codes.length === 0 ? (
           <div className="empty-state">
@@ -407,22 +427,24 @@ export function AgendaPage() {
             </Button>
           </div>
         ) : (
-          <>
-            <RankClashes />
-            <div className="agenda-save">
-              <Button
-                onPress={() => saveCodes(topPlanCodes(plans))}
-                isDisabled={firstLayerClash}
-              >
-                保存当前方案
-              </Button>
-              <p className="muted">
-                {firstLayerClash
-                  ? "第一顺位有撞车，请先让路再保存。"
-                  : "保存每个冲突组的第一顺位场次与共同场次。"}
-              </p>
-            </div>
-          </>
+          !actualOnly && (
+            <>
+              <RankClashes />
+              <div className="agenda-save">
+                <Button
+                  onPress={() => saveCodes(topPlanCodes(plans))}
+                  isDisabled={firstLayerClash}
+                >
+                  保存当前方案
+                </Button>
+                <p className="muted">
+                  {firstLayerClash
+                    ? "第一顺位有撞车，请先让路再保存。"
+                    : "保存每个冲突组的第一顺位场次与共同场次。"}
+                </p>
+              </div>
+            </>
+          )
         )}
         <section className="saved-plans" aria-label="已保存方案">
           <h2>已保存方案，{savedPlans.length} 套</h2>
@@ -457,9 +479,10 @@ export function AgendaPage() {
         </section>
         <div className="agenda-days">
           {groupByDate(selected, (s) => s.date).map(([date, rows]) => {
-            const groups = plans.groups.filter(
-              (group) => cat.byCode.get(group[0])?.date === date,
-            );
+            // 「仅看实际行程」时不摆顺位卡:票都抢完了,再显示「顺位 1 / 备选」只会误导
+            const groups = actualOnly
+              ? []
+              : plans.groups.filter((group) => cat.byCode.get(group[0])?.date === date);
             const folded = isAgendaFolded(date);
             const last = rows[rows.length - 1];
             const overlapCount = conflicts.get(date)?.pairs.length ?? 0;
@@ -520,6 +543,7 @@ export function AgendaPage() {
                             controls
                             venueInfo
                             slotFilter={slotFilter}
+                            social
                           />
                         </div>
                       ),

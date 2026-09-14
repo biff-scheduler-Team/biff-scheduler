@@ -37,6 +37,8 @@ import {
 } from "../state";
 import { RATING_DEFS, SUBS_DEFS, mapsUrl, subsKeys, venuePlace, venueShort, venueTip } from "../legend";
 import { BADGE_DEFS, screeningBadgeKeys, codeTip } from "../badges";
+import { SameScreeningCount, ScreeningTicketControl } from "./ScreeningTickets";
+import { DiscussionEntry } from "./ScreeningDiscussionDialog";
 import type { Screening } from "../types";
 
 export function FilmBadge({ kind, label, title }: { kind: string; label: string; title?: string }) {
@@ -195,6 +197,7 @@ export function ScreeningCard({
   wholeCard = false,
   venueInfo = false,
   slotFilter,
+  social = false,
 }: {
   screening: Screening;
   showTitle?: boolean;
@@ -206,6 +209,9 @@ export function ScreeningCard({
    *  「我的行程」出门时要照着找地方,故只在那里开;影片库里的场次行保持紧凑。 */
   venueInfo?: boolean;
   slotFilter?: ScheduleSelection;
+  /** 行程页专用:票务三态 / 转票来源 / 同场人数 / 讨论入口(2026-09-14,PLAN-20260914164050)。
+   *  刻意**不在影片库 / 排片网格上开** —— 那是「挑片」视图;票务结果与场次讨论只对已排进行程的场次有意义。 */
+  social?: boolean;
 }) {
   const { cat, conflicts } = useCatalog();
   const highlight = useHighlight();
@@ -310,6 +316,7 @@ export function ScreeningCard({
             <span className="score">豆瓣 {score.rating.toFixed(1)}</span>
           )}
           <Badges screening={s} />
+          {social && <SameScreeningCount code={s.code} />}
         </div>
         {venueInfo && (venue || s.venue_display) && (
           <div className="screening-venue" title={venue ? venueTip(venue) : undefined}>
@@ -349,6 +356,7 @@ export function ScreeningCard({
             {conflictDescription ? `：${conflictDescription}` : ""}
           </p>
         )}
+        {social && <ScreeningTicketControl code={s.code} />}
         <div className="inline-actions card-actions">
           {pickable && (
             <ActionButton
@@ -372,6 +380,7 @@ export function ScreeningCard({
               定位
             </ActionButton>
           )}
+          {social && <DiscussionEntry screening={s} />}
         </div>
         {controls && s.is_gv && <GvControls screening={s} />}
       </div>
