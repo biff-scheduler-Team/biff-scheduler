@@ -130,7 +130,7 @@ async function sealedPayload(tokens: Record<string, unknown>): Promise<string> {
 /** 写入一行「access token 已过期、可以刷新」的会话,并返回它的 token_hash。 */
 async function seedSession(
   sqlite: DatabaseSync,
-  overrides: { payload?: string; refreshUntil?: number } = {},
+  overrides: { payload?: string; refreshUntil?: number; expiresAt?: number } = {},
 ): Promise<string> {
   const tokenHash = await hash(COOKIE);
   const payload = overrides.payload ?? (await sealedPayload({ accessToken: "at-1", refreshToken: "rt-1" }));
@@ -143,7 +143,7 @@ async function seedSession(
       tokenHash,
       SUBJECT,
       payload,
-      Date.now() + 7 * DAY_MS,
+      overrides.expiresAt ?? Date.now() + 7 * DAY_MS,
       Date.now() - 1_000,
       overrides.refreshUntil ?? 0,
     );
@@ -186,7 +186,7 @@ function idTokenClaims(sub: string) {
 // 只清调用记录,保留各 mock 在工厂里设的默认实现(clearAllMocks 不动实现)。
 beforeEach(() => vi.clearAllMocks());
 
-function setup(overrides: { payload?: string; refreshUntil?: number } = {}) {
+function setup(overrides: Parameters<typeof seedSession>[1] = {}) {
   const sqlite = new DatabaseSync(":memory:");
   createSchema(sqlite);
   return { sqlite, seeded: seedSession(sqlite, overrides) };
@@ -313,6 +313,49 @@ describe("sessionFor:刷新失败不得破坏会话", () => {
 
     expect(session?.tokens.accessToken).toBe("at-1");
     expect(refreshResponse).not.toHaveBeenCalled();
+  });
+});
+
+describe("sessionFor:会话滑动续期", () => {
+  /**
+   * 固定 7 天窗口的问题:天天在用的用户照样在第 8 天被踢,和一次都没用的人拿到一样的寿命。
+   * 滑窗把寿命改成「离上次使用 1 天」,同时 cookie 的 maxAge 由调用方按 `row.expires_at` 同步 ——
+   * 所以这里断言的 expires_at 必须是**续期后**的值,而不是库里的旧值。
+   */
+  it("★ 剩余寿命不足半程 → 推到一个完整窗口(cookie 才跟着续)", async () => {
+    const { sqlite, seeded } = setup({ expiresAt: Date.now() + 60_000 });
+    await seeded;
+    sqlite.prepare("UPDATE app_session SET token_expires_at = ?").run(Date.now() + 600_000);
+
+    const session = await sessionFor(environment(sqlite), COOKIE);
+
+    expect(session?.row.expires_at).toBeGreaterThan(Date.now() + oauthModule.SESSION_TTL_MS - 60_000);
+    expect(Number(sessionRow(sqlite)?.expires_at)).toBeGreaterThan(
+      Date.now() + oauthModule.SESSION_TTL_MS - 60_000,
+    );
+  });
+
+  it("剩余寿命还长 → 不回写 D1", async () => {
+    const { sqlite, seeded } = setup();
+    await seeded;
+    sqlite.prepare("UPDATE app_session SET token_expires_at = ?").run(Date.now() + 600_000);
+    const before = sessionRow(sqlite)?.expires_at;
+
+    const session = await sessionFor(environment(sqlite), COOKIE);
+
+    expect(session?.row.expires_at).toBe(Number(before));
+    expect(sessionRow(sqlite)?.expires_at).toBe(before);
+  });
+
+  it("刷新成功后同样续期(活跃用户不该因为换 token 反而更接近过期)", async () => {
+    const { sqlite, seeded } = setup({ expiresAt: Date.now() + 60_000 });
+    await seeded;
+    refreshResponse.mockResolvedValue(freshTokens("at-2", "rt-2"));
+
+    const session = await sessionFor(environment(sqlite), COOKIE);
+
+    expect(session?.tokens.accessToken).toBe("at-2");
+    expect(session?.row.expires_at).toBeGreaterThan(Date.now() + oauthModule.SESSION_TTL_MS - 60_000);
   });
 });
 
