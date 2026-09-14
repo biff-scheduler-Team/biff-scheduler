@@ -229,6 +229,35 @@ export interface TicketPrice {
   krw: number;
 }
 
+/** 折扣档:一组适用人群 + 官网原文的条件/备注行(`terms` 保持官网措辞,不翻译) */
+export interface TicketDiscount {
+  who: string;
+  terms: string[];
+}
+
+/** 取消与退款:截止口径 / 取消方式 / 三档取消费 */
+export interface TicketRefund {
+  deadline: string;
+  howTo: string[];
+  fees: { when: string; fee: string; note: string }[];
+  notes: string[];
+}
+
+/** 在线售票期(官网只印 `9.17 ~ 10.15`,不带年) */
+export interface TicketSalesPeriod {
+  period: string;
+  hours: string;
+  payment: string;
+}
+
+/** 数字弱势群体服务台:现场购票渠道,不适用线上 */
+export interface TicketServiceDesk {
+  location: string;
+  eligible: string;
+  screenings: string;
+  notes: string[];
+}
+
 export interface FestivalExtras {
   source: string;
   generated_at: string;
@@ -236,8 +265,21 @@ export interface FestivalExtras {
     batches: TicketBatch[];
     prices: TicketPrice[];
     discountKrw: number | null;
+    /** 折扣三档及适用条件(无障碍/高龄/退伍 · BCC 付费会员 · 轮椅位) */
+    discounts?: TicketDiscount[];
+    /** 取消与退款 */
+    refund?: TicketRefund;
+    /** 在线售票期 */
+    salesPeriod?: TicketSalesPeriod;
+    /** 数字弱势群体服务台 */
+    serviceDesk?: TicketServiceDesk;
     notes: string[];
     callCenter: string;
+    /** 客服邮箱(官网 `mailto:`) */
+    email?: string;
+    /** **在线购票入口** —— 与 `url` 不是一回事:`url` 是官方购票说明页,这里才是真正下单的站点。
+     *  `.ics` 的「购票入口」必须用这个 —— 拿说明页冒充,用户点进去找不到下单按钮。 */
+    bookingUrl?: string;
     url: string;
   };
   programs: ExtraProgram[];

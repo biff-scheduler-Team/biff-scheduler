@@ -117,7 +117,7 @@ export function TicketDialog() {
                           buildTicketIcs(
                             opens,
                             30,
-                            data.ticketing.url,
+                            data.ticketing.bookingUrl ?? data.ticketing.url,
                           ),
                           "biff-ticket-reminders.ics",
                           "text/calendar",
@@ -126,6 +126,11 @@ export function TicketDialog() {
                     >
                       导出开票提醒
                     </Button>
+                    {data.ticketing.bookingUrl && (
+                      <Link href={data.ticketing.bookingUrl} target="_blank" rel="noopener noreferrer">
+                        在线购票入口
+                      </Link>
+                    )}
                     <Link
                       href={data.ticketing.url}
                       target="_blank"
@@ -135,6 +140,13 @@ export function TicketDialog() {
                     </Link>
                   </div>
                   <p className="muted">开票日历含提前 30 分钟提醒。</p>
+                  {data.ticketing.salesPeriod?.period && (
+                    <p>
+                      在线售票 {data.ticketing.salesPeriod.period}
+                      {data.ticketing.salesPeriod.hours && `（${data.ticketing.salesPeriod.hours}）`}
+                      {data.ticketing.salesPeriod.payment && ` · ${data.ticketing.salesPeriod.payment}`}
+                    </p>
+                  )}
                 </section>
                 <section>
                   <h2>票价</h2>
@@ -147,8 +159,23 @@ export function TicketDialog() {
                     ))}
                   </dl>
                   {data.ticketing.discountKrw && (
-                    <p>折扣 −{formatKrw(data.ticketing.discountKrw)}：65 岁以上（1961 年前出生）/ 残障 / 退伍军人，需证件核验</p>
+                    <p>折扣 −{formatKrw(data.ticketing.discountKrw)}：65 岁以上（1961 年及以前出生）/ 残障 / 退伍军人，需证件核验</p>
                   )}
+                  {data.ticketing.discounts?.length ? (
+                    <details>
+                      <summary>折扣适用条件（{data.ticketing.discounts.length} 类，官网原文）</summary>
+                      {data.ticketing.discounts.map((d) => (
+                        <div key={d.who}>
+                          <h3>{d.who}</h3>
+                          <ul>
+                            {d.terms.map((t) => (
+                              <li key={t}>{t}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </details>
+                  ) : null}
                 </section>
                 <section>
                   <h2>购票须知</h2>
@@ -157,13 +184,63 @@ export function TicketDialog() {
                       <li key={n}>{NOTE_ZH.find(([pattern]) => pattern.test(n))?.[1] ?? n}</li>
                     ))}
                   </ul>
-                  <p>咨询：{data.ticketing.callCenter}</p>
+                  <p>
+                    咨询：{data.ticketing.callCenter}
+                    {data.ticketing.email && ` · ${data.ticketing.email}`}
+                  </p>
                 </section>
+                {data.ticketing.refund && (
+                  <section>
+                    <h2>取消与退款</h2>
+                    <p>{data.ticketing.refund.deadline}</p>
+                    {data.ticketing.refund.fees.length > 0 && (
+                      <dl className="definition-list">
+                        {data.ticketing.refund.fees.map((f) => (
+                          <div key={f.when}>
+                            <dt>{f.when}</dt>
+                            <dd>
+                              {f.fee}
+                              {f.note && <span className="muted"> {f.note}</span>}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )}
+                    {data.ticketing.refund.howTo.length > 0 && (
+                      <ul>
+                        {data.ticketing.refund.howTo.map((h) => (
+                          <li key={h}>{h}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {data.ticketing.refund.notes.map((n) => (
+                      <p key={n} className="muted">
+                        {n}
+                      </p>
+                    ))}
+                  </section>
+                )}
+                {data.ticketing.serviceDesk && (
+                  <section>
+                    <h2>数字弱势群体服务台</h2>
+                    <p>地点：{data.ticketing.serviceDesk.location}</p>
+                    <p>适用：{data.ticketing.serviceDesk.eligible}</p>
+                    <p>可购：{data.ticketing.serviceDesk.screenings}</p>
+                    <ul>
+                      {data.ticketing.serviceDesk.notes.map((n) => (
+                        <li key={n}>{n}</li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
                 <section>
                   <h2>开闭幕式 · 红毯时间表</h2>
                   <p>开幕：{data.ceremony.openingDate}</p>
                   <p>闭幕：{data.ceremony.closingDate}</p>
-                  <p className="muted">两场同一时间表。</p>
+                  <p className="muted">
+                    两场同一时间表。⚠ 排片表把开幕式整体记为 001 场次（以该场次时间为准）；
+                    此处是官网开闭幕式页印的典礼流程，两者口径不同。
+                  </p>
                   {data.ceremony.slots.map((s) => (
                     <p key={`${s.time}-${s.text}`}>
                       {s.time} {SLOT_ZH[s.text] ?? s.text}
@@ -290,8 +367,9 @@ export function GuideDialog() {
               <section>
                 <h2>影院</h2>
                 <p className="muted">
-                  本届 {cat.venues.length} 个放映厅分属 {groups.length} 家影院，全部位于海云台区 Centum City
-                  主会场一带（南浦洞的 MEGABOX 本届未参与）。地址为 BIFF 官网口径，手机上点「Google 地图」
+                  本届 {cat.venues.length} 个放映厅分属 {groups.length} 家影院，常规放映全部位于海云台区
+                  Centum City 主会场一带；Community BIFF（10/8–10/11）另有南浦洞会场（BIFF 广场 /
+                  MEGABOX Busan Theater），不在本工具收录范围内。地址为 BIFF 官网口径，手机上点「Google 地图」
                   可直接唤起导航。
                 </p>
                 <dl className="definition-list">
