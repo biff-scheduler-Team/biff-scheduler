@@ -261,7 +261,7 @@ test("ticket details retain translated guidance and a fixed 30-minute ticket ala
   await expect(dialog).toContainText("北京时间 9/17 13:00");
   await expect(dialog).toContainText("韩国时间 9/17 14:00");
   await expect(dialog).toContainText(
-    "65 岁以上（1961 年前出生）/ 残障 / 退伍军人，需证件核验",
+    "65 岁以上（1961 年及以前出生）/ 残障 / 退伍军人，需证件核验",
   );
   await expect(dialog).toContainText("推荐用 Chrome 浏览器购票");
   await expect(dialog).toContainText("每场限购 2 张");
