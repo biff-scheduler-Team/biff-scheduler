@@ -22,12 +22,15 @@ import {
   loadRanks,
   loadSavedPlans,
   loadSettings,
+  loadTickets,
   notify,
   rankOf,
   savedPlans,
   store,
   subscribe,
+  tickets,
 } from "../state";
+import { loadScreeningCounts } from "../screening-counts";
 import { computeConflicts } from "../conflict";
 import { buildPlanSet } from "../plans";
 import { effEndMin, talkOnOf } from "../gv";
@@ -47,6 +50,7 @@ export function useStore() {
 export function hydrateStorage(cat: Catalog) {
   store.picks.clear();
   rankOf.clear();
+  tickets.clear();
   gvTalk.clear();
   gvTalkMinOv.clear();
   agendaFolded.clear();
@@ -62,6 +66,8 @@ export function hydrateStorage(cat: Catalog) {
   loadGvTalkMin();
   // Legacy boot loads ranks before picks so rebuilding the index prunes stale ranks.
   loadRanks();
+  // 票务状态同理:必须在 loadPicks 之前载入,否则 rebuildIndex() 会把整张表当成脏数据 prune 掉
+  loadTickets();
   loadSavedPlans();
   loadAgendaFold();
   loadPicks((code) => {
@@ -81,6 +87,8 @@ export function bootstrap(): Promise<Catalog> {
         loadExtras(),
         loadRelated(),
         loadIntros(),
+        // 同场观影人数 / 讨论数:整站一次拉取(场次卡要用),失败静默降级为空表
+        loadScreeningCounts(),
       ]);
       return cat;
     })().catch((error) => {

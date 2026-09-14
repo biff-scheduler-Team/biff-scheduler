@@ -1,27 +1,15 @@
 import { describe, expect, it } from "vitest";
-import {
-  FEEDBACK_EMOJIS,
-  aggregateReactions,
-  canDeleteFeedbackPost,
-  decideReactionToggle,
-  isAllowedEmoji,
-  normalizeFeedbackBody,
-  writeAuthError,
-} from "../src/feedback";
+import { canDeleteFeedbackPost, normalizeFeedbackBody, writeAuthError } from "../src/feedback";
 import {
   feedbackCursorOf,
   parseFeedbackCursor,
   parseFeedbackLimit,
 } from "../src/feedback-store";
 
-describe("feedback whitelist / body", () => {
-  it("只接受五个热门 emoji", () => {
-    for (const emoji of FEEDBACK_EMOJIS) expect(isAllowedEmoji(emoji)).toBe(true);
-    expect(isAllowedEmoji("🔥")).toBe(false);
-    expect(isAllowedEmoji("")).toBe(false);
-    expect(isAllowedEmoji("👍 ")).toBe(false);
-  });
+// ⚠ 反应(emoji)白名单 / toggle / 聚合已上提到 `src/reactions.ts` 与 `@biff/contracts/reactions`
+//   (2026-09-14 起建议反馈与场次讨论共用),原断言已搬到 `reactions.test.ts`。
 
+describe("feedback body", () => {
   it("正文 trim 后须 1–2000 字", () => {
     expect(normalizeFeedbackBody("  hi  ")).toBe("hi");
     expect(normalizeFeedbackBody("")).toBeNull();
@@ -33,7 +21,7 @@ describe("feedback whitelist / body", () => {
   });
 });
 
-describe("feedback auth / delete / toggle", () => {
+describe("feedback auth / delete", () => {
   it("无会话写操作返回 UNAUTHENTICATED", () => {
     expect(writeAuthError(null)).toBe("UNAUTHENTICATED");
     expect(writeAuthError(undefined)).toBe("UNAUTHENTICATED");
@@ -43,26 +31,6 @@ describe("feedback auth / delete / toggle", () => {
   it("仅作者可删本帖", () => {
     expect(canDeleteFeedbackPost("user_a", "user_a")).toBe(true);
     expect(canDeleteFeedbackPost("user_a", "user_b")).toBe(false);
-  });
-
-  it("反应 toggle：有则取消、无则添加", () => {
-    expect(decideReactionToggle(false)).toBe("add");
-    expect(decideReactionToggle(true)).toBe("remove");
-  });
-
-  it("聚合计数并标出我的反应", () => {
-    const agg = aggregateReactions(
-      [
-        { emoji: "👍", subject: "u1" },
-        { emoji: "👍", subject: "u2" },
-        { emoji: "❤️", subject: "u1" },
-        { emoji: "🔥", subject: "u1" },
-      ],
-      "u1",
-    );
-    expect(agg.counts).toEqual({ "👍": 2, "❤️": 1 });
-    expect(agg.myReactions).toEqual(["👍", "❤️"]);
-    expect(aggregateReactions([{ emoji: "👍", subject: "u1" }], null).myReactions).toEqual([]);
   });
 });
 

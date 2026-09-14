@@ -1,11 +1,9 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import type { ReactionEmoji } from "@biff/contracts/reactions";
 import type { database } from "./db";
 import { feedbackPost, feedbackReaction } from "./db/schema";
-import {
-  aggregateReactions,
-  decideReactionToggle,
-  type FeedbackEmoji,
-} from "./feedback";
+import { aggregateReactions, decideReactionToggle } from "./reactions";
+import { cursorOf, parseCursor, parseLimit } from "./pagination";
 import { randomToken } from "./crypto";
 
 type Db = ReturnType<typeof database>;
@@ -13,27 +11,20 @@ type Db = ReturnType<typeof database>;
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 100;
 
+/** 游标分页口径已上提到 `./pagination`(与场次讨论共用);这里只固定反馈的 limit 上下限。 */
 export function parseFeedbackLimit(raw: string | undefined): number {
-  const n = Number(raw ?? DEFAULT_LIMIT);
-  if (!Number.isFinite(n) || n < 1) return DEFAULT_LIMIT;
-  return Math.min(Math.floor(n), MAX_LIMIT);
+  return parseLimit(raw, DEFAULT_LIMIT, MAX_LIMIT);
 }
 
 /** cursor = `${created_at}_${id}`，按时间倒序翻页。 */
 export function parseFeedbackCursor(
   raw: string | undefined,
 ): { createdAt: number; id: string } | null {
-  if (!raw) return null;
-  const i = raw.indexOf("_");
-  if (i <= 0) return null;
-  const createdAt = Number(raw.slice(0, i));
-  const id = raw.slice(i + 1);
-  if (!Number.isFinite(createdAt) || !id) return null;
-  return { createdAt, id };
+  return parseCursor(raw);
 }
 
 export function feedbackCursorOf(createdAt: number, id: string): string {
-  return `${createdAt}_${id}`;
+  return cursorOf(createdAt, id);
 }
 
 export async function listFeedbackPosts(
@@ -127,7 +118,7 @@ export async function createFeedbackPost(
     createdAt: now,
     updatedAt: now,
     reactionCounts: {} as Record<string, number>,
-    myReactions: [] as FeedbackEmoji[],
+    myReactions: [] as ReactionEmoji[],
   };
 }
 
@@ -144,7 +135,7 @@ export async function deleteFeedbackPost(db: Db, id: string, subject: string) {
 
 export async function toggleFeedbackReaction(
   db: Db,
-  input: { postId: string; subject: string; emoji: FeedbackEmoji },
+  input: { postId: string; subject: string; emoji: ReactionEmoji },
 ) {
   const post = await db
     .select({ id: feedbackPost.id })

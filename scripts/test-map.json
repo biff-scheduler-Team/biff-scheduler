@@ -192,6 +192,37 @@
       "specs": [
         "feedback"
       ]
+    },
+    {
+      "id": "screening-social",
+      "note": "同场观影人数 + 场次讨论（票务三态 / 实际行程 / 转票补入 / 场次公告）",
+      "paths": [
+        "apps/web/src/pages/AgendaPage.tsx",
+        "apps/web/src/state.ts",
+        "apps/web/src/tickets.ts",
+        "apps/web/src/edition.ts",
+        "apps/web/src/screening-counts.ts",
+        "apps/web/src/screening-discussion.ts",
+        "apps/web/src/app/App.tsx",
+        "apps/web/src/main.tsx",
+        "apps/web/src/components/ScreeningCard.tsx",
+        "apps/web/src/components/ScreeningTickets.tsx",
+        "apps/web/src/components/ScreeningDiscussionDialog.tsx",
+        "apps/web/src/components/TransferAddDialog.tsx",
+        "apps/web/src/components/screening-social.css",
+        "apps/api/src/reactions.ts",
+        "apps/api/src/pagination.ts",
+        "apps/api/src/screening-stats.ts",
+        "apps/api/src/screening-stats-store.ts",
+        "apps/api/src/screening-discussion.ts",
+        "apps/api/src/screening-discussion-store.ts",
+        "apps/api/migrations/0005_screening_social.sql",
+        "packages/contracts/src/reactions.ts",
+        "packages/contracts/src/screening.ts"
+      ],
+      "specs": [
+        "screening-social"
+      ]
     }
   ]
 }

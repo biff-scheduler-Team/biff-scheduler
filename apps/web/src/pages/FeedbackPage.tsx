@@ -1,9 +1,8 @@
+import { REACTION_EMOJIS } from "@biff/contracts/reactions";
 import { useCallback, useEffect, useState } from "react";
 import { ActionButton, Button, TextArea, ToastQueue } from "../components/spectrum";
 import { openAccountPanel } from "../account";
 import { accountState, api, ApiFailure, onAccountChange } from "../account-sync";
-
-const EMOJIS = ["👍", "❤️", "🎉", "💡", "👀"] as const;
 
 type FeedbackPost = {
   id: string;
@@ -198,7 +197,7 @@ export function FeedbackPage() {
                 </header>
                 <p className="feedback-body">{post.body}</p>
                 <div className="feedback-reactions" role="group" aria-label="反应">
-                  {EMOJIS.map((emoji) => {
+                  {REACTION_EMOJIS.map((emoji) => {
                     const count = post.reactionCounts[emoji] ?? 0;
                     const active = mine.has(emoji);
                     return (

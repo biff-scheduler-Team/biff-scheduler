@@ -86,3 +86,52 @@ export const feedbackReaction = sqliteTable("feedback_reaction", {
   primaryKey({ columns: [table.post_id, table.subject, table.emoji] }),
   index("feedback_reaction_post").on(table.post_id),
 ]);
+
+/** 同场观影人数：每位贡献者「行程里有哪些场次」，用于重算 screening_attendance_stat。 */
+export const screeningAttendanceContribution = sqliteTable("screening_attendance_contribution", {
+  edition: text().notNull(),
+  code: text().notNull(),
+  contributor: text().notNull(),
+  weight: text().notNull(), // 同 film_want_contribution：以文本存 "1" / "0.75"，避免 SQLite 浮点漂移
+  updated_at: integer().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.edition, table.code, table.contributor] }),
+  index("screening_attendance_contribution_contributor").on(table.edition, table.contributor),
+]);
+
+/** 每场次聚合权重（展示时 Math.round）；O(场次数) 读，供「同场 N 人」徽章。 */
+export const screeningAttendanceStat = sqliteTable("screening_attendance_stat", {
+  edition: text().notNull(),
+  code: text().notNull(),
+  weight_sum: text().notNull().default("0"),
+  updated_at: integer().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.edition, table.code] }),
+]);
+
+/** 场次讨论帖：一场一条流，分类由 `@biff/contracts/screening` 白名单约束。独立表，不复用 festival_document。 */
+export const screeningPost = sqliteTable("screening_post", {
+  id: text().primaryKey().notNull(),
+  edition: text().notNull(),
+  code: text().notNull(),
+  subject: text().notNull(),
+  display_name: text().notNull(),
+  category: text().notNull(),
+  body: text().notNull(),
+  created_at: integer().notNull(),
+  updated_at: integer().notNull(),
+}, (table) => [
+  index("screening_post_code_created").on(table.code, table.created_at),
+  index("screening_post_subject").on(table.subject),
+]);
+
+/** 每用户每帖每种 emoji 至多一条；再点即取消。 */
+export const screeningReaction = sqliteTable("screening_reaction", {
+  post_id: text().notNull(),
+  subject: text().notNull(),
+  emoji: text().notNull(),
+  created_at: integer().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.post_id, table.subject, table.emoji] }),
+  index("screening_reaction_post").on(table.post_id),
+]);
