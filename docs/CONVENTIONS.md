@@ -13,7 +13,8 @@
   五步工作流 / push 前门禁 / 提交格式 / 红线 15 条都在那里;本文只讲口径细节。两份冲突时以那份为准。**
 - **需求五步(规范 v1)**:① 独立 PLAN `docs/plans/PLAN-<YYYYMMDDHHMMSS>.md`(只读本需求的 PLAN,不整读 PLAN.md 活文档)
   → ② 实现 + **同步单测 / E2E** → ③ **跑门禁** `npm run verify`(改 UI / 交互用 `npm run verify:full`)
-  → ④ `git add`+commit+push(**未全绿禁止推送**) → ⑤ 回写 `PLAN.md` §0/§6/§7 状态。
+  → ④ `git add`+commit+push(**未全绿禁止推送**) → ⑤ 回写文档:只更新 `PLAN.md` 文档头一行「最后更新」,
+  **不再追加 §0 条目**(§0 = 已完成快照,只减不增;细节留在本需求 PLAN)。
   ⚠ 旧口径的 ④ `npm run deploy`(Pages production)**已作废** —— 常规部署 = 推 `main` 触发 Workers Builds(见下)。
 - **本地服务克制**:排查/改代码直接读代码,**不要**为「看效果」起 dev server 或浏览器;确需验证才起最小必要服务,用完即停。
 - **git 签名(1Password SSH)**:`commit.gpgsign=true` + `gpg.format=ssh` + `op-ssh-sign`。
