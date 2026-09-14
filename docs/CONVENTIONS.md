@@ -360,6 +360,11 @@
   (`bcc`/`cgv`/`lotte`/`kofic`/`megabox`/`sohyang`/`bcm`),`region` = 区(`centum`/`nampo`)。**旧「按楼 5 馆」口径已废**
   (`bcc-1`/`bcc-2`/`cgv-centum`/`lotte-centum`/`mega-haeundae`)。`types.ts` 的 `Venue` 有 `region?: string`;
   图例分区走 `legend.ts::GROUP_AREA`。`apps/web/src/`/`index.html`/`functions/` **零硬编码 venue id**,换口径只需换 `apps/web/public/*.json`。
+  ⚠ **分区文案以 `venues.json` 的 `region` 为准**(2026-09-14):`GROUP_AREA` 只是它的中文写法,「数据 ↔ 新版文案 ↔
+  旧版文案」三者逐条一致由 `apps/web/tests/venue-region-parity.test.ts` 钉住 —— 旧版曾把 `sohyang`/`bcm` 误归南浦洞
+  (与官方三区模型相左,见 `docs/history/2026-09-09-开发落地记录.md:263`),修的是那条漂移。
+  `FilterBar` 的分区预设按钮**按数据渲染**(`filters.ts::regionPresets`):某分区一个厅都没有就不出按钮,
+  避免「点了没反应」的死控件反过来暗示「本届有那一区的场」。
 - **`Venue.short` = 甘特影厅列的行标签**(2026-09-10 加):影厅列宽 `LABEL_W` 148px,减去内边距 20px +
   代码 chip ≈25~30px + gap 5px → 可写 ≈ 98~103px(12px semibold),而全名「Busan Cinema Center Cinema 1」
   约 178px **必被 `truncate` 裁掉**,且区分性字词全在末尾 → B1/B2/B3 三行都显示成「Busan Cinema …」。

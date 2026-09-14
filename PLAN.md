@@ -27,6 +27,14 @@
 ## 0. 当前状态快照(2026-09-14)
 
 **✅ 已完成(已部署,线上可访问)**
+- **素香剧场分区口径修正 + 新版残留清理(2026-09-14,`PLAN-20260914141643`)**:现场反馈「东西大学 Sohyang Theatre
+  显示分区在南浦洞」。实读定位:**错的只有旧版** —— `legacy/src/legend.ts::GROUP_AREA` 把 `sohyang`/`bcm` 归到
+  nampo(与官方三区模型 `docs/history/2026-09-09-开发落地记录.md:263` 相左,是 2025 导入时的误归),
+  新版 `src/legend.ts` 与 `venues.json` 的 `region` 早已是 `centum`。改旧版两行 + 同步
+  `legacy/source-manifest.json`(冻结闸门);新版侧把 `FilterBar` 的「南浦洞」死控件改为**按数据渲染**
+  (`filters.ts::regionPresets` —— 2026 无厅落在 nampo,故不渲染;换回有南浦洞场次的届次自动出现)。
+  新增 `apps/web/tests/venue-region-parity.test.ts`(数据 ↔ 新版文案 ↔ 旧版文案逐字一致,先红后绿)
+  与 `filters.test.ts` 4 例;web 单测 **28 文件 / 232 例全绿**。
 - **建议反馈留言板(进行中 / PR,`PLAN-20260914134700`)**:`/feedback` 公开可读；登录后发帖与五类 emoji 反应（👍❤️🎉💡👀）；
   D1 `feedback_post` / `feedback_reaction`（不复用 `festival_document`）；顶栏「建议」入口。
   remote 迁移随 main Builds；本机不改 wrangler `account_id`。
