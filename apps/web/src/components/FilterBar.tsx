@@ -13,6 +13,7 @@ import {
   filterSummary,
   hasActiveFilter,
   makeFilterState,
+  regionPresets,
   type FilterState,
 } from "../filters";
 import { SUBS_DEFS, venueShort } from "../legend";
@@ -90,28 +91,16 @@ export function FilterBar({
                 </ToggleButton>
               );
             })}
-            <ActionButton
-              onPress={() =>
-                toggleVenues(
-                  cat.venues
-                    .filter((v) => v.region === "centum")
-                    .map((v) => v.id),
-                )
-              }
-            >
-              主场区
-            </ActionButton>
-            <ActionButton
-              onPress={() =>
-                toggleVenues(
-                  cat.venues
-                    .filter((v) => v.region === "nampo")
-                    .map((v) => v.id),
-                )
-              }
-            >
-              南浦洞
-            </ActionButton>
+            {/* 分区预设按数据渲染(见 filters.ts::regionPresets):某分区一个厅都没有就不出按钮,
+                否则会变成「点了没反应」的死控件,还会暗示本届有那一区的场次。 */}
+            {regionPresets(cat.venues).map((preset) => (
+              <ActionButton
+                key={preset.region}
+                onPress={() => toggleVenues(preset.ids)}
+              >
+                {preset.label}
+              </ActionButton>
+            ))}
             <ActionButton
               onPress={() =>
                 onChange({

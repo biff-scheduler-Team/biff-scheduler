@@ -22,16 +22,17 @@ import {writeWorkspaceItem} from "./workspace-storage";
 // 影厅那道为什么有两套语义(2026-09-11 优化)
 // ------------------------------------------
 // 用户诉求:常去的厅集中在 BCC / CGV / LOTTE,白名单要一个一个点十几次;
-// 而真正要「去掉」的往往只有最后几个(南浦洞那几家)—— 于是:
+// 而真正要「去掉」的往往只有最后几个(离得远的那几家)—— 于是:
 //   ① 「只看 / 排除」语义开关(同一个选中集合,白名单 ↔ 黑名单);
-//   ② 分区预设(主场区 / 南浦洞)+ 影院预设(BCC / CGV / LOTTE)一键整组加 / 减;
+//   ② 分区预设(主场区 / 南浦洞)+ 影院预设(BCC / CGV / LOTTE)一键整组加 / 减
+//      ⚠ 分区预设**按数据渲染**(见 `regionPresets`):某分区一个厅都没有时不出按钮;
 //   ③ 「反选」—— 白名单下「只去掉少数几家」的另一种走法;
 //   ④ 编号连锁影院(CGV 1–6 + IMAX / LOTTE 2–10)**不逐厅列**,合并成品牌一枚
 //      (见 COLLAPSED_BRANDS)—— 16 枚编号 chip 铺开只会把轨道撑成两行、读不出重点;
 //   ⑤ 选项**持久化**(见 loadFilters / saveFilters),下次打开还是这套厅;
 //   ⑥ 影厅筛选同时决定甘特图**纵轴整行**的去留(见 grid.ts::buildGrid)。
 
-import type { Screening } from "./types";
+import type { Screening, Venue } from "./types";
 import { SUBS_DEFS, subsKeys } from "./legend";
 
 /** 字幕里的**特殊键**:命中「官方未标注」的场次(缺省 = 英文字幕 + 韩语对白)。
@@ -83,6 +84,37 @@ export function venueAllowed(venueId: string, f: FilterState): boolean {
 export function venueFilterKey(f: FilterState): string {
   if (f.venues.size === 0) return "";
   return `${f.venueMode}:${[...f.venues].sort().join(",")}`;
+}
+
+/** 分区预设按钮上的**短名**。⚠ 只给按钮用(按钮行要窄);完整分区名(「CENTUM 主场区」)
+ *  在 `legend.ts::REGION_LABEL`,两处不要互相派生 —— 它们服务的是不同宽度的位置。 */
+const REGION_SHORT: Record<string, string> = { centum: "主场区", nampo: "南浦洞" };
+/** 预设按钮的**固定顺序**;数据里出现的未知分区排在它们之后(按数据首次出现)。 */
+const REGION_ORDER = ["centum", "nampo"];
+
+/** 分区快捷预设 —— **只给真的有厅落在该分区的分区出按钮**(2026-09-14)。
+ *
+ *  为什么按数据渲染:2026 全部 26 个厅都在 `centum`,原先硬编码的「南浦洞」按钮点了等于没点 ——
+ *  是个死控件,还会反过来暗示「本届有南浦洞的场次」(现场反馈的「分区误导性」)。
+ *  改为按数据渲染后,换回有南浦洞场次的届次(或加回 MEGABOX)时按钮自动出现,不用改代码;
+ *  `region` 缺失的旧 JSON 不参与任何预设。顺序固定「主场区 → 南浦洞 → 其余」,
+ *  按钮位置不随数据顺序抖动。 */
+export function regionPresets(venues: Venue[]): { region: string; label: string; ids: string[] }[] {
+  const byRegion = new Map<string, string[]>();
+  for (const v of venues) {
+    if (!v.region) continue;
+    const list = byRegion.get(v.region);
+    if (list) list.push(v.id);
+    else byRegion.set(v.region, [v.id]);
+  }
+  const rank = (region: string): number => {
+    const i = REGION_ORDER.indexOf(region);
+    return i < 0 ? REGION_ORDER.length : i;
+  };
+  // Array#sort 自 ES2019 起稳定 → 未知分区保持数据里的首次出现顺序
+  return [...byRegion.keys()]
+    .sort((a, b) => rank(a) - rank(b))
+    .map((region) => ({ region, label: REGION_SHORT[region] ?? region, ids: byRegion.get(region)! }));
 }
 
 /** 场次是否通过三道筛选(纯函数;三道之间是**与**,每道内部是**或**)。

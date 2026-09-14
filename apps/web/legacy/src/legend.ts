@@ -328,9 +328,13 @@ function guestChip(prog: ExtraProgram): HTMLElement {
 }
 
 /* ---------------- 影院代码 / 分区 ---------------- */
-/** 影院 → 分区说明。key 必须与 venues.json 的 `group` 值一致(2025 真实数据:
- *  bcc/cgv/lotte/kofic 在 CENTUM 主场区,megabox/sohyang/bcm 在南浦洞),
- *  否则图例「分区」列整列显示 `—`。 */
+/** 影院 → 分区说明。key 必须与 venues.json 的 `group` 值一致(官方三区模型:
+ *  Centum 主场区 = bcc/cgv/lotte/kofic/shinsegae/dsumedia/sohyang/bcm,
+ *  南浦洞 = megabox),否则图例「分区」列整列显示 `—`。
+ *  ⚠ sohyang / bcm 曾在 2025 导入时被误归南浦洞 —— 与官网三区模型相左
+ *  (Centum 主场区含 Sohyang 与 Community Media Center,见
+ *  docs/history/2026-09-09-开发落地记录.md:263),2026-09-14 按官网口径纠正为 CENTUM。
+ *  同一条口径由 apps/web/tests/venue-region-parity.test.ts 钉住,别再改回去。 */
 const GROUP_AREA: Record<string, string> = {
   bcc: "CENTUM 主场区 · 电影殿堂(Busan Cinema Center)",
   cgv: "CENTUM 主场区 · CGV Centum City",
@@ -339,8 +343,8 @@ const GROUP_AREA: Record<string, string> = {
   shinsegae: "CENTUM 主场区 · 新世界 Centum City 文化厅",
   dsumedia: "CENTUM 主场区 · 东西大学-KIT Centum Campus",
   megabox: "南浦洞 · MEGABOX Busan Theater",
-  sohyang: "南浦洞 · 东西大学 Sohyang Theatre",
-  bcm: "南浦洞 · 釜山市民媒体中心",
+  sohyang: "CENTUM 主场区 · 东西大学 Sohyang Theatre",
+  bcm: "CENTUM 主场区 · 釜山市民媒体中心",
 };
 
 /** 场馆短名 —— **紧凑层的唯一取用口**。甘特影厅列只有 148px(可写 ≈98~103px),全名

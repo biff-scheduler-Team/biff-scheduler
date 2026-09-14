@@ -100,6 +100,14 @@ export function pageTip(page: number): string {
   return `节目册页码 P.${page}\n该场在官方 Ticket Catalogue(节目册)中的页码\n购票 / 翻册对表用`;
 }
 
+/** 影院 → 分区说明(图例「分区」列 / 场次行影院章 hover 用)。key 必须与 `venues.json`
+ *  的 `group` 一致,否则整列渲染成 `—`。
+ *
+ *  ⚠ **分区以 `venues.json` 的 `region` 为准,这里只是它的中文写法** ——
+ *  `apps/web/tests/venue-region-parity.test.ts` 逐条比对「数据 region ↔ 本表前缀 ↔ 旧版同表」,
+ *  改这里之前先改数据(2026-09-14:旧版曾把 sohyang / bcm 误归南浦洞,被该测试钉住)。
+ *  ⚠ `megabox` 条目**保留**:MEGABOX Busan Theater 本来就属南浦洞(官方三区模型),
+ *  只是 2026 未参与 —— 删掉是丢一条正确信息,不是清残留。 */
 const GROUP_AREA: Record<string, string> = {
   bcc: "CENTUM 主场区 · 电影殿堂(Busan Cinema Center)",
   cgv: "CENTUM 主场区 · CGV Centum City",
