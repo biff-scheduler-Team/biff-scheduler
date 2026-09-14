@@ -171,6 +171,98 @@ def money(text: str) -> Optional[int]:
     return int(m.group(1).replace(",", "")) if m else None
 
 
+# ---------------------------------------------------------------- 票亭表(HTML 表格)
+# 为什么不用 `page_lines` 那套扁平文本:票亭表靠 **rowspan/colspan 合并单元格**表达
+# 「哪几行共用同一个值」(实测 Payment 一列 8 行合并、Place 两列合并),扁平化会把这个
+# 唯一的语义丢掉 —— 剩下的行值对不上号。
+RE_TABLE = re.compile(r"<table\b[\s\S]*?</table>", re.I)
+RE_TR = re.compile(r"<tr\b[^>]*>([\s\S]*?)</tr>", re.I)
+RE_CELL = re.compile(r"<t([hd])\b([^>]*)>([\s\S]*?)</t\1>", re.I)
+RE_SPAN = re.compile(r"(rowspan|colspan)\s*=\s*\"?(\d+)", re.I)
+RE_BR = re.compile(r"<br\s*/?>", re.I)
+RE_TAG = re.compile(r"<[^>]+>")
+
+
+def cell_text(frag: str) -> str:
+    """单元格 HTML → 单行文本(`<br>` 折成空格,标签剥掉,空白归一)。"""
+    return re.sub(r"\s+", " ", html.unescape(RE_TAG.sub("", RE_BR.sub(" ", frag)))).strip()
+
+
+def table_rows(table_html: str) -> list[dict[str, str]]:
+    """一张 `<table>` → 行字典列表(表头为键,rowspan/colspan 已展开)。
+
+    表头行 = 首个含 `<td>` 的行**之前**的所有行(本页表头是两行:第一行有
+    `Operating Hours` 跨列,第二行才是 `Open`/`Close`)。每列取**最靠下**的表头文本,
+    故跨列标题会被更具体的子标题取代;同名多列(Place 占两列)合并成一个值。
+    """
+    grid: dict[tuple[int, int], str] = {}
+    header_rows: list[int] = []
+    body_rows: list[int] = []
+    for r, row_html in enumerate(RE_TR.findall(table_html)):
+        cells = RE_CELL.findall(row_html)
+        if not cells:
+            continue
+        (header_rows if not any(tag == "d" for tag, _a, _b in cells) else body_rows).append(r)
+        col = 0
+        for _tag, attrs, body in cells:
+            while (r, col) in grid:
+                col += 1
+            spans = {k.lower(): int(v) for k, v in RE_SPAN.findall(attrs)}
+            text = cell_text(body)
+            for dr in range(spans.get("rowspan", 1)):
+                for dc in range(spans.get("colspan", 1)):
+                    grid[(r + dr, col + dc)] = text
+            col += spans.get("colspan", 1)
+    if not grid or not body_rows:
+        return []
+    ncols = max(c for _r, c in grid) + 1
+    headers: list[str] = []
+    for c in range(ncols):
+        texts = [grid[(r, c)] for r in header_rows if (r, c) in grid]
+        headers.append(texts[-1] if texts else "")
+    out: list[dict[str, str]] = []
+    for r in body_rows:
+        row: dict[str, str] = {}
+        for c, name in enumerate(headers):
+            if not name:
+                continue
+            val = grid.get((r, c), "")
+            # 同名多列合并成一个值;`colspan` 让两列拿到**同一个**字符串时不能拼两遍
+            # (实测 Place 跨两列,合并后会出现 `CGV Centum City 7F CGV Centum City 7F`)
+            if not val or row.get(name) == val:
+                continue
+            row[name] = f"{row[name]} {val}".strip() if name in row else val
+        if row:
+            out.append(row)
+    return out
+
+
+def parse_ticket_boxes(raw: str) -> list[dict[str, str]]:
+    """售票页「BIFF Ticket Box Place & Operating Hours」→ 每处票亭一行。
+
+    锚点之后有两张表(第一张是「Online」单行表),取**正文行数更多**的那张 = 票亭表。
+    """
+    anchor = "BIFF Ticket Box Place & Operating Hours"
+    at = raw.find(anchor)
+    if at < 0:
+        return []
+    tables = [table_rows(m.group(0)) for m in RE_TABLE.finditer(raw, at)]
+    tables = [t for t in tables if t]
+    if not tables:
+        return []
+    boxes = max(tables, key=len)
+    out: list[dict[str, str]] = []
+    for row in boxes:
+        out.append({
+            "place": row.get("Place", ""),
+            "period": row.get("Period", ""),
+            "open": row.get("Open", ""),
+            "close": row.get("Close", ""),
+            "payment": row.get("Payment", ""),
+        })
+    return out
+
+
 def guest_zh(name: str) -> Optional[str]:
     return GUEST_ZH.get(name)
 
@@ -424,6 +516,61 @@ def parse_service_desk(lines: list[str]) -> dict[str, Any]:
     }
 
 
+def parse_venue_rules(pdf_path: str) -> dict[str, Any]:
+    """官方册子 p20「Theater Regulations」→ 入场 / 年龄 / 场内规则(册子原文)。
+
+    ⚠ 这一节**只在付印册子上有**:官网售票页 grep `screening begins` = 0 命中
+    (实测 2026-09-14)→ 不能像其他字段那样从网页取,只能读 PDF。
+
+    版式(实测):左栏是标题(竖排 `Theater Regulations`),正文在 x ≥ 540;
+    每条以项目符号起行(首字符非字母数字),`※` 起行的是**上一条的附注**,
+    其余行是**上一条的续行**。y ≥ 245 起是 Lost-and-Found 一节。
+    """
+    import pymupdf
+
+    page = pymupdf.open(pdf_path)[19]  # 0-based 19 = 印刷页 20(票务信息英文页)
+    rows: list[tuple[float, str]] = []
+    for blk in page.get_text("dict")["blocks"]:
+        if blk.get("type") != 0:
+            continue
+        for ln in blk["lines"]:
+            text = " ".join(s["text"] for s in ln["spans"]).strip()
+            if text and ln["bbox"][0] >= 540 and 20 <= ln["bbox"][1] <= 260:
+                rows.append((ln["bbox"][1], text))
+    rows.sort()
+
+    items: list[dict[str, Any]] = []
+    lost: list[str] = []
+    in_note = False
+    for y, text in rows:
+        clean = re.sub(r"^[\uf0ec\u2fec\x07\u00b7\s]+", "", text)
+        if y >= 245:
+            lost.append(clean)
+            continue
+        if text.startswith("※"):
+            if items:
+                items[-1]["notes"].append(re.sub(r"^[※\x07\u00b7\s]+", "", text))
+                in_note = True
+            continue
+        # 判据用**原始行首字符**,不是 lstrip 之后的:`lstrip` 会把项目符号剥掉,
+        # 于是每条都变成「字母开头」而被当成上一条的续行(实测会把 7 条并成 1 条)。
+        if clean and text[0].isalnum() and items:
+            # 续行归谁:上一条若是附注(`※`)就续到附注上,否则续到正文 ——
+            # 否则附注的第二行会被拼进正文(实测 `…are not allowed. Sohyang Theatre …`)
+            if in_note:
+                items[-1]["notes"][-1] = f"{items[-1]['notes'][-1]} {clean}".strip()
+            else:
+                items[-1]["text"] = f"{items[-1]['text']} {clean}".strip()
+            continue
+        items.append({"text": clean, "notes": []})
+        in_note = False
+    return {
+        "source": "2026 官方 Ticket Catalogue PDF p20「Theater Regulations」",
+        "items": items,
+        "lostAndFound": lost,
+    }
+
+
 def parse_ticketing(lines: list[str], raw: str = "") -> dict[str, Any]:
     """售票页 → 开票批次 / 售票期 / 票价 / 折扣 / 退款 / 须知。
 
@@ -481,6 +628,7 @@ def parse_ticketing(lines: list[str], raw: str = "") -> dict[str, Any]:
         "batches": batches,
         "prices": prices,
         "discountKrw": discount,
+        "ticketBoxes": parse_ticket_boxes(raw),
         "discounts": parse_discounts(lines),
         "refund": parse_refunds(lines),
         "salesPeriod": parse_sales_period(lines),
@@ -534,6 +682,11 @@ def main() -> int:
     ap.add_argument("--cache-dir", default="data/_cache/extras", help="HTML 缓存目录")
     ap.add_argument("--offline", action="store_true", help="只用缓存,不联网")
     ap.add_argument("--delay", type=float, default=0.4, help="每页抓取间隔(秒)")
+    ap.add_argument(
+        "--catalogue-pdf",
+        default=None,
+        help="官方 Ticket Catalogue PDF 路径 —— 补「入场与观影规则」(官网售票页不印这一节)",
+    )
     args = ap.parse_args()
 
     cache_dir = Path(args.cache_dir)
@@ -575,6 +728,9 @@ def main() -> int:
 
     booking_html = fetch(PAGE_BOOKING, cache_dir, args.offline, args.delay)
     ticketing = parse_ticketing(page_lines(booking_html), booking_html)
+    if args.catalogue_pdf:
+        # 「入场与观影规则」只在付印册子上印(官网售票页没有)→ 必须额外读 PDF
+        ticketing["venueRules"] = parse_venue_rules(args.catalogue_pdf)
     ceremony = parse_ceremony(page_lines(fetch(PAGE_CEREMONY, cache_dir, args.offline, args.delay)))
 
     payload = {
@@ -596,6 +752,9 @@ def main() -> int:
         f" · 购票入口 {'有' if ticketing['bookingUrl'] else '缺'}"
         f" · 邮箱 {'有' if ticketing['email'] else '缺'}"
     )
+    print(f"  票亭 {len(ticketing['ticketBoxes'])} 处"
+          f" · 入场与观影规则 {len(ticketing.get('venueRules', {}).get('items', []))} 条"
+          f"{'' if ticketing.get('venueRules') else '(未传 --catalogue-pdf)'}")
     print(f"  节目 {len(programs)} 场(Actors' House / Master Class / Cine Class / Special Talk)")
     for p in programs:
         missing = [k for k in ("title", "dateText", "priceKrw") if not p.get(k)]

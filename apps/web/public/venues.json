@@ -45,13 +45,13 @@
       "lng": null
     },
     {
-      "id": "br",
+      "id": "bt",
       "name": "Busan Cinema Center Roof Theater",
-      "name_kr": "영화의전당 야외극장",
+      "name_kr": "영화의전당 루프씨어터",
       "short": "BCC Roof",
       "group": "bcc",
       "region": "centum",
-      "code": "BR",
+      "code": "BT",
       "lat": null,
       "lng": null
     },
@@ -283,6 +283,50 @@
       "group": "bcm",
       "region": "centum",
       "code": "BCM",
+      "lat": null,
+      "lng": null
+    },
+    {
+      "id": "m1",
+      "name": "MEGABOX Busan Theater 1",
+      "name_kr": "메가박스 부산극장 1관",
+      "short": "MEGABOX 1",
+      "group": "megabox",
+      "region": "nampo",
+      "code": "M1",
+      "lat": null,
+      "lng": null
+    },
+    {
+      "id": "m2",
+      "name": "MEGABOX Busan Theater 2",
+      "name_kr": "메가박스 부산극장 2관",
+      "short": "MEGABOX 2",
+      "group": "megabox",
+      "region": "nampo",
+      "code": "M2",
+      "lat": null,
+      "lng": null
+    },
+    {
+      "id": "m3",
+      "name": "MEGABOX Busan Theater 3",
+      "name_kr": "메가박스 부산극장 3관",
+      "short": "MEGABOX 3",
+      "group": "megabox",
+      "region": "nampo",
+      "code": "M3",
+      "lat": null,
+      "lng": null
+    },
+    {
+      "id": "m4",
+      "name": "MEGABOX Busan Theater 4",
+      "name_kr": "메가박스 부산극장 4관",
+      "short": "MEGABOX 4",
+      "group": "megabox",
+      "region": "nampo",
+      "code": "M4",
       "lat": null,
       "lng": null
     }

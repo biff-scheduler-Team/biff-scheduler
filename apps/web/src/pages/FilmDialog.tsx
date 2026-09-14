@@ -13,7 +13,7 @@ import {
 } from "../components/spectrum";
 import { useCatalog } from "../app/store";
 import { FILM_CODE_PARAM, useFilmNavigation } from "../app/film-navigation";
-import { filmDetailAnchor, filmDetailNames } from "../app/film-details";
+import { catalogueLine, filmDetailAnchor, filmDetailNames } from "../app/film-details";
 import { introOf } from "../intros";
 import { indexFestival, relatedOf } from "../related";
 import { KIND_LABEL, programOf, formatKrw } from "../extras";
@@ -86,6 +86,7 @@ export function FilmDialog() {
   const related = relatedOf(mapping?.subject_id, store.mappings);
   const fest = indexFestival(store.mappings);
   const program = anchor ? programOf(anchor.code) : undefined;
+  const catalogue = film?.cats[0]?.catalogue;
   return (
     <DialogContainer onDismiss={close}>
       <Dialog key={location.key} size="L">
@@ -143,6 +144,19 @@ export function FilmDialog() {
                   <section>
                     <h2>影片简介</h2>
                     <p className="intro">{intro}</p>
+                  </section>
+                )}
+                {catalogue && (
+                  <section>
+                    <h2>官方节目册</h2>
+                    <p className="muted">{catalogueLine(catalogue)}</p>
+                    {(catalogue.synopsis_en || catalogue.synopsis_ko) && (
+                      <details>
+                        <summary>官方简介（册子原文）</summary>
+                        {catalogue.synopsis_ko && <p className="intro">{catalogue.synopsis_ko}</p>}
+                        {catalogue.synopsis_en && <p className="intro">{catalogue.synopsis_en}</p>}
+                      </details>
+                    )}
                   </section>
                 )}
                 {film.block && (

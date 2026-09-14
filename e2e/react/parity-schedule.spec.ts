@@ -40,7 +40,8 @@ test.describe("schedule interaction parity", () => {
     await seed(page, {
       "biff.picks.v2": picks(["001"]),
       "biff.filters.v1": JSON.stringify({
-        venues: ["br"],
+        // Roof Theater 的场馆 id 是官方 2026 代码 `bt`(旧抓取脚本自造的 `br` 已废,见 CONVENTIONS)。
+        venues: ["bt"],
         venueMode: "exclude",
         subs: [],
         gv: null,

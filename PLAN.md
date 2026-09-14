@@ -5,7 +5,9 @@
 > API `biff-scheduler` + 静态资源 `biff-scheduler-web`)+ React / Router / Spectrum S2 + Vite + TS
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-14(**同场观影 & 场次讨论** —— 票务三态 / 实际行程 / 同场人数 / 场次讨论,见 §0 首条);
+> 最后更新:2026-09-14(**排期数据更新提示** —— 顶栏「数据更新」+ changelog 产物,见 §0 首条);
+> 更早 = 2026-09-14(**官方付印册子并入产物** —— 排期 830 场 / 32 厅 / 影片介绍页 / 票务规则);
+> 更早 = 2026-09-14(**同场观影 & 场次讨论** —— 票务三态 / 实际行程 / 同场人数 / 场次讨论);
 > 更早 = 2026-09-14(**修 `sessionFor` 刷新把健康会话打成 401**);
 > 更早 = 2026-09-14(**建议反馈留言板 PR**);
 > 更早 = 2026-09-14(**规范补两条:大改动走 PR + 大重构前打 checkpoint**);
@@ -29,6 +31,26 @@
 ## 0. 当前状态快照(2026-09-14)
 
 **✅ 已完成(已部署,线上可访问)**
+- **排期数据更新提示(2026-09-14,`PLAN-20260914192552`;⚠ 本地验收通过但**尚未推送**)**:排期 750→830 后,
+  **已选好片的用户**看不到「自己那场变了什么」。新增 `tools/build_changelog.py`(对比 git HEAD 与当前排期 →
+  `public/changelog.json`,本轮 **added 80 / changed 9**)与 `src/changelog.ts` + 顶栏「数据更新」入口
+  (`ChangelogDialog`):① 我行程里信息变了的场次(片长/结束时间/标记,给出 from → to)
+  ② **我选过的影片的新排期**(本轮 35 场,可一键「加入行程」)③ 本次新增概况(按影院归并)。
+  口径要点:**影片身份走 `util.ts::filmNodeKey()`**(不是片名字符串,否则漏掉中文名/原始片名两条路);
+  **只记用户可见且影响行程的字段**(`venue_id` / `page` / `title_kr` 不入账,否则 10 + 725 + 35 条噪声淹没 9 条);
+  新 localStorage 键 `biff.dataver.v1`(只增不改);**不自动弹窗、不做逐场红点**。
+- **官方付印册子并入产物:排期 830 场 / 32 厅 / 影片介绍页 / 票务规则(2026-09-14,`PLAN-20260914184902`;⚠ 本地验收通过但**尚未推送**)**:用户拿到 `2026_BIFF_Ticket_Catalogue_0910ver.pdf`(9/10 付印,104 页)。
+  ① **修 `tools/extract_schedule.py` 的 2026 版面适配**(6 处:L8 缺登记 / BT 改名 / 片长被拆成两段 / 多行标题排序 / `[` 不再当备注 / META 行三处切断),`cells_with_extra` 与空标题归零;
+  ② **新增 `tools/merge_schedule.py`**:官网(活)为骨架 ∪ 册子(付印)补缺 → **`schedule.json` 750 → 792 场**,
+  补入官网排期页**完全不列**的 MEGABOX 1–4(Community BIFF,官方编号 901–942,42 场),
+  新增 5 个厅(含 `br` → 官方代码 `bt`),并用册子真实片长覆盖官网 120′ 兜底(002 / 731–735);
+  ⚠ 同日修正:册子排期页的 BD(Indieplus)/ C7(CGV 7) 两列是 **P&I(Press & Industry)** 记者/业界场
+  (不印编号、不对外售票)→ **不进公开排期**,合成号方案已废(`extract_schedule.py` 跳过 39 个无编号格子);
+  ③ **新增 `tools/extract_catalogue_films.py`**:册子 p22–96 影片介绍页 → `FilmItem.catalogue`(格式 / 色彩 / 首映 / 官方英韩简介),
+  244 部写入,身份靠场次编号反查 + 「一条目只能指向一个片名」硬自检;
+  ④ **`tools/scrape_biff_extras.py`** 增 `ticketBoxes`(官网 HTML,rowspan 感知)与 `--catalogue-pdf` 取册子 p20「入场与观影规则」;
+  ⑤ 前端:`FilmDialog` 增「官方节目册」区、`InfoDialogs` 增「票务亭」「入场与观影规则」区;
+  ⑥ 新增 `apps/web/tests/catalogue-data.test.ts` 钉住以上口径(32 厅 / 901–942 / 册子片长 / 首映码只认 WP·IP / 票亭 8 处)。
 - **修 `sessionFor` 刷新把健康会话打成 401(2026-09-14,`PLAN-20260914181918`;⚠ 本地验收通过但**尚未推送**)**:线上
   `/api/account/me` 先 `503 SERVICE_UNAVAILABLE` 紧跟 `401 UNAUTHENTICATED`,用户被踢出登录。定位到
   `apps/api/src/oauth.ts::sessionFor()` 的 4 个缺陷 —— ① 刷新失败时上游**可能已消费掉 refresh token**

@@ -27,6 +27,7 @@ import {
   TicketDialog,
   TicketLabel,
 } from "../components/InfoDialogs";
+import { DataUpdateButton } from "../components/ChangelogDialog";
 import { SchedulePage } from "../pages/SchedulePage";
 import { CatalogProvider, hydrateStorage, useCatalog } from "./store";
 import { useMedia } from "./hooks";
@@ -146,6 +147,7 @@ function Shell() {
             </ActionButton>
             <TicketDialog />
           </DialogTrigger>
+          <DataUpdateButton />
           {conflictCount > 0 && (
             <ActionButton onPress={() => navigate(`/agenda${location.search}`)}>
               重叠 {conflictCount}

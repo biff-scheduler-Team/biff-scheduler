@@ -130,11 +130,12 @@ const REGION_LABEL: Record<string, string> = {
  *  **来源**:BIFF 官网 Theater Regulations(`page_num=11238`,2026 口径)——
  *  英文名 / 街道地址 / 楼层厅位均为官网原文;韩文地址供本地导航与复制。
  *
- *  ⚠ **2026 常规放映的影院都在海云台区 Centum City 主会场一带**,故当前数据里已无 `nampo` 分区 ——
- *  跨区转场缓冲在 2026 排期下不会触发。
- *  ⚠ 别把「本工具没有」读成「本届没有」:Community BIFF(10/8–10/11)确实在南浦洞
- *  (BIFF 广场 / MEGABOX Busan Theater / Catholic Center Space 101.1),只是那批排期不在本数据集内
- *  (官网票务页明确「Community BIFF 放映仅可在 MEGABOX Busan Theater 4F 票亭预订」)。
+ *  ⚠ **2026-09-14 起 `nampo` 分区重新有数据**:Community BIFF(10/8–10/11)在
+ *  MEGABOX Busan Theater 1–4(南浦洞)有 42 场,由官方 Ticket Catalogue PDF 补入
+ *  —— 官网排期页**不列**该影院,只列册子(见 `tools/merge_schedule.py` 文件头)。
+ *  跨区转场(centum ↔ nampo)缓冲因此重新会触发,别再按「本届只有一个分区」推断。
+ *  ⚠ `megabox` **故意没有** `VENUE_PLACES` 条目:官网 Theater Regulations 页取不到该影院,
+ *  街道地址无法按「官网原文」口径登记 —— 弹层回退成「厅名 + 分区」,**不编造地址**。
  */
 export interface VenuePlace {
   /** 影院官方英文名(与官网一致) */

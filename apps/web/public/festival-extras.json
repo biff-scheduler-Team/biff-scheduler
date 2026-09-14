@@ -1,6 +1,6 @@
 {
   "source": "https://www.biff.kr/eng/",
-  "generated_at": "2026-09-14T14:42:29+0800",
+  "generated_at": "2026-09-14T19:11:12+0800",
   "ticketing": {
     "batches": [
       {
@@ -31,6 +31,64 @@
       }
     ],
     "discountKrw": 3000,
+    "ticketBoxes": [
+      {
+        "place": "Busan Cinema Center BIFF Outdoor Ticket Box",
+        "period": "10.6 ~ 10.15",
+        "open": "8:30",
+        "close": "20:30",
+        "payment": "Credit card Debit card Cash"
+      },
+      {
+        "place": "Busan Cinema Center Cine Mountain 6F",
+        "period": "10.7 ~ 10.15",
+        "open": "8:30",
+        "close": "15 minutes after the last screening starts",
+        "payment": "Credit card Debit card Cash"
+      },
+      {
+        "place": "CGV Centum City 7F",
+        "period": "10.7 ~ 10.14",
+        "open": "30 minutes before the first screening",
+        "close": "15 minutes after the last screening starts",
+        "payment": "Credit card Debit card Cash"
+      },
+      {
+        "place": "LOTTE CINEMA Centum City 8F",
+        "period": "10.7 ~ 10.14",
+        "open": "30 minutes before the first screening",
+        "close": "15 minutes after the last screening starts",
+        "payment": "Credit card Debit card Cash"
+      },
+      {
+        "place": "Korean Film Council 2F",
+        "period": "10.7 ~ 10.14",
+        "open": "30 minutes before the first screening",
+        "close": "15 minutes after the last screening starts",
+        "payment": "Credit card Debit card Cash"
+      },
+      {
+        "place": "Busan Community Media Center 1F",
+        "period": "10.7 ~ 10.14",
+        "open": "30 minutes before the first screening",
+        "close": "15 minutes after the last screening starts",
+        "payment": "Credit card Debit card Cash"
+      },
+      {
+        "place": "Sohyang Theatre Woori Bank Hall",
+        "period": "10.8 ~ 10.14",
+        "open": "30 minutes before the first screening",
+        "close": "15 minutes after the last screening starts",
+        "payment": "Credit card Debit card Cash"
+      },
+      {
+        "place": "MEGABOX Busan Theater 4F",
+        "period": "10.8 ~ 10.11",
+        "open": "9:30",
+        "close": "20:00",
+        "payment": "Credit card Debit card Cash"
+      }
+    ],
     "discounts": [
       {
         "who": "Accessible, Senior, Veterans",
@@ -122,7 +180,52 @@
     "callCenter": "1666-9177",
     "email": "cs@biff.kr",
     "bookingUrl": "https://ticket.biff.kr/",
-    "url": "https://www.biff.kr/eng/addon/10000001/page.asp?page_num=11402"
+    "url": "https://www.biff.kr/eng/addon/10000001/page.asp?page_num=11402",
+    "venueRules": {
+      "source": "2026 官方 Ticket Catalogue PDF p20「Theater Regulations」",
+      "items": [
+        {
+          "text": "As a rule, each screening begins on schedule.  Entry is allowed until 15 minutes after the screening starts. Please note that once a screening begins, reserved seats may not be guaranteed.",
+          "notes": []
+        },
+        {
+          "text": "Admission to the theater is available 15 minutes before the screening begins. It is subject to change depending on the situation on-site. Please follow the guidance of the staff and volunteers.",
+          "notes": []
+        },
+        {
+          "text": "You must present a valid ticket (mobile or paper) at the theater entrance. Screenshots of mobile tickets or reservation confirmation messages (such as emails or text messages) will not be accepted and bearers will not be allowed to enter.",
+          "notes": []
+        },
+        {
+          "text": "Ticket holders under 19 are not permitted to enter screenings rated “Restricted (19+),” even when accompanied by a guardian. Those who turn 19 during the calendar year are exempt.",
+          "notes": []
+        },
+        {
+          "text": "Children under 4 are not allowed to enter even if they are accompanied by their guardian.",
+          "notes": []
+        },
+        {
+          "text": "Alcoholic beverages or food purchased outside the Cinema are not allowed.",
+          "notes": [
+            "Only bottled water is allowed in the Busan Cinema Center Haneulyeon Theatre, the KOFIC Theater, Sohyang Theatre Woori Bank Hall, and Busan Community Media Center Open Hall."
+          ]
+        },
+        {
+          "text": "Changing seats during the screening is not allowed.  Please refrain from re-entering the theater once the screening has begun.",
+          "notes": []
+        },
+        {
+          "text": "All photography and video recordings are strictly forbidden, including during the trailers and the ending credits.",
+          "notes": [
+            "In the case of Guest Visits or other events held in the theater, you may take photos following guidance from staff."
+          ]
+        }
+      ],
+      "lostAndFound": [
+        "Lost items will be stored at the nearest BIFF Information Desk to where they were found.",
+        "If you have lost an item, please visit the nearest Information Desk or contact the Call Center."
+      ]
+    }
   },
   "programs": [
     {
