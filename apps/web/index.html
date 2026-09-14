@@ -16,6 +16,13 @@
         document.documentElement.dataset.colorScheme = dark ? 'dark' : 'light';
       } catch (_) {}
     </script>
+    <!-- Umami: SPA 靠 History API 自动记 pageview，勿在 useLocation 里再 umami.track() 否则会双计 -->
+    <script
+      defer
+      src="https://anaritikusu.citrons.cc/script.js"
+      data-website-id="5e00c94f-0c8a-4990-8ed4-c8499ab84467"
+      data-domains="biff.lcandy.co,biff.iff.day"
+    ></script>
   </head>
   <body>
     <div id="root"></div>
