@@ -10,6 +10,11 @@ import { encode, hash, randomToken, seal, unseal } from "../src/crypto";
 
 const SECRET = "unit-test-secret-at-least-32-chars";
 
+/** 与 `src/crypto.ts` 的私有 `decode` 同口径(base64url → 字节),测试里需要它才能真的改字节。 */
+function decode(value: string): Uint8Array {
+  return Uint8Array.from(atob(value.replaceAll("-", "+").replaceAll("_", "/")), (c) => c.charCodeAt(0));
+}
+
 describe("encode", () => {
   it("产出 base64url:无 + / =,只有 A-Za-z0-9_-", () => {
     // 覆盖会撞上 + / = 的字节组合
@@ -79,7 +84,12 @@ describe("seal / unseal", () => {
   it("密文被篡改则解不开(AES-GCM 完整性)", async () => {
     const sealed = await seal({ a: 1 }, SECRET, "purpose");
     const [iv, body] = sealed.split(".");
-    const tampered = `${iv}.${body.slice(0, -1)}${body.at(-1) === "A" ? "B" : "A"}`;
+    // 必须改**解码后的字节**。原先改末位字符(base64url 去掉 = 填充后,末位仍含 2 个
+    // 填充位)在末位是 'A' 时会把 'A' 换成 'B' 却解出**完全相同的字节** —— 实测 2000 次
+    // 里有 115 次(5.8%)等于没篡改,断言偶发假失败。翻转第一个字节是确定的。
+    const bytes = decode(body);
+    bytes[0] = bytes[0]! ^ 0x01;
+    const tampered = `${iv}.${encode(bytes)}`;
     await expect(unseal(tampered, SECRET, "purpose")).rejects.toThrow();
   });
 });

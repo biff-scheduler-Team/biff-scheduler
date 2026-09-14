@@ -5,7 +5,8 @@
 > API `biff-scheduler` + 静态资源 `biff-scheduler-web`)+ React / Router / Spectrum S2 + Vite + TS
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-14(**建议反馈留言板 PR**,见 §0 首条);
+> 最后更新:2026-09-14(**修 `sessionFor` 刷新把健康会话打成 401**,见 §0 首条);
+> 更早 = 2026-09-14(**建议反馈留言板 PR**);
 > 更早 = 2026-09-14(**规范补两条:大改动走 PR + 大重构前打 checkpoint**);
 > 更早 = 2026-09-14(**桌面分栏 + 账号一体 + 想看人数**);
 > 更早 = 2026-09-13(**IFFDAY 账号体系 + 前后端分仓**);
@@ -27,6 +28,19 @@
 ## 0. 当前状态快照(2026-09-14)
 
 **✅ 已完成(已部署,线上可访问)**
+- **修 `sessionFor` 刷新把健康会话打成 401(2026-09-14,`PLAN-20260914181918`;⚠ 本地验收通过但**尚未推送**)**:线上
+  `/api/account/me` 先 `503 SERVICE_UNAVAILABLE` 紧跟 `401 UNAUTHENTICATED`,用户被踢出登录。定位到
+  `apps/api/src/oauth.ts::sessionFor()` 的 4 个缺陷 —— ① 刷新失败时上游**可能已消费掉 refresh token**
+  (轮换非原子);② `invalid_grant` 时**无条件按 `token_hash` 删行**,并发刷新的「败者」会删掉「胜者」刚写入的
+  健康会话(401 的直接成因);③ `refresh_until` 无条件归零会**踩掉别人新拿到的租约**,把并发放大;
+  ④ 持久化新 token 不读 `changes`,命中 0 行时静默当成功。另外租约 15s 而等待窗口只有 12×200ms=2.4s,
+  慢一点就抛 503,而那次刷新其实会成功。改为**条件删除 / 条件释放租约 / 检查 `changes` / 等待窗口对齐租约**,
+  并给上游 service binding 调用加**硬超时**(避免挂死拖到 isolate 被回收、留下未释放的租约),
+  两条失败分支补结构化日志(只记错误码,不打 token)。
+  ⚠ 上游真的消费掉 RT 的那种情况**不可自愈**(better-auth 重用检测会撤销整个 token family),只能重新登录 ——
+  本次修掉的是**可避免**的那部分。新增 `apps/api/tests/oauth-session.test.ts`(14 例,`node:sqlite` 当 D1 替身跑真 SQL);
+  **修复前 5 failed / 9 passed**(核心两条:并发败者删会话、租约被踩)。顺带修掉 `crypto.test.ts` 一条**既有 flake**
+  (篡改 base64url 末位字符有时解出相同字节,实测 5.8% 假失败)。
 - **Umami 分析接入(2026-09-14,`PLAN-20260914160700`)**:`anaritikusu.citrons.cc` script + website-id；
   React Router / Vite 按[官方 SPA 指南](https://docs.umami.is/docs/guides/track-single-page-apps)只在 `index.html`（含 legacy）挂一次，靠 History API 自动 pageview，**不**在 `useLocation` 里手写 `umami.track()`；`data-domains` 限 `biff.lcandy.co,biff.iff.day`。
 
