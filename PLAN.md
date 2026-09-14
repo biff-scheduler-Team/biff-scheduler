@@ -5,7 +5,8 @@
 > API `biff-scheduler` + 静态资源 `biff-scheduler-web`)+ React / Router / Spectrum S2 + Vite + TS
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-14(**排期数据更新提示** —— 顶栏「数据更新」+ changelog 产物,见 §0 首条);
+> 最后更新:2026-09-14(**「已保存方案」的「查看场次」改弹层** —— 信息与分享图片同源,见 §0 首条);
+> 更早 = 2026-09-14(**排期数据更新提示** —— 顶栏「数据更新」+ changelog 产物);
 > 更早 = 2026-09-14(**官方付印册子并入产物** —— 排期 830 场 / 32 厅 / 影片介绍页 / 票务规则);
 > 更早 = 2026-09-14(**同场观影 & 场次讨论** —— 票务三态 / 实际行程 / 同场人数 / 场次讨论);
 > 更早 = 2026-09-14(**修 `sessionFor` 刷新把健康会话打成 401**);
@@ -31,21 +32,15 @@
 ## 0. 当前状态快照(2026-09-14)
 
 **✅ 已完成(已部署,线上可访问)**
-- **修「我的行程」顺位拖拽在页面滚动后判定错位(2026-09-14,`PLAN-20260914205901`,已推送)**:CI 全量 E2E
-  连续红在 `e2e/react/desktop.spec.ts:4` —— 拖完 `biff.ranks.v1` **根本没写入**(`"undefined" is not valid JSON`)。
-  根因:`AgendaPage.startDrag()` 拿 pointerdown 时刻捕获的**视口 rect** 去比后续的 `e.clientY`;拖拽中途页面
-  一旦被滚动(拖到视口边缘的自动滚动 / 浏览器把目标行滚进视口 / Playwright 的 `scrollIntoViewIfNeeded`),
-  两者就不再同源,阈值整体偏移、排序静默失效 —— **真实用户同样会踩到**。改为统一换算成「相对容器顶」的
-  局部坐标,滚动量由 `paint()` 里现取的容器 rect 吸收。
-  ⚠ 试过把测试改成手动鼠标手势来绕过,但行程页有 `window` + 内部列表**两层滚动容器**
-  (探针实测 `scrollIntoViewIfNeeded` 只改内部容器:`scrollY` 仍为 0 而目标行从 728 移到 176;
-  `window.scrollBy` 只改 window),滚动量没法稳定控制、反而更脆 —— 故保留 `dragTo`(它天然覆盖这条路径)。
-  顺带稳定化 `review-schedule.spec.ts:60` 的 **flaky**:`page.clock.install({time})` 之后时钟**仍按真实时间
-  流逝**,而该用例起点是 `23:59:59`(距午夜只剩 1 秒),页面加载慢过 1 秒 `todayIsoLocal()` 就已跨日 →
-  mobile 默认日期漂到 10-11(10-11 也在 `dates` 里);改为 `install` 后立刻 `pauseAt` 冻结,跨午夜交给
-  原本就有的 `fastForward(2000)`。
-  证据:撤掉实现修复 → `1 failed`(与 CI run 34842131579 报错逐字一致);带修复 → `4 passed`;
-  `review-schedule.spec`(两个 chromium 视口)`12 passed`;`npm test` 361 passed;`npm run verify` 全链通过。
+- **「已保存方案」的「查看场次」改为弹层(2026-09-14,`PLAN-20260914213000`;⚠ 本地验收通过但**尚未推送**)**:用户报
+  「查看场次目前只展示了时间和 CODE」。原实现是 `<details>` 内联展开 `describeSavedPlan().details`(每行只有
+  `HH:MM · CODE`,看不出片名 / 影院)。改为 `src/components/PlanShowsDialog.tsx` 弹层,内容**复用分享图片的模型**
+  `poster.ts::buildPosterModel` —— 有效结束时间(含 / 弃映后谈按单场解析)/ 英文名 · 中文名 / 影院短名 · CODE /
+  GV 标记 / 备注 / 海报缩略图,按日期分节;排期换版后残留的 code 单独列出(`N 场已不在当前排期：…`),不静默消失。
+  **口径单一来源**:弹层不另写取值链,海报改了弹层自动跟;`describeSavedPlan` 与概要那行的 hover tooltip 保留不动。
+  证据:`npm run verify:quick` 全绿(单测 82 passed);`npx playwright test -c playwright.react.config.ts e2e/react/parity-agenda.spec.ts --project=desktop-chromium` → `12 passed`。
+- **修顺位拖拽在页面滚动后判定错位 + 稳定化午夜边界 flaky 用例(2026-09-14,`PLAN-20260914205901`,已推送;
+  CI run 34848264405 全绿)**:根因、方案取舍与先红后绿证据都记在该 PLAN 文件里,此处不重复。
 - **排期数据更新提示(2026-09-14,`PLAN-20260914192552`;⚠ 本地验收通过但**尚未推送**)**:排期 750→830 后,
   **已选好片的用户**看不到「自己那场变了什么」。新增 `tools/build_changelog.py`(对比 git HEAD 与当前排期 →
   `public/changelog.json`,本轮 **added 80 / changed 9**)与 `src/changelog.ts` + 顶栏「数据更新」入口

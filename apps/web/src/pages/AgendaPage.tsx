@@ -19,6 +19,7 @@ import {
 } from "../components/spectrum";
 import { TransferAddEntry } from "../components/TransferAddDialog";
 import { ScreeningCard } from "../components/ScreeningCard";
+import { PlanShowsDialog } from "../components/PlanShowsDialog";
 import { useCatalog } from "../app/store";
 import { useScheduleNavigation } from "../app/navigation";
 import {
@@ -471,10 +472,8 @@ export function AgendaPage() {
                   <p className="muted" title={summary.details}>
                     {summary.outline}
                   </p>
-                  <details className="saved-plan-details">
-                    <summary>查看场次</summary>
-                    <p>{summary.details}</p>
-                  </details>
+                  {/* 弹层内容与分享图片同源(见 PlanShowsDialog 文件头),不再是内联的「时间 · CODE」纯文本 */}
+                  <PlanShowsDialog plan={plan} />
                 </div>
                 <ActionButton
                   aria-label={`删除${plan.name}`}
