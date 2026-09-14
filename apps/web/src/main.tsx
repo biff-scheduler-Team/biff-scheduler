@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider, Outlet } from "react-router";
 import { bootstrap } from "./app/store";
 import { IndexRedirect, Loading, Root, RouteError } from "./app/App";
 import { LibraryPage } from "./pages/LibraryPage";
+import { FeedbackPage } from "./pages/FeedbackPage";
 import { AgendaPage } from "./pages/AgendaPage";
 import { FilmDialog } from "./pages/FilmDialog";
 import "./style.css";
@@ -30,6 +31,7 @@ const router = createBrowserRouter([
         children: filmRoute(),
       },
       { path: "agenda", element: <AgendaPage />, children: filmRoute() },
+      { path: "feedback", element: <FeedbackPage /> },
       {
         path: "*",
         element: (

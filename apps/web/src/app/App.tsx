@@ -69,7 +69,7 @@ function Shell() {
   const dark = theme === "dark" || (theme === "system" && systemDark);
   const viewingRoute = /^\/(picks|agenda)(\/|$)/.test(location.pathname);
   const panelOpen = viewingRoute && new URLSearchParams(location.search).get("quick") === "1";
-  const fullPage = /^\/library(?:\/|$)/.test(location.pathname) || (viewingRoute && !panelOpen);
+  const fullPage = /^\/(library|feedback)(?:\/|$)/.test(location.pathname) || (viewingRoute && !panelOpen);
   const pageParams = new URLSearchParams(location.search);
   pageParams.delete("quick");
   const pageSearch = pageParams.size ? `?${pageParams}` : "";
@@ -118,6 +118,7 @@ function Shell() {
     ["/library", "影片库"],
     ["/picks", "我的选片"],
     ["/agenda", "我的行程"],
+    ["/feedback", "建议"],
   ];
   return (
     <Provider
