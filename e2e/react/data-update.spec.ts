@@ -59,8 +59,12 @@ test("数据更新提示:顶栏入口 → 弹层三块 → 知道了后消失", 
   await expect(dialog.getByRole("heading", { name: "你选过的影片有 1 场新排期" })).toBeVisible();
   await expect(dialog).toContainText("CGV Centum City 6");
 
-  // ③ 概况:与用户无关的新片按影院归并
-  await expect(dialog.getByRole("heading", { name: /本次新增 2 场/ })).toBeVisible();
+  // ③ 概况:与用户无关的新片按放映厅归并。
+  // 标题断言写**全串**:两个数字来自不同集合时(场次=全部新增、放映厅数曾误用「其余新增」)
+  // 会变成「2 场(1 家影院)」—— 夹具这 2 场分属 m1 / c6 两个厅,所以必须是 2。
+  await expect(
+    dialog.getByRole("heading", { name: "本次新增 2 场（2 个放映厅）" }),
+  ).toBeVisible();
   await expect(dialog).toContainText("MEGABOX Busan Theater 1");
 
   await dialog.getByRole("button", { name: "知道了" }).click();

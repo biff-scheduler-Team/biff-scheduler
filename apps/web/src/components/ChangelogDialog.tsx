@@ -126,7 +126,13 @@ function ChangelogDialog({
 
             {groups.length > 0 && (
               <section>
-                <h2>本次新增 {highlights.addedTotal} 场（{groups.length} 家影院）</h2>
+                {/* 放映厅数必须按**全部**新增算(`file.added`),不能复用下面的 `groups`
+                    —— `groups` 是 `othersAdded`(已剔掉「你选过的影片」那批),而标题里的场次
+                    数 `addedTotal` 是总数:两个集合不同,标题会自相矛盾
+                    (实测 e2e 夹具:2 场分属 2 个厅,却写「2 场(1 家影院)」)。
+                    另外单位是**放映厅**不是影院 —— `venue_display` 是「MEGABOX Busan Theater 1」
+                    这种厅级名字,写「家影院」会把 MEGABOX 1–4 说成 4 家影院。 */}
+                <h2>本次新增 {highlights.addedTotal} 场（{addedByVenue(file.added).length} 个放映厅）</h2>
                 {highlights.myFilmsAdded.length > 0 && (
                   <p className="muted">
                     其中 {highlights.myFilmsAdded.length} 场属于你选过的影片，已在上面单列。
