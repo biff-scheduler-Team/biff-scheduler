@@ -229,19 +229,19 @@ export function ScreeningDiscussionDialog({ screening }: { screening: Screening 
               </div>
 
               {notice && (
-                <section className="discussion-notice" role="note" aria-label="社区约定">
-                  <strong>先看一眼：这里的几条约定</strong>
+                <section className="discussion-notice" role="note" aria-label="社区提醒">
+                  <strong>先看一眼：这里的几条提醒</strong>
                   <ul className="discussion-notice-list">
                     <li>
-                      这里任何人都能读到。请不要发布手机号 / 微信号 / 二维码 / 住址等
-                      <strong>个人信息</strong>，也不要发布他人的个人信息。
+                      这里任何人都能读到。手机号 / 微信号 / 二维码 / 住址这类
+                      <strong>个人信息</strong>，建议别直接发在帖子里 —— 想留联系方式，先想清楚会被谁看到。
                     </li>
-                    <li>只聊电影 —— 不要讨论电影以外的内容。</li>
+                    <li>这里主要聊电影，和电影无关的话题就不太合适了。</li>
                     <li>
-                      本站只是<strong>信息发布平台</strong>，不对由此产生的任何纠纷负责；无论在本站联系还是
-                      引流到私下，交易与约伴的风险都由你们自己承担。
+                      本站只是<strong>信息发布平台</strong>，不介入你们之间的沟通；无论在本站联系还是
+                      转到私下，交易与约伴的风险都请自己判断。
                     </li>
-                    <li>看到不良信息，点帖子上的「👎」。</li>
+                    <li>看到不合适的内容，点帖子上的「👎」就好。</li>
                   </ul>
                   <div className="discussion-notice-actions">
                     <ActionButton
@@ -255,18 +255,6 @@ export function ScreeningDiscussionDialog({ screening }: { screening: Screening 
                   </div>
                 </section>
               )}
-
-              <div className="discussion-privacy" role="note">
-                <strong>发布前请阅读</strong>
-                <ul>
-                  <li>只聊电影，不要讨论电影以外的内容。</li>
-                  <li>不要在这里发布个人信息（手机号 / 微信号 / 二维码等）。</li>
-                  <li>
-                    本站只提供<strong>信息发布平台</strong>，
-                    <strong>不对由此产生的任何纠纷负责</strong> —— 无论在本站还是引流到私下。
-                  </li>
-                </ul>
-              </div>
 
               <div className="discussion-composer">
                 <div className="discussion-categories" role="group" aria-label="信息分类">

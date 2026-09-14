@@ -92,7 +92,7 @@ test("票务三态 / 同场人数 / 仅看实际行程 / 转票补入", async ({
   await expect(targetCard.locator(".ticket-transfer")).toHaveText("转票");
 });
 
-test("场次讨论:未登录可读、发帖被门闸挡住、隐私说明只出现一次", async ({ page }) => {
+test("场次讨论:未登录可读、发帖被门闸挡住、社区提醒只留一条且只出现一次", async ({ page }) => {
   await guest(page);
   await mockCounts(page, { attendance: { "001": 1 }, discussions: { "001": 1 } });
 
@@ -137,16 +137,18 @@ test("场次讨论:未登录可读、发帖被门闸挡住、隐私说明只出�
   await expect(downvote).toBeVisible();
   await expect(downvote.locator(".feedback-chip-count")).toHaveCount(0);
 
-  // 首次打开:社区约定(含免责与范围)在;点「知道了」后写本地标记
+  // 首次打开:社区提醒(含范围与免责)在;点「知道了」后写本地标记
   await expect(dialog.locator(".discussion-notice")).toBeVisible();
-  await expect(dialog.locator(".discussion-notice-list")).toContainText("只聊电影");
-  await expect(dialog.locator(".discussion-notice-list")).toContainText("不对由此产生的任何纠纷负责");
+  await expect(dialog.locator(".discussion-notice-list")).toContainText("聊电影");
+  await expect(dialog.locator(".discussion-notice-list")).toContainText("信息发布平台");
   await expect(dialog.locator(".discussion-notice-list")).toContainText("👎");
-  // 常驻提示与一次性说明是两套:关掉说明后常驻提示仍在
-  await expect(dialog.locator(".discussion-privacy")).toContainText("不对由此产生的任何纠纷负责");
+  // 语气 = 建议而非规定(2026-09-14 修订 3):个人信息只劝阻,不写成「请不要发布」
+  await expect(dialog.locator(".discussion-notice-list")).not.toContainText("请不要发布");
+  // 回归(2026-09-14 修订 3):弹层里**只留这一条可关闭的提醒** —— 原先那条常驻的「发布前请阅读」已删除
+  await expect(dialog.locator(".discussion-privacy")).toHaveCount(0);
   await dialog.getByRole("button", { name: "知道了", exact: true }).click();
   await expect(dialog.locator(".discussion-notice")).toHaveCount(0);
-  await expect(dialog.locator(".discussion-privacy")).toBeVisible();
+  await expect(dialog.locator(".discussion-privacy")).toHaveCount(0);
   expect((await storage(page))["biff.discussionprivacy.v1"]).toBe("1");
 
   // 未登录:发布被挡到登录面板
