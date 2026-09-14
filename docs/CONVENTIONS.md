@@ -356,10 +356,21 @@
   (2025 的 `talk`/`commentary`/`event` 共 10 场曾被吞)。已注册:`gv`/`masterclass`/`premiere`/`open_talk`/`batch`/`talk`/`commentary`/`event`。
   配色分族:红绿灯 `--status-*`、观影等级 `--rate-*`、特别节目 `--ev-teal`(#0f766e,实心 → 实线描边 → 虚线描边表权重)。
   新增徽章同步补 `ABBR_LINES`(图例「ⓘ 缩写说明」数据源)。`opening`/`closing` 故意不注册。
-- **`venue_id` = 按「厅」**(2026-09-10 定案):29 个,`id` = 官方代码小写(`b1`/`c2`/`l10`),`group` = 影院
-  (`bcc`/`cgv`/`lotte`/`kofic`/`megabox`/`sohyang`/`bcm`),`region` = 区(`centum`/`nampo`)。**旧「按楼 5 馆」口径已废**
+- **`venue_id` = 按「厅」**(2026-09-10 定案;2026-09-14 由册子补到 **32 个**):`id` = 官方代码小写(`b1`/`c2`/`l10`),
+  `group` = 影院(`bcc`/`cgv`/`lotte`/`kofic`/`megabox`/`sohyang`/`bcm`),`region` = 区(`centum`/`nampo`)。**旧「按楼 5 馆」口径已废**
   (`bcc-1`/`bcc-2`/`cgv-centum`/`lotte-centum`/`mega-haeundae`)。`types.ts` 的 `Venue` 有 `region?: string`;
   图例分区走 `legend.ts::GROUP_AREA`。`apps/web/src/`/`index.html`/`functions/` **零硬编码 venue id**,换口径只需换 `apps/web/public/*.json`。
+  ⚠ **2026-09-14 三处口径修正(`PLAN-20260914184902`)**:
+  ① 补入官网排期页**不列**、只在付印册子里的 4 个厅 —— `m1`–`m4`(MEGABOX Community BIFF,
+  官方编号 901–942,免费·当天现场先到先得);**`nampo` 分区因此重新有数据**,跨区转场缓冲会触发;
+  ⚠ 同日再修正:`bd`(BCC Indieplus)/`c7`(CGV 7)**不得**进公开排期 —— 册子排期页把这两列整列
+  归在 `P&I(Press & Industry) Screenings` 粉底标题下(记者/业界场,不印编号、不对外售票),
+  官网排期页与影片介绍页都不列它们。判据是「**不印编号**」,见下条;
+  ② Roof Theater 的 id 从 `br` 改为官方代码 **`bt`**(册子 p8 图例 = `BT Busan Cinema Center Roof Theater`);
+  `br` 是当年抓取脚本自造的(全仓无代码引用,改名零风险);
+  ③ 册子图例里的 `CCS`(Catholic Center Space 101.1)本届无排期 → **不登记**。
+  场馆 id 的**唯一数据源**仍是 `apps/web/public/venues.json`;`tools/merge_schedule.py::VENUE_RENAMES` /
+  `INSERT_AFTER` 是它的写入口径(改名 + 插入位置)。
   ⚠ **分区文案以 `venues.json` 的 `region` 为准**(2026-09-14):`GROUP_AREA` 只是它的中文写法,「数据 ↔ 新版文案 ↔
   旧版文案」三者逐条一致由 `apps/web/tests/venue-region-parity.test.ts` 钉住 —— 旧版曾把 `sohyang`/`bcm` 误归南浦洞
   (与官方三区模型相左,见 `docs/history/2026-09-09-开发落地记录.md:263`),修的是那条漂移。
@@ -370,7 +381,7 @@
   约 178px **必被 `truncate` 裁掉**,且区分性字词全在末尾 → B1/B2/B3 三行都显示成「Busan Cinema …」。
   故 `short` 取「**品牌 + 厅号**」并去掉与品牌重复的城市词:`BCC Cinema 1` / `BCC Cinematek` /
   `CGV 1` / `CGV IMAX` / `LOTTE 10` / `MEGABOX 1` / `KOFIC Theater` / `Busan Media Ctr`。
-  **实测(Chromium + 本机字体栈,12px semibold)29 条全部 ≤ 98px、零截断** —— 改 `short` 必须重量一次,
+  **实测(Chromium + 本机字体栈,12px semibold)全部 ≤ 98px、零截断** —— 改 `short` 必须重量一次,
   超过 98px 就会重新截断(而 MEGABOX 四行截断后又会糊成同一串,即本次修的 bug)。
   **取用只走 `legend.ts::venueShort()`**(`short || name`,旧 JSON 不会空白);`venue_display` 与 `name` 保持全名 ——
   全名去向 = 行 hover `venueTip` / ⓘ 说明弹层「代码 → 行标签 → 官方全名」表 / ICS `LOCATION`。
@@ -544,6 +555,61 @@
   其后到下一元数据行的场次行都归它(**不能用 y 窗口** —— 一页 2~3 部片);国别过长会换行 → 按 **x 邻近(±20pt)** 回看;
   单元按 p18 `SECTIONS` 起始印刷页;片名按 `code` 关联排期(排期表才是权威)。输出严格只含 `FilmItem` 十字段。
   完整工作流 + 19 条陷阱见 **`.codebuddy/skills/biff-catalogue-pdf-to-schedule/SKILL.md`**。
+- **★ 2026 排期 = 官网(活)∪ 册子(付印),合成唯一 `schedule.json`**(2026-09-14,`PLAN-20260914184902`):
+  `tools/merge_schedule.py` 是**唯一写入口**。为什么必须合:官网排期页(`date.asp?day1=6..15`)**不列**
+  MEGABOX Busan Theater 1–4(Community BIFF)—— 实测 10 天的分组标题里没有它,
+  这 42 场只在付印册子里(册子印了官方编号 901–942,免费·当天现场先到先得);反过来,册子**不印**
+  Actors' House / Master Class / Cine Class 等活动场次(只在票务页列为「收费活动」)。
+  ⚠ **「册子有、官网没有」不等于「该进公开排期」**:册子排期页的 BD(Indieplus)/ C7(CGV 7) 两列
+  整列归在 `P&I(Press & Industry) Screenings` 粉底标题下,是记者/业界场 —— **不印场次编号**就是它的判据
+  (对比同页 MEGABOX 免费场**印了** 901–942)。`extract_schedule.py` 对无编号格子直接跳过
+  (`stats['skipped_no_code']` = 39:37 P&I + Forum BIFF 论坛 + BAFA 毕展),**不再合成 `X<页><序>`** ——
+  合成号会伪装成官方号,用户在册子上永远找不到它。哨兵见 `apps/web/tests/catalogue-data.test.ts`。
+  口径(逐条都有理由,不靠猜):**骨架 = 官网**(活数据:改时间 / 加场 / `title_zh`);
+  册子只补「官网完全没有的场次」+ 册页号;共有 code 一律保留官网值,只有
+  `CATALOGUE_WINS_DURATION` 里**显式登记**的例外取册子(002 / 731–735:官网无详情页 → 120′ 兜底,
+  册子印了真实片长);`tags` 取**并集**(特性是叠加语义);`title_en` 差异保留官网(册子会被排版拆行/加注)。
+  同一场次两源编号不同时按「日期+时间+归一化片名+场馆」去重(实测 BAFA 毕展 = 册子 `X1601` / 官网 `X01`)。
+- **排期更新日志 = 独立产物 `apps/web/public/changelog.json`**(2026-09-14,`PLAN-20260914192552`):
+  `tools/build_changelog.py` 对比「上一个已发布版本」(默认 `git:HEAD`)与当前 `schedule.json`。
+  为什么必须产物化:**前端只持有一版排期,「上一版长什么样」已经不在客户端** —— 差异只能在构建期算。
+  三条口径:
+  ① **只记用户可见且影响行程的字段** —— `date`/`start_time`/`end_time`/`duration_min`/`venue_display`/
+  `is_gv`/`rating`/`subs`/`tags`;**不记 `venue_id`**(`br`→`bt` 是内部改名,`venue_display` 未动,
+  记了就是 10 条用户看不见的噪声)、**不记 `page`/`title_kr`**(那是「信息补全」不是「排期变了」,
+  725 + 35 条会把真正的 9 条淹没);
+  ② **版本号 = `schedule.json::festival.generated_at`**,前端与本地已确认版本(`biff.dataver.v1`)比对;
+  ③ **「我选过的影片」判身份走 `util.ts::filmNodeKey()`**(官网英文名 → 中文名 → 原始片名三条路),
+  按片名字符串直接比会漏掉后两条,表现为「明明选了这部片,却说没有新排期」。
+  前端:`src/changelog.ts`(加载 + `changelogHighlights()` 纯函数,缺文件静默降级)+
+  顶栏 `DataUpdateButton` / `ChangelogDialog`;**有内容且未确认才出现,不自动弹窗、不做逐场红点**。
+- **2026 册子版面与 2025 的 6 处差异**(`tools/extract_schedule.py` 已适配,别再按 2025 改回去):
+  ① 图例新增 `L8`(不登记会把 L8 整列并进 L7,实测 22 场);② `BT` 从 BIFF Theatre 变成
+  **Roof Theater**;③ META 的**片长会被 PDF 拆成两段**(`'1'`+`'20’'` / `'80'`+`'’'`)→
+  `festival_common.py::merge_split_dur` 只做「拼起来才匹配 `dur_re`」的定向回拼;
+  ④ **多行标题**:行沿 +x 推进、行内 span 沿 −y 推进,两层排序缺一不可(`split_title`);
+  ⑤ `[` **不再是备注标记** —— 本届把方括号写进片名(`[Sad Utopia] Shorts`),2025 的判据会让这些格子标题全空;
+  ⑥ META 行可能被排版切在**三处任意一处**(年份夹中间 / 年份在行首 / 年份在行尾、格式在下一行)。
+- **2026 影片介绍页 = p22–p96**(`tools/extract_catalogue_films.py`),**富化**而非重建 ——
+  2026 的影片目录来自官网片目 ∪ xlsx(`tools/build_films_2026.py`),介绍页只**补**官网不印的
+  格式 / 色彩 / 首映(`WP`/`IP`)/ 官方英韩简介,写进 `FilmItem.catalogue`。
+  身份**靠场次编号反查**(不是靠片名匹配):每个条目的索引必须全部命中 `schedule.json` 且指向**同一个片名**,
+  否则脚本报错退出 —— 这条自检挡住的正是「归属串了」。
+  与 `extract_films_2025.py` 的关系:那个是 **2025 版**(一页 2 栏、从零建 `films.json`);
+  2026 版是**杂志式 1–4 栏 + 富化**,归属规则按 2026 实测重写(见该文件头),**不是**同一份实现的两处副本。
+- **★ 册页号 = 印刷页号,不是 PDF 页下标**(2026-09-14 修):一张 PDF 页 = 一个**跨页**,
+  页脚印着两个印刷页号(实测 PDF p24 → `046 | 047`,p86 → `170 | 171`)→ 换算 `left = 2N-2` /
+  `right = 2N-1`,半页由条目 META 行的 x 中心判定。
+  **两个来源都用这个坐标系**:`Screening.page`(排期格子里印的,`extract_schedule.py`)与
+  `FilmItem.catalogue.page`(`extract_catalogue_films.py::printed_page()`)。
+  ⚠ 忘了换算会**整体差一倍**且字段看着完全正常(实测 217 条全错:`The Table` 写成 22、实际 43,
+  前端「册页 N」全错)—— 故有两道哨兵:脚本自检 4 拿两源交叉核对(不一致直接退出码 1),
+  `apps/web/tests/catalogue-data.test.ts` 有同口径断言(并断言样本数 > 100,防止「两边都没数据」时静默通过)。
+  同一部片有多条介绍页时(实测 8 条),取**册页号与排期对得上的那一条**。
+- **入场与观影规则只在册子上**:官网售票页 grep `screening begins` = 0 命中(2026-09-14 实测)→
+  `tools/scrape_biff_extras.py --catalogue-pdf <册子>` 额外读 p20「Theater Regulations」写进
+  `ticketing.venueRules`(票亭表 `ticketing.ticketBoxes` 仍从官网 HTML 取,那张表靠 `rowspan` 表达合并单元格,
+  扁平化文本会丢语义,故用自带的 rowspan 感知表格解析器)。
 - **排期的 `page` 字段不是影片唯一键**:一个印刷页装 3 部片(89 个 `page` 值带多片名,如 `page=119` → The Blue Trail + The Chronology of Water),
   另有 10 个 code 的 `page` 为空(`800`/`164`/`X1601`/`621–626`/`002`)。**关联方向是反的**:从影片介绍页读出该片的 code 清单,再用 code 去排期取片名。
 - **实测基线**:2025 = **699 场 / 29 厅 / 10 天(09-17~09-26)**;影片目录 **224 片**(`cat:` 命中 646/699 = 92.4%,

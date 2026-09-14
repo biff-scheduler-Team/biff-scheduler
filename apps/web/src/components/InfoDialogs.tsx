@@ -233,6 +233,45 @@ export function TicketDialog() {
                     </ul>
                   </section>
                 )}
+                {data.ticketing.ticketBoxes?.length ? (
+                  <section>
+                    <h2>票务亭地点与运营时间</h2>
+                    <dl className="definition-list">
+                      {data.ticketing.ticketBoxes.map((b) => (
+                        <div key={b.place}>
+                          <dt>{b.place}</dt>
+                          <dd>
+                            {b.period}
+                            {b.open && ` · 开 ${b.open}`}
+                            {b.close && ` · 关 ${b.close}`}
+                            {b.payment && <span className="muted"> · {b.payment}</span>}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </section>
+                ) : null}
+                {data.ticketing.venueRules?.items.length ? (
+                  <section>
+                    <h2>入场与观影规则</h2>
+                    <ul>
+                      {data.ticketing.venueRules.items.map((r) => (
+                        <li key={r.text}>
+                          {r.text}
+                          {r.notes.map((n) => (
+                            <span key={n} className="muted"> {n}</span>
+                          ))}
+                        </li>
+                      ))}
+                    </ul>
+                    {data.ticketing.venueRules.lostAndFound.map((n) => (
+                      <p key={n} className="muted">{n}</p>
+                    ))}
+                    <p className="muted">
+                      出处：{data.ticketing.venueRules.source}（官网售票页不印这一节）
+                    </p>
+                  </section>
+                ) : null}
                 <section>
                   <h2>开闭幕式 · 红毯时间表</h2>
                   <p>开幕：{data.ceremony.openingDate}</p>
@@ -367,10 +406,10 @@ export function GuideDialog() {
               <section>
                 <h2>影院</h2>
                 <p className="muted">
-                  本届 {cat.venues.length} 个放映厅分属 {groups.length} 家影院，常规放映全部位于海云台区
-                  Centum City 主会场一带；Community BIFF（10/8–10/11）另有南浦洞会场（BIFF 广场 /
-                  MEGABOX Busan Theater），不在本工具收录范围内。地址为 BIFF 官网口径，手机上点「Google 地图」
-                  可直接唤起导航。
+                  本届 {cat.venues.length} 个放映厅分属 {groups.length} 家影院，常规放映集中在海云台区
+                  Centum City 主会场一带；Community BIFF（10/8–10/11）另在南浦洞 MEGABOX Busan Theater
+                  1–4 有场次（该影院只在官方节目册里印排期，官网排期页不列）。地址为 BIFF 官网口径，
+                  手机上点「Google 地图」可直接唤起导航。
                 </p>
                 <dl className="definition-list">
                   {groups.map(({ group, halls, place }) => (

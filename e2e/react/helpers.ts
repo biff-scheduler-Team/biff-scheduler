@@ -77,7 +77,9 @@ export const legacyData: Record<string, string> = {
   }),
   "biff.libfilters.v1": JSON.stringify({
     subs: ["none"],
-    venues: ["br"],
+    // 用真场馆 id(官方 2026 代码 `bt` = Roof Theater):`br` 是旧抓取脚本自造的 id,
+    // 已经不在 venues.json 里 —— include 模式下留个不存在的 id 会让影片库整片为空。
+    venues: ["bt"],
     venueMode: "include",
     gv: "gv",
   }),

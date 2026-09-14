@@ -155,7 +155,12 @@ export function groupByDate<T>(list: T[], dateOf: (x: T) => string): [string, T[
  *  口径与影片库 catFor 完全一致:①目录中文名(无中文名则原始片名)精确命中 → `cat:<目录 id>`;
  *  ②原始片名 == 排期英文名 → `cat:<id>`;③都不命中(纯排期片)→ `sched:<中文名|英文名 小写>`。
  *  守卫:title_zh 缺失时不做空值相等匹配(否则会与「两个片名都为空」的目录条目假命中);两片名皆缺则退回 code。 */
-export function filmNodeKey(cat: Catalog, s: Screening): string {
+/** `filmNodeKey()` 判身份只用这三项 —— 参数类型按**结构最小化**:
+ *  `changelog.ts` 只有新增场次的子集字段(没有整条 `Screening`),但它同样要按
+ *  全站唯一身份口径判「这是不是同一部片」。放宽参数类型 = 口径仍然只有一处实现。 */
+export type FilmIdentity = Pick<Screening, "code"> & Partial<Pick<Screening, "title_en" | "title_zh">>;
+
+export function filmNodeKey(cat: Catalog, s: FilmIdentity): string {
   const zh = s.title_zh;
   // ① **官网英文名**(目录已由官网片目生成,这一路必然命中) → ② 目录中文名 → ③ 原始片名。
   // 走目录索引(O(1));旧实现每次 `cat.films.find` 线性扫描 → 全站 O(screenings × films)

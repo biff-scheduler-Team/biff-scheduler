@@ -1,0 +1,894 @@
+{
+  "generated_at": "2026-09-14T19:59:35+08:00",
+  "schedule_generated_at": "2026-09-14T19:44:58+08:00",
+  "base_schedule_generated_at": "2026-09-11T22:15:39+09:00",
+  "added": [
+    {
+      "code": "907",
+      "title_en": "Filmmaking Project 1",
+      "title_zh": "",
+      "title_kr": "영화만들기 프로젝트 1",
+      "date": "2026-10-08",
+      "start_time": "10:30",
+      "end_time": "12:45",
+      "duration_min": 110,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": true,
+      "tags": [],
+      "rating": "ALL",
+      "subs": null
+    },
+    {
+      "code": "903",
+      "title_en": "1976 vs 2026: Conversation with 20-year-old Cinephiles",
+      "title_zh": "",
+      "title_kr": "1976 vs 2026: 스무살 시네필과의 대화",
+      "date": "2026-10-08",
+      "start_time": "14:00",
+      "end_time": "15:31",
+      "duration_min": 66,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "905",
+      "title_en": "The Mutation",
+      "title_zh": "",
+      "title_kr": "사랑의 탄생",
+      "date": "2026-10-08",
+      "start_time": "15:00",
+      "end_time": "17:13",
+      "duration_min": 108,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "908",
+      "title_en": "Filmmaking Project 2",
+      "title_zh": "",
+      "title_kr": "영화만들기 프로젝트 2",
+      "date": "2026-10-08",
+      "start_time": "15:00",
+      "end_time": "16:25",
+      "duration_min": 60,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": true,
+      "tags": [],
+      "rating": "ALL",
+      "subs": null
+    },
+    {
+      "code": "901",
+      "title_en": "Stop Making Sense",
+      "title_zh": "",
+      "title_kr": "스탑 메이킹 센스",
+      "date": "2026-10-08",
+      "start_time": "15:30",
+      "end_time": "16:58",
+      "duration_min": 88,
+      "venue_id": "m1",
+      "venue_display": "MEGABOX Busan Theater 1",
+      "is_gv": false,
+      "tags": [
+        "event"
+      ],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "909",
+      "title_en": "TAMPOPO",
+      "title_zh": "",
+      "title_kr": "담뽀뽀",
+      "date": "2026-10-08",
+      "start_time": "18:30",
+      "end_time": "20:24",
+      "duration_min": 114,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "19",
+      "subs": null
+    },
+    {
+      "code": "904",
+      "title_en": "How to Use Guys with Secret Tips",
+      "title_zh": "",
+      "title_kr": "남자사용설명서",
+      "date": "2026-10-08",
+      "start_time": "19:00",
+      "end_time": "21:21",
+      "duration_min": 116,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": true,
+      "tags": [],
+      "rating": "15",
+      "subs": null
+    },
+    {
+      "code": "906",
+      "title_en": "Dear Juhee",
+      "title_zh": "",
+      "title_kr": "주희에게",
+      "date": "2026-10-08",
+      "start_time": "19:00",
+      "end_time": "21:09",
+      "duration_min": 104,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "902",
+      "title_en": "Waikiki Brothers",
+      "title_zh": "",
+      "title_kr": "와이키키 브라더스",
+      "date": "2026-10-08",
+      "start_time": "19:30",
+      "end_time": "21:19",
+      "duration_min": 109,
+      "venue_id": "m1",
+      "venue_display": "MEGABOX Busan Theater 1",
+      "is_gv": false,
+      "tags": [
+        "commentary"
+      ],
+      "rating": "19",
+      "subs": null
+    },
+    {
+      "code": "912",
+      "title_en": "Back to the Future",
+      "title_zh": "",
+      "title_kr": "백 투더 퓨쳐",
+      "date": "2026-10-09",
+      "start_time": "11:00",
+      "end_time": "13:00",
+      "duration_min": 120,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": false,
+      "tags": [
+        "event"
+      ],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "917",
+      "title_en": "Conclave",
+      "title_zh": "",
+      "title_kr": "콘클라베",
+      "date": "2026-10-09",
+      "start_time": "11:00",
+      "end_time": "13:01",
+      "duration_min": 121,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "12",
+      "subs": [
+        "KK"
+      ]
+    },
+    {
+      "code": "915",
+      "title_en": "Inside Llewyn Davis",
+      "title_zh": "",
+      "title_kr": "인사이드 르윈",
+      "date": "2026-10-09",
+      "start_time": "13:00",
+      "end_time": "14:45",
+      "duration_min": 105,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": false,
+      "tags": [
+        "event"
+      ],
+      "rating": "15",
+      "subs": null
+    },
+    {
+      "code": "910",
+      "title_en": "200 Pounds Beauty",
+      "title_zh": "",
+      "title_kr": "미녀는 괴로워",
+      "date": "2026-10-09",
+      "start_time": "14:00",
+      "end_time": "16:25",
+      "duration_min": 120,
+      "venue_id": "m1",
+      "venue_display": "MEGABOX Busan Theater 1",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "913",
+      "title_en": "CONTACT",
+      "title_zh": "",
+      "title_kr": "콘택트",
+      "date": "2026-10-09",
+      "start_time": "15:00",
+      "end_time": "17:29",
+      "duration_min": 149,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "918",
+      "title_en": "[The Films Raised by Audience] Shorts",
+      "title_zh": "",
+      "title_kr": "[관객이 키운 영화] 단편 상영",
+      "date": "2026-10-09",
+      "start_time": "15:00",
+      "end_time": "17:02",
+      "duration_min": 97,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "916",
+      "title_en": "We Are All Trying Here",
+      "title_zh": "",
+      "title_kr": "모두가 자신의 무가치함과 싸우고 있다",
+      "date": "2026-10-09",
+      "start_time": "18:00",
+      "end_time": "19:30",
+      "duration_min": 65,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": true,
+      "tags": [],
+      "rating": "15",
+      "subs": null
+    },
+    {
+      "code": "911",
+      "title_en": "The City of Violence",
+      "title_zh": "",
+      "title_kr": "짝패",
+      "date": "2026-10-09",
+      "start_time": "19:00",
+      "end_time": "20:32",
+      "duration_min": 92,
+      "venue_id": "m1",
+      "venue_display": "MEGABOX Busan Theater 1",
+      "is_gv": false,
+      "tags": [
+        "commentary"
+      ],
+      "rating": "19",
+      "subs": null
+    },
+    {
+      "code": "919",
+      "title_en": "Don’t Go Back",
+      "title_zh": "",
+      "title_kr": "고백하지마",
+      "date": "2026-10-09",
+      "start_time": "19:00",
+      "end_time": "20:34",
+      "duration_min": 69,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "914",
+      "title_en": "The Adjustment Bureau",
+      "title_zh": "",
+      "title_kr": "컨트롤러",
+      "date": "2026-10-09",
+      "start_time": "19:30",
+      "end_time": "21:15",
+      "duration_min": 105,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "920",
+      "title_en": "Moving",
+      "title_zh": "",
+      "title_kr": "이사",
+      "date": "2026-10-10",
+      "start_time": "10:00",
+      "end_time": "12:05",
+      "duration_min": 125,
+      "venue_id": "m1",
+      "venue_display": "MEGABOX Busan Theater 1",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "923",
+      "title_en": "Like Father, Like Son",
+      "title_zh": "",
+      "title_kr": "그렇게 아버지가 된다",
+      "date": "2026-10-10",
+      "start_time": "11:00",
+      "end_time": "13:01",
+      "duration_min": 121,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "ALL",
+      "subs": null
+    },
+    {
+      "code": "926",
+      "title_en": "The World of Love",
+      "title_zh": "",
+      "title_kr": "세계의 주인",
+      "date": "2026-10-10",
+      "start_time": "11:00",
+      "end_time": "13:24",
+      "duration_min": 119,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "929",
+      "title_en": "The Age of Adaline",
+      "title_zh": "",
+      "title_kr": "아델라인: 멈춰진 시간",
+      "date": "2026-10-10",
+      "start_time": "13:00",
+      "end_time": "14:52",
+      "duration_min": 112,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "921",
+      "title_en": "The Cinephiles Strike Back 1",
+      "title_zh": "",
+      "title_kr": "블라인드시네마 1",
+      "date": "2026-10-10",
+      "start_time": "14:00",
+      "end_time": "17:37",
+      "duration_min": 217,
+      "venue_id": "m1",
+      "venue_display": "MEGABOX Busan Theater 1",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "19",
+      "subs": null
+    },
+    {
+      "code": "927",
+      "title_en": "Hallan",
+      "title_zh": "",
+      "title_kr": "한란",
+      "date": "2026-10-10",
+      "start_time": "14:30",
+      "end_time": "16:53",
+      "duration_min": 118,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "924",
+      "title_en": "[Three Impression of Ae-sim KANG] Shorts",
+      "title_zh": "",
+      "title_kr": "[배우 강애심의 세 가지 인상] 단편 상영",
+      "date": "2026-10-10",
+      "start_time": "15:00",
+      "end_time": "16:28",
+      "duration_min": 63,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "930",
+      "title_en": "[Sad Utopia] Shorts",
+      "title_zh": "",
+      "title_kr": "[새드 유토피아] 단편 상영",
+      "date": "2026-10-10",
+      "start_time": "17:00",
+      "end_time": "18:04",
+      "duration_min": 64,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": false,
+      "tags": [
+        "event"
+      ],
+      "rating": "15",
+      "subs": null
+    },
+    {
+      "code": "925",
+      "title_en": "[The World of Tae-hwa, The Face of Tae-goo] Shorts",
+      "title_zh": "",
+      "title_kr": "[엄태화의 세계 엄태구의 얼굴] 단편 상영",
+      "date": "2026-10-10",
+      "start_time": "19:00",
+      "end_time": "20:39",
+      "duration_min": 74,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": true,
+      "tags": [],
+      "rating": "15",
+      "subs": null
+    },
+    {
+      "code": "928",
+      "title_en": "Once We Were Us",
+      "title_zh": "",
+      "title_kr": "만약에 우리",
+      "date": "2026-10-10",
+      "start_time": "19:00",
+      "end_time": "21:20",
+      "duration_min": 115,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": true,
+      "tags": [],
+      "rating": "15",
+      "subs": null
+    },
+    {
+      "code": "922",
+      "title_en": "San San Jo Gak",
+      "title_zh": "",
+      "title_kr": "산산조각",
+      "date": "2026-10-10",
+      "start_time": "20:00",
+      "end_time": "21:37",
+      "duration_min": 72,
+      "venue_id": "m1",
+      "venue_display": "MEGABOX Busan Theater 1",
+      "is_gv": true,
+      "tags": [],
+      "rating": "ALL",
+      "subs": null
+    },
+    {
+      "code": "931",
+      "title_en": "Scrapper",
+      "title_zh": "",
+      "title_kr": "스크래퍼",
+      "date": "2026-10-10",
+      "start_time": "20:00",
+      "end_time": "21:24",
+      "duration_min": 84,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "932",
+      "title_en": "Happy - Go - Lucky Night",
+      "title_zh": "",
+      "title_kr": "취생몽사",
+      "date": "2026-10-10",
+      "start_time": "23:00",
+      "end_time": "28:39",
+      "duration_min": 339,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": false,
+      "tags": [
+        "event"
+      ],
+      "rating": "19",
+      "subs": null
+    },
+    {
+      "code": "933",
+      "title_en": "Epitaph",
+      "title_zh": "",
+      "title_kr": "기담",
+      "date": "2026-10-11",
+      "start_time": "10:30",
+      "end_time": "12:37",
+      "duration_min": 102,
+      "venue_id": "m1",
+      "venue_display": "MEGABOX Busan Theater 1",
+      "is_gv": true,
+      "tags": [],
+      "rating": "15",
+      "subs": null
+    },
+    {
+      "code": "935",
+      "title_en": "DRIVE",
+      "title_zh": "",
+      "title_kr": "드라이브",
+      "date": "2026-10-11",
+      "start_time": "10:30",
+      "end_time": "12:18",
+      "duration_min": 83,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "938",
+      "title_en": "Nouvelle Vague",
+      "title_zh": "",
+      "title_kr": "누벨바그",
+      "date": "2026-10-11",
+      "start_time": "11:00",
+      "end_time": "12:46",
+      "duration_min": 106,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "941",
+      "title_en": "Once",
+      "title_zh": "",
+      "title_kr": "원스",
+      "date": "2026-10-11",
+      "start_time": "11:00",
+      "end_time": "12:26",
+      "duration_min": 86,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": false,
+      "tags": [
+        "event"
+      ],
+      "rating": "ALL",
+      "subs": null
+    },
+    {
+      "code": "936",
+      "title_en": "Super Disco",
+      "title_zh": "",
+      "title_kr": "수퍼 디스코",
+      "date": "2026-10-11",
+      "start_time": "14:00",
+      "end_time": "15:56",
+      "duration_min": 91,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "939",
+      "title_en": "Punch-Drunk Love",
+      "title_zh": "",
+      "title_kr": "펀치 드렁크 러브",
+      "date": "2026-10-11",
+      "start_time": "14:30",
+      "end_time": "16:05",
+      "duration_min": 95,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "15",
+      "subs": null
+    },
+    {
+      "code": "934",
+      "title_en": "The Cinephiles Strike Back 2",
+      "title_zh": "",
+      "title_kr": "블라인드시네마 2",
+      "date": "2026-10-11",
+      "start_time": "15:00",
+      "end_time": "19:12",
+      "duration_min": 252,
+      "venue_id": "m1",
+      "venue_display": "MEGABOX Busan Theater 1",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "19",
+      "subs": null
+    },
+    {
+      "code": "942",
+      "title_en": "The Hill of Secrets",
+      "title_zh": "",
+      "title_kr": "비밀의 언덕",
+      "date": "2026-10-11",
+      "start_time": "15:00",
+      "end_time": "17:27",
+      "duration_min": 122,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": true,
+      "tags": [],
+      "rating": "ALL",
+      "subs": null
+    },
+    {
+      "code": "940",
+      "title_en": "Concerning My Daughter",
+      "title_zh": "",
+      "title_kr": "딸에 대하여",
+      "date": "2026-10-11",
+      "start_time": "18:00",
+      "end_time": "20:11",
+      "duration_min": 106,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null
+    },
+    {
+      "code": "937",
+      "title_en": "New Angle on Genre Shorts",
+      "title_zh": "",
+      "title_kr": "장르 영화의 새로운 앵글",
+      "date": "2026-10-11",
+      "start_time": "19:00",
+      "end_time": "20:37",
+      "duration_min": 72,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": true,
+      "tags": [],
+      "rating": "15",
+      "subs": null
+    }
+  ],
+  "changed": [
+    {
+      "code": "075",
+      "title_en": "Midnight Passion 1",
+      "title_zh": "",
+      "date": "2026-10-08",
+      "venue_display": "Busan Cinema Center Haneulyeon Theatre",
+      "fields": [
+        {
+          "key": "tags",
+          "label": "场次标记",
+          "from": "—",
+          "to": "midnight"
+        }
+      ]
+    },
+    {
+      "code": "168",
+      "title_en": "Midnight Passion 2",
+      "title_zh": "",
+      "date": "2026-10-09",
+      "venue_display": "Busan Cinema Center Haneulyeon Theatre",
+      "fields": [
+        {
+          "key": "tags",
+          "label": "场次标记",
+          "from": "—",
+          "to": "midnight"
+        }
+      ]
+    },
+    {
+      "code": "269",
+      "title_en": "Midnight Passion 3",
+      "title_zh": "",
+      "date": "2026-10-10",
+      "venue_display": "Busan Cinema Center Haneulyeon Theatre",
+      "fields": [
+        {
+          "key": "tags",
+          "label": "场次标记",
+          "from": "—",
+          "to": "midnight"
+        }
+      ]
+    },
+    {
+      "code": "731",
+      "title_en": "The Winner of Flash Forward Audience Award",
+      "title_zh": "",
+      "date": "2026-10-15",
+      "venue_display": "Busan Cinema Center Cinema 1",
+      "fields": [
+        {
+          "key": "end_time",
+          "label": "结束",
+          "from": "12:00",
+          "to": "12:40"
+        },
+        {
+          "key": "duration_min",
+          "label": "片长",
+          "from": "120",
+          "to": "160"
+        }
+      ]
+    },
+    {
+      "code": "733",
+      "title_en": "The Winner of Songwon Vision Audience Award - Korea",
+      "title_zh": "",
+      "date": "2026-10-15",
+      "venue_display": "Busan Cinema Center Cinema 2",
+      "fields": [
+        {
+          "key": "end_time",
+          "label": "结束",
+          "from": "12:20",
+          "to": "12:50"
+        },
+        {
+          "key": "duration_min",
+          "label": "片长",
+          "from": "120",
+          "to": "150"
+        }
+      ]
+    },
+    {
+      "code": "735",
+      "title_en": "The Winner of Busan Cinephile Award",
+      "title_zh": "",
+      "date": "2026-10-15",
+      "venue_display": "Busan Cinema Center Cinematheque",
+      "fields": [
+        {
+          "key": "end_time",
+          "label": "结束",
+          "from": "12:20",
+          "to": "12:30"
+        },
+        {
+          "key": "duration_min",
+          "label": "片长",
+          "from": "120",
+          "to": "130"
+        }
+      ]
+    },
+    {
+      "code": "732",
+      "title_en": "The Winner of Citizen Critics′ Award",
+      "title_zh": "",
+      "date": "2026-10-15",
+      "venue_display": "Busan Cinema Center Cinema 1",
+      "fields": [
+        {
+          "key": "end_time",
+          "label": "结束",
+          "from": "15:40",
+          "to": "16:10"
+        },
+        {
+          "key": "duration_min",
+          "label": "片长",
+          "from": "120",
+          "to": "150"
+        }
+      ]
+    },
+    {
+      "code": "734",
+      "title_en": "The Winner of Songwon Vision Audience Award - Asia",
+      "title_zh": "",
+      "date": "2026-10-15",
+      "venue_display": "Busan Cinema Center Cinema 2",
+      "fields": [
+        {
+          "key": "end_time",
+          "label": "结束",
+          "from": "16:00",
+          "to": "16:30"
+        },
+        {
+          "key": "duration_min",
+          "label": "片长",
+          "from": "120",
+          "to": "150"
+        }
+      ]
+    },
+    {
+      "code": "002",
+      "title_en": "Closing Ceremony + The Winner of Busan Award Screening",
+      "title_zh": "",
+      "date": "2026-10-15",
+      "venue_display": "Busan Cinema Center Roof Theater",
+      "fields": [
+        {
+          "key": "end_time",
+          "label": "结束",
+          "from": "20:00",
+          "to": "22:00"
+        },
+        {
+          "key": "duration_min",
+          "label": "片长",
+          "from": "120",
+          "to": "240"
+        }
+      ]
+    }
+  ]
+}

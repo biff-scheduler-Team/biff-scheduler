@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { loadCatalog } from "../data";
+import { loadChangelog } from "../changelog";
 import { loadExtras } from "../extras";
 import { loadIntros } from "../intros";
 import { loadRelated } from "../related";
@@ -89,6 +90,8 @@ export function bootstrap(): Promise<Catalog> {
         loadIntros(),
         // 同场观影人数 / 讨论数:整站一次拉取(场次卡要用),失败静默降级为空表
         loadScreeningCounts(),
+        // 排期数据更新日志:缺文件 / 旧部署时静默降级,顶栏不出现「数据更新」入口
+        loadChangelog(),
       ]);
       return cat;
     })().catch((error) => {

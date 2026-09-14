@@ -14,8 +14,8 @@
       "2026-10-14",
       "2026-10-15"
     ],
-    "note": "数据来源:官方排期页 www.biff.kr/eng/html/schedule/date.asp(由 tools/scrape_biff_web.py 抓取),场馆按「厅」建 id(id = 官方影院代码小写,如 b1/c3/l10);GV 场次的 end_time 已含 25min 映后谈;片长取自官方影片详情页;联映块(묶)的 duration_min 为块内成员片长之和,midnight_members 为成员片名;活动场次(Actors' House / Master Class / Special Talk)取活动页印的时间区间;开闭幕式与获奖片重映官网未给片长,duration_min 为 120min 估算值;官网排期会持续变动,以开映前官方页面为准。",
-    "generated_at": "2026-09-11T22:15:39+09:00"
+    "note": "数据来源:官方排期页 www.biff.kr/eng/html/schedule/date.asp(由 tools/scrape_biff_web.py 抓取) ∪ 2026 官方 Ticket Catalogue PDF(2026-09-10 付印,由 tools/extract_schedule.py 解析,由 tools/merge_schedule.py 合成)。以官网为骨架(活数据:改时间/加场/活动场次),册子补官网完全没有的场次(MEGABOX Busan Theater 1–4 Community BIFF、Busan Cinema Center Indieplus、CGV Centum City 7)与册页号;场馆按「厅」建 id(id = 官方影院代码小写,如 b1/c3/l10);GV 场次的 end_time 已含 25min 映后谈;联映块(묶)的 duration_min 为块内成员片长之和;开闭幕式与获奖片重映的片长以册子印的为准(官网无详情页时是 120min 兜底值);两源会持续变动,以开映前官方页面为准。",
+    "generated_at": "2026-09-14T19:44:58+08:00"
   },
   "screenings": [
     {
@@ -27,14 +27,15 @@
       "start_time": "18:00",
       "end_time": "19:45",
       "duration_min": 80,
-      "venue_id": "br",
+      "venue_id": "bt",
       "venue_display": "Busan Cinema Center Roof Theater",
       "is_gv": true,
       "tags": [
         "opening"
       ],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 43
     },
     {
       "code": "008",
@@ -52,7 +53,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 109
     },
     {
       "code": "033",
@@ -70,7 +72,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 179
     },
     {
       "code": "037",
@@ -88,7 +91,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 166
     },
     {
       "code": "004",
@@ -106,7 +110,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 104
     },
     {
       "code": "016",
@@ -124,7 +129,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 79
     },
     {
       "code": "019",
@@ -140,7 +146,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 115
     },
     {
       "code": "063",
@@ -158,7 +165,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 183
     },
     {
       "code": "048",
@@ -174,7 +182,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "19",
-      "subs": null
+      "subs": null,
+      "page": 171
     },
     {
       "code": "012",
@@ -192,7 +201,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 131
     },
     {
       "code": "044",
@@ -210,7 +220,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 103
     },
     {
       "code": "056",
@@ -226,7 +237,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 114
     },
     {
       "code": "052",
@@ -244,7 +256,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 67
     },
     {
       "code": "024",
@@ -260,7 +273,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "19",
-      "subs": null
+      "subs": null,
+      "page": 175
     },
     {
       "code": "022",
@@ -276,7 +290,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 175
     },
     {
       "code": "030",
@@ -294,12 +309,13 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 98
     },
     {
       "code": "034",
       "title_en": "Kakurenbo + Shiranui",
-      "title_kr": "",
+      "title_kr": "숨바꼭질+시라누이",
       "title_zh": "",
       "date": "2026-10-07",
       "start_time": "12:00",
@@ -316,7 +332,8 @@
       "midnight_members": [
         "Kakurenbo",
         "Shiranui"
-      ]
+      ],
+      "page": 178
     },
     {
       "code": "041",
@@ -334,7 +351,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 78
     },
     {
       "code": "064",
@@ -352,7 +370,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 134
     },
     {
       "code": "067",
@@ -370,7 +389,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 106
     },
     {
       "code": "005",
@@ -388,7 +408,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 53
     },
     {
       "code": "027",
@@ -407,7 +428,8 @@
       "subs": [
         "KE",
         "KK"
-      ]
+      ],
+      "page": 69
     },
     {
       "code": "038",
@@ -425,7 +447,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 81
     },
     {
       "code": "045",
@@ -441,7 +464,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 116
     },
     {
       "code": "009",
@@ -459,7 +483,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 165
     },
     {
       "code": "013",
@@ -475,7 +500,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 117
     },
     {
       "code": "017",
@@ -493,7 +519,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 126
     },
     {
       "code": "053",
@@ -509,7 +536,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 75
     },
     {
       "code": "060",
@@ -527,7 +555,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 102
     },
     {
       "code": "057",
@@ -543,7 +572,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "19",
-      "subs": null
+      "subs": null,
+      "page": 170
     },
     {
       "code": "049",
@@ -559,7 +589,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 115
     },
     {
       "code": "042",
@@ -577,7 +608,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 66
     },
     {
       "code": "020",
@@ -593,7 +625,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "19",
-      "subs": null
+      "subs": null,
+      "page": 77
     },
     {
       "code": "025",
@@ -609,12 +642,13 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 173
     },
     {
       "code": "010",
       "title_en": "Bus Stop + Flesh Impact",
-      "title_kr": "",
+      "title_kr": "버스정류장+플레시 임팩트",
       "title_zh": "",
       "date": "2026-10-07",
       "start_time": "15:30",
@@ -631,7 +665,8 @@
       "midnight_members": [
         "Bus Stop",
         "Flesh Impact"
-      ]
+      ],
+      "page": 187
     },
     {
       "code": "023",
@@ -647,7 +682,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "19",
-      "subs": null
+      "subs": null,
+      "page": 174
     },
     {
       "code": "035",
@@ -665,7 +701,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 99
     },
     {
       "code": "046",
@@ -683,7 +720,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 130
     },
     {
       "code": "065",
@@ -701,7 +739,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 119
     },
     {
       "code": "014",
@@ -719,7 +758,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 105
     },
     {
       "code": "028",
@@ -738,7 +778,8 @@
       "subs": [
         "KE",
         "KK"
-      ]
+      ],
+      "page": 139
     },
     {
       "code": "031",
@@ -756,7 +797,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 159
     },
     {
       "code": "039",
@@ -774,7 +816,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 103
     },
     {
       "code": "054",
@@ -792,7 +835,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 180
     },
     {
       "code": "006",
@@ -810,7 +854,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 48
     },
     {
       "code": "018",
@@ -828,7 +873,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 122
     },
     {
       "code": "061",
@@ -846,7 +892,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 102
     },
     {
       "code": "050",
@@ -862,7 +909,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 112
     },
     {
       "code": "043",
@@ -880,7 +928,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 104
     },
     {
       "code": "058",
@@ -898,7 +947,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 119
     },
     {
       "code": "069",
@@ -916,7 +966,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 96
     },
     {
       "code": "026",
@@ -932,7 +983,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 174
     },
     {
       "code": "801",
@@ -968,7 +1020,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 73
     },
     {
       "code": "029",
@@ -986,7 +1039,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 100
     },
     {
       "code": "047",
@@ -1004,7 +1058,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 159
     },
     {
       "code": "055",
@@ -1022,7 +1077,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 74
     },
     {
       "code": "066",
@@ -1040,7 +1096,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 101
     },
     {
       "code": "032",
@@ -1058,7 +1115,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 109
     },
     {
       "code": "036",
@@ -1076,12 +1134,13 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 182
     },
     {
       "code": "062",
       "title_en": "Asian Short Film Competition 1",
-      "title_kr": "",
+      "title_kr": "아시아 단편 경쟁 1",
       "title_zh": "",
       "date": "2026-10-07",
       "start_time": "19:20",
@@ -1101,7 +1160,8 @@
         "αLPα",
         "Salt Electric",
         "Downwind"
-      ]
+      ],
+      "page": 144
     },
     {
       "code": "011",
@@ -1119,7 +1179,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 60
     },
     {
       "code": "040",
@@ -1135,7 +1196,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 113
     },
     {
       "code": "003",
@@ -1146,14 +1208,15 @@
       "start_time": "20:00",
       "end_time": "22:05",
       "duration_min": 100,
-      "venue_id": "br",
+      "venue_id": "bt",
       "venue_display": "Busan Cinema Center Roof Theater",
       "is_gv": true,
       "tags": [],
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 60
     },
     {
       "code": "015",
@@ -1171,7 +1234,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 120
     },
     {
       "code": "059",
@@ -1189,7 +1253,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 67
     },
     {
       "code": "007",
@@ -1207,7 +1272,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 47
     },
     {
       "code": "051",
@@ -1225,7 +1291,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 123
     },
     {
       "code": "080",
@@ -1243,7 +1310,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 159
     },
     {
       "code": "151",
@@ -1261,7 +1329,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 70
     },
     {
       "code": "071",
@@ -1279,7 +1348,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 69
     },
     {
       "code": "076",
@@ -1297,7 +1367,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 130
     },
     {
       "code": "084",
@@ -1315,7 +1386,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 47
     },
     {
       "code": "089",
@@ -1331,7 +1403,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "19",
-      "subs": null
+      "subs": null,
+      "page": 77
     },
     {
       "code": "109",
@@ -1349,7 +1422,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 139
     },
     {
       "code": "114",
@@ -1367,7 +1441,8 @@
       "rating": "15",
       "subs": [
         "KN"
-      ]
+      ],
+      "page": 66
     },
     {
       "code": "123",
@@ -1385,7 +1460,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 78
     },
     {
       "code": "128",
@@ -1403,7 +1479,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 182
     },
     {
       "code": "133",
@@ -1421,7 +1498,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 71
     },
     {
       "code": "155",
@@ -1439,7 +1517,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 179
     },
     {
       "code": "097",
@@ -1455,7 +1534,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 174
     },
     {
       "code": "105",
@@ -1473,7 +1553,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 130
     },
     {
       "code": "119",
@@ -1491,7 +1572,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 123
     },
     {
       "code": "094",
@@ -1509,7 +1591,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 158
     },
     {
       "code": "101",
@@ -1527,7 +1610,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 118
     },
     {
       "code": "138",
@@ -1545,7 +1629,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 124
     },
     {
       "code": "143",
@@ -1563,7 +1648,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 109
     },
     {
       "code": "159",
@@ -1581,7 +1667,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 103
     },
     {
       "code": "147",
@@ -1599,7 +1686,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 79
     },
     {
       "code": "811",
@@ -1635,7 +1723,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 81
     },
     {
       "code": "156",
@@ -1651,7 +1740,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 43
     },
     {
       "code": "124",
@@ -1669,7 +1759,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 102
     },
     {
       "code": "115",
@@ -1687,7 +1778,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 134
     },
     {
       "code": "081",
@@ -1705,7 +1797,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 74
     },
     {
       "code": "085",
@@ -1723,7 +1816,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 48
     },
     {
       "code": "120",
@@ -1741,7 +1835,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 104
     },
     {
       "code": "134",
@@ -1759,7 +1854,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 129
     },
     {
       "code": "106",
@@ -1777,7 +1873,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 150
     },
     {
       "code": "139",
@@ -1793,7 +1890,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 113
     },
     {
       "code": "160",
@@ -1811,7 +1909,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 106
     },
     {
       "code": "129",
@@ -1827,7 +1926,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 114
     },
     {
       "code": "095",
@@ -1845,7 +1945,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 123
     },
     {
       "code": "102",
@@ -1863,7 +1964,8 @@
       "rating": "12",
       "subs": [
         "KK"
-      ]
+      ],
+      "page": 112
     },
     {
       "code": "110",
@@ -1881,7 +1983,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 191
     },
     {
       "code": "098",
@@ -1897,7 +2000,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "19",
-      "subs": null
+      "subs": null,
+      "page": 174
     },
     {
       "code": "072",
@@ -1915,7 +2019,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 55
     },
     {
       "code": "090",
@@ -1933,7 +2038,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 69
     },
     {
       "code": "144",
@@ -1951,7 +2057,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 96
     },
     {
       "code": "148",
@@ -1969,7 +2076,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 68
     },
     {
       "code": "157",
@@ -1985,7 +2093,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "19",
-      "subs": null
+      "subs": null,
+      "page": 170
     },
     {
       "code": "125",
@@ -2003,7 +2112,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 97
     },
     {
       "code": "135",
@@ -2019,7 +2129,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 116
     },
     {
       "code": "742",
@@ -2037,7 +2148,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 189
     },
     {
       "code": "161",
@@ -2055,7 +2167,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 108
     },
     {
       "code": "082",
@@ -2071,7 +2184,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "19",
-      "subs": null
+      "subs": null,
+      "page": 190
     },
     {
       "code": "091",
@@ -2089,7 +2203,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 67
     },
     {
       "code": "096",
@@ -2107,7 +2222,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 127
     },
     {
       "code": "103",
@@ -2125,7 +2241,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 99
     },
     {
       "code": "116",
@@ -2143,7 +2260,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 136
     },
     {
       "code": "140",
@@ -2161,7 +2279,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 80
     },
     {
       "code": "086",
@@ -2179,7 +2298,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 121
     },
     {
       "code": "121",
@@ -2197,7 +2317,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 101
     },
     {
       "code": "130",
@@ -2213,7 +2334,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 116
     },
     {
       "code": "107",
@@ -2231,7 +2353,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 108
     },
     {
       "code": "802",
@@ -2265,7 +2388,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "19",
-      "subs": null
+      "subs": null,
+      "page": 175
     },
     {
       "code": "111",
@@ -2283,7 +2407,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 71
     },
     {
       "code": "073",
@@ -2301,7 +2426,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 50
     },
     {
       "code": "145",
@@ -2319,7 +2445,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 127
     },
     {
       "code": "149",
@@ -2337,7 +2464,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 75
     },
     {
       "code": "126",
@@ -2355,7 +2483,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 100
     },
     {
       "code": "153",
@@ -2373,7 +2502,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 168
     },
     {
       "code": "803",
@@ -2409,7 +2539,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 101
     },
     {
       "code": "136",
@@ -2427,7 +2558,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 103
     },
     {
       "code": "141",
@@ -2445,7 +2577,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 70
     },
     {
       "code": "117",
@@ -2463,7 +2596,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 139
     },
     {
       "code": "092",
@@ -2481,7 +2615,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 81
     },
     {
       "code": "162",
@@ -2499,7 +2634,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 100
     },
     {
       "code": "821",
@@ -2535,7 +2671,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 124
     },
     {
       "code": "131",
@@ -2551,7 +2688,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 115
     },
     {
       "code": "087",
@@ -2569,12 +2707,13 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 107
     },
     {
       "code": "104",
       "title_en": "Sandiwara + Everything Everywhere All at Once",
-      "title_kr": "",
+      "title_kr": "산디와라+에브리씽 에브리웨어 올 앳 원스",
       "title_zh": "",
       "date": "2026-10-08",
       "start_time": "19:40",
@@ -2592,12 +2731,13 @@
       "midnight_members": [
         "Sandiwara",
         "Everything Everywhere All at Once"
-      ]
+      ],
+      "page": 186
     },
     {
       "code": "122",
       "title_en": "Kakurenbo + Shiranui",
-      "title_kr": "",
+      "title_kr": "숨바꼭질+시라누이",
       "title_zh": "",
       "date": "2026-10-08",
       "start_time": "19:50",
@@ -2614,7 +2754,8 @@
       "midnight_members": [
         "Kakurenbo",
         "Shiranui"
-      ]
+      ],
+      "page": 178
     },
     {
       "code": "070",
@@ -2625,14 +2766,15 @@
       "start_time": "20:00",
       "end_time": "22:25",
       "duration_min": 120,
-      "venue_id": "br",
+      "venue_id": "bt",
       "venue_display": "Busan Cinema Center Roof Theater",
       "is_gv": true,
       "tags": [],
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 161
     },
     {
       "code": "108",
@@ -2650,12 +2792,13 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 97
     },
     {
       "code": "146",
       "title_en": "Asian Short Film Competition 2",
-      "title_kr": "",
+      "title_kr": "아시아 단편 경쟁 2",
       "title_zh": "",
       "date": "2026-10-08",
       "start_time": "20:00",
@@ -2675,12 +2818,13 @@
         "Wild No More",
         "Chumpa: A Doll Under the Basket",
         "In Our Panic"
-      ]
+      ],
+      "page": 145
     },
     {
       "code": "831",
       "title_en": "[Special Talk] The Cinematic Life of Ann HUI, Winner of the Camellia Award",
-      "title_kr": "",
+      "title_kr": "[스페셜 토크] 까멜리아상 수상자, 허안화 감독의 영화와 삶",
       "title_zh": "",
       "date": "2026-10-08",
       "start_time": "20:00",
@@ -2709,7 +2853,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 175
     },
     {
       "code": "074",
@@ -2725,7 +2870,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "ALL",
-      "subs": null
+      "subs": null,
+      "page": 51
     },
     {
       "code": "112",
@@ -2743,7 +2889,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 60
     },
     {
       "code": "150",
@@ -2761,7 +2908,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 68
     },
     {
       "code": "127",
@@ -2779,7 +2927,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 125
     },
     {
       "code": "142",
@@ -2797,7 +2946,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 128
     },
     {
       "code": "137",
@@ -2815,7 +2965,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 99
     },
     {
       "code": "083",
@@ -2833,7 +2984,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 131
     },
     {
       "code": "093",
@@ -2851,7 +3003,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 169
     },
     {
       "code": "113",
@@ -2867,7 +3020,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 75
     },
     {
       "code": "079",
@@ -2885,7 +3039,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 72
     },
     {
       "code": "088",
@@ -2903,7 +3058,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 131
     },
     {
       "code": "132",
@@ -2921,12 +3077,13 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 106
     },
     {
       "code": "075",
       "title_en": "Midnight Passion 1",
-      "title_kr": "",
+      "title_kr": "미드나잇 패션 1",
       "title_zh": "",
       "date": "2026-10-08",
       "start_time": "23:59",
@@ -2935,7 +3092,9 @@
       "venue_id": "bh",
       "venue_display": "Busan Cinema Center Haneulyeon Theatre",
       "is_gv": true,
-      "tags": [],
+      "tags": [
+        "midnight"
+      ],
       "rating": "15",
       "subs": [
         "KE"
@@ -2944,7 +3103,8 @@
         "Sapiens",
         "The Chain of Roses",
         "The Spiral"
-      ]
+      ],
+      "page": 113
     },
     {
       "code": "169",
@@ -2962,7 +3122,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 125
     },
     {
       "code": "174",
@@ -2980,7 +3141,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 137
     },
     {
       "code": "179",
@@ -2998,7 +3160,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 55
     },
     {
       "code": "197",
@@ -3016,7 +3179,8 @@
       "rating": "12",
       "subs": [
         "KK"
-      ]
+      ],
+      "page": 113
     },
     {
       "code": "202",
@@ -3034,7 +3198,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 98
     },
     {
       "code": "211",
@@ -3052,7 +3217,8 @@
       "rating": "15",
       "subs": [
         "KN"
-      ]
+      ],
+      "page": 66
     },
     {
       "code": "225",
@@ -3068,7 +3234,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 43
     },
     {
       "code": "230",
@@ -3086,12 +3253,13 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 131
     },
     {
       "code": "235",
       "title_en": "Korean Short Film Competition 2",
-      "title_kr": "",
+      "title_kr": "한국 단편 경쟁 2",
       "title_zh": "",
       "date": "2026-10-09",
       "start_time": "09:00",
@@ -3108,7 +3276,8 @@
         "﻿All of Her",
         "TOE′S",
         "The Distant Home"
-      ]
+      ],
+      "page": 143
     },
     {
       "code": "164",
@@ -3126,7 +3295,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 181
     },
     {
       "code": "206",
@@ -3144,7 +3314,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 104
     },
     {
       "code": "220",
@@ -3160,7 +3331,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 93
     },
     {
       "code": "386",
@@ -3178,7 +3350,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 128
     },
     {
       "code": "189",
@@ -3196,7 +3369,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 80
     },
     {
       "code": "193",
@@ -3212,7 +3386,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 157
     },
     {
       "code": "216",
@@ -3230,7 +3405,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 153
     },
     {
       "code": "254",
@@ -3248,7 +3424,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 101
     },
     {
       "code": "256",
@@ -3266,7 +3443,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 73
     },
     {
       "code": "260",
@@ -3284,7 +3462,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 101
     },
     {
       "code": "240",
@@ -3300,7 +3479,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 115
     },
     {
       "code": "247",
@@ -3318,7 +3498,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 158
     },
     {
       "code": "812",
@@ -3354,7 +3535,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 128
     },
     {
       "code": "170",
@@ -3372,7 +3554,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 191
     },
     {
       "code": "212",
@@ -3390,7 +3573,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 139
     },
     {
       "code": "226",
@@ -3406,7 +3590,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "19",
-      "subs": null
+      "subs": null,
+      "page": 171
     },
     {
       "code": "185",
@@ -3424,7 +3609,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 120
     },
     {
       "code": "236",
@@ -3440,7 +3626,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 117
     },
     {
       "code": "165",
@@ -3458,7 +3645,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 59
     },
     {
       "code": "180",
@@ -3476,7 +3664,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 53
     },
     {
       "code": "198",
@@ -3492,7 +3681,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 116
     },
     {
       "code": "231",
@@ -3510,7 +3700,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 97
     },
     {
       "code": "244",
@@ -3528,7 +3719,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 156
     },
     {
       "code": "175",
@@ -3546,7 +3738,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 86
     },
     {
       "code": "203",
@@ -3564,7 +3757,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 150
     },
     {
       "code": "221",
@@ -3580,7 +3774,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 93
     },
     {
       "code": "257",
@@ -3598,7 +3793,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 127
     },
     {
       "code": "190",
@@ -3616,7 +3812,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 147
     },
     {
       "code": "207",
@@ -3632,7 +3829,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 94
     },
     {
       "code": "217",
@@ -3650,7 +3848,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 148
     },
     {
       "code": "241",
@@ -3666,7 +3865,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 114
     },
     {
       "code": "261",
@@ -3684,7 +3884,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 103
     },
     {
       "code": "194",
@@ -3700,7 +3901,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 157
     },
     {
       "code": "248",
@@ -3718,7 +3920,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 109
     },
     {
       "code": "252",
@@ -3736,7 +3939,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 71
     },
     {
       "code": "804",
@@ -3772,7 +3976,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 146
     },
     {
       "code": "171",
@@ -3790,7 +3995,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 121
     },
     {
       "code": "186",
@@ -3808,7 +4014,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 72
     },
     {
       "code": "232",
@@ -3824,7 +4031,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 113
     },
     {
       "code": "237",
@@ -3842,7 +4050,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 124
     },
     {
       "code": "176",
@@ -3860,7 +4069,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 83
     },
     {
       "code": "199",
@@ -3878,7 +4088,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 99
     },
     {
       "code": "213",
@@ -3896,7 +4107,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 140
     },
     {
       "code": "262",
@@ -3914,7 +4126,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 100
     },
     {
       "code": "227",
@@ -3930,7 +4143,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 112
     },
     {
       "code": "181",
@@ -3948,7 +4162,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 50
     },
     {
       "code": "204",
@@ -3964,7 +4179,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 151
     },
     {
       "code": "208",
@@ -3980,7 +4196,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 89
     },
     {
       "code": "218",
@@ -3998,7 +4215,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 105
     },
     {
       "code": "805",
@@ -4032,7 +4250,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 75
     },
     {
       "code": "242",
@@ -4050,12 +4269,13 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 107
     },
     {
       "code": "258",
       "title_en": "Sandiwara + Everything Everywhere All at Once",
-      "title_kr": "",
+      "title_kr": "산디와라 + 에브리씽 에브리웨어 올 앳 원스",
       "title_zh": "",
       "date": "2026-10-09",
       "start_time": "16:20",
@@ -4072,7 +4292,8 @@
       "midnight_members": [
         "Sandiwara",
         "Everything Everywhere All at Once"
-      ]
+      ],
+      "page": 186
     },
     {
       "code": "738",
@@ -4088,7 +4309,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 61
     },
     {
       "code": "191",
@@ -4106,7 +4328,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 152
     },
     {
       "code": "195",
@@ -4122,7 +4345,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 153
     },
     {
       "code": "246",
@@ -4140,7 +4364,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 127
     },
     {
       "code": "249",
@@ -4158,7 +4383,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 106
     },
     {
       "code": "253",
@@ -4176,7 +4402,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 122
     },
     {
       "code": "255",
@@ -4192,7 +4419,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 188
     },
     {
       "code": "172",
@@ -4210,7 +4438,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 68
     },
     {
       "code": "187",
@@ -4228,7 +4457,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 180
     },
     {
       "code": "263",
@@ -4246,7 +4476,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 60
     },
     {
       "code": "238",
@@ -4262,7 +4493,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 171
     },
     {
       "code": "177",
@@ -4280,7 +4512,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 84
     },
     {
       "code": "233",
@@ -4298,7 +4531,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 107
     },
     {
       "code": "214",
@@ -4316,7 +4550,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 138
     },
     {
       "code": "243",
@@ -4332,7 +4567,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 150
     },
     {
       "code": "182",
@@ -4348,7 +4584,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "ALL",
-      "subs": null
+      "subs": null,
+      "page": 51
     },
     {
       "code": "209",
@@ -4364,7 +4601,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 91
     },
     {
       "code": "219",
@@ -4382,7 +4620,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 105
     },
     {
       "code": "223",
@@ -4398,7 +4637,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 92
     },
     {
       "code": "228",
@@ -4414,7 +4654,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 148
     },
     {
       "code": "200",
@@ -4432,7 +4673,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 102
     },
     {
       "code": "192",
@@ -4450,7 +4692,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 147
     },
     {
       "code": "259",
@@ -4468,7 +4711,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 76
     },
     {
       "code": "163",
@@ -4479,14 +4723,15 @@
       "start_time": "20:00",
       "end_time": "22:20",
       "duration_min": 115,
-      "venue_id": "br",
+      "venue_id": "bt",
       "venue_display": "Busan Cinema Center Roof Theater",
       "is_gv": true,
       "tags": [],
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 163
     },
     {
       "code": "167",
@@ -4504,7 +4749,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 52
     },
     {
       "code": "250",
@@ -4522,7 +4768,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 129
     },
     {
       "code": "196",
@@ -4540,7 +4787,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 169
     },
     {
       "code": "173",
@@ -4558,7 +4806,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 76
     },
     {
       "code": "188",
@@ -4576,7 +4825,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 73
     },
     {
       "code": "224",
@@ -4594,7 +4844,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 47
     },
     {
       "code": "234",
@@ -4612,7 +4863,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 71
     },
     {
       "code": "210",
@@ -4630,7 +4882,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 79
     },
     {
       "code": "178",
@@ -4648,7 +4901,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 130
     },
     {
       "code": "183",
@@ -4666,7 +4920,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 118
     },
     {
       "code": "201",
@@ -4684,7 +4939,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 154
     },
     {
       "code": "215",
@@ -4702,7 +4958,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 126
     },
     {
       "code": "229",
@@ -4720,7 +4977,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 162
     },
     {
       "code": "205",
@@ -4738,7 +4996,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 166
     },
     {
       "code": "239",
@@ -4756,12 +5015,13 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 132
     },
     {
       "code": "168",
       "title_en": "Midnight Passion 2",
-      "title_kr": "",
+      "title_kr": "미드나잇 패션 2",
       "title_zh": "",
       "date": "2026-10-09",
       "start_time": "23:59",
@@ -4770,7 +5030,9 @@
       "venue_id": "bh",
       "venue_display": "Busan Cinema Center Haneulyeon Theatre",
       "is_gv": true,
-      "tags": [],
+      "tags": [
+        "midnight"
+      ],
       "rating": "15",
       "subs": [
         "KE"
@@ -4779,7 +5041,8 @@
         "Red Thread",
         "The Scar-Faced Cat: Way of Asura",
         "L’Autre"
-      ]
+      ],
+      "page": 167
     },
     {
       "code": "265",
@@ -4795,7 +5058,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 171
     },
     {
       "code": "283",
@@ -4813,7 +5077,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 188
     },
     {
       "code": "288",
@@ -4831,7 +5096,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 75
     },
     {
       "code": "306",
@@ -4849,7 +5115,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 138
     },
     {
       "code": "311",
@@ -4867,7 +5134,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 137
     },
     {
       "code": "320",
@@ -4883,7 +5151,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 94
     },
     {
       "code": "330",
@@ -4901,7 +5170,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 159
     },
     {
       "code": "739",
@@ -4917,7 +5187,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 61
     },
     {
       "code": "301",
@@ -4933,7 +5204,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 149
     },
     {
       "code": "316",
@@ -4951,12 +5223,13 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 108
     },
     {
       "code": "335",
       "title_en": "Korean Short Film Competition 1",
-      "title_kr": "",
+      "title_kr": "한국 단편 경쟁 1",
       "title_zh": "",
       "date": "2026-10-10",
       "start_time": "09:20",
@@ -4973,7 +5246,8 @@
         "The Variety",
         "Dear Sunshine",
         "Baby Doe"
-      ]
+      ],
+      "page": 142
     },
     {
       "code": "347",
@@ -4991,7 +5265,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 73
     },
     {
       "code": "296",
@@ -5009,7 +5284,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 135
     },
     {
       "code": "292",
@@ -5027,7 +5303,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 148
     },
     {
       "code": "339",
@@ -5043,7 +5320,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 116
     },
     {
       "code": "273",
@@ -5061,7 +5339,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 122
     },
     {
       "code": "356",
@@ -5079,7 +5358,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 122
     },
     {
       "code": "360",
@@ -5097,7 +5377,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 107
     },
     {
       "code": "343",
@@ -5115,7 +5396,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 127
     },
     {
       "code": "351",
@@ -5133,7 +5415,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 154
     },
     {
       "code": "814",
@@ -5169,7 +5452,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 83
     },
     {
       "code": "302",
@@ -5187,7 +5471,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 146
     },
     {
       "code": "279",
@@ -5205,7 +5490,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 52
     },
     {
       "code": "331",
@@ -5223,7 +5509,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 152
     },
     {
       "code": "266",
@@ -5241,7 +5528,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 49
     },
     {
       "code": "274",
@@ -5259,7 +5547,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 85
     },
     {
       "code": "307",
@@ -5275,7 +5564,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 90
     },
     {
       "code": "312",
@@ -5293,12 +5583,13 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 138
     },
     {
       "code": "326",
       "title_en": "Asian Short Film Competition 1",
-      "title_kr": "",
+      "title_kr": "아시아 단편 경쟁 1",
       "title_zh": "",
       "date": "2026-10-10",
       "start_time": "12:30",
@@ -5318,7 +5609,8 @@
         "αLPα",
         "Salt Electric",
         "Downwind"
-      ]
+      ],
+      "page": 144
     },
     {
       "code": "293",
@@ -5336,7 +5628,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 153
     },
     {
       "code": "340",
@@ -5352,7 +5645,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 151
     },
     {
       "code": "321",
@@ -5368,7 +5662,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 89
     },
     {
       "code": "284",
@@ -5386,7 +5681,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 78
     },
     {
       "code": "271",
@@ -5404,7 +5700,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 65
     },
     {
       "code": "357",
@@ -5422,7 +5719,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 79
     },
     {
       "code": "348",
@@ -5440,7 +5738,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 129
     },
     {
       "code": "317",
@@ -5458,7 +5757,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 109
     },
     {
       "code": "344",
@@ -5476,12 +5776,13 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 83
     },
     {
       "code": "336",
       "title_en": "Korean Short Film Competition 3",
-      "title_kr": "",
+      "title_kr": "한국 단편 경쟁 3",
       "title_zh": "",
       "date": "2026-10-10",
       "start_time": "13:40",
@@ -5498,7 +5799,8 @@
         "The Boy Who Fell to Earth",
         "Tale of Tails",
         "An Uninvited Neighbor"
-      ]
+      ],
+      "page": 143
     },
     {
       "code": "352",
@@ -5514,7 +5816,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 117
     },
     {
       "code": "813",
@@ -5550,7 +5853,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 149
     },
     {
       "code": "275",
@@ -5568,7 +5872,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 85
     },
     {
       "code": "332",
@@ -5584,7 +5889,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 157
     },
     {
       "code": "289",
@@ -5602,12 +5908,13 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 155
     },
     {
       "code": "327",
       "title_en": "Asian Short Film Competition 2",
-      "title_kr": "",
+      "title_kr": "아시아 단편 경쟁 2",
       "title_zh": "",
       "date": "2026-10-10",
       "start_time": "15:40",
@@ -5627,7 +5934,8 @@
         "Wild No More",
         "Chumpa: A Doll Under the Basket",
         "In Our Panic"
-      ]
+      ],
+      "page": 145
     },
     {
       "code": "267",
@@ -5643,7 +5951,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 45
     },
     {
       "code": "280",
@@ -5661,7 +5970,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 68
     },
     {
       "code": "294",
@@ -5679,7 +5989,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 156
     },
     {
       "code": "298",
@@ -5697,7 +6008,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 87
     },
     {
       "code": "313",
@@ -5715,7 +6027,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 135
     },
     {
       "code": "322",
@@ -5731,7 +6044,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "ALL",
-      "subs": null
+      "subs": null,
+      "page": 95
     },
     {
       "code": "341",
@@ -5749,7 +6063,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 147
     },
     {
       "code": "345",
@@ -5767,7 +6082,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 107
     },
     {
       "code": "349",
@@ -5785,7 +6101,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 64
     },
     {
       "code": "285",
@@ -5803,7 +6120,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 65
     },
     {
       "code": "308",
@@ -5819,7 +6137,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "ALL",
-      "subs": null
+      "subs": null,
+      "page": 92
     },
     {
       "code": "358",
@@ -5837,7 +6156,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 80
     },
     {
       "code": "270",
@@ -5855,7 +6175,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 59
     },
     {
       "code": "337",
@@ -5873,7 +6194,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 181
     },
     {
       "code": "318",
@@ -5891,7 +6213,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 98
     },
     {
       "code": "353",
@@ -5907,7 +6230,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 158
     },
     {
       "code": "806",
@@ -5943,7 +6267,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 147
     },
     {
       "code": "290",
@@ -5961,7 +6286,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 97
     },
     {
       "code": "328",
@@ -5979,7 +6305,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 106
     },
     {
       "code": "281",
@@ -5997,7 +6324,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 186
     },
     {
       "code": "333",
@@ -6013,7 +6341,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 153
     },
     {
       "code": "276",
@@ -6031,7 +6360,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 86
     },
     {
       "code": "295",
@@ -6049,7 +6379,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 154
     },
     {
       "code": "346",
@@ -6067,7 +6398,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 71
     },
     {
       "code": "355",
@@ -6085,7 +6417,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 132
     },
     {
       "code": "822",
@@ -6121,7 +6454,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 84
     },
     {
       "code": "314",
@@ -6139,7 +6473,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 136
     },
     {
       "code": "359",
@@ -6157,7 +6492,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 177
     },
     {
       "code": "286",
@@ -6175,7 +6511,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 68
     },
     {
       "code": "309",
@@ -6191,7 +6528,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 91
     },
     {
       "code": "323",
@@ -6207,7 +6545,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "ALL",
-      "subs": null
+      "subs": null,
+      "page": 90
     },
     {
       "code": "338",
@@ -6225,7 +6564,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 100
     },
     {
       "code": "354",
@@ -6243,7 +6583,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 150
     },
     {
       "code": "342",
@@ -6261,7 +6602,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 98
     },
     {
       "code": "319",
@@ -6279,7 +6621,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 108
     },
     {
       "code": "325",
@@ -6290,14 +6633,15 @@
       "start_time": "20:00",
       "end_time": "22:19",
       "duration_min": 114,
-      "venue_id": "br",
+      "venue_id": "bt",
       "venue_display": "Busan Cinema Center Roof Theater",
       "is_gv": true,
       "tags": [],
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 164
     },
     {
       "code": "272",
@@ -6315,7 +6659,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 180
     },
     {
       "code": "350",
@@ -6333,7 +6678,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 100
     },
     {
       "code": "268",
@@ -6351,7 +6697,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 56
     },
     {
       "code": "361",
@@ -6369,7 +6716,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 125
     },
     {
       "code": "305",
@@ -6387,7 +6735,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 120
     },
     {
       "code": "282",
@@ -6405,7 +6754,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 121
     },
     {
       "code": "291",
@@ -6423,7 +6773,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 50
     },
     {
       "code": "329",
@@ -6441,7 +6792,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 124
     },
     {
       "code": "334",
@@ -6459,7 +6811,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 156
     },
     {
       "code": "277",
@@ -6477,7 +6830,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 67
     },
     {
       "code": "315",
@@ -6495,7 +6849,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 128
     },
     {
       "code": "324",
@@ -6511,7 +6866,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 43
     },
     {
       "code": "310",
@@ -6529,7 +6885,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 79
     },
     {
       "code": "287",
@@ -6547,12 +6904,13 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 69
     },
     {
       "code": "300",
       "title_en": "Korean Short Film Competition 2",
-      "title_kr": "",
+      "title_kr": "한국 단편 경쟁 2",
       "title_zh": "",
       "date": "2026-10-10",
       "start_time": "23:00",
@@ -6569,12 +6927,13 @@
         "﻿All of Her",
         "The Distant Home",
         "TOE′S"
-      ]
+      ],
+      "page": 143
     },
     {
       "code": "269",
       "title_en": "Midnight Passion 3",
-      "title_kr": "",
+      "title_kr": "미드나잇 패션 3",
       "title_zh": "",
       "date": "2026-10-10",
       "start_time": "23:59",
@@ -6583,7 +6942,9 @@
       "venue_id": "bh",
       "venue_display": "Busan Cinema Center Haneulyeon Theatre",
       "is_gv": true,
-      "tags": [],
+      "tags": [
+        "midnight"
+      ],
       "rating": "19",
       "subs": [
         "KE"
@@ -6592,7 +6953,8 @@
         "Jim Queen",
         "Welcome to Dolly′s House",
         "Angel′s Egg"
-      ]
+      ],
+      "page": 126
     },
     {
       "code": "367",
@@ -6610,7 +6972,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 121
     },
     {
       "code": "377",
@@ -6628,7 +6991,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 122
     },
     {
       "code": "406",
@@ -6646,7 +7010,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 100
     },
     {
       "code": "411",
@@ -6664,7 +7029,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 119
     },
     {
       "code": "416",
@@ -6682,7 +7048,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 156
     },
     {
       "code": "421",
@@ -6698,7 +7065,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "ALL",
-      "subs": null
+      "subs": null,
+      "page": 92
     },
     {
       "code": "426",
@@ -6716,7 +7084,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 83
     },
     {
       "code": "372",
@@ -6734,7 +7103,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 125
     },
     {
       "code": "382",
@@ -6752,7 +7122,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 77
     },
     {
       "code": "396",
@@ -6770,7 +7141,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 180
     },
     {
       "code": "401",
@@ -6786,7 +7158,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 148
     },
     {
       "code": "431",
@@ -6804,7 +7177,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 158
     },
     {
       "code": "436",
@@ -6822,7 +7196,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 138
     },
     {
       "code": "363",
@@ -6840,7 +7215,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 72
     },
     {
       "code": "387",
@@ -6858,7 +7234,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 50
     },
     {
       "code": "392",
@@ -6876,7 +7253,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 124
     },
     {
       "code": "441",
@@ -6894,7 +7272,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 139
     },
     {
       "code": "458",
@@ -6912,7 +7291,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 66
     },
     {
       "code": "462",
@@ -6930,7 +7310,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 168
     },
     {
       "code": "449",
@@ -6948,7 +7329,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 79
     },
     {
       "code": "445",
@@ -6966,7 +7348,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 101
     },
     {
       "code": "453",
@@ -6984,7 +7367,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 107
     },
     {
       "code": "412",
@@ -7002,7 +7386,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 135
     },
     {
       "code": "417",
@@ -7020,7 +7405,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 136
     },
     {
       "code": "378",
@@ -7038,7 +7424,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 56
     },
     {
       "code": "432",
@@ -7054,7 +7441,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 157
     },
     {
       "code": "368",
@@ -7072,7 +7460,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 78
     },
     {
       "code": "383",
@@ -7090,7 +7479,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 65
     },
     {
       "code": "388",
@@ -7108,7 +7498,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 76
     },
     {
       "code": "422",
@@ -7124,7 +7515,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 91
     },
     {
       "code": "364",
@@ -7142,7 +7534,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 46
     },
     {
       "code": "397",
@@ -7160,7 +7553,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 98
     },
     {
       "code": "407",
@@ -7176,12 +7570,13 @@
       "is_gv": true,
       "tags": [],
       "rating": "ALL",
-      "subs": null
+      "subs": null,
+      "page": 95
     },
     {
       "code": "427",
       "title_en": "Korean Short Film Competition 1",
-      "title_kr": "",
+      "title_kr": "한국 단편 경쟁 1",
       "title_zh": "",
       "date": "2026-10-11",
       "start_time": "12:20",
@@ -7198,7 +7593,8 @@
         "The Variety",
         "Dear Sunshine",
         "Baby Doe"
-      ]
+      ],
+      "page": 142
     },
     {
       "code": "373",
@@ -7216,7 +7612,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 88
     },
     {
       "code": "393",
@@ -7234,7 +7631,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 164
     },
     {
       "code": "450",
@@ -7252,7 +7650,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 74
     },
     {
       "code": "402",
@@ -7268,7 +7667,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 150
     },
     {
       "code": "437",
@@ -7286,7 +7686,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 85
     },
     {
       "code": "459",
@@ -7304,7 +7705,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 181
     },
     {
       "code": "463",
@@ -7322,7 +7724,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 84
     },
     {
       "code": "442",
@@ -7340,7 +7743,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 154
     },
     {
       "code": "446",
@@ -7356,7 +7760,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 151
     },
     {
       "code": "454",
@@ -7374,7 +7779,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 152
     },
     {
       "code": "413",
@@ -7392,7 +7798,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 137
     },
     {
       "code": "418",
@@ -7410,7 +7817,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 102
     },
     {
       "code": "379",
@@ -7428,7 +7836,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 49
     },
     {
       "code": "423",
@@ -7444,7 +7853,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 94
     },
     {
       "code": "389",
@@ -7462,7 +7872,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 155
     },
     {
       "code": "398",
@@ -7480,7 +7891,8 @@
       "rating": "12",
       "subs": [
         "KK"
-      ]
+      ],
+      "page": 158
     },
     {
       "code": "369",
@@ -7498,7 +7910,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 122
     },
     {
       "code": "384",
@@ -7516,12 +7929,13 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 69
     },
     {
       "code": "428",
       "title_en": "Korean Short Film Competition 2",
-      "title_kr": "",
+      "title_kr": "한국 단편 경쟁 2",
       "title_zh": "",
       "date": "2026-10-11",
       "start_time": "15:30",
@@ -7538,7 +7952,8 @@
         "﻿All of Her",
         "The Distant Home",
         "TOE′S"
-      ]
+      ],
+      "page": 143
     },
     {
       "code": "403",
@@ -7556,7 +7971,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 147
     },
     {
       "code": "408",
@@ -7572,7 +7988,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 93
     },
     {
       "code": "433",
@@ -7590,7 +8007,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 155
     },
     {
       "code": "374",
@@ -7608,7 +8026,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 87
     },
     {
       "code": "438",
@@ -7626,7 +8045,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 136
     },
     {
       "code": "447",
@@ -7644,7 +8064,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 83
     },
     {
       "code": "443",
@@ -7660,7 +8081,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 149
     },
     {
       "code": "460",
@@ -7678,7 +8100,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 137
     },
     {
       "code": "365",
@@ -7696,7 +8119,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 57
     },
     {
       "code": "394",
@@ -7714,7 +8138,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 84
     },
     {
       "code": "464",
@@ -7732,7 +8157,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 55
     },
     {
       "code": "451",
@@ -7750,7 +8176,8 @@
       "rating": "15",
       "subs": [
         "KN"
-      ]
+      ],
+      "page": 66
     },
     {
       "code": "823",
@@ -7786,7 +8213,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 149
     },
     {
       "code": "419",
@@ -7804,7 +8232,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 108
     },
     {
       "code": "380",
@@ -7820,7 +8249,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 45
     },
     {
       "code": "424",
@@ -7836,7 +8266,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 90
     },
     {
       "code": "399",
@@ -7854,7 +8285,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 68
     },
     {
       "code": "390",
@@ -7872,7 +8304,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 105
     },
     {
       "code": "370",
@@ -7890,12 +8323,13 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 132
     },
     {
       "code": "429",
       "title_en": "Korean Short Film Competition 3",
-      "title_kr": "",
+      "title_kr": "한국 단편 경쟁 3",
       "title_zh": "",
       "date": "2026-10-11",
       "start_time": "18:40",
@@ -7912,7 +8346,8 @@
         "The Boy Who Fell to Earth",
         "Tale of Tails",
         "An Uninvited Neighbor"
-      ]
+      ],
+      "page": 143
     },
     {
       "code": "414",
@@ -7930,7 +8365,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 126
     },
     {
       "code": "375",
@@ -7948,7 +8384,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 82
     },
     {
       "code": "385",
@@ -7966,7 +8403,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 167
     },
     {
       "code": "409",
@@ -7982,7 +8420,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 93
     },
     {
       "code": "434",
@@ -8000,7 +8439,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 153
     },
     {
       "code": "439",
@@ -8018,7 +8458,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 104
     },
     {
       "code": "457",
@@ -8036,7 +8477,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 131
     },
     {
       "code": "465",
@@ -8054,7 +8496,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 108
     },
     {
       "code": "444",
@@ -8072,7 +8515,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 146
     },
     {
       "code": "404",
@@ -8090,7 +8534,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 148
     },
     {
       "code": "448",
@@ -8108,7 +8553,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 104
     },
     {
       "code": "461",
@@ -8126,7 +8572,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 70
     },
     {
       "code": "362",
@@ -8137,12 +8584,13 @@
       "start_time": "20:00",
       "end_time": "22:34",
       "duration_min": 129,
-      "venue_id": "br",
+      "venue_id": "bt",
       "venue_display": "Busan Cinema Center Roof Theater",
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 161
     },
     {
       "code": "395",
@@ -8160,7 +8608,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 86
     },
     {
       "code": "452",
@@ -8178,7 +8627,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 81
     },
     {
       "code": "456",
@@ -8194,7 +8644,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 157
     },
     {
       "code": "366",
@@ -8212,7 +8663,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 54
     },
     {
       "code": "400",
@@ -8228,7 +8680,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 89
     },
     {
       "code": "391",
@@ -8246,7 +8699,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 52
     },
     {
       "code": "430",
@@ -8264,7 +8718,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 70
     },
     {
       "code": "376",
@@ -8282,7 +8737,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 169
     },
     {
       "code": "415",
@@ -8300,7 +8756,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 72
     },
     {
       "code": "420",
@@ -8318,7 +8775,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 48
     },
     {
       "code": "184",
@@ -8336,7 +8794,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 123
     },
     {
       "code": "381",
@@ -8354,7 +8813,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 181
     },
     {
       "code": "405",
@@ -8370,7 +8830,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "ALL",
-      "subs": null
+      "subs": null,
+      "page": 90
     },
     {
       "code": "425",
@@ -8386,7 +8847,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 188
     },
     {
       "code": "371",
@@ -8404,7 +8866,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 53
     },
     {
       "code": "435",
@@ -8422,7 +8885,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 78
     },
     {
       "code": "440",
@@ -8438,7 +8902,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 116
     },
     {
       "code": "410",
@@ -8456,7 +8921,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 67
     },
     {
       "code": "486",
@@ -8472,7 +8938,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 153
     },
     {
       "code": "500",
@@ -8490,7 +8957,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 96
     },
     {
       "code": "512",
@@ -8508,7 +8976,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 83
     },
     {
       "code": "543",
@@ -8524,7 +8993,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "19",
-      "subs": null
+      "subs": null,
+      "page": 170
     },
     {
       "code": "471",
@@ -8542,7 +9012,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 64
     },
     {
       "code": "478",
@@ -8560,7 +9031,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 46
     },
     {
       "code": "482",
@@ -8578,7 +9050,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 78
     },
     {
       "code": "489",
@@ -8596,7 +9069,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 159
     },
     {
       "code": "504",
@@ -8614,7 +9088,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 126
     },
     {
       "code": "508",
@@ -8632,7 +9107,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 84
     },
     {
       "code": "516",
@@ -8648,7 +9124,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 171
     },
     {
       "code": "520",
@@ -8666,7 +9143,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 154
     },
     {
       "code": "467",
@@ -8684,7 +9162,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 99
     },
     {
       "code": "474",
@@ -8702,7 +9181,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 69
     },
     {
       "code": "493",
@@ -8720,7 +9200,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 85
     },
     {
       "code": "524",
@@ -8738,7 +9219,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 179
     },
     {
       "code": "528",
@@ -8754,7 +9236,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 45
     },
     {
       "code": "550",
@@ -8772,7 +9255,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 49
     },
     {
       "code": "077",
@@ -8790,7 +9274,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 178
     },
     {
       "code": "532",
@@ -8808,7 +9293,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 65
     },
     {
       "code": "540",
@@ -8824,7 +9310,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 157
     },
     {
       "code": "547",
@@ -8842,7 +9329,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 120
     },
     {
       "code": "521",
@@ -8860,7 +9348,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 156
     },
     {
       "code": "475",
@@ -8878,7 +9367,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 87
     },
     {
       "code": "513",
@@ -8896,7 +9386,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 102
     },
     {
       "code": "479",
@@ -8914,7 +9405,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 121
     },
     {
       "code": "483",
@@ -8932,7 +9424,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 72
     },
     {
       "code": "490",
@@ -8948,7 +9441,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 148
     },
     {
       "code": "497",
@@ -8966,7 +9460,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 109
     },
     {
       "code": "505",
@@ -8984,7 +9479,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 138
     },
     {
       "code": "509",
@@ -9002,7 +9498,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 76
     },
     {
       "code": "525",
@@ -9020,7 +9517,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 70
     },
     {
       "code": "544",
@@ -9038,7 +9536,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 82
     },
     {
       "code": "551",
@@ -9056,7 +9555,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 107
     },
     {
       "code": "468",
@@ -9074,7 +9574,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 70
     },
     {
       "code": "494",
@@ -9093,7 +9594,8 @@
       "subs": [
         "KE",
         "KK"
-      ]
+      ],
+      "page": 59
     },
     {
       "code": "517",
@@ -9111,7 +9613,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 132
     },
     {
       "code": "537",
@@ -9129,7 +9632,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 71
     },
     {
       "code": "501",
@@ -9145,12 +9649,13 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 92
     },
     {
       "code": "529",
       "title_en": "Korean Short Film Competition 1",
-      "title_kr": "",
+      "title_kr": "한국 단편 경쟁 1",
       "title_zh": "",
       "date": "2026-10-12",
       "start_time": "13:40",
@@ -9167,7 +9672,8 @@
         "The Variety",
         "Dear Sunshine",
         "Baby Doe"
-      ]
+      ],
+      "page": 142
     },
     {
       "code": "472",
@@ -9185,12 +9691,13 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 137
     },
     {
       "code": "533",
       "title_en": "Korean Short Film Competition 2",
-      "title_kr": "",
+      "title_kr": "한국 단편 경쟁 2",
       "title_zh": "",
       "date": "2026-10-12",
       "start_time": "14:10",
@@ -9207,7 +9714,8 @@
         "﻿All of Her",
         "The Distant Home",
         "TOE′S"
-      ]
+      ],
+      "page": 143
     },
     {
       "code": "552",
@@ -9225,7 +9733,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 100
     },
     {
       "code": "480",
@@ -9243,7 +9752,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 54
     },
     {
       "code": "522",
@@ -9261,7 +9771,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 154
     },
     {
       "code": "541",
@@ -9277,7 +9788,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 150
     },
     {
       "code": "548",
@@ -9295,7 +9807,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 77
     },
     {
       "code": "487",
@@ -9313,7 +9826,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 147
     },
     {
       "code": "510",
@@ -9331,7 +9845,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 167
     },
     {
       "code": "526",
@@ -9349,7 +9864,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 125
     },
     {
       "code": "476",
@@ -9367,7 +9883,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 84
     },
     {
       "code": "484",
@@ -9385,7 +9902,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 119
     },
     {
       "code": "491",
@@ -9401,7 +9919,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 173
     },
     {
       "code": "514",
@@ -9417,7 +9936,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 93
     },
     {
       "code": "518",
@@ -9435,7 +9955,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 140
     },
     {
       "code": "536",
@@ -9451,7 +9972,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 112
     },
     {
       "code": "469",
@@ -9469,7 +9991,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 129
     },
     {
       "code": "498",
@@ -9485,7 +10008,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 91
     },
     {
       "code": "545",
@@ -9503,7 +10027,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 98
     },
     {
       "code": "502",
@@ -9519,12 +10044,13 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 94
     },
     {
       "code": "530",
       "title_en": "Korean Short Film Competition 3",
-      "title_kr": "",
+      "title_kr": "한국 단편 경쟁 3",
       "title_zh": "",
       "date": "2026-10-12",
       "start_time": "16:20",
@@ -9541,7 +10067,8 @@
         "The Boy Who Fell to Earth",
         "Tale of Tails",
         "An Uninvited Neighbor"
-      ]
+      ],
+      "page": 143
     },
     {
       "code": "534",
@@ -9559,7 +10086,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 101
     },
     {
       "code": "495",
@@ -9577,7 +10105,8 @@
       "rating": "15",
       "subs": [
         "KK"
-      ]
+      ],
+      "page": 89
     },
     {
       "code": "538",
@@ -9595,7 +10124,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 47
     },
     {
       "code": "542",
@@ -9611,7 +10141,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 149
     },
     {
       "code": "553",
@@ -9629,7 +10160,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 103
     },
     {
       "code": "473",
@@ -9647,7 +10179,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 59
     },
     {
       "code": "549",
@@ -9665,7 +10198,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 80
     },
     {
       "code": "485",
@@ -9683,7 +10217,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 80
     },
     {
       "code": "531",
@@ -9701,7 +10236,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 106
     },
     {
       "code": "470",
@@ -9719,7 +10255,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 130
     },
     {
       "code": "488",
@@ -9735,7 +10272,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 173
     },
     {
       "code": "507",
@@ -9753,7 +10291,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 134
     },
     {
       "code": "523",
@@ -9769,7 +10308,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 158
     },
     {
       "code": "527",
@@ -9787,7 +10327,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 149
     },
     {
       "code": "481",
@@ -9805,7 +10346,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 57
     },
     {
       "code": "477",
@@ -9823,7 +10365,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 83
     },
     {
       "code": "499",
@@ -9841,7 +10384,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 86
     },
     {
       "code": "511",
@@ -9859,7 +10403,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 88
     },
     {
       "code": "515",
@@ -9875,7 +10420,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 93
     },
     {
       "code": "519",
@@ -9893,7 +10439,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 135
     },
     {
       "code": "539",
@@ -9909,7 +10456,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 113
     },
     {
       "code": "535",
@@ -9927,7 +10475,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 102
     },
     {
       "code": "546",
@@ -9943,7 +10492,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 161
     },
     {
       "code": "466",
@@ -9954,19 +10504,20 @@
       "start_time": "20:00",
       "end_time": "22:23",
       "duration_min": 118,
-      "venue_id": "br",
+      "venue_id": "bt",
       "venue_display": "Busan Cinema Center Roof Theater",
       "is_gv": true,
       "tags": [],
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 58
     },
     {
       "code": "492",
       "title_en": "Asian Short Film Competition 1",
-      "title_kr": "",
+      "title_kr": "아시아 단편 경쟁 1",
       "title_zh": "",
       "date": "2026-10-12",
       "start_time": "20:00",
@@ -9986,7 +10537,8 @@
         "αLPα",
         "Salt Electric",
         "Downwind"
-      ]
+      ],
+      "page": 144
     },
     {
       "code": "503",
@@ -10002,7 +10554,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "ALL",
-      "subs": null
+      "subs": null,
+      "page": 90
     },
     {
       "code": "496",
@@ -10020,7 +10573,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 87
     },
     {
       "code": "613",
@@ -10038,7 +10592,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 73
     },
     {
       "code": "617",
@@ -10054,7 +10609,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 89
     },
     {
       "code": "740",
@@ -10070,7 +10626,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 61
     },
     {
       "code": "555",
@@ -10088,7 +10645,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 126
     },
     {
       "code": "559",
@@ -10106,7 +10664,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 124
     },
     {
       "code": "571",
@@ -10122,7 +10681,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 115
     },
     {
       "code": "574",
@@ -10140,7 +10700,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 86
     },
     {
       "code": "582",
@@ -10158,7 +10719,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 59
     },
     {
       "code": "609",
@@ -10176,7 +10738,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 120
     },
     {
       "code": "633",
@@ -10194,7 +10757,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 167
     },
     {
       "code": "563",
@@ -10212,7 +10776,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 76
     },
     {
       "code": "578",
@@ -10230,7 +10795,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 85
     },
     {
       "code": "586",
@@ -10246,7 +10812,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "ALL",
-      "subs": null
+      "subs": null,
+      "page": 95
     },
     {
       "code": "594",
@@ -10264,7 +10831,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 128
     },
     {
       "code": "598",
@@ -10282,7 +10850,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 84
     },
     {
       "code": "605",
@@ -10298,7 +10867,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 114
     },
     {
       "code": "629",
@@ -10316,7 +10886,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 87
     },
     {
       "code": "640",
@@ -10334,7 +10905,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 159
     },
     {
       "code": "567",
@@ -10352,12 +10924,13 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 180
     },
     {
       "code": "590",
       "title_en": "Kakurenbo + Shiranui",
-      "title_kr": "",
+      "title_kr": "숨바꼭질 + 시라누이",
       "title_zh": "",
       "date": "2026-10-13",
       "start_time": "10:40",
@@ -10374,7 +10947,8 @@
       "midnight_members": [
         "Kakurenbo",
         "Shiranui"
-      ]
+      ],
+      "page": 178
     },
     {
       "code": "637",
@@ -10392,7 +10966,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 73
     },
     {
       "code": "618",
@@ -10408,7 +10983,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "19",
-      "subs": null
+      "subs": null,
+      "page": 171
     },
     {
       "code": "556",
@@ -10426,7 +11002,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 77
     },
     {
       "code": "560",
@@ -10444,7 +11021,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 58
     },
     {
       "code": "622",
@@ -10462,7 +11040,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 138
     },
     {
       "code": "626",
@@ -10480,7 +11059,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 125
     },
     {
       "code": "575",
@@ -10498,7 +11078,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 130
     },
     {
       "code": "595",
@@ -10516,7 +11097,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 123
     },
     {
       "code": "602",
@@ -10532,7 +11114,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 94
     },
     {
       "code": "614",
@@ -10550,7 +11133,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 72
     },
     {
       "code": "641",
@@ -10568,7 +11152,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 108
     },
     {
       "code": "634",
@@ -10584,7 +11169,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 117
     },
     {
       "code": "579",
@@ -10602,7 +11188,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 155
     },
     {
       "code": "583",
@@ -10618,7 +11205,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 90
     },
     {
       "code": "606",
@@ -10634,7 +11222,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "19",
-      "subs": null
+      "subs": null,
+      "page": 77
     },
     {
       "code": "610",
@@ -10652,12 +11241,13 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 127
     },
     {
       "code": "630",
       "title_en": "Korean Short Film Competition 1",
-      "title_kr": "",
+      "title_kr": "한국 단편 경쟁 1",
       "title_zh": "",
       "date": "2026-10-13",
       "start_time": "13:20",
@@ -10674,7 +11264,8 @@
         "The Variety",
         "Dear Sunshine",
         "Baby Doe"
-      ]
+      ],
+      "page": 142
     },
     {
       "code": "568",
@@ -10692,7 +11283,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 183
     },
     {
       "code": "599",
@@ -10710,7 +11302,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 128
     },
     {
       "code": "564",
@@ -10728,7 +11321,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 122
     },
     {
       "code": "591",
@@ -10744,7 +11338,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 91
     },
     {
       "code": "587",
@@ -10760,7 +11355,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "ALL",
-      "subs": null
+      "subs": null,
+      "page": 92
     },
     {
       "code": "572",
@@ -10778,7 +11374,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 181
     },
     {
       "code": "638",
@@ -10796,7 +11393,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 79
     },
     {
       "code": "627",
@@ -10814,7 +11412,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 124
     },
     {
       "code": "623",
@@ -10832,7 +11431,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 119
     },
     {
       "code": "631",
@@ -10850,7 +11450,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 49
     },
     {
       "code": "619",
@@ -10868,7 +11469,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 107
     },
     {
       "code": "557",
@@ -10884,7 +11486,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "ALL",
-      "subs": null
+      "subs": null,
+      "page": 51
     },
     {
       "code": "569",
@@ -10902,7 +11505,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 106
     },
     {
       "code": "596",
@@ -10920,7 +11524,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 178
     },
     {
       "code": "600",
@@ -10938,7 +11543,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 129
     },
     {
       "code": "635",
@@ -10956,7 +11562,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 85
     },
     {
       "code": "561",
@@ -10974,12 +11581,13 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 80
     },
     {
       "code": "576",
       "title_en": "Korean Short Film Competition 3",
-      "title_kr": "",
+      "title_kr": "한국 단편 경쟁 3",
       "title_zh": "",
       "date": "2026-10-13",
       "start_time": "16:20",
@@ -10996,7 +11604,8 @@
         "The Boy Who Fell to Earth",
         "Tale of Tails",
         "An Uninvited Neighbor"
-      ]
+      ],
+      "page": 143
     },
     {
       "code": "580",
@@ -11014,7 +11623,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 99
     },
     {
       "code": "642",
@@ -11032,7 +11642,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 86
     },
     {
       "code": "592",
@@ -11050,7 +11661,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 104
     },
     {
       "code": "615",
@@ -11066,7 +11678,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 116
     },
     {
       "code": "611",
@@ -11084,7 +11697,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 67
     },
     {
       "code": "565",
@@ -11102,7 +11716,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 136
     },
     {
       "code": "573",
@@ -11120,7 +11735,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 64
     },
     {
       "code": "603",
@@ -11136,7 +11752,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 94
     },
     {
       "code": "584",
@@ -11154,7 +11771,8 @@
       "rating": "ALL",
       "subs": [
         "KK"
-      ]
+      ],
+      "page": 90
     },
     {
       "code": "607",
@@ -11172,7 +11790,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 132
     },
     {
       "code": "588",
@@ -11190,7 +11809,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 74
     },
     {
       "code": "628",
@@ -11208,7 +11828,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 106
     },
     {
       "code": "639",
@@ -11226,7 +11847,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 75
     },
     {
       "code": "824",
@@ -11262,7 +11884,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 57
     },
     {
       "code": "624",
@@ -11280,7 +11903,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 88
     },
     {
       "code": "558",
@@ -11298,7 +11922,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 179
     },
     {
       "code": "577",
@@ -11314,7 +11939,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 93
     },
     {
       "code": "620",
@@ -11332,7 +11958,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 118
     },
     {
       "code": "601",
@@ -11350,7 +11977,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 87
     },
     {
       "code": "570",
@@ -11368,7 +11996,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 46
     },
     {
       "code": "643",
@@ -11386,7 +12015,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 82
     },
     {
       "code": "562",
@@ -11404,7 +12034,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 69
     },
     {
       "code": "566",
@@ -11422,12 +12053,13 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 155
     },
     {
       "code": "581",
       "title_en": "Asian Short Film Competition 2",
-      "title_kr": "",
+      "title_kr": "아시아 단편 경쟁 2",
       "title_zh": "",
       "date": "2026-10-13",
       "start_time": "19:30",
@@ -11447,7 +12079,8 @@
         "Wild No More",
         "Chumpa: A Doll Under the Basket",
         "In Our Panic"
-      ]
+      ],
+      "page": 145
     },
     {
       "code": "825",
@@ -11481,7 +12114,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 92
     },
     {
       "code": "616",
@@ -11499,7 +12133,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 119
     },
     {
       "code": "636",
@@ -11517,7 +12152,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 54
     },
     {
       "code": "621",
@@ -11535,7 +12171,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 56
     },
     {
       "code": "554",
@@ -11546,12 +12183,13 @@
       "start_time": "20:00",
       "end_time": "22:07",
       "duration_min": 102,
-      "venue_id": "br",
+      "venue_id": "bt",
       "venue_display": "Busan Cinema Center Roof Theater",
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 113
     },
     {
       "code": "589",
@@ -11569,7 +12207,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 96
     },
     {
       "code": "597",
@@ -11587,7 +12226,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 131
     },
     {
       "code": "604",
@@ -11603,7 +12243,8 @@
       "is_gv": true,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 91
     },
     {
       "code": "612",
@@ -11621,7 +12262,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 65
     },
     {
       "code": "585",
@@ -11640,7 +12282,8 @@
       "subs": [
         "KE",
         "KK"
-      ]
+      ],
+      "page": 134
     },
     {
       "code": "688",
@@ -11658,7 +12301,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 130
     },
     {
       "code": "652",
@@ -11676,7 +12320,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 136
     },
     {
       "code": "684",
@@ -11692,7 +12337,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 90
     },
     {
       "code": "692",
@@ -11708,7 +12354,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 115
     },
     {
       "code": "712",
@@ -11724,7 +12371,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 93
     },
     {
       "code": "645",
@@ -11742,7 +12390,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 159
     },
     {
       "code": "648",
@@ -11760,7 +12409,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 59
     },
     {
       "code": "658",
@@ -11778,7 +12428,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 182
     },
     {
       "code": "665",
@@ -11796,7 +12447,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 83
     },
     {
       "code": "680",
@@ -11814,7 +12466,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 101
     },
     {
       "code": "704",
@@ -11830,7 +12483,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "ALL",
-      "subs": null
+      "subs": null,
+      "page": 90
     },
     {
       "code": "708",
@@ -11846,7 +12500,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "ALL",
-      "subs": null
+      "subs": null,
+      "page": 92
     },
     {
       "code": "720",
@@ -11864,7 +12519,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 46
     },
     {
       "code": "654",
@@ -11882,7 +12538,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 48
     },
     {
       "code": "669",
@@ -11898,7 +12555,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 91
     },
     {
       "code": "673",
@@ -11916,7 +12574,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 88
     },
     {
       "code": "696",
@@ -11934,7 +12593,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 87
     },
     {
       "code": "700",
@@ -11952,7 +12612,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 55
     },
     {
       "code": "716",
@@ -11970,7 +12631,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 57
     },
     {
       "code": "727",
@@ -11986,7 +12648,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 94
     },
     {
       "code": "653",
@@ -12004,7 +12667,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 54
     },
     {
       "code": "662",
@@ -12022,7 +12686,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 156
     },
     {
       "code": "724",
@@ -12040,7 +12705,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 161
     },
     {
       "code": "693",
@@ -12056,7 +12722,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 116
     },
     {
       "code": "677",
@@ -12074,7 +12741,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 68
     },
     {
       "code": "689",
@@ -12092,7 +12760,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 81
     },
     {
       "code": "705",
@@ -12108,7 +12777,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 92
     },
     {
       "code": "709",
@@ -12124,7 +12794,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 94
     },
     {
       "code": "713",
@@ -12140,7 +12811,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "ALL",
-      "subs": null
+      "subs": null,
+      "page": 95
     },
     {
       "code": "646",
@@ -12158,7 +12830,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 125
     },
     {
       "code": "649",
@@ -12176,7 +12849,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 139
     },
     {
       "code": "670",
@@ -12194,7 +12868,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 98
     },
     {
       "code": "681",
@@ -12212,7 +12887,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 109
     },
     {
       "code": "685",
@@ -12230,7 +12906,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 166
     },
     {
       "code": "697",
@@ -12248,7 +12925,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 167
     },
     {
       "code": "701",
@@ -12264,7 +12942,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 45
     },
     {
       "code": "674",
@@ -12282,7 +12961,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 68
     },
     {
       "code": "717",
@@ -12300,7 +12980,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 87
     },
     {
       "code": "721",
@@ -12318,7 +12999,8 @@
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 74
     },
     {
       "code": "728",
@@ -12336,7 +13018,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 71
     },
     {
       "code": "655",
@@ -12354,7 +13037,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 132
     },
     {
       "code": "659",
@@ -12372,7 +13056,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 135
     },
     {
       "code": "666",
@@ -12390,7 +13075,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 105
     },
     {
       "code": "663",
@@ -12406,7 +13092,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 91
     },
     {
       "code": "706",
@@ -12424,7 +13111,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 52
     },
     {
       "code": "694",
@@ -12442,7 +13130,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 120
     },
     {
       "code": "690",
@@ -12460,7 +13149,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 102
     },
     {
       "code": "725",
@@ -12478,7 +13168,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 66
     },
     {
       "code": "650",
@@ -12496,7 +13187,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 78
     },
     {
       "code": "686",
@@ -12514,7 +13206,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 76
     },
     {
       "code": "737",
@@ -12530,7 +13223,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "19",
-      "subs": null
+      "subs": null,
+      "page": 77
     },
     {
       "code": "698",
@@ -12548,7 +13242,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 71
     },
     {
       "code": "714",
@@ -12566,7 +13261,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 103
     },
     {
       "code": "671",
@@ -12584,7 +13280,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 97
     },
     {
       "code": "678",
@@ -12602,7 +13299,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 135
     },
     {
       "code": "710",
@@ -12620,7 +13318,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 107
     },
     {
       "code": "718",
@@ -12638,7 +13337,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 82
     },
     {
       "code": "660",
@@ -12656,7 +13356,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 139
     },
     {
       "code": "667",
@@ -12674,7 +13375,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 105
     },
     {
       "code": "722",
@@ -12692,7 +13394,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 53
     },
     {
       "code": "702",
@@ -12710,7 +13413,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 123
     },
     {
       "code": "656",
@@ -12728,7 +13432,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 140
     },
     {
       "code": "682",
@@ -12746,7 +13451,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 99
     },
     {
       "code": "729",
@@ -12764,7 +13470,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 100
     },
     {
       "code": "675",
@@ -12782,7 +13489,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 128
     },
     {
       "code": "664",
@@ -12800,7 +13508,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 155
     },
     {
       "code": "715",
@@ -12818,7 +13527,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 127
     },
     {
       "code": "695",
@@ -12836,7 +13546,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 129
     },
     {
       "code": "707",
@@ -12854,7 +13565,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 85
     },
     {
       "code": "726",
@@ -12872,7 +13584,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 77
     },
     {
       "code": "651",
@@ -12890,7 +13603,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 59
     },
     {
       "code": "687",
@@ -12908,7 +13622,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 109
     },
     {
       "code": "691",
@@ -12926,7 +13641,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 85
     },
     {
       "code": "699",
@@ -12944,7 +13660,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 131
     },
     {
       "code": "711",
@@ -12962,7 +13679,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 169
     },
     {
       "code": "741",
@@ -12978,7 +13696,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "15",
-      "subs": null
+      "subs": null,
+      "page": 61
     },
     {
       "code": "672",
@@ -12996,7 +13715,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 84
     },
     {
       "code": "679",
@@ -13012,7 +13732,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "12",
-      "subs": null
+      "subs": null,
+      "page": 75
     },
     {
       "code": "826",
@@ -13062,7 +13783,8 @@
       "is_gv": false,
       "tags": [],
       "rating": "ALL",
-      "subs": null
+      "subs": null,
+      "page": 51
     },
     {
       "code": "647",
@@ -13080,7 +13802,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 80
     },
     {
       "code": "657",
@@ -13098,7 +13821,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 121
     },
     {
       "code": "661",
@@ -13116,7 +13840,8 @@
       "rating": "19",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 125
     },
     {
       "code": "668",
@@ -13134,7 +13859,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 97
     },
     {
       "code": "683",
@@ -13152,7 +13878,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 178
     },
     {
       "code": "723",
@@ -13170,7 +13897,8 @@
       "rating": "12",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 56
     },
     {
       "code": "730",
@@ -13188,7 +13916,8 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 86
     },
     {
       "code": "644",
@@ -13199,14 +13928,15 @@
       "start_time": "20:00",
       "end_time": "21:58",
       "duration_min": 118,
-      "venue_id": "br",
+      "venue_id": "bt",
       "venue_display": "Busan Cinema Center Roof Theater",
       "is_gv": false,
       "tags": [],
       "rating": "ALL",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 162
     },
     {
       "code": "676",
@@ -13224,17 +13954,18 @@
       "rating": "15",
       "subs": [
         "KE"
-      ]
+      ],
+      "page": 86
     },
     {
       "code": "731",
       "title_en": "The Winner of Flash Forward Audience Award",
-      "title_kr": "",
+      "title_kr": "플래시 포워드 관객상 수상작",
       "title_zh": "",
       "date": "2026-10-15",
       "start_time": "10:00",
-      "end_time": "12:00",
-      "duration_min": 120,
+      "end_time": "12:40",
+      "duration_min": 160,
       "venue_id": "b1",
       "venue_display": "Busan Cinema Center Cinema 1",
       "is_gv": false,
@@ -13245,12 +13976,12 @@
     {
       "code": "733",
       "title_en": "The Winner of Songwon Vision Audience Award - Korea",
-      "title_kr": "",
+      "title_kr": "송원 비전 관객상 - 한국 수상작",
       "title_zh": "",
       "date": "2026-10-15",
       "start_time": "10:20",
-      "end_time": "12:20",
-      "duration_min": 120,
+      "end_time": "12:50",
+      "duration_min": 150,
       "venue_id": "b2",
       "venue_display": "Busan Cinema Center Cinema 2",
       "is_gv": false,
@@ -13261,12 +13992,12 @@
     {
       "code": "735",
       "title_en": "The Winner of Busan Cinephile Award",
-      "title_kr": "",
+      "title_kr": "부산시네필상 수상작",
       "title_zh": "",
       "date": "2026-10-15",
       "start_time": "10:20",
-      "end_time": "12:20",
-      "duration_min": 120,
+      "end_time": "12:30",
+      "duration_min": 130,
       "venue_id": "b3",
       "venue_display": "Busan Cinema Center Cinematheque",
       "is_gv": false,
@@ -13277,12 +14008,12 @@
     {
       "code": "732",
       "title_en": "The Winner of Citizen Critics′ Award",
-      "title_kr": "",
+      "title_kr": "시민평론가상 수상작",
       "title_zh": "",
       "date": "2026-10-15",
       "start_time": "13:40",
-      "end_time": "15:40",
-      "duration_min": 120,
+      "end_time": "16:10",
+      "duration_min": 150,
       "venue_id": "b1",
       "venue_display": "Busan Cinema Center Cinema 1",
       "is_gv": false,
@@ -13293,12 +14024,12 @@
     {
       "code": "734",
       "title_en": "The Winner of Songwon Vision Audience Award - Asia",
-      "title_kr": "",
+      "title_kr": "송원 비전 관객상 - 아시아 수상작",
       "title_zh": "",
       "date": "2026-10-15",
       "start_time": "14:00",
-      "end_time": "16:00",
-      "duration_min": 120,
+      "end_time": "16:30",
+      "duration_min": 150,
       "venue_id": "b2",
       "venue_display": "Busan Cinema Center Cinema 2",
       "is_gv": false,
@@ -13309,7 +14040,7 @@
     {
       "code": "736",
       "title_en": "The Winner of Documentary Audience Award",
-      "title_kr": "",
+      "title_kr": "다큐멘터리 관객상 수상작",
       "title_zh": "",
       "date": "2026-10-15",
       "start_time": "14:00",
@@ -13325,13 +14056,13 @@
     {
       "code": "002",
       "title_en": "Closing Ceremony + The Winner of Busan Award Screening",
-      "title_kr": "",
+      "title_kr": "폐막식 + 부산 어워드 수상작 상영",
       "title_zh": "",
       "date": "2026-10-15",
       "start_time": "18:00",
-      "end_time": "20:00",
-      "duration_min": 120,
-      "venue_id": "br",
+      "end_time": "22:00",
+      "duration_min": 240,
+      "venue_id": "bt",
       "venue_display": "Busan Cinema Center Roof Theater",
       "is_gv": false,
       "tags": [
@@ -13339,6 +14070,762 @@
       ],
       "rating": null,
       "subs": null
+    },
+    {
+      "code": "907",
+      "title_en": "Filmmaking Project 1",
+      "title_kr": "영화만들기 프로젝트 1",
+      "title_zh": "",
+      "date": "2026-10-08",
+      "start_time": "10:30",
+      "end_time": "12:45",
+      "duration_min": 110,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": true,
+      "tags": [],
+      "rating": "ALL",
+      "subs": null,
+      "page": 206
+    },
+    {
+      "code": "903",
+      "title_en": "1976 vs 2026: Conversation with 20-year-old Cinephiles",
+      "title_kr": "1976 vs 2026: 스무살 시네필과의 대화",
+      "title_zh": "",
+      "date": "2026-10-08",
+      "start_time": "14:00",
+      "end_time": "15:31",
+      "duration_min": 66,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null,
+      "page": 205
+    },
+    {
+      "code": "905",
+      "title_en": "The Mutation",
+      "title_kr": "사랑의 탄생",
+      "title_zh": "",
+      "date": "2026-10-08",
+      "start_time": "15:00",
+      "end_time": "17:13",
+      "duration_min": 108,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null,
+      "page": 204
+    },
+    {
+      "code": "908",
+      "title_en": "Filmmaking Project 2",
+      "title_kr": "영화만들기 프로젝트 2",
+      "title_zh": "",
+      "date": "2026-10-08",
+      "start_time": "15:00",
+      "end_time": "16:25",
+      "duration_min": 60,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": true,
+      "tags": [],
+      "rating": "ALL",
+      "subs": null,
+      "page": 206
+    },
+    {
+      "code": "901",
+      "title_en": "Stop Making Sense",
+      "title_kr": "스탑 메이킹 센스",
+      "title_zh": "",
+      "date": "2026-10-08",
+      "start_time": "15:30",
+      "end_time": "16:58",
+      "duration_min": 88,
+      "venue_id": "m1",
+      "venue_display": "MEGABOX Busan Theater 1",
+      "is_gv": false,
+      "tags": [
+        "event"
+      ],
+      "rating": "12",
+      "subs": null,
+      "page": 205
+    },
+    {
+      "code": "909",
+      "title_en": "TAMPOPO",
+      "title_kr": "담뽀뽀",
+      "title_zh": "",
+      "date": "2026-10-08",
+      "start_time": "18:30",
+      "end_time": "20:24",
+      "duration_min": 114,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "19",
+      "subs": null,
+      "page": 205
+    },
+    {
+      "code": "904",
+      "title_en": "How to Use Guys with Secret Tips",
+      "title_kr": "남자사용설명서",
+      "title_zh": "",
+      "date": "2026-10-08",
+      "start_time": "19:00",
+      "end_time": "21:21",
+      "duration_min": 116,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": true,
+      "tags": [],
+      "rating": "15",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "906",
+      "title_en": "Dear Juhee",
+      "title_kr": "주희에게",
+      "title_zh": "",
+      "date": "2026-10-08",
+      "start_time": "19:00",
+      "end_time": "21:09",
+      "duration_min": 104,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null,
+      "page": 204
+    },
+    {
+      "code": "902",
+      "title_en": "Waikiki Brothers",
+      "title_kr": "와이키키 브라더스",
+      "title_zh": "",
+      "date": "2026-10-08",
+      "start_time": "19:30",
+      "end_time": "21:19",
+      "duration_min": 109,
+      "venue_id": "m1",
+      "venue_display": "MEGABOX Busan Theater 1",
+      "is_gv": false,
+      "tags": [
+        "commentary"
+      ],
+      "rating": "19",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "912",
+      "title_en": "Back to the Future",
+      "title_kr": "백 투더 퓨쳐",
+      "title_zh": "",
+      "date": "2026-10-09",
+      "start_time": "11:00",
+      "end_time": "13:00",
+      "duration_min": 120,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": false,
+      "tags": [
+        "event"
+      ],
+      "rating": "12",
+      "subs": null,
+      "page": 204
+    },
+    {
+      "code": "917",
+      "title_en": "Conclave",
+      "title_kr": "콘클라베",
+      "title_zh": "",
+      "date": "2026-10-09",
+      "start_time": "11:00",
+      "end_time": "13:01",
+      "duration_min": 121,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "12",
+      "subs": [
+        "KK"
+      ],
+      "page": 205
+    },
+    {
+      "code": "915",
+      "title_en": "Inside Llewyn Davis",
+      "title_kr": "인사이드 르윈",
+      "title_zh": "",
+      "date": "2026-10-09",
+      "start_time": "13:00",
+      "end_time": "14:45",
+      "duration_min": 105,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": false,
+      "tags": [
+        "event"
+      ],
+      "rating": "15",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "910",
+      "title_en": "200 Pounds Beauty",
+      "title_kr": "미녀는 괴로워",
+      "title_zh": "",
+      "date": "2026-10-09",
+      "start_time": "14:00",
+      "end_time": "16:25",
+      "duration_min": 120,
+      "venue_id": "m1",
+      "venue_display": "MEGABOX Busan Theater 1",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "913",
+      "title_en": "CONTACT",
+      "title_kr": "콘택트",
+      "title_zh": "",
+      "date": "2026-10-09",
+      "start_time": "15:00",
+      "end_time": "17:29",
+      "duration_min": 149,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "12",
+      "subs": null,
+      "page": 204
+    },
+    {
+      "code": "918",
+      "title_en": "[The Films Raised by Audience] Shorts",
+      "title_kr": "[관객이 키운 영화] 단편 상영",
+      "title_zh": "",
+      "date": "2026-10-09",
+      "start_time": "15:00",
+      "end_time": "17:02",
+      "duration_min": 97,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "916",
+      "title_en": "We Are All Trying Here",
+      "title_kr": "모두가 자신의 무가치함과 싸우고 있다",
+      "title_zh": "",
+      "date": "2026-10-09",
+      "start_time": "18:00",
+      "end_time": "19:30",
+      "duration_min": 65,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": true,
+      "tags": [],
+      "rating": "15",
+      "subs": null,
+      "page": 205
+    },
+    {
+      "code": "911",
+      "title_en": "The City of Violence",
+      "title_kr": "짝패",
+      "title_zh": "",
+      "date": "2026-10-09",
+      "start_time": "19:00",
+      "end_time": "20:32",
+      "duration_min": 92,
+      "venue_id": "m1",
+      "venue_display": "MEGABOX Busan Theater 1",
+      "is_gv": false,
+      "tags": [
+        "commentary"
+      ],
+      "rating": "19",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "919",
+      "title_en": "Don’t Go Back",
+      "title_kr": "고백하지마",
+      "title_zh": "",
+      "date": "2026-10-09",
+      "start_time": "19:00",
+      "end_time": "20:34",
+      "duration_min": 69,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "914",
+      "title_en": "The Adjustment Bureau",
+      "title_kr": "컨트롤러",
+      "title_zh": "",
+      "date": "2026-10-09",
+      "start_time": "19:30",
+      "end_time": "21:15",
+      "duration_min": 105,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "12",
+      "subs": null,
+      "page": 204
+    },
+    {
+      "code": "920",
+      "title_en": "Moving",
+      "title_kr": "이사",
+      "title_zh": "",
+      "date": "2026-10-10",
+      "start_time": "10:00",
+      "end_time": "12:05",
+      "duration_min": 125,
+      "venue_id": "m1",
+      "venue_display": "MEGABOX Busan Theater 1",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "12",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "923",
+      "title_en": "Like Father, Like Son",
+      "title_kr": "그렇게 아버지가 된다",
+      "title_zh": "",
+      "date": "2026-10-10",
+      "start_time": "11:00",
+      "end_time": "13:01",
+      "duration_min": 121,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "ALL",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "926",
+      "title_en": "The World of Love",
+      "title_kr": "세계의 주인",
+      "title_zh": "",
+      "date": "2026-10-10",
+      "start_time": "11:00",
+      "end_time": "13:24",
+      "duration_min": 119,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null,
+      "page": 204
+    },
+    {
+      "code": "929",
+      "title_en": "The Age of Adaline",
+      "title_kr": "아델라인: 멈춰진 시간",
+      "title_zh": "",
+      "date": "2026-10-10",
+      "start_time": "13:00",
+      "end_time": "14:52",
+      "duration_min": 112,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "12",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "921",
+      "title_en": "The Cinephiles Strike Back 1",
+      "title_kr": "블라인드시네마 1",
+      "title_zh": "",
+      "date": "2026-10-10",
+      "start_time": "14:00",
+      "end_time": "17:37",
+      "duration_min": 217,
+      "venue_id": "m1",
+      "venue_display": "MEGABOX Busan Theater 1",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "19",
+      "subs": null,
+      "page": 204
+    },
+    {
+      "code": "927",
+      "title_en": "Hallan",
+      "title_kr": "한란",
+      "title_zh": "",
+      "date": "2026-10-10",
+      "start_time": "14:30",
+      "end_time": "16:53",
+      "duration_min": 118,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null,
+      "page": 204
+    },
+    {
+      "code": "924",
+      "title_en": "[Three Impression of Ae-sim KANG] Shorts",
+      "title_kr": "[배우 강애심의 세 가지 인상] 단편 상영",
+      "title_zh": "",
+      "date": "2026-10-10",
+      "start_time": "15:00",
+      "end_time": "16:28",
+      "duration_min": 63,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "930",
+      "title_en": "[Sad Utopia] Shorts",
+      "title_kr": "[새드 유토피아] 단편 상영",
+      "title_zh": "",
+      "date": "2026-10-10",
+      "start_time": "17:00",
+      "end_time": "18:04",
+      "duration_min": 64,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": false,
+      "tags": [
+        "event"
+      ],
+      "rating": "15",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "925",
+      "title_en": "[The World of Tae-hwa, The Face of Tae-goo] Shorts",
+      "title_kr": "[엄태화의 세계 엄태구의 얼굴] 단편 상영",
+      "title_zh": "",
+      "date": "2026-10-10",
+      "start_time": "19:00",
+      "end_time": "20:39",
+      "duration_min": 74,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": true,
+      "tags": [],
+      "rating": "15",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "928",
+      "title_en": "Once We Were Us",
+      "title_kr": "만약에 우리",
+      "title_zh": "",
+      "date": "2026-10-10",
+      "start_time": "19:00",
+      "end_time": "21:20",
+      "duration_min": 115,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": true,
+      "tags": [],
+      "rating": "15",
+      "subs": null,
+      "page": 204
+    },
+    {
+      "code": "922",
+      "title_en": "San San Jo Gak",
+      "title_kr": "산산조각",
+      "title_zh": "",
+      "date": "2026-10-10",
+      "start_time": "20:00",
+      "end_time": "21:37",
+      "duration_min": 72,
+      "venue_id": "m1",
+      "venue_display": "MEGABOX Busan Theater 1",
+      "is_gv": true,
+      "tags": [],
+      "rating": "ALL",
+      "subs": null,
+      "page": 205
+    },
+    {
+      "code": "931",
+      "title_en": "Scrapper",
+      "title_kr": "스크래퍼",
+      "title_zh": "",
+      "date": "2026-10-10",
+      "start_time": "20:00",
+      "end_time": "21:24",
+      "duration_min": 84,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "12",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "932",
+      "title_en": "Happy - Go - Lucky Night",
+      "title_kr": "취생몽사",
+      "title_zh": "",
+      "date": "2026-10-10",
+      "start_time": "23:00",
+      "end_time": "28:39",
+      "duration_min": 339,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": false,
+      "tags": [
+        "event"
+      ],
+      "rating": "19",
+      "subs": null,
+      "page": 205
+    },
+    {
+      "code": "933",
+      "title_en": "Epitaph",
+      "title_kr": "기담",
+      "title_zh": "",
+      "date": "2026-10-11",
+      "start_time": "10:30",
+      "end_time": "12:37",
+      "duration_min": 102,
+      "venue_id": "m1",
+      "venue_display": "MEGABOX Busan Theater 1",
+      "is_gv": true,
+      "tags": [],
+      "rating": "15",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "935",
+      "title_en": "DRIVE",
+      "title_kr": "드라이브",
+      "title_zh": "",
+      "date": "2026-10-11",
+      "start_time": "10:30",
+      "end_time": "12:18",
+      "duration_min": 83,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "938",
+      "title_en": "Nouvelle Vague",
+      "title_kr": "누벨바그",
+      "title_zh": "",
+      "date": "2026-10-11",
+      "start_time": "11:00",
+      "end_time": "12:46",
+      "duration_min": 106,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "12",
+      "subs": null,
+      "page": 205
+    },
+    {
+      "code": "941",
+      "title_en": "Once",
+      "title_kr": "원스",
+      "title_zh": "",
+      "date": "2026-10-11",
+      "start_time": "11:00",
+      "end_time": "12:26",
+      "duration_min": 86,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": false,
+      "tags": [
+        "event"
+      ],
+      "rating": "ALL",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "936",
+      "title_en": "Super Disco",
+      "title_kr": "수퍼 디스코",
+      "title_zh": "",
+      "date": "2026-10-11",
+      "start_time": "14:00",
+      "end_time": "15:56",
+      "duration_min": 91,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null,
+      "page": 205
+    },
+    {
+      "code": "939",
+      "title_en": "Punch-Drunk Love",
+      "title_kr": "펀치 드렁크 러브",
+      "title_zh": "",
+      "date": "2026-10-11",
+      "start_time": "14:30",
+      "end_time": "16:05",
+      "duration_min": 95,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "15",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "934",
+      "title_en": "The Cinephiles Strike Back 2",
+      "title_kr": "블라인드시네마 2",
+      "title_zh": "",
+      "date": "2026-10-11",
+      "start_time": "15:00",
+      "end_time": "19:12",
+      "duration_min": 252,
+      "venue_id": "m1",
+      "venue_display": "MEGABOX Busan Theater 1",
+      "is_gv": false,
+      "tags": [
+        "talk"
+      ],
+      "rating": "19",
+      "subs": null,
+      "page": 204
+    },
+    {
+      "code": "942",
+      "title_en": "The Hill of Secrets",
+      "title_kr": "비밀의 언덕",
+      "title_zh": "",
+      "date": "2026-10-11",
+      "start_time": "15:00",
+      "end_time": "17:27",
+      "duration_min": 122,
+      "venue_id": "m4",
+      "venue_display": "MEGABOX Busan Theater 4",
+      "is_gv": true,
+      "tags": [],
+      "rating": "ALL",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "940",
+      "title_en": "Concerning My Daughter",
+      "title_kr": "딸에 대하여",
+      "title_zh": "",
+      "date": "2026-10-11",
+      "start_time": "18:00",
+      "end_time": "20:11",
+      "duration_min": 106,
+      "venue_id": "m3",
+      "venue_display": "MEGABOX Busan Theater 3",
+      "is_gv": true,
+      "tags": [],
+      "rating": "12",
+      "subs": null,
+      "page": 203
+    },
+    {
+      "code": "937",
+      "title_en": "New Angle on Genre Shorts",
+      "title_kr": "장르 영화의 새로운 앵글",
+      "title_zh": "",
+      "date": "2026-10-11",
+      "start_time": "19:00",
+      "end_time": "20:37",
+      "duration_min": 72,
+      "venue_id": "m2",
+      "venue_display": "MEGABOX Busan Theater 2",
+      "is_gv": true,
+      "tags": [],
+      "rating": "15",
+      "subs": null,
+      "page": 205
     }
   ]
 }

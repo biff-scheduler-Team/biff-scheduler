@@ -63,10 +63,17 @@
    68 个 None。所以合并只发生在 `parse_meta` 里已识别出 `dur` 之后
    的**尾随页码字段**,用 `prev_page_y` 记录上一段的 y0 作判据。
    (`'116’'` 与后面 `'1'` 的间距只有 3.8pt,若做通用合并会成 `'116’1'`。)
-9. **BD / C7 两列在 p9-p14 上不印场次编号**(原 PDF 就没有,不是解析丢了;
-   用 `page.get_text("text")` 原始文本核对过)。这些场次用
-   `X<页号2位><序号2位>`(如 `X0901`)兜底,保证 `code` 唯一
-   (前端 `byCode` / `slots` / `cardEls` 都以 code 为键,空值会互相覆盖)。
+9. **★ 不印编号 = 非公开场次,直接跳过**(2026-09-14 修正)。
+   **编号本身就是公开与否的判据**:2026 册子里只有 Indieplus(`BD`)与 CGV 7(`C7`)两列
+   不印编号,而这两列整列归在排期页的 **`P&I(Press & Industry) Screenings`** 粉底标题下
+   —— 记者/业界场,不对外售票。三重佐证:
+   ① 官网排期页 `date.asp?day1=6..15` 完全不列这两个厅(实测);
+   ② 影片介绍页(p22-96)的场次索引里出现 24 个厅,**没有 BD / C7 / M1-M4**;
+   ③ 同页 Community BIFF(`M1-M4`)是免费·现场先到先得,**却印了官方编号 `901-942`** ——
+   所以「不印编号」不是排版疏忽,是有意区分。
+   ⚠ 2025 版曾用 `X<页号2位><序号2位>`(如 `X0901`)给无编号场次兜底合成 code,
+   结果 37 场 P&I 混进了公开排期。**别再那样做** —— 合成号会伪装成官方号,
+   用户在册子上永远找不到它。现在跳过并计入 `stats['skipped_no_code']`。
 10. **场次特性 token 不止 GV**。实测 META 里出现:`GV`(347)、`Talk`(6)、
    `Commentary`(3)、`Event`(1)。`GV` 走 `is_gv`;其余按原义小写进
    `tags`(`talk` / `commentary` / `event`)。前端 `badges.ts` 只渲染已注册
@@ -95,6 +102,20 @@
    前端 `SubsKey[]` + `legend.ts` 的 `subsKeys()` 归一化(兼容早期标量数据)。
 
 输出对齐 src/types.ts 的 Screening / Venue。
+
+2026 版与 2025 版的 6 处版面差异(2026-09-14 实测并已适配,别再按 2025 改回去)
+------------------------------------------------------------------------------
+| # | 现象 | 修在哪 |
+|---|---|---|
+| ① | 图例新增 `L8`;不登记会把 L8 整列并进 L7(实测 22 场) | `VENUE_NAME` |
+| ② | `BT` 从「BIFF Theatre」变成「Roof Theater」(官方代码不变) | `VENUE_NAME` |
+| ③ | 片长会被 PDF **拆成两段**:`'1'`+`'20’'`、`'80'`+`'’'` | `festival_common.merge_split_dur` |
+| ④ | 多行标题:行沿 +x 推进、行内 span 沿 −y 推进,两层排序缺一不可 | `split_title` |
+| ⑤ | `[` **不再是备注标记** —— 本届把方括号写进片名(`[Sad Utopia] Shorts`) | `split_title` |
+| ⑥ | META 行会被排版切在**三处任意一处**(年份夹中间 / 年份在行首 / 年份在行尾、格式在下一行) | `parse_meta`(在 `festival_common`) |
+
+⚠ 本脚本产出的是**册子口径**的排期,**不是**线上产物:线上 `apps/web/public/schedule.json` 由
+`tools/merge_schedule.py` 合成(官网活数据为骨架 + 本脚本补官网没有的场次),见该文件头。
 """
 
 from __future__ import annotations
@@ -136,16 +157,20 @@ from festival_common import (
 SCHEDULE_PAGES_DEFAULT = "9-16"
 
 # 官方场馆代码 → (英文名, 韩文名, 分组, 所在区)
-# 来源:2025 官方 Ticket Catalogue p8 图例(29 个场馆代码)
+# 来源:2026 官方 Ticket Catalogue p8 图例(31 个场馆代码;CCS Catholic Center Space 101.1 本届无排期,未登记)
+# ⚠ 2026 与 2025 的三处差异(照 2026 图例改过,别再按 2025 抄回去):
+#   ① BT 从「BIFF Theatre」变成「Busan Cinema Center Roof Theater / 루프씨어터」
+#   ② 新增 L8(2025 图例没有 → 2026 不登记它会把 L8 整列并进 L7,实测 22 场)
+#   ③ SH 全名去掉「Dongseo University / ShinhanCard」(2026 图例 = Sohyang Theatre Woori Bank Hall)
 # 短名 short = 甘特图粘性影厅列的行标签。列宽只有 148px,减去内边距 20px + 代码 chip ≈ 25~30px
 # + gap 5px → 只剩 ≈ 98~103px,而全名「Busan Cinema Center Cinema 1」@12px 约 178px 必被截断 ——
 # 且区分性字词全在末尾(Cinema 1 / Cinema 2 / Cinematheque),截完三行长得一模一样。
 # 故 short 取「**品牌 + 厅号**」并**去掉与品牌重复的城市词**(CGV Centum City → CGV / MEGABOX
 # Busan Theater → MEGABOX):城市词在品牌里已隐含,去掉无损信息,却能把最长一条从 107px 压到 98px。
-# 实测(Chromium + 本机字体栈,12px semibold):29 条全部 ≤ 98px,零截断;最长 = "BCC BIFF Theatre"。
+# 实测(Chromium + 本机字体栈,12px semibold):全部 ≤ 98px,零截断。
 # 全名去向:行 hover tooltip / ⓘ 说明弹层 / ICS LOCATION(都读 name)。改这里请同步 apps/web/public/venues.json。
 VENUE_NAME: dict[str, tuple[str, str, str, str, str]] = {
-    "BT": ("Busan Cinema Center BIFF Theatre", "영화의전당 야외극장", "bcc", "centum", "BCC BIFF Theatre"),
+    "BT": ("Busan Cinema Center Roof Theater", "영화의전당 루프씨어터", "bcc", "centum", "BCC Roof"),
     "BH": ("Busan Cinema Center Haneulyeon Theatre", "영화의전당 하늘연극장", "bcc", "centum", "BCC Haneulyeon"),
     "B1": ("Busan Cinema Center Cinema 1", "영화의전당 중극장", "bcc", "centum", "BCC Cinema 1"),
     "B2": ("Busan Cinema Center Cinema 2", "영화의전당 소극장", "bcc", "centum", "BCC Cinema 2"),
@@ -165,10 +190,11 @@ VENUE_NAME: dict[str, tuple[str, str, str, str, str]] = {
     "L5": ("LOTTE CINEMA Centum City 5", "롯데시네마 센텀시티 5관", "lotte", "centum", "LOTTE 5"),
     "L6": ("LOTTE CINEMA Centum City 6", "롯데시네마 센텀시티 6관", "lotte", "centum", "LOTTE 6"),
     "L7": ("LOTTE CINEMA Centum City 7", "롯데시네마 센텀시티 7관", "lotte", "centum", "LOTTE 7"),
+    "L8": ("LOTTE CINEMA Centum City 8", "롯데시네마 센텀시티 8관", "lotte", "centum", "LOTTE 8"),
     "L9": ("LOTTE CINEMA Centum City 9", "롯데시네마 센텀시티 9관", "lotte", "centum", "LOTTE 9"),
     "L10": ("LOTTE CINEMA Centum City 10", "롯데시네마 센텀시티 10관", "lotte", "centum", "LOTTE 10"),
     "KT": ("KOFIC Theater", "영화진흥위원회 표준시사실", "kofic", "centum", "KOFIC Theater"),
-    "SH": ("Dongseo University Sohyang Theatre ShinhanCard Hall", "동서대학교 소향씨어터 신한카드홀", "sohyang", "centum", "Sohyang Theatre"),
+    "SH": ("Sohyang Theatre Woori Bank Hall", "소향씨어터 우리은행홀", "sohyang", "centum", "Sohyang Theatre"),
     "BCM": ("Busan Community Media Center Open Hall", "부산시청자미디어센터 공개홀", "bcm", "centum", "Busan Media Ctr"),
     "M1": ("MEGABOX Busan Theater 1", "메가박스 부산극장 1관", "megabox", "nampo", "MEGABOX 1"),
     "M2": ("MEGABOX Busan Theater 2", "메가박스 부산극장 2관", "megabox", "nampo", "MEGABOX 2"),
@@ -197,10 +223,14 @@ RE_DAYNUM = re.compile(r"^\d{1,2}$")
 RE_WEEKDAY = re.compile(r"^(MON|TUE|WED|THU|FRI|SAT|SUN)$")
 RE_VENUE_CODE = re.compile(r"^[A-Z]{1,3}\d{0,2}$")
 
-# 版面几何(单位 pt,基于 2025 版实测;2026 若版面微调改这里)
+# 版面几何(单位 pt,2026 版实测;改动请重跑全册自检 + 与官网 title 逐条比对)
 LINE_Y1_TOL = 2.5          # META line 与其标题 line 的 y1 容差(实测相等)
 LINE_X_GAP_LO = 2.0        # 标题 line 相对 META line 的最小 x 间距
-LINE_X_GAP_HI = 18.0       # 最大 x 间距(下一列 META 在 +21.5,故 18 安全)
+# 最大 x 间距。2025 版是 18(下一列 META 在 +21.5);2026 版出现**三行标题**
+# (实测 831 = `[Special Talk] The Cinematic Life of Ann Hui,` +7.3 / `Winner of the Camellia
+#  Award` +14.3 / 韩文标题 +21.4),18 会把韩文那行切掉 → 放宽到 26。
+# 安全性:本函数**先剔除 META line**(is_meta),而下一列的标题在 +27.9,故 26 不会越界收错。
+LINE_X_GAP_HI = 26.0
 TOKEN_MERGE_GAP = 6.5      # 拆开的同一数字间距 ≤5.2;正常 token 间距 ≥7.3
 HEADER_Y = (556.0, 580.0)  # 底部表头条(场馆代码所在 y 带)
 DAY_Y = (540.0, 585.0)     # 日标签 y 带
@@ -276,19 +306,33 @@ def _split_members(text: str) -> list[str]:
     return out
 
 
-def split_title(title_spans: list[dict]) -> tuple[str, str, list[str]]:
-    """返回 (title_en, title_kr, notes)。同语言多 span 按 y 递减拼接。"""
+def split_title(title_lines: list[dict]) -> tuple[str, str, list[str]]:
+    """返回 (title_en, title_kr, notes)。参数是**标题 line 列表**(不是扁平 span)。
+
+    单元格文字旋转 90°:**行沿 +x 推进,行内 span 沿 -y 推进** —— 所以拼接顺序是
+    「先按 line 的 x0 升序,同一 line 内再按 -y0」。两层缺一不可(2026 版实测):
+
+    * 只按 -y0(2025 版写法)→ 多行英文标题倒序:831 输出
+      `Winner of the Camellia Award [Special Talk] The Cinematic Life of Ann Hui,`
+    * 只按 x0 → 行内标点跑到末尾:110 输出 `Three Colours Blue :`(应 `Three Colours : Blue`)
+
+    ⚠ `[` **不是**备注标记(2026 版实测):本届把方括号写进了**片名本身** ——
+    `[Sad Utopia] Shorts` / `[The Films Raised by Audience] Shorts` / `[Special Talk] …`。
+    2025 版把 `[` 当备注起手式,于是这些格子 title 全空(实测 4 条:918 / 924 / 925 / 930
+    报「空标题」)。只有圆括号才是备注(`(개막식+개막작)`),方括号归标题。
+    """
     en, kr, notes = [], [], []
-    for s in sorted(title_spans, key=lambda s: -s["y0"]):
-        t = s["t"].strip()
-        if not t:
-            continue
-        if t[0] in "(（[※·":
-            notes.append(t)
-        elif _has_hangul(t):
-            kr.append(t)
-        else:
-            en.append(t)
+    for line in sorted(title_lines, key=lambda l: l["x0"]):
+        for s in sorted(line["spans"], key=lambda s: -s["y0"]):
+            t = s["t"].strip()
+            if not t:
+                continue
+            if t[0] in "(（※·":
+                notes.append(t)
+            elif _has_hangul(t):
+                kr.append(t)
+            else:
+                en.append(t)
     return " ".join(en).strip(), " ".join(kr).strip(), notes
 
 
@@ -383,15 +427,15 @@ def parse_page(page: pymupdf.Page, page_no: int, args, stats: Counter) -> list[d
         # 标题行里会混进「页码续行」—— 块格子的页码列表换行自成一行,几何上落进标题判据
         # (陷阱 19)。它不是标题:并入 pages,否则会成为 title_en 的前缀。
         tl = cell_title_lines(lines, m, LAYOUT)
-        title_spans: list[dict] = []
+        title_lines: list[dict] = []
         for l in tl:
             pg = pages_only_line(" ".join(s["t"] for s in l["spans"]).strip(), META_SYNTAX)
             if pg:
                 meta["pages"] += pg
                 stats["page_line_absorbed"] += 1
                 continue
-            title_spans += l["spans"]
-        title_en, title_kr, notes = split_title(title_spans)
+            title_lines.append(l)
+        title_en, title_kr, notes = split_title(title_lines)
         notes += [t for t in meta["extra"] if t not in notes]
         if not title_en and not title_kr:
             stats["empty_title"] += 1
@@ -399,13 +443,13 @@ def parse_page(page: pymupdf.Page, page_no: int, args, stats: Counter) -> list[d
         if not title_en:
             stats["no_title_en"] += 1
 
-        if meta["code"]:
-            code = meta["code"]
-        else:
-            # 陷阱 9:BD / C7 列在 2025 版上不印编号 → 兜底保证 code 唯一
-            no_code_seq += 1
-            code = f"X{page_no:02d}{no_code_seq:02d}"
-            stats["code_synthesized"] += 1
+        if not meta["code"]:
+            # 陷阱 9:不印编号 = 非公开场次(2026 版 = P&I 的 BD / C7 两列),跳过。
+            stats["skipped_no_code"] += 1
+            log("INFO", f"p{page_no} 无编号(非公开场次,跳过) @x={m['x0']:.0f}: "
+                        f"{title_en or title_kr} {meta['start_min']}")
+            continue
+        code = meta["code"]
 
         vcode = nearest_venue(venue_codes, m["x0"])
 
@@ -552,7 +596,7 @@ def main() -> int:
             "dates": sorted({r["date"] for r in all_rows}),
             "note": ("由 tools/extract_schedule.py 从官方 Ticket Catalogue PDF 解析;"
                      "venue_id = 官方影院代码小写(如 b1/c2/l10),lat/lng 需另行补全;"
-                     "code 以 X 开头者为原 PDF 未印编号的场次(合成兜底)"),
+                     "**只含印了官方编号的场次** —— 无编号列(P&I 的 BD/C7)已跳过"),
             "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         },
         "screenings": [

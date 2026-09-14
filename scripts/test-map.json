@@ -11,7 +11,12 @@
     "playwright.react.config.ts",
     "tsconfig.tests.json",
     "vitest.config.ts",
-    "apps/web/vite.config.ts"
+    "apps/web/vite.config.ts",
+    "apps/web/public/schedule.json",
+    "apps/web/public/venues.json",
+    "apps/web/public/films.json",
+    "apps/web/public/festival-extras.json",
+    "apps/web/public/changelog.json"
   ],
   "rules": [
     {
@@ -222,6 +227,20 @@
       ],
       "specs": [
         "screening-social"
+      ]
+    },
+    {
+      "id": "data-update",
+      "note": "排期数据更新提示（顶栏入口 / changelog 产物 / 与我选片的相关性 / 加入行程）",
+      "paths": [
+        "apps/web/src/components/ChangelogDialog.tsx",
+        "apps/web/src/changelog.ts",
+        "apps/web/src/app/store.tsx",
+        "apps/web/public/changelog.json",
+        "tools/build_changelog.py"
+      ],
+      "specs": [
+        "data-update"
       ]
     }
   ]

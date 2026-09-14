@@ -7,7 +7,8 @@
 * 页面 → line / span 结构（`build_lines`）
 * 版面几何选择器（`find_day_labels` / `find_venue_codes` / `nearest_venue` /
   `day_for_x` / `closest` / `cell_title_lines`）
-* token 规格驱动的 META 扫描（`parse_meta`）与「纯页码行」识别（`pages_only_line`）
+* token 规格驱动的 META 扫描（`parse_meta`）与「纯页码行」识别（`pages_only_line`）；
+  被 PDF 拆成两段的片长回拼（`merge_split_dur`）
 * 场次特性标签汇总（`tags_for`）
 * 自检哨兵（`check_code_unique` / `check_code_continuity` / `check_title_page_prefix`）
 * 契约化 JSON 写出（`strip_internal` / `write_json`）
@@ -232,6 +233,32 @@ def pages_only_line(text: str, syntax: MetaSyntax) -> list[int] | None:
     return nums
 
 
+def merge_split_dur(items: list[dict], syntax: MetaSyntax) -> list[dict]:
+    """把被 PDF 拆成两段的**片长** span 回拼成一个 token（顺序不变）。
+
+    判据是「**只有拼起来才匹配 `dur_re`**」—— 所以 code + rating 这类相邻纯数字
+    （`'101'`+`'32'` → `'10132'`）绝不会被误粘，不需要额外的间距阈值。
+
+    2026 版实测两种拆法（坐标见 `tools/extract_schedule.py` 的 2026 适配注释）：
+
+    * 首位数字独立成段：`'1'`(y=444.4) + `'20’'`(y=436.3) → 片长 `120’`
+    * 撇号独立成段：`'80'`(y=77.5) + `'’'`(y=74.9) → 片长 `80’`
+    """
+    out: list[dict] = []
+    i = 0
+    while i < len(items):
+        a = items[i]
+        if i + 1 < len(items) and re.fullmatch(r"\d{1,3}", a["t"]):
+            merged = a["t"] + items[i + 1]["t"]
+            if syntax.dur_re.match(merged):
+                out.append({**a, "t": merged})
+                i += 2
+                continue
+        out.append(a)
+        i += 1
+    return out
+
+
 def parse_meta(meta_spans: list[dict], syntax: MetaSyntax) -> dict | None:
     """META 阅读顺序 = y 递减（单元格文字旋转 90°，见适配层 docstring）。
 
@@ -239,8 +266,9 @@ def parse_meta(meta_spans: list[dict], syntax: MetaSyntax) -> dict | None:
     相邻两段的 y 间距明显小于正常 token 间距。不能对整行做通用合并 ——
     实测 code 与 rating 的间距在某些单元格只有 6pt 上下，一合就把
     `'101'`+`'32'` 粘成 `'10132'`，code 与 rating 全废。
+    片长的两段拆分走 `merge_split_dur`（同样不做通用合并）。
     """
-    items = sorted(meta_spans, key=lambda s: -s["y0"])
+    items = merge_split_dur(sorted(meta_spans, key=lambda s: -s["y0"]), syntax)
     if not items:
         return None
     m = syntax.time_re.match(items[0]["t"])
@@ -352,14 +380,18 @@ def check_code_continuity(rows: list[dict], pages: list[int]) -> list[tuple[int,
 
 
 def check_title_page_prefix(rows: list[dict], syntax: MetaSyntax) -> list[tuple[str, str]]:
-    """回归哨兵：title_en 不得以「页码列表 + 空格」开头 ——
+    """回归哨兵：title_en 不得以「**页码列表**（逗号分隔的多项）+ 空格」开头 ——
 
-    那说明块格子的页码续行又漏进标题了。判据复用 `pages_only_line` 的范围守卫，
-    故「片名本身以数字开头」不会误报（单数字 5 不在影片页范围内）。
+    那说明块格子的页码续行又漏进标题了（实测漏网形态：`163, 165 Midnight Passion 1`）。
+
+    ⚠ 判据要求列表**至少两项**（正则里的 `+` 而不是 `*`）。单个前导数字与片名无法区分：
+    2026 版实测 `200 Pounds Beauty`（片名以数字开头，且 200 恰在影片页范围内）会被
+    单数字版判据误报。单页码漏网由 `parse_page` 的整行 `pages_only_line` 归并兜住，
+    这里只保留「多项列表」这一条高信噪比判据。
     """
     dirty: list[tuple[str, str]] = []
     for r in rows:
-        m = re.match(r"^(?P<lst>\d{1,3}(?:\s*,\s*\d{1,3})*)\s+\S", r["title_en"])
+        m = re.match(r"^(?P<lst>\d{1,3}(?:\s*,\s*\d{1,3})+)\s+\S", r["title_en"])
         if m and pages_only_line(m.group("lst"), syntax):
             dirty.append((r["code"], r["title_en"]))
     return dirty

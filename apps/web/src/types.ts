@@ -79,6 +79,28 @@ export interface VenuesFile {
   venues: Venue[];
 }
 
+/** 官方节目册「影片介绍页」口径 —— 官网片目页(`prog_view.asp`)不印这些,
+ *  只在 2026 官方 Ticket Catalogue PDF 上印。由 `tools/extract_catalogue_films.py` 解析
+ *  (身份靠场次编号反查,不是靠片名匹配)。缺字段 = 该片在册子里没有介绍页 / 那一项没印。 */
+export interface FilmCatalogue {
+  /** 册页号(印刷页,与 `Screening.page` 同一坐标系) */
+  page: number;
+  /** 放映格式(册子原文,如 `DCP`) */
+  format?: string | null;
+  /** 色彩(册子原文,如 `color` / `b&w`) */
+  color?: string | null;
+  /** 制产国(册子原文,`/` 分隔;与 `FilmItem.country` 交叉核对用) */
+  countries?: string | null;
+  /** 册子印的片长(分钟;与 `Screening.duration_min` 交叉核对用) */
+  runtime_min?: number | null;
+  /** 首映状态:`WP` = 世界首映 / `IP` = 国际首映(2026 册子只印这两个码) */
+  premiere?: string | null;
+  /** 官方韩文简介(册子原文) */
+  synopsis_ko?: string | null;
+  /** 官方英文简介(册子原文) */
+  synopsis_en?: string | null;
+}
+
 /** 影片目录(来自用户提供的影片信息表,先只接片名与元信息) */
 export interface FilmItem {
   duration_min?: number | null;
@@ -104,6 +126,8 @@ export interface FilmItem {
    *  Competition、Midnight Passion 等)里放映 —— 值是块场次的 code。前端据此把它
    *  挂到那一场上,显示「收录于合集 XXX」,而不是「暂无排期」。 */
   block_code?: string;
+  /** 官方节目册「影片介绍页」口径(格式 / 色彩 / 首映 / 官方英韩简介)。可选 → 旧 JSON 仍合法。 */
+  catalogue?: FilmCatalogue;
 }
 
 export interface FilmsFile {
@@ -273,6 +297,88 @@ export interface TicketServiceDesk {
   notes: string[];
 }
 
+/* ---------------- 排期数据更新日志 ----------------
+ * 静态产物 `public/changelog.json`(`tools/build_changelog.py`,对比「上一个已发布版本」与当前排期)。
+ * 前端只持有一版排期,**算不出「上一版长什么样」** —— 差异必须在构建期算好、产物化。
+ * 文件缺失 / 解析失败一律静默降级(与 `extras.ts` 同口径),绝不阻塞主流程。 */
+
+/** 一处字段变化(`from` / `to` 已是给用户看的文本,如 `120` / `有`) */
+export interface ChangelogFieldChange {
+  key: string;
+  /** 中文标签(如 `片长` / `场次标记`)—— 由工具产出,前端不再自建映射表 */
+  label: string;
+  from: string;
+  to: string;
+}
+
+/** 一场「我行程里的场次」的信息变化 */
+export interface ChangelogChanged {
+  code: string;
+  title_en: string;
+  title_zh: string;
+  date: string;
+  venue_display: string;
+  fields: ChangelogFieldChange[];
+}
+
+/** 一条新增场次 —— 排期契约的**子集**(够展示与「加入行程」用,不搬整条 `Screening`)。
+ *  字段与 `Screening` 同名同义,故可直接喂给 `util.ts::filmNodeKey()` 判身份。 */
+export interface ChangelogAdded {
+  code: string;
+  title_en: string;
+  title_zh?: string;
+  title_kr?: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  duration_min: number;
+  venue_id: string;
+  venue_display: string;
+  is_gv: boolean;
+  tags?: string[];
+  rating?: RatingKey;
+  subs?: SubsKey[];
+}
+
+export interface ChangelogFile {
+  generated_at: string;
+  /** **版本号** —— 前端拿它跟本地已确认版本(`biff.dataver.v1`)比 */
+  schedule_generated_at: string;
+  base_schedule_generated_at?: string;
+  added: ChangelogAdded[];
+  changed: ChangelogChanged[];
+}
+
+/** 一处 BIFF 票务亭的运营口径(官网售票页「BIFF Ticket Box Place & Operating Hours」表)。
+ *  `open` / `close` 可能是具体时刻(`8:30`),也可能是相对表述(官网原文,如
+ *  `30 minutes before the first screening`)—— **保持原文,不折算成时刻**。 */
+export interface TicketBox {
+  /** 票亭位置(官网原文,如 `Busan Cinema Center BIFF Outdoor Ticket Box`) */
+  place: string;
+  /** 运营期(官网原文,如 `10.6 ~ 10.15`) */
+  period: string;
+  open: string;
+  close: string;
+  /** 支付方式(官网原文,空格分隔) */
+  payment: string;
+}
+
+/** 一条入场/观影规则:正文 + 附注(`※` 起行的原文)。 */
+export interface TicketRuleItem {
+  text: string;
+  notes: string[];
+}
+
+/** 入场与观影规则 —— **只在官方付印册子上印**,官网售票页没有这一节
+ *  (2026-09-14 实测官网 `grep "screening begins"` = 0 命中),故由
+ *  `tools/scrape_biff_extras.py --catalogue-pdf` 从册子 p20「Theater Regulations」取。 */
+export interface TicketVenueRules {
+  /** 出处(册子页码),前端据此说明「为什么官网没有这一节」 */
+  source: string;
+  items: TicketRuleItem[];
+  lostAndFound: string[];
+}
+
 export interface FestivalExtras {
   source: string;
   generated_at: string;
@@ -280,6 +386,10 @@ export interface FestivalExtras {
     batches: TicketBatch[];
     prices: TicketPrice[];
     discountKrw: number | null;
+    /** 票务亭运营表(官网售票页;`place` 空 = 该行没印) */
+    ticketBoxes?: TicketBox[];
+    /** 入场与观影规则(付印册子 p20;官网售票页没有这一节) */
+    venueRules?: TicketVenueRules;
     /** 折扣三档及适用条件(无障碍/高龄/退伍 · BCC 付费会员 · 轮椅位) */
     discounts?: TicketDiscount[];
     /** 取消与退款 */
