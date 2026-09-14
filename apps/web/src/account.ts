@@ -70,13 +70,18 @@ export async function initAccount(
   }
   const url = new URL(location.href);
   const connected = url.searchParams.has("account");
-  const failed = url.searchParams.has("account_error");
-  if (connected || failed) {
+  const error = url.searchParams.get("account_error");
+  if (connected || error !== null) {
     url.searchParams.delete("account");
     url.searchParams.delete("account_error");
     if (replaceUrl) replaceUrl(url);
     else history.replaceState(null, "", url);
-    if (failed) toast("登录未完成，本机排片没有改动。请重试。");
+    if (error !== null)
+      toast(
+        error === "no_refresh_token"
+          ? "登录未完成：授权服务这次没有返回刷新令牌，会话无法续期。请重试。"
+          : "登录未完成，本机排片没有改动。请重试。",
+      );
     setTimeout(openAccountPanel, 0);
   }
 }
