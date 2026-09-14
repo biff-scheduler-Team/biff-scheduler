@@ -127,6 +127,9 @@
 
 ## 7. 并行协作(多会话 / 多 agent 同工作区)
 
+- **开工前先同步远端**(用户 2026-09-14 约定):先 `git fetch` 看远端是否领先,领先就 `git pull --rebase origin main`,
+  冲突在**动手写代码之前**解决完;开发中途远端又有新提交,提交前再拉一次。
+  理由:实测过「写完 + 跑完测试,推送时才发现远端被 PR 领先」—— 冲突发现得越晚,rebase 后整轮门禁都得重跑。
 - 提交前 `git log -1` 比对 HEAD + 连续 **90 秒**无新写入再动手。
 - **只提交自己的 hunk**;配方见 SKILL `parallel-agent-safe-commit`。
 - 有他人在途改动时走**隔离 worktree**;**绝不** `git stash` / `checkout` 对方文件。
