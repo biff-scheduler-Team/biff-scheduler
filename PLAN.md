@@ -27,6 +27,9 @@
 ## 0. 当前状态快照(2026-09-14)
 
 **✅ 已完成(已部署,线上可访问)**
+- **Umami 分析接入(2026-09-14,`PLAN-20260914160700`)**:`anaritikusu.citrons.cc` script + website-id；
+  React Router / Vite 按[官方 SPA 指南](https://docs.umami.is/docs/guides/track-single-page-apps)只在 `index.html`（含 legacy）挂一次，靠 History API 自动 pageview，**不**在 `useLocation` 里手写 `umami.track()`；`data-domains` 限 `biff.lcandy.co,biff.iff.day`。
+
 - **对齐 BIFF 官网口径:修 4 处错 + 补票务信息(2026-09-14,`PLAN-20260914143817`)**:逐条对官网
   (Newsletter Vol.6–10 / 票务页 11402 / 节目页 11223·11226 / 开闭幕式页 11233 / 排期页 / Selection List)
   核对后修掉 4 处会误导用户的口径 —— ① `festival-extras` 混入 **2025 遗留的 Carte Blanche**(code 338/408
