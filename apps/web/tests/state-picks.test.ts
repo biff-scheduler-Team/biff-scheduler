@@ -10,6 +10,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  addPickFilm,
   allCodes,
   loadPicks,
   rankOf,
@@ -138,5 +139,47 @@ describe("removePick:要真删有显式出口", () => {
     expect(store.picks.has("film:a")).toBe(false);
     expect(persisted()).toEqual([]);
     expect(slotOf("001")).toBeUndefined();
+  });
+});
+
+// 「只有一场的影片 加入我的选片 = 直接落进行程」(2026-09-16,PLAN-20260916004024)。
+// 为什么单测它:这是**流程口径**而不是视图细节 —— 判错的两种后果都很难在肉眼上发现:
+// ① 单场片仍建空记录 → 用户还得再跳去「我的选片」点一次(需求要消除的正是这一步);
+// ② 多场片被误判成单场 → 悄悄替用户排了一场他没挑过的场次。
+describe("addPickFilm:唯一场次直接落进行程", () => {
+  it("给定唯一场次 → 记录里带上该场,返回 true", () => {
+    seed([]);
+    expect(addPickFilm("film:a", "003")).toBe(true);
+    expect(store.picks.get("film:a")).toEqual({
+      key: "film:a",
+      picks: [{ code: "003" }],
+      note: "",
+    });
+    // 派生索引同步:该场立刻算「已排」,「我的行程」能看见它
+    expect(slotOf("003")).toEqual({ key: "film:a" });
+    expect(allCodes()).toEqual(["003"]);
+  });
+
+  it("多场片(不给唯一场次)→ 只收影片:记录为空,返回 false", () => {
+    seed([]);
+    expect(addPickFilm("film:a")).toBe(false);
+    expect(store.picks.get("film:a")).toEqual({ key: "film:a", picks: [], note: "" });
+    expect(allCodes()).toEqual([]);
+  });
+
+  it("已在清单 → 原样返回:不覆盖已有场次 / 备注(幂等)", () => {
+    seed([{ key: "film:a", picks: [{ code: "001" }], note: "等嘉宾" }]);
+    expect(addPickFilm("film:a", "003")).toBe(false);
+    expect(store.picks.get("film:a")).toEqual({
+      key: "film:a",
+      picks: [{ code: "001" }],
+      note: "等嘉宾",
+    });
+  });
+
+  it("走与其它变更同一出口:localStorage 里能读到该场次", () => {
+    seed([]);
+    addPickFilm("film:a", "003");
+    expect(persisted()).toEqual([{ key: "film:a", picks: [{ code: "003" }], note: "" }]);
   });
 });
