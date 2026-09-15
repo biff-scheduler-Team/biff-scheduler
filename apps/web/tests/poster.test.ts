@@ -87,8 +87,9 @@ describe("buildPosterModel:单场文案口径", () => {
     const on = buildPosterModel(cat, [row("001")], NO_MAP, () => true)!;
     const off = buildPosterModel(cat, [row("002")], NO_MAP, () => false)!;
     const plain = buildPosterModel(cat, [row("003")], NO_MAP, () => true)!;
-    expect(on.days[0].rows[0].gv).toBe("GV 含映后谈");
-    expect(off.days[0].rows[0].gv).toBe("GV 仅正片");
+    // 文案与分享文案同源(`share.ts::gvMark`):2026-09-15 起缩掉「GV」前缀,chip 更短
+    expect(on.days[0].rows[0].gv).toBe("含映后谈");
+    expect(off.days[0].rows[0].gv).toBe("仅正片");
     expect(plain.days[0].rows[0].gv).toBe("");
     // 谈段时长(默认 25min)计入结束时间
     expect(on.days[0].rows[0].time).toBe("10:00–12:05");

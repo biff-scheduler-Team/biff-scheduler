@@ -136,7 +136,8 @@ test("saved snapshots retain catalog validity, date range, and inspectable codes
   await expect(dialog).toContainText("18:00–19:45");
   await expect(dialog).toContainText("The Table: Day and Night · 彼此的日夜");
   await expect(dialog).toContainText("BCC Roof · 001");
-  await expect(dialog).toContainText("GV 含映后谈");
+  // GV 文案与分享文案同源(`share.ts::gvMark`):2026-09-15 起缩掉「GV」前缀
+  await expect(dialog).toContainText("含映后谈");
   await expect(dialog).toContainText("08:40–11:20");
   await expect(dialog).toContainText("You, Like a Star · 宛如星辰的你");
   await expect(dialog).toContainText("BCC Cinema 1 · 008");

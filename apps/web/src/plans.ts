@@ -124,6 +124,22 @@ export interface PlanSet {
  *  3 组 × 3 场 = 27、4 组 × 3 场 = 81 都远在限内;真到 5 组 × 4 场 = 1024 才会截断。 */
 export const MAX_OPTIONS = 240;
 
+/** 冲突组 → 「code → 同组其余场次(按顺位升序,不含自身)」。
+ *
+ *  分享文案的「↳ 备选」行用它(见 `share.ts::ShareRanking`)。
+ *  ⚠ 为什么从**当前行程**的组里取而不是方案快照:快照每组只留第 1 顺位,备选在保存时就被丢掉了
+ *  ⇒ 拿快照印顺位恒等于「顺位 1」,朋友无法按顺位分工(`PLAN-20260915234414`)。
+ *  ⚠ 组内次序沿用 `buildPlanSet` 排好的次序(显式顺位 → 兜底键),这里不重排。 */
+export function groupMatesOf(groups: string[][]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const group of groups) {
+    for (const code of group) {
+      out.set(code, group.filter((c) => c !== code));
+    }
+  }
+  return out;
+}
+
 /** 稳定 pair 键(无向去重,与 `conflict.ts::computeConflicts` 的 pairs 口径一致) */
 function pairKey(a: string, b: string): string {
   return a < b ? `${a}|${b}` : `${b}|${a}`;

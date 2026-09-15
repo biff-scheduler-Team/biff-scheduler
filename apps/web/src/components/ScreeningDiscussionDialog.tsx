@@ -6,12 +6,14 @@ import {
   type DiscussionCategory,
 } from "@biff/contracts/screening";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { openAccountPanel } from "../account";
 import { ApiFailure, accountState, onAccountChange } from "../account-sync";
 import { effEndMin, talkOnOf } from "../gv";
 import {
   createDiscussion,
   fetchDiscussion,
+  formatDiscussionTime,
   removeDiscussion,
   toggleDiscussionReaction,
   type DiscussionPost,
@@ -25,7 +27,6 @@ import {
   ButtonGroup,
   Content,
   Dialog,
-  DialogTrigger,
   Heading,
   TextArea,
   ToastQueue,
@@ -53,37 +54,24 @@ function markPrivacySeen(): void {
   }
 }
 
-function formatTime(ms: number) {
-  try {
-    return new Date(ms).toLocaleString("zh-CN", { hour12: false });
-  } catch {
-    return String(ms);
-  }
-}
-
-/** 场次卡操作行里的「讨论 N」入口(0 条时只写「讨论」)。 */
+/** 场次卡操作行里的「讨论 N」入口(0 条时只写「讨论」)。
+ *
+ *  2026-09-15(`PLAN-20260915233816`):这里**不再就地弹层**,而是跳到讨论区并定位到该场次
+ *  —— 讨论的集合已统一到 `/discussions`,发帖 / 反应 / 删除都从那边的格子上进。
+ *  ⚠ 定位参数用 `focus=<场次 code>`(不是 post id):卡片上只有「讨论 N」这个场次级信息。 */
 export function DiscussionEntry({ screening }: { screening: Screening }) {
   const counts = useScreeningCounts();
-  const [open, setOpen] = useState(false);
-  const [session, setSession] = useState(0);
+  const navigate = useNavigate();
   const total = counts.discussions[screening.code] ?? 0;
   return (
-    <DialogTrigger
-      isOpen={open}
-      onOpenChange={(next) => {
-        // 每次打开都重挂载弹层:清空草稿 / 重新拉第一页(与 GvDurationButton 同一手法)
-        if (next) setSession((n) => n + 1);
-        setOpen(next);
-      }}
+    <ActionButton
+      aria-label={`在讨论区查看场次 ${screening.code} 的讨论`}
+      onPress={() =>
+        navigate(`/discussions?focus=${encodeURIComponent(screening.code)}`)
+      }
     >
-      <ActionButton aria-label={`场次 ${screening.code} 讨论`}>
-        {total > 0 ? `讨论 ${total}` : "讨论"}
-      </ActionButton>
-      {/* ⚠ 必须**只在打开时挂载**:`DialogTrigger` 会无条件渲染 children,而弹层挂载即拉讨论列表 ——
-          实测踩过:行程页每张卡都发一次 `fetchDiscussion`,整页 N 个请求 + N 条失败 toast。
-          `isOpen` 受控 + 条件渲染,既保住「每次打开都重新拉」,又不产生任何后台请求。 */}
-      {open && <ScreeningDiscussionDialog key={session} screening={screening} />}
-    </DialogTrigger>
+      {total > 0 ? `讨论 ${total}` : "讨论"}
+    </ActionButton>
   );
 }
 
@@ -321,7 +309,7 @@ export function ScreeningDiscussionDialog({ screening }: { screening: Screening 
                             </span>
                           </span>
                           <time dateTime={new Date(post.createdAt).toISOString()}>
-                            {formatTime(post.createdAt)}
+                            {formatDiscussionTime(post.createdAt)}
                           </time>
                         </header>
                         <p className="discussion-body">{post.body}</p>

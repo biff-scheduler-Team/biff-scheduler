@@ -70,7 +70,7 @@ function Shell() {
   const dark = theme === "dark" || (theme === "system" && systemDark);
   const viewingRoute = /^\/(picks|agenda)(\/|$)/.test(location.pathname);
   const panelOpen = viewingRoute && new URLSearchParams(location.search).get("quick") === "1";
-  const fullPage = /^\/(library|feedback)(?:\/|$)/.test(location.pathname) || (viewingRoute && !panelOpen);
+  const fullPage = /^\/(library|feedback|discussions|rush)(?:\/|$)/.test(location.pathname) || (viewingRoute && !panelOpen);
   const pageParams = new URLSearchParams(location.search);
   pageParams.delete("quick");
   const pageSearch = pageParams.size ? `?${pageParams}` : "";
@@ -119,7 +119,11 @@ function Shell() {
     ["/library", "影片库"],
     ["/picks", "我的选片"],
     ["/agenda", "我的行程"],
+    // 「抢票」刻意排在「我的行程」之后、「建议」之前(2026-09-15 用户指定):
+    // 它读的是行程里的场次,按开票批次重新分组 —— 是行程的「开票期」视图,不是另一份数据。
+    ["/rush", "抢票"],
     ["/feedback", "建议"],
+    ["/discussions", "讨论区"],
   ];
   return (
     <Provider

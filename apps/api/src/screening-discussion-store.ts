@@ -26,18 +26,25 @@ export function parseDiscussionCursor(raw: string | undefined) {
   return parseCursor(raw);
 }
 
-/** 某场次的一页帖子(时间倒序),含 reactionCounts 与当前用户的 myReactions。 */
-export async function listScreeningPosts(
+/** 一页帖子(时间倒序),含 reactionCounts 与当前用户的 myReactions。
+ *
+ *  ⚠ `code` 为 null = **全站讨论区**;非 null = 单个场次的讨论弹层。
+ *  两者**共用这一份实现**:游标口径(`${created_at}_${id}` 兜底同毫秒)与反应聚合只允许一处,
+ *  拆成两份必然漂移。
+ */
+async function listPosts(
   db: Db,
   opts: {
     edition: string;
-    code: string;
+    code: string | null;
     limit: number;
     cursor: { createdAt: number; id: string } | null;
     mySubject: string | null;
   },
 ) {
-  const scope = and(eq(screeningPost.edition, opts.edition), eq(screeningPost.code, opts.code));
+  const scope = opts.code
+    ? and(eq(screeningPost.edition, opts.edition), eq(screeningPost.code, opts.code))
+    : eq(screeningPost.edition, opts.edition);
   const rows = opts.cursor
     ? await db
         .select()
@@ -100,6 +107,33 @@ export async function listScreeningPosts(
     }),
     nextCursor: next ? cursorOf(next.created_at, next.id) : null,
   };
+}
+
+/** 某场次的一页帖子(时间倒序)——场次讨论弹层用。 */
+export function listScreeningPosts(
+  db: Db,
+  opts: {
+    edition: string;
+    code: string;
+    limit: number;
+    cursor: { createdAt: number; id: string } | null;
+    mySubject: string | null;
+  },
+) {
+  return listPosts(db, opts);
+}
+
+/** 全站讨论区的一页帖子(时间倒序,不按场次收窄)——2026-09-15,PLAN-20260915233816。 */
+export function listDiscussionPosts(
+  db: Db,
+  opts: {
+    edition: string;
+    limit: number;
+    cursor: { createdAt: number; id: string } | null;
+    mySubject: string | null;
+  },
+) {
+  return listPosts(db, { ...opts, code: null });
 }
 
 export async function createScreeningPost(

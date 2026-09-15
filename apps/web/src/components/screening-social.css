@@ -180,6 +180,79 @@
   color: var(--muted);
 }
 
+/* ---------- 讨论区:全部讨论帖的方格墙(2026-09-15,PLAN-20260915233816) ---------- */
+/* ⚠ 只复用既有 token,不引入新视觉语言;「方格」= CSS auto-fill 等宽格(按行阅读),
+   不做 JS 测高的真瀑布流 —— 那会让键盘 tab 顺序与读屏顺序跟视觉不一致。 */
+.discussions-page { display: grid; gap: 14px; }
+.discussions-intro { margin: 0; }
+
+.discussion-locate-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--brand);
+  border-radius: 8px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 13px;
+}
+
+.discussion-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.discussion-grid-more { display: flex; justify-content: center; }
+
+.discussion-tile {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+/* 定位态:与行程页 `.gantt-slot.located` 同一套「品牌色描边 + 柔光」语言 */
+.discussion-tile.located {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px var(--brand-soft);
+}
+.discussion-tile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.discussion-tile-body {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  /* 格子只做预览:正文截断,全文在「进入讨论」的弹层里(与小红书「卡片 → 详情」同一手法) */
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.discussion-tile-meta { display: grid; gap: 2px; color: var(--muted); font-size: 12px; }
+.discussion-tile-meta strong { color: var(--text); font-size: 13px; }
+.discussion-tile-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.discussion-tile-reactions { display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 12px; }
+
 /* ---------- 转票补入弹层 ---------- */
 .transfer-dialog { display: grid; gap: 10px; max-height: 60vh; overflow: auto; }
 .transfer-hint { margin: 0; color: var(--muted); font-size: 12px; }

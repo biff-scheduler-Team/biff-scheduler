@@ -92,7 +92,7 @@ test("票务三态 / 同场人数 / 仅看实际行程 / 转票补入", async ({
   await expect(targetCard.locator(".ticket-transfer")).toHaveText("转票");
 });
 
-test("场次讨论:未登录可读、发帖被门闸挡住、社区提醒只留一条且只出现一次", async ({ page }) => {
+test("讨论区:集合成方格墙、行程里的讨论跳过去定位;发帖门闸与社区提醒只留一条", async ({ page }) => {
   await guest(page);
   await mockCounts(page, { attendance: { "001": 1 }, discussions: { "001": 1 } });
 
@@ -110,6 +110,9 @@ test("场次讨论:未登录可读、发帖被门闸挡住、社区提醒只留�
       myReactions: [],
     },
   ];
+  await page.route("**/api/discussions**", (route) =>
+    route.fulfill({ json: { posts, nextCursor: null } }),
+  );
   await page.route("**/api/screenings/*/discussion**", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({ json: { posts, nextCursor: null } });
@@ -120,11 +123,36 @@ test("场次讨论:未登录可读、发帖被门闸挡住、社区提醒只留�
   await seed(page, { "biff.picks.v2": picks });
 
   await ready(page, "/agenda");
+
+  // 导航里新增「讨论区」模块,且排在「我的行程」「建议」之后
+  const nav = page.getByRole("navigation", { name: "主要导航" });
+  const labels = (await nav.locator("a.nav-item").allTextContents()).map((text) => text.trim());
+  expect(labels).toEqual(["排片表", "影片库", "我的选片", "我的行程", "抢票", "建议", "讨论区"]);
+
   const entry = page.locator('.screening-card[data-screening="001"] .card-actions button', {
     hasText: "讨论",
   });
   await expect(entry).toHaveText(/讨论 1/);
   await entry.click();
+
+  // 不再就地弹层:跳到讨论区并**定位**到这场(高亮 + 定位条)
+  await expect(page).toHaveURL(/\/discussions\?focus=001$/);
+  await expect(page.getByRole("heading", { name: "讨论区", exact: true })).toBeVisible();
+  const grid = page.locator(".discussion-grid");
+  await expect(grid.locator(".discussion-tile")).toHaveCount(1);
+  const tile = grid.locator('.discussion-tile[data-discussion-code="001"]');
+  await expect(tile).toHaveClass(/located/);
+  await expect(tile.locator(".discussion-tile-body")).toContainText("多带了一张 10/8 的票");
+  await expect(tile.locator(".discussion-tile-reactions")).toContainText("👍 2");
+  await expect(page.locator(".discussion-locate-bar")).toContainText("共 1 帖");
+
+  // 清除定位:高亮消失,URL 回到 /discussions
+  await page.getByRole("button", { name: "清除定位", exact: true }).click();
+  await expect(page).toHaveURL(/\/discussions$/);
+  await expect(grid.locator(".discussion-tile.located")).toHaveCount(0);
+
+  // 从格子上进该场次的讨论弹层(发帖 / 反应 / 删除仍在这里)
+  await tile.locator(".discussion-tile-foot button").click();
 
   const dialog = page.getByRole("dialog", { name: "001 场次讨论", exact: true });
   await expect(dialog).toBeVisible();
