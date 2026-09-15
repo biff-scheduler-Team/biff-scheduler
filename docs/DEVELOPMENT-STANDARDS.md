@@ -13,7 +13,14 @@
 
 ## 0. 一句话总纲
 
-**先 PLAN、后实现、写测试、再推送。** 本项目**没有 CI 兜底** —— `git push origin main` 即触发 Cloudflare Workers Builds 上线,所以**测试必须在开发阶段跑完**;`push` 本身是纯发布动作,推的时候直接推。
+**先 PLAN、后实现、写测试、再推送。测试跑在云端,不在本地。**
+`git push origin main` 触发**两条自动化管线**:① **Cloudflare Workers Builds** 跑 `npm run build`
+(typecheck → lint → 单测 → 各 workspace 构建),**失败即不上线**;② **GitHub CI**(`.github/workflows/ci.yml`)
+跑门禁与 E2E。所以本地**不必**跑门禁 —— 写完 → 提交 → push 即可,`push` 是纯发布动作。
+
+⚠ **代价写在明处**:E2E 只有 CI 跑,而 CI 是**事后**的 —— 它红了**不会回滚已经上线的版本**。
+typecheck / lint / 单测仍是**部署前**门禁(Cloudflare 构建不过就不部署);E2E 回归则可能先上线再被发现。
+详见 §2。
 
 ---
 
@@ -23,7 +30,7 @@
 |---|---|---|
 | 1 | **写 PLAN** | `docs/plans/PLAN-<YYYYMMDDHHMMSS>.md` |
 | 2 | **实现** | 代码 + 单测 / E2E |
-| 3 | **验证** | 跑测试:单测 + 受影响 spec 的 E2E(见 §2) |
+| 3 | **验证(可选)** | 默认交给云端(Cloudflare 构建 + GitHub CI,见 §2);本地想提前看结果才自己跑 |
 | 4 | **提交推送** | Conventional Commits → **直接** `git push origin main`(不重跑) |
 | 5 | **回写文档** | 文档头「最后更新」一行(**不再追加 `PLAN.md` §0 条目**)、本文件 / `CONVENTIONS.md`(口径) |
 
@@ -45,38 +52,43 @@
 
 ---
 
-## 2. 验证与推送
+## 2. 验证:跑在云端(本地不跑门禁)
 
-> **原则**:测试是**开发阶段**的事,跑一次就够;`git push` 是纯发布动作,**推的时候直接推**,不在推送时重跑。
->
-> **红线**:没跑过测试的改动**禁止** push。push 即上线(没有 CI 兜底),本机是唯一防线。
+> **原则**:测试由**两条云端管线**负责 —— 本地写完直接 push,不必先跑一遍。
+> ⚠ **代价写在明处**:E2E 只有 CI 跑,而 CI 是**事后**的 —— 它红了**不会回滚已经上线的版本**。
 
-| 时机 | 做什么 | 命令 |
+| 管线 | 触发 | 跑什么 | 性质 | 失败后果 |
+|---|---|---|---|---|
+| **Cloudflare Workers Builds** | push `main` 后 | `npm run build` = typecheck → lint → 单测 → 各 workspace 构建 | **部署前门禁** | **不上线**(部署卡住;已推送的提交不回滚) |
+| **GitHub CI**(`.github/workflows/ci.yml`) | PR / push `main` / 手动 | PR:`verify:quick` + 受影响 spec(chromium);`main`:**全量三浏览器 E2E** | **PR 门禁 + 事后体检** | **不回滚** —— 版本可能已经上线,只能靠下一条提交修 |
+
+**本地什么时候才需要跑**:
+
+| 场景 | 建议 | 命令 |
 |---|---|---|
-| 改完 / 开发中 | 跑与改动相关的测试 | 单测 `npm test`;改了 UI → `npm run verify:ui -- <spec> --project=desktop-chromium` |
-| 收尾(该需求最后一次) | 跑一次完整门禁 | `npm run verify`(1–3 min) |
-| 大范围 / 发布前 | 全量三浏览器体检 | `npm run verify:full`(5–9 min) |
-| **push** | **直接推,不重跑** | `git push origin main` |
+| 日常改完 | **什么都不用跑**,直接提交 push | — |
+| 想 push 前先知道结果 | 跑一次快速门禁 | `npm run verify:quick`(1–2 min) |
+| 改的是 UI、且自己没底 | 单 spec 桌面端 | `npm run verify:ui -- e2e/react/<spec>.spec.ts --project=desktop-chromium` |
+| 排查 CI 上的 E2E 失败 | **先单文件 + 单浏览器**,别拿全量重跑做二分 | `npx playwright test -c playwright.react.config.ts e2e/react/<spec>.spec.ts --project=desktop-chromium` |
 
-### 2.1 关于 `vite build`(为什么不必每次改动都跑)
+⚠ 这个分工能成立的前提只有两条:① typecheck / lint / 单测仍在**部署前**挡住「代码坏了」;
+② **CI 红了要优先修**,别继续叠改动(§8 红线 1)。
 
-`npm run verify` 里的 `vite build` **只用于验证「能打包」** —— 本地产物不会被部署:
-Cloudflare 会在云端重新构建一遍(见 §6 部署),`dist/` 也在 `.gitignore` 里,本地那份是纯副产品。
+### 2.1 为什么本地不必重跑(避免「同一批测试跑三遍」)
 
-所以它**不是每次改动的必跑项**:
+Cloudflare 在部署前跑的 `npm run build`,就是 typecheck → lint → 单测 → 构建 —— 与本地 `verify:quick`
+**同一批命令**。本地再跑一遍,只是把云端几秒钟后就会给出的结论提前几分钟拿到,
+并不改变「坏代码上不了线」这个事实。
 
-- 日常改完 → 跑 `npm test`(单测)+ 受影响的 E2E spec 就够了;
-- `vite build` 放到**收尾 / 推送前**跑一次,作用是**提前发现打包错误** —— 否则要等云端构建失败才知道,
-  而那时线上已经处于异常状态。
+`vite build` 同理:本地产物**不会被部署**(Cloudflare 云端重新构建,`dist/` 也在 `.gitignore` 里),
+它只是「能打包」的自检,所以从来不是必跑项。
 
-反过来,`typecheck` / `lint` / 单测**每次改动都要过**,它们才是挡 bug 的主力。
-
-### 2.2 `verify:ui` —— 一次 build 两用,别拆成两条命令
+### 2.2 要跑的时候怎么跑(`verify:ui` 一次 build 两用)
 
 E2E 的 `webServer` 跑的是 `vite preview`,吃的是 `dist/`,**所以 E2E 之前必须先 build**;
 而 `npm run verify` 里已经 build 过一次 —— 先 `verify` 再 `test:e2e:react` 等于 build 两次(每次约 30–60s)。
 
-改了 UI 的收尾只跑一条:
+改了 UI 只想在本地验一遍,就只跑这一条:
 
 ```
 npm run verify:ui -- e2e/react/parity-library.spec.ts --project=desktop-chromium
@@ -84,27 +96,29 @@ npm run verify:ui -- e2e/react/parity-library.spec.ts --project=desktop-chromium
 
 = typecheck + lint + 单测 + `build -w @biff/web` + 指定 spec / 浏览器(参数透传给 playwright)。
 它已经覆盖门禁,**不要**再补一次 `npm run verify`(除非本轮动到了 `apps/api`,需要验证 worker 打包)。
-小范围 bugfix 不要上 `verify:full`(5–9 min 三浏览器):只跑受影响 spec + 单浏览器,规范本来就只要求这些。
+`verify:full`(5–9 min 三浏览器)只在**确认修复后**跑一次,不要拿它做二分。
 
-- `verify:quick` = typecheck + lint + 单测,**不含 build**,是日常改完最快的完整门禁。
+- `verify:quick` = typecheck + lint + 单测,**不含 build**,是最快的完整门禁。
 - `build -w @biff/web` 只 build web,跳过 `postbuild`(`scripts/prepare-cloudflare.mjs`)——
   它本地只写 `.wrangler/deploy/config.json`、不碰 `dist/`,E2E 不需要它。
 
-**「推的时候直接推」成立的前提:测试通过 → push 之间代码必须冻结。**
-跑完测试后又改了任何文件,那次测试即失效,必须重跑 —— 否则等于没测。
+**若选择本地跑:测试通过 → push 之间代码必须冻结。** 跑完又改了任何文件,那次结果即失效、等于没测。
 
-补充纪律:
+### 2.3 与「谁跑」无关的纪律(仍然生效)
 
 - **「受影响 spec」有表可查**:`docs/TEST-MAP.md`(机读唯一来源 `scripts/test-map.json`,
-  `node scripts/affected-specs.mjs --check` 会断言两者同步,已串进 `verify:quick`)。
-  `npm run specs:affected` 按当前 diff 输出必跑 spec;`--files <path>` 可指定。
-- **单测是验证的一部分**,不是可选项;新增/修改纯函数口径 → 必须同步改对应 `*.test.ts`。
-- 测试失败时**先定位再改**,禁止「重跑一次看运气」。
+  `node scripts/affected-specs.mjs --check` 断言两者同步,已串进 CI 的 gate)。
+  `npm run specs:affected` 按当前 diff 输出必跑 spec。⚠ 无参数时它按 `origin/main...HEAD`(已提交差异)算,
+  **尚未提交的改动要用 `--files <path>`**,否则会误报「无改动」。
+- **单测是与实现同批交付的产物**,不是可选项;新增 / 修改纯函数口径 → 必须在同一条提交里改对应 `*.test.ts`。
 - **排查 E2E 失败只跑单文件 + 单浏览器**;全量三浏览器只在确认修复后跑**一次**,不要拿全量重跑做二分。
 - E2E 跑完若 `31029` 端口仍被占用,说明 `webServer` 未优雅退出 —— 属配置问题,修配置,不要把 `kill -9` 当常规手段。
-- 改了离线管线(`tools/*.py`)→ 跑一遍脚本自检,输出须与基线数字一致或显式说明差异。
-- 改了数据产物(`apps/web/public/*.json`)→ 跑 `npm run verify`,产物必须能被 `data.ts` 正常加载。
-- 验证结果必须**贴出证据**(测试计数 / 断言汇总),不要只说「应该没问题」。
+- 改了离线管线(`tools/*.py`)→ **本地**跑一遍脚本自检,输出须与基线数字一致或显式说明差异
+  (这类脚本不在 Cloudflare 构建与 CI 的覆盖里,是本文件里少数仍然必须本地验的东西)。
+- 改了数据产物(`apps/web/public/*.json`)→ 产物必须能被 `data.ts` 正常加载(本地跑 `npm run verify`,
+  或等 CI —— 它同样覆盖)。
+- 报告结果必须**贴证据**(CI 运行链接 / 测试计数 / 断言汇总),不要只说「应该没问题」——
+  本地跑了就贴本地计数,没跑就贴 CI 结果,不要写成「应该能过」。
 
 ---
 
@@ -124,7 +138,7 @@ npm run verify:ui -- e2e/react/parity-library.spec.ts --project=desktop-chromium
 - 单测**不得有 DOM 副作用依赖**:纯逻辑模块在 import 期不许碰 `document`(需要 DOM 的渲染/剪贴板/下载逻辑单独拆文件,例:`poster.ts` vs `poster-panel.ts`)。
 - E2E 断言优先用 **DOM 计数 / class token / 文案精确匹配(`:text-is()`)/ `getBoundingClientRect()`**,不要靠截图看图。
 - 写交互验收前先读 SKILL `web-ui-headless-interaction-qa`(里面有 12 条实测坑:过渡中间值、弹层栈深、条件渲染误判等)。
-- 验证结果必须**贴出证据**(断言汇总 JSON / 测试计数),不要只说「应该没问题」。
+- 报告结果必须**贴证据**(断言汇总 JSON / CI 运行链接 / 测试计数),不要只说「应该没问题」。
 
 ---
 
@@ -156,15 +170,16 @@ npm run verify:ui -- e2e/react/parity-library.spec.ts --project=desktop-chromium
 | 钩子 | 做什么 | 成本 |
 |---|---|---|
 | `commit-msg` | 校验 `<type>(<scope>): <描述>`;放行 Merge / Revert / `fixup!` / `squash!` / `amend!` 系列 | 即时 |
-| `pre-push` | 跑 `npm run verify:quick`(check:repo · check:test-map · typecheck · lint · 单测) | ~40s |
 
 由 `scripts/install-git-hooks.mjs` 安装,挂在 `package.json` 的 `prepare` 上 —— `npm install` 后自动生效;
 手动重装 `npm run hooks:install`。该脚本**任何情况下都不让构建失败**(Cloudflare 的 `npm ci` 也会跑它,
-那里没有 `.git` 就静默跳过)。
+那里没有 `.git` 就静默跳过);它还会**清理已下线的托管钩子**(源目录里删掉的名字会从 `.git/hooks` 一并移除,
+只碰它自己装过的那几个,不动别人的钩子)。
 
-**为什么 `pre-push` 只跑 `verify:quick`**:它要 ~40s,挂 `pre-commit` 会让人为改一行注释等 40 秒,
-最后必然被 `--no-verify` 绕开;挂 `pre-push` 则正好卡在红线 1 的位置。
-§2 反对的是「在 push 时重跑**完整**门禁」,不是「在 push 时发现红线 1」—— build / E2E 仍然只在开发阶段跑。
+**为什么没有 `pre-push`**(2026-09-16 删,`PLAN-20260916003228`):它原本跑 `verify:quick` 当本地门禁,
+但那一批检查 `npm run build` 在 Cloudflare 上**部署前**已经跑过一遍(§2),本地再跑不改变任何结果,
+只是让每次 push 多等 40 秒。本地门禁取消后:坏代码由 Cloudflare 构建挡、E2E 由 CI 报,职责全在云端;
+本地只留**即时**的提交格式校验。
 
 **为什么自写而不用 husky + commitlint**:本仓库的格式是自定义的(type 白名单 + 小写 scope + 中文描述),
 自写 ~40 行零依赖即可,不值得为它引两个依赖 + 一层 `prepare` 生命周期(见 §5.3「未量化不引依赖」)。
@@ -342,7 +357,8 @@ checkpoint 起作用了,粒度问题依然在。**两者要一起用。**
 
 ## 8. 禁止清单(红线)
 
-1. 没跑过测试就 push;或测试通过后又改了代码,不重跑就 push。
+1. **云端红了(Cloudflare 构建 / CI)还继续叠改动** —— 先修再往下做。本地不跑门禁是允许的(§2),
+   但云端报了红当没看见不行。
 2. 无 PLAN 直接动手(除纯错别字 / 单行修复)。
 3. 修 bug 不带回归测试。
 4. 为了测试变绿而改实现(掩盖真实行为)。
@@ -471,3 +487,4 @@ checkpoint 起作用了,粒度问题依然在。**两者要一起用。**
 | v6 | 2026-09-13 | 把规范变成闸门(PLAN-20260913201727):§2 补「受影响 spec 有表可查」与 CI 兜底;§3.1 单测分层补 `apps/api/tests`;§4.3 新增 git hooks(commit-msg + pre-push);§4.4 会话草稿落点工具中立 + `check:repo`;§5.3 依赖升级走 Dependabot;§5.7 新增 `legacy/` 只读回退件(原「离线管线」顺延为 §5.8) |
 | v7 | 2026-09-14 | 补两条来自提交复盘的做法(`PLAN-20260914101945`):**§4.5 PR 流程**(大规模重构 / `apps/api` 与 D1 迁移 / 依赖升级三类走 PR,换 Review 记录 + Verified 签名 + 合并前 CI)、**§4.6 checkpoint 提交**(大重构前留全绿落点,且不能替代原子提交);§6 补「PR 分支不部署」;§9.3 大重构档位补 checkpoint 启动动作 |
 | v8 | 2026-09-14 | §7 补「开工前先同步远端」(用户约定):先 `git fetch`,远端领先就 `git pull --rebase origin main`,冲突在**动手写代码之前**解决完;避免「写完 + 跑完测试、推送时才发现远端领先」导致 rebase 后整轮门禁重跑 |
+| v9 | 2026-09-16 | **测试职责全部移到云端**(`PLAN-20260916003228`):删掉 `pre-push` 本地门禁(§4.3 钩子表同步);§0 / §1 / §2 改写为「本地不跑门禁 —— Cloudflare 构建挡部署、GitHub CI 跑 E2E」,并写明**E2E 是事后的、不会回滚已上线版本**这一代价;§2 新增「为什么本地不必重跑」与「要跑的时候怎么跑」;§8 红线 1 由「没跑过测试就 push」改为「云端红了还继续叠改动」 |

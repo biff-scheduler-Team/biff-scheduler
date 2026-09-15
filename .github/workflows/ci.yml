@@ -8,8 +8,11 @@
 #   PR              → check:repo + check:test-map + typecheck + lint + 单测 + **受影响 spec**(chromium,快)
 #   push main / 手动 → 全量三浏览器体检(chromium + webkit,5–9 min)
 #
-# ⚠ 与 §2「推的时候直接推」的关系:CI 不改变本地门禁的职责划分 —— 测试仍然在开发阶段跑完。
-#   CI 只负责「人漏了」这种情况在合并前被挡住。Cloudflare 那边照旧只管部署。
+# ⚠ 与 §2 的关系(2026-09-16 订正,PLAN-20260916003228):测试职责**已经全部移到云端** ——
+#   本地不再跑门禁(§2 / §4.3 已删掉 `pre-push`)。分工是:
+#     · Cloudflare Workers Builds = **部署前门禁**(`npm run build`:typecheck / lint / 单测,失败不上线);
+#     · 本文件 = **PR 门禁 + 事后体检** —— ⚠ `main` 上的 E2E 红了**不会回滚已经上线的版本**,
+#       所以它报红之后要**优先修**,别继续叠改动(§8 红线 1)。
 
 name: CI
 

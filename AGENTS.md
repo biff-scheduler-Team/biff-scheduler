@@ -8,10 +8,12 @@
 
 ## 0. 总纲
 
-**先 PLAN → 后实现 → 写测试 → 再推送。**
-`git push origin main` 直接触发 Cloudflare Workers Builds,云端跑的构建命令就是 `npm run build`
-(= typecheck → lint → 单测 → 各 workspace 构建),**失败即不上线**;但云端失败**不会回滚已推送的提交**,
-只会把部署卡在那里 —— 所以**测试仍然必须在开发阶段跑完**,`push` 保持纯发布动作,推的时候直接推。
+**先 PLAN → 后实现 → 写测试 → 再推送。测试跑在云端,不在本地。**
+`git push origin main` 触发**两条自动化管线**:① **Cloudflare Workers Builds** 跑 `npm run build`
+(= typecheck → lint → 单测 → 各 workspace 构建),**失败即不上线**;② **GitHub CI** 跑门禁与 E2E。
+所以本地**不必**跑门禁 —— 写完 → 提交 → push 即可,`push` 是纯发布动作。
+⚠ **代价**:E2E 只有 CI 跑,而 CI 是**事后**的 —— 红了**不会回滚已上线的版本**;
+typecheck / lint / 单测仍是**部署前**门禁。详见 §2。
 
 ## 1. 五步工作流(不可跳步)
 
@@ -19,45 +21,37 @@
    (模板见 §9.3)。需求变了改 PLAN 文件,不要只在对话里改。**只读本需求的 PLAN,不整读 `PLAN.md` 活文档。**
    需求**怎么提**、AI **必须交什么**见 §9。
 2. **实现**:代码 + 同步单测 / E2E。
-3. **验证**:跑测试(单测 + 受影响 spec 的 E2E),见 §2。
+3. **验证(可选)**:默认交给云端(Cloudflare 构建 + GitHub CI),见 §2;本地想提前看结果才自己跑。
 4. **提交推送**:Conventional Commits → **直接推**,见 §4。
 5. **回写文档**:**新需求只写 `docs/plans/PLAN-<时间戳>.md`;`PLAN.md` 只在文档头更新一行「最后更新」,
    不再追加 §0 条目**(§0 = 已完成快照,**只减不增**);口径变更同步 `docs/CONVENTIONS.md`。
 
-## 2. 验证与推送(红线:没跑过测试禁止 push)
+## 2. 验证:跑在云端(本地不跑门禁)
 
-> **原则**:测试是**开发阶段**的事,跑一次就够;`git push` 是纯发布动作,**推的时候直接推**,不在推送时重跑。
+> **原则**:测试由**两条云端管线**负责 —— 本地写完直接 push,不必先跑一遍。
+> ⚠ 代价写明:E2E 只有 CI 跑,而 CI 是**事后**的,红了**不回滚已上线版本**(完整版见 `docs/DEVELOPMENT-STANDARDS.md` §2)。
+
+| 管线 | 跑什么 | 性质 |
+|---|---|---|
+| **Cloudflare Workers Builds**(push `main` 后) | `npm run build` = typecheck → lint → 单测 → 各 workspace 构建 | **部署前门禁**,失败不上线 |
+| **GitHub CI**(`.github/workflows/ci.yml`) | PR:`verify:quick` + 受影响 spec(chromium);`main`:全量三浏览器 E2E | **PR 门禁 + 事后体检**,不回滚 |
 
 | 时机 | 做什么 | 命令 |
 |---|---|---|
-| 改完 / 开发中 | 跑与改动相关的测试 | 单测 `npm test`;改了 UI → `npm run verify:ui -- <spec> --project=desktop-chromium` |
-| 收尾(该需求最后一次) | 跑一次完整门禁 | `npm run verify`(= typecheck → lint → 单测 → vite build,1–3 min) |
-| 大范围 / 发布前 | 全量三浏览器体检 | `npm run verify:full`(5–9 min) |
-| **push** | **直接推,不重跑** | `git push origin main` |
+| 日常改完 | **什么都不用跑**,直接提交 push | — |
+| 想 push 前先知道结果 | 跑一次快速门禁 | `npm run verify:quick` |
+| 改了 UI 且自己没底 | 单 spec 桌面端 | `npm run verify:ui -- e2e/react/<spec>.spec.ts --project=desktop-chromium` |
+| 排查 CI 上的 E2E 失败 | **先单文件 + 单浏览器**,不要拿全量重跑做二分 | `npx playwright test -c playwright.react.config.ts e2e/react/<spec>.spec.ts --project=desktop-chromium` |
 
-**关于 `vite build`**:它只用于验证「能打包」——本地产物不会被部署(Cloudflare 云端会重新构建,`dist/` 也在 gitignore 里)。
-所以**不是每次改动的必跑项**:日常跑 `npm test` + 受影响 spec 即可,build 放到收尾 / 推送前跑一次,用来提前发现打包错误。
-`typecheck` / `lint` / 单测才是每次必过。
-
-**`verify:ui` = 一次 build 两用,不要拆成两条命令**:E2E 的 `webServer` 跑 `vite preview`,吃的是 `dist/`,
-所以 E2E 之前必须 build;而 `npm run verify` 里已经 build 过一次 —— 先 `verify` 再 `test:e2e:react` 就是 build 两次。
-改了 UI 直接跑 `npm run verify:ui -- <spec> --project=<project>`(参数透传给 playwright),
-它 = typecheck + lint + 单测 + build web + 指定 spec,已经覆盖门禁;**不要**再补一次 `verify`
-(除非本轮还动到了 `apps/api`,需要验证 worker 打包)。小范围 bugfix 不要上 `verify:full`(5–9 min 三浏览器)。
-
-**「推的时候直接推」成立的前提:测试通过 → push 之间代码必须冻结。**
-跑完测试后又改了任何文件,那次测试即失效,必须重跑 —— 否则等于没测。
-
-- 测试失败先定位再改,禁止「重跑一次看运气」;验证结果必须**贴出证据**(测试计数 / 断言汇总)。
+- `verify` / `verify:ui` / `verify:full` 仍是**按需可用**的工具(没有删),只是不再「必跑」。
+- **要跑就只跑一条**:`verify:ui` = typecheck + lint + 单测 + `build -w @biff/web` + 指定 spec,
+  不要再补 `npm run verify`(除非本轮动到了 `apps/api`,需要验证 worker 打包);
+  `verify:full`(5–9 min 三浏览器)只在**确认修复后**跑一次。
+- `check:repo` / `check:test-map` 仍在 `verify:quick` 里,CI 的 gate 也跑它们 —— 本地不跑就会被 CI 挡。
 - **「受影响 spec」有表可查**:`docs/TEST-MAP.md`(机读源 `scripts/test-map.json`)。
-  `npm run specs:affected` 按当前 diff 输出必跑 spec —— 不要再凭印象挑。
-- **CI 兜底**:`.github/workflows/ci.yml`。PR 跑 `verify:quick` + 受影响 spec(单浏览器);
-  `main` push 跑全量三浏览器。CI 不改变本地门禁的职责划分(测试仍在开发阶段跑完),
-  它只负责挡住「人漏了」这一种情况。
-- **排查 E2E 失败只跑单文件 + 单浏览器**;全量三浏览器只在确认修复后跑**一次**,不要拿全量重跑做二分。
-- E2E 跑完若 `31029` 端口仍被占用,说明 `webServer` 未优雅退出 —— 修配置,不要把 `kill -9` 当常规手段。
-- 改了 `tools/*.py` → 跑一遍脚本自检,输出须与基线一致或显式说明差异。
-- 改了 `apps/web/public/*.json` → 跑 `npm run verify`,产物必须能正常加载。
+  ⚠ `npm run specs:affected` 无参数时按 `origin/main...HEAD`(已提交差异)算,未提交的改动要用 `--files <path>`。
+- **CI / Cloudflare 红了先修再叠改动**(§8 红线 1);报告结果要**贴证据**(CI 链接 / 测试计数),别说「应该没问题」。
+- 若选择本地跑,则「测试通过 → push 之间代码必须冻结」—— 跑完又改了任何文件,那次结果即失效。
 
 ## 3. 测试要求
 
@@ -76,8 +70,9 @@
   不得指定 `.codebuddy/` / `.workbuddy/` 这类单个 IDE 的目录,同事可能用别的助手。
   根目录是**白名单制**,由 `npm run check:repo`(`scripts/check-repo.mjs`,已串进 `verify:quick` / `verify`)机械拦截。
 - **钩子(机械约束)**:`npm install` 会自动装(`prepare` → `scripts/install-git-hooks.mjs`,手动重装 `npm run hooks:install`)。
-  `commit-msg` 校验本节格式;`pre-push` 跑 `verify:quick`(**不含 build / E2E** —— §2 反对的是在 push 时重跑完整门禁)。
-  它挡的正是红线 1;绕过它只能用 `--no-verify`,而那是本节禁止项之一。
+  只留 `commit-msg`(校验本节格式,即时);**`pre-push` 已于 2026-09-16 删除** —— 它原来跑的 `verify:quick`
+  在 Cloudflare 构建里**部署前**已经跑过一遍(§2),本地再跑只是让每次 push 多等 40 秒。
+  安装脚本会连带**清理已下线的托管钩子**(只碰它自己装过的名字)。
 - **大改动走 PR**(完整版见 `DEVELOPMENT-STANDARDS.md` §4.5):默认仍直接 push main;**大规模重构 /
   涉及 `apps/api` 或 D1 迁移 / 依赖升级**三类走 PR —— 换 Review 记录 + Verified 签名 + 「CI 在合并前跑」。
   `prepare-cloudflare.mjs` 只在 `WORKERS_CI_BRANCH=main` 时迁移 + 部署,PR 分支天然不碰生产;
@@ -137,7 +132,7 @@
 
 ## 8. 红线(违反即返工)
 
-1. 没跑过测试就 push;或测试通过后又改了代码,不重跑就 push。2. 无 PLAN 直接动手。3. 修 bug 不带回归测试。4. 为测试变绿改实现。
+1. **云端红了(Cloudflare 构建 / CI)还继续叠改动** —— 先修再往下做。2. 无 PLAN 直接动手。3. 修 bug 不带回归测试。4. 为测试变绿改实现。
 5. 同一口径写第二份实现。6. 改 `biff.*` 结构不带迁移 / 不删旧 key。7. 未经登录就上传片单,或把片单写入共享 / 非本人云端位置。8. 对小时取模。
 9. 动态拼 Tailwind 类名 / `text-[Npx]`。10. 未量化就引新依赖。11. 提交临时文件 / `dist/` / 密钥。
 12. `wrangler pages deploy` 直传。13. `push --force` 到 `main`。14. 为「看效果」反复起 dev server。
