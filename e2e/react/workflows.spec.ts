@@ -70,6 +70,46 @@ test("a single-screening film goes straight into the agenda", async ({ page }) =
   ).toBeVisible();
 });
 
+// 「只有一场」的影片：选定 = 排定（2026-09-16，PLAN-20260916004024）。
+// ① 旧版本只建了空记录 → 载入时补进行程（备注不动）；
+// ② 取消这一场必须先提示「会连同选片一起移除」—— 不提示的话用户会以为点一下整部片就没了；
+// ③ 确认后连选片记录一起删，且重载**不会**被补回来（这就是不写「补过标记」也没关系的原因）。
+test("a single-screening pick is filled on load, and unpicking it asks first", async ({ page }) => {
+  await seed(page, {
+    "biff.picks.v2": JSON.stringify([
+      { key: "cat:f002", picks: [], note: "等朋友" },
+    ]),
+  });
+  await ready(page, "/picks?expand=cat%3Af002");
+  const picks = page.getByRole("region", { name: "我的选片", exact: true });
+  const film = picks.locator('[data-film-key="cat:f002"]');
+  // ① 载入即补齐：唯一场次 003 落进行程
+  expect(JSON.parse((await storage(page))["biff.picks.v2"])).toEqual([
+    { key: "cat:f002", picks: [{ code: "003" }], note: "等朋友" },
+  ]);
+  await expect(
+    film.getByRole("button", { name: "移出场次 003", exact: true }),
+  ).toBeVisible();
+  // ② 先取消 → 什么都不发生
+  page.once("dialog", async (dialog) => {
+    expect(dialog.type()).toBe("confirm");
+    expect(dialog.message()).toContain("只有这一场");
+    await dialog.dismiss();
+  });
+  await film.getByRole("button", { name: "移出场次 003", exact: true }).click();
+  expect(JSON.parse((await storage(page))["biff.picks.v2"])).toEqual([
+    { key: "cat:f002", picks: [{ code: "003" }], note: "等朋友" },
+  ]);
+  // ③ 确认 → 连选片记录一起移除，重载也不复活
+  page.once("dialog", async (dialog) => {
+    await dialog.accept();
+  });
+  await film.getByRole("button", { name: "移出场次 003", exact: true }).click();
+  expect(JSON.parse((await storage(page))["biff.picks.v2"])).toEqual([]);
+  await page.reload();
+  expect(JSON.parse((await storage(page))["biff.picks.v2"])).toEqual([]);
+});
+
 test("detail URLs, browser back and direct reload preserve library context", async ({
   page,
 }) => {

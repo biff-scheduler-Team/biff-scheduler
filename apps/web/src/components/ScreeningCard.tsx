@@ -33,11 +33,11 @@ import {
   setGvTalkMin,
   slotOf,
   store,
-  toggleScreening,
 } from "../state";
 import { RATING_DEFS, SUBS_DEFS, mapsUrl, subsKeys, venuePlace, venueShort, venueTip } from "../legend";
 import { BADGE_DEFS, screeningBadgeKeys, codeTip } from "../badges";
 import { SameScreeningCount, ScreeningTicketControl } from "./ScreeningTickets";
+import { useScreeningPicker } from "./screening-actions";
 import { DiscussionEntry } from "./ScreeningDiscussionDialog";
 import type { Screening } from "../types";
 
@@ -214,6 +214,8 @@ export function ScreeningCard({
   social?: boolean;
 }) {
   const { cat, conflicts } = useCatalog();
+  // 点选 / 取消走共享出口:取消「只有一场」的影片要先提示会连选片一起移除(2026-09-16)
+  const pickScreening = useScreeningPicker();
   const highlight = useHighlight();
   const { locateScreening } = useScheduleNavigation();
   const openFilm = useFilmNavigation();
@@ -260,7 +262,7 @@ export function ScreeningCard({
           )
         )
           return;
-        toggleScreening(filmNodeKey(cat, s), s.code);
+        pickScreening(s);
       }}
       data-highlighted={highlight.codes.has(s.code) || undefined}
       onMouseEnter={() => highlight.setCode(s.code)}
@@ -361,7 +363,7 @@ export function ScreeningCard({
           {pickable && (
             <ActionButton
               aria-label={`${picked ? "移出" : "加入"}场次 ${s.code}`}
-              onPress={() => toggleScreening(filmNodeKey(cat, s), s.code)}
+              onPress={() => pickScreening(s)}
             >
               {picked ? "移出行程" : "加入行程"}
             </ActionButton>

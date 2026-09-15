@@ -77,6 +77,30 @@ export function buildFilms(
   );
 }
 
+/** 片节点 key → **唯一**场次（只有排期里**恰好一场**的片才有条目；多场 / 无排期不入表）。
+ *
+ *  ★ 语义：**只有一场的影片「选了 = 排了」**（2026-09-16，`PLAN-20260916004024`）——
+ *    它没有「挑场次」这一步，所以三处都按这一个判据行事：
+ *      ① 载入时把空选片记录补上那一场（`state.ts::fillSoleShowPicks`）；
+ *      ② 影片库入口直接落进行程（`LibraryPage`）；
+ *      ③ 取消这一场 = 连选片记录一起移除，**先给用户提示**（`screening-actions.ts`）。
+ *  ⚠ 三处必须同一判据：这里按 `filmNodeKey` 分组算一次，与 `buildFilms()` 的 `shows` 同口径。
+ *  ⚠ 分组遍历是 O(场次)；调用方（启动链 / 需要时）各算一次即可，别放进逐卡片渲染。 */
+export function soleShowIndex(cat: Catalog): Map<string, Screening> {
+  const groups = new Map<string, Screening[]>();
+  for (const s of cat.schedule.screenings) {
+    const key = filmNodeKey(cat, s);
+    const list = groups.get(key);
+    if (list) list.push(s);
+    else groups.set(key, [s]);
+  }
+  const sole = new Map<string, Screening>();
+  for (const [key, list] of groups) {
+    if (list.length === 1) sole.set(key, list[0]);
+  }
+  return sole;
+}
+
 export function searchFilm(node: FilmNode, query: string): boolean {
   const keyword = query.trim().toLowerCase();
   if (!keyword) return true;

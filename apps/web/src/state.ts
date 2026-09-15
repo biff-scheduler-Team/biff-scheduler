@@ -493,6 +493,49 @@ export async function loadMappings(): Promise<void> {
 
 /* ---------- 变更入口(本地即时) ---------- */
 
+/* ---------- 「只有一场」的影片(2026-09-16,`PLAN-20260916004024`) ----------
+ * 判据由启动链注入(`store.tsx::hydrateStorage` → `model.ts::soleShowIndex`)——
+ * 排期数据在 UI 层,而**补齐 / 移除的口径必须在 state 层唯一实现**:
+ * 否则网格点选、选片卡、行程卡各判一次「这算不算单场片」,迟早漂移。
+ * ⚠ 未注入时(纯逻辑单测 / 未启动)一律返回 null = 旧行为 —— **绝不误伤多场片**。 */
+let soleShowCodeOf: (key: string) => string | null = () => null;
+
+export function registerSoleShows(fn: (key: string) => string | null): void {
+  soleShowCodeOf = fn;
+}
+
+/** 该片唯一场次 code;**多场 / 无排期 → null**(即「不是只有一场的影片」)。 */
+export function soleShowCode(key: string): string | null {
+  return soleShowCodeOf(key);
+}
+
+/** 载入时补齐:**只有一场**的影片若在选片清单里却没有场次 → 把那一场排进行程。
+ *
+ *  为什么:① 影片库入口在旧版本只建空记录;② 用户只在别处加了选片。
+ *  而单场影片没有第二种选择,「已选未排场」这个中间态对它没有意义。
+ *
+ *  ⚠ **不写「补过」标记**:取消口径已对齐 —— 移出单场影片的那一场会**连选片记录一起删**
+ *    (`toggleScreening`),所以补回来的记录不会被用户当成「删不掉」(这正是 2026-09-16 的方案)。
+ *  ⚠ 只碰 `picks` 为空的记录:已排过场次的一律不动(含用户主动留下的「未排场」)。
+ *
+ *  @returns 补了几条(0 = 无事发生) */
+export function fillSoleShowPicks(): number {
+  const targets: Array<[string, string]> = [];
+  for (const e of store.picks.values()) {
+    if (e.picks.length) continue;
+    const code = soleShowCodeOf(e.key);
+    if (code) targets.push([e.key, code]);
+  }
+  if (!targets.length) return 0;
+  mutate(() => {
+    for (const [key, code] of targets) {
+      const e = store.picks.get(key);
+      if (e) store.picks.set(key, { ...e, picks: [{ code }] });
+    }
+  });
+  return targets.length;
+}
+
 /** 「＋ 加入我的选片」:把**影片**挂进选片清单(2026-09-11 流程改版)。
  *
  *  为什么需要它:流程是「影片库 = 选片 → 我的选片 = 挑场次」两步 ——
@@ -514,12 +557,18 @@ export function addPickFilm(key: string, soleShowCode?: string): boolean {
 
 /** 网格 / 影片库场次行点选某场:已在 → 移出;不在 → 加入行程。
  *
- *  ⚠ **移出只动 picks,记录一律保留**(2026-09-13,`PLAN-20260913180837`)——
+ *  ⚠ **多场片移出只动 picks,记录一律保留**(2026-09-13,`PLAN-20260913180837`)——
  *    哪怕这是该片最后一场、且没备注:`picks` 为空就是合法的「已选未排场」态
  *    (与 `addPickFilm()` 建出的空记录同构),「我的选片」照常列出它。
  *    原先这里在「最后一场 + 无备注」时整条删记录 —— 结果是用户只点错一下,
  *    **整部片就从选片里消失**,且与 `types.ts` / 帮助文案 / 卡片 tooltip 三处承诺相左。
- *    要连选片一起移除,走显式的「移除影片」(`removePick()`)。 */
+ *    要连选片一起移除,走显式的「移除影片」(`removePick()`)。
+ *
+ *  ★ **例外:只有一场的影片**(2026-09-16,`PLAN-20260916004024`)——
+ *    移出它那一场 = **连选片记录一起删**,因为留下空记录会在下次载入被
+ *    `fillSoleShowPicks()` 自动补回来,用户看到的是「怎么删都删不掉」。
+ *    ⚠ 这条例外**必须先告诉用户**(调用方走 `screening-actions.ts` 的提示),
+ *      否则用户会以为「点一下把整部片弄没了」;多场片一律不受影响。 */
 export function toggleScreening(key: string, code: string): void {
   const cur = store.picks.get(key);
   if (!cur) {
@@ -527,20 +576,32 @@ export function toggleScreening(key: string, code: string): void {
     return;
   }
   const has = cur.picks.some((p) => p.code === code);
-  const picks = has ? cur.picks.filter((p) => p.code !== code) : [...cur.picks, { code }];
-  commit(key, { ...cur, picks });
+  if (!has) {
+    commit(key, { ...cur, picks: [...cur.picks, { code }] });
+    return;
+  }
+  if (soleShowCodeOf(key) === code) {
+    commit(key);
+    return;
+  }
+  commit(key, { ...cur, picks: cur.picks.filter((p) => p.code !== code) });
 }
 
 /** 行程行 ✕:只移除该场,记录保留(该片仍留在「我的选片」里,标注「未排场」)。
  *
  *  ⚠ 与 `toggleScreening()` **同口径**(2026-09-13,`PLAN-20260913180837`):
- *    最后一场移除后记录**不删**、备注**不动** —— 选片意向不丢。
+ *    多场片最后一场移除后记录**不删**、备注**不动** —— 选片意向不丢;
+ *    **只有一场的影片**例外,连记录一起删(2026-09-16,见 `toggleScreening` 注释)。
  *  (该函数 React 侧已无调用点,保留它是为了 state 公开 API 与 legacy 侧一致;口径必须同步。) */
 export function removeScreening(code: string): void {
   const hit = store.slotIndex.get(code);
   if (!hit) return;
   const cur = store.picks.get(hit.key);
   if (!cur) return;
+  if (soleShowCodeOf(hit.key) === code) {
+    commit(hit.key);
+    return;
+  }
   commit(hit.key, { ...cur, picks: cur.picks.filter((p) => p.code !== code) });
 }
 
@@ -555,12 +616,16 @@ export function removePick(key: string): void {
  *  ⚠ 与「移除某一场」(`toggleScreening` / `removeScreening`)口径**不同**,这是有意的
  *    (2026-09-13,`PLAN-20260913180837`):单场移除是日常点选,不得弄丢选片意向;
  *    这里是危险区里的一次性清空,设置弹层已**明示**「有备注的影片会保留,其他空记录会删除」。
- *    改这里之前先改那句文案,别只改代码。 */
+ *    改这里之前先改那句文案,别只改代码。
+ *
+ *  ★ **只有一场的影片**整条删(2026-09-16,`PLAN-20260916004024`):它的场次清掉后没有第二种选择,
+ *    留下的记录会被载入时的 `fillSoleShowPicks()` 自动排回来 —— 那就等于「清不掉」。
+ *    设置弹层文案已同步说明这一点。 */
 export function clearScreeningSlots(): void {
   mutate(() => {
     for (const e of [...store.picks.values()]) {
       if (!e.picks.length) continue;
-      if (isOrphan({ ...e, picks: [] })) store.picks.delete(e.key);
+      if (soleShowCodeOf(e.key) || isOrphan({ ...e, picks: [] })) store.picks.delete(e.key);
       else store.picks.set(e.key, { ...e, picks: [] });
     }
   });

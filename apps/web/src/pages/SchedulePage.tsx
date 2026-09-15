@@ -28,8 +28,8 @@ import {
   setSettings,
   slotOf,
   store,
-  toggleScreening,
 } from "../state";
+import { useScreeningPicker } from "../components/screening-actions";
 import {
   dateInfo,
   doubanScoreOf,
@@ -59,12 +59,8 @@ function ScheduleArtwork({ still, poster }: { still?: string; poster?: string })
   return <img src={source} alt="" loading="lazy" data-official-still={!failed && Boolean(still)} onError={() => setFailed(true)} />;
 }
 
-function useScreeningToggle() {
-  const { cat } = useCatalog();
-  return (s: Screening) => {
-    toggleScreening(filmNodeKey(cat, s), s.code);
-  };
-}
+// 网格点选 / 取消走共享出口(`components/screening-actions.ts`):
+// 取消「只有一场」的影片要先提示「会连选片一起移除」,提示只有一处实现(2026-09-16)。
 
 const locateAnimations = new WeakMap<HTMLElement, Animation>();
 function flashScreenings(root: HTMLElement, codes: string[]) {
@@ -147,7 +143,7 @@ function Gantt({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const highlight = useHighlight();
   const { params, update } = useQuery();
-  const toggle = useScreeningToggle();
+  const toggle = useScreeningPicker();
   const scroll = useRef<HTMLDivElement>(null);
   const zoom = scheduleZoom(store.settings.zoom);
   const [viewportWidth, setViewportWidth] = useState(0);

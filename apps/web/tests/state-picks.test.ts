@@ -12,8 +12,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   addPickFilm,
   allCodes,
+  clearScreeningSlots,
+  fillSoleShowPicks,
   loadPicks,
   rankOf,
+  registerSoleShows,
   removePick,
   removeScreening,
   slotOf,
@@ -60,6 +63,9 @@ beforeEach(() => {
   store.picks.clear();
   rankOf.clear();
   mem.clear();
+  // 「只有一场」的判据是**注入**的(真机由 `store.tsx::hydrateStorage` 注入)——
+  // 默认置空 = 未启动的旧行为,免得影响下面这些多场片口径的用例。
+  registerSoleShows(() => null);
 });
 
 describe("toggleScreening:移出最后一场不删记录", () => {
@@ -181,5 +187,77 @@ describe("addPickFilm:唯一场次直接落进行程", () => {
     seed([]);
     addPickFilm("film:a", "003");
     expect(persisted()).toEqual([{ key: "film:a", picks: [{ code: "003" }], note: "" }]);
+  });
+});
+
+// 「只有一场」的影片:选定 = 排定(2026-09-16,`PLAN-20260916004024`)。
+// 判据由启动链注入,这里手工注入一份,验证 state 侧的几条口径 ——
+// 判错的后果都是「用户看得见但说不出哪里不对」:空记录不补 → 单场片还得多点一次;
+// 补错对象(多场片)→ 悄悄替用户排了一场他没挑过的场次;
+// 取消时不连记录删 → 下次载入又补回来,看起来像「怎么删都删不掉」。
+describe("单场影片:选定 = 排定", () => {
+  const sole = new Map([["film:sole", "003"]]);
+
+  beforeEach(() => {
+    registerSoleShows((key) => sole.get(key) ?? null);
+  });
+
+  it("载入补齐:空记录挂上唯一场次,备注保留", () => {
+    seed([{ key: "film:sole", picks: [], note: "等朋友" }]);
+    expect(fillSoleShowPicks()).toBe(1);
+    expect(store.picks.get("film:sole")).toEqual({
+      key: "film:sole",
+      picks: [{ code: "003" }],
+      note: "等朋友",
+    });
+    expect(slotOf("003")).toEqual({ key: "film:sole" });
+    expect(persisted()).toEqual([
+      { key: "film:sole", picks: [{ code: "003" }], note: "等朋友" },
+    ]);
+  });
+
+  it("已排过场次的不动;多场片的空记录一律不补", () => {
+    seed([
+      { key: "film:sole", picks: [{ code: "003" }], note: "" },
+      { key: "film:many", picks: [], note: "只选电影" },
+    ]);
+    expect(fillSoleShowPicks()).toBe(0);
+    expect(store.picks.get("film:many")).toEqual({
+      key: "film:many",
+      picks: [],
+      note: "只选电影",
+    });
+  });
+
+  it("取消唯一场次 → 连选片记录一起删(否则下次载入会被补回来)", () => {
+    seed([{ key: "film:sole", picks: [{ code: "003" }], note: "" }]);
+    toggleScreening("film:sole", "003");
+    expect(store.picks.has("film:sole")).toBe(false);
+    expect(persisted()).toEqual([]);
+    expect(fillSoleShowPicks()).toBe(0);
+  });
+
+  it("多场片取消一场 → 记录 / 备注保留(2026-09-13 口径不变)", () => {
+    seed([{ key: "film:many", picks: [{ code: "001" }], note: "想看" }]);
+    toggleScreening("film:many", "001");
+    expect(store.picks.get("film:many")).toEqual({
+      key: "film:many",
+      picks: [],
+      note: "想看",
+    });
+  });
+
+  it("清空已排场次:单场片整条删,多场片降级为「未排场」", () => {
+    seed([
+      { key: "film:sole", picks: [{ code: "003" }], note: "" },
+      { key: "film:many", picks: [{ code: "001" }], note: "想看" },
+    ]);
+    clearScreeningSlots();
+    expect(store.picks.has("film:sole")).toBe(false);
+    expect(store.picks.get("film:many")).toEqual({
+      key: "film:many",
+      picks: [],
+      note: "想看",
+    });
   });
 });

@@ -46,7 +46,10 @@ export const legacyData: Record<string, string> = {
       picks: [{ code, group: "A" }],
       note: code === "008" ? "等嘉宾" : "",
     })),
-    { key: "cat:f002", picks: [], note: "只选电影，未排场" },
+    // 单场片（蓦然回首 f002，排期里只有 10-07 的 003 一场）：新版载入时会自动补进行程
+    // （2026-09-16，PLAN-20260916004024），所以基线直接写「已排唯一场次」的样子 ——
+    // 写成空记录的话，`storage(page) toEqual legacyData` 一类的字节级断言会被补齐打破。
+    { key: "cat:f002", picks: [{ code: "003" }], note: "单场片，加入即排场" },
   ]),
   "biff.settings.v1": JSON.stringify({
     alarmMin: 60,
