@@ -40,6 +40,11 @@ function FilmCard({
   const location = useLocation();
   const navigate = useNavigate();
   const entry = store.picks.get(film.key);
+  // 只有一场的影片没有「挑场次」这一步:点一下就**直接落进行程**(2026-09-16,`PLAN-20260916004024`)。
+  // ⚠ 判据用**全量** `film.shows`,不用传进来的 `shows`(那是筛选后的视图态)——
+  //    「只有一场」是数据事实,不该随筛选器变化。文案也随之为「加入行程」。
+  const soleShow = film.shows.length === 1 ? film.shows[0] : null;
+  const addLabel = soleShow ? "加入行程" : "加入我的选片";
   const score = doubanScoreOf(film.cats[0], film.map);
   // 豆瓣映射:优先这个片节点的映射(排期片 = 场次 code,目录片 = `f###`),
   // 再退回目录条目 id —— 与改版前影片卡操作行里那条外链的取值链逐字一致。
@@ -119,13 +124,16 @@ function FilmCard({
           <Button
             variant="primary"
             onPress={() => {
-              addPickFilm(film.key);
+              if (addPickFilm(film.key, soleShow?.code)) {
+                ToastQueue.positive(`《${film.zh}》只有一场，已直接加入行程。`);
+                return;
+              }
               setFilmExpanded("picks", film.key, true);
               ToastQueue.positive("已加入我的选片，可以在那里挑选场次。");
             }}
-            aria-label={`加入我的选片 ${film.zh}`}
+            aria-label={`${addLabel} ${film.zh}`}
           >
-            加入我的选片
+            {addLabel}
           </Button>
         ) : !pickedView && film.shows.length > 0 && entry ? (
           <ActionButton
@@ -137,7 +145,8 @@ function FilmCard({
               navigate(`/picks?${p}`);
             }}
           >
-            已在选片，去排场次
+            {/* 单场片加入即已排好场次 —— 再写「去排场次」会让人以为还差一步(2026-09-16) */}
+            {soleShow && entry.picks.length > 0 ? "已在行程，去查看" : "已在选片，去排场次"}
           </ActionButton>
         ) : pickedView ? (
           <ActionButton

@@ -493,14 +493,23 @@ export async function loadMappings(): Promise<void> {
 
 /* ---------- 变更入口(本地即时) ---------- */
 
-/** 「＋ 加入我的选片」:只把**影片**挂进选片清单,**不落任何场次**(2026-09-11 流程改版)。
+/** 「＋ 加入我的选片」:把**影片**挂进选片清单(2026-09-11 流程改版)。
  *
  *  为什么需要它:流程是「影片库 = 选片 → 我的选片 = 挑场次」两步 ——
  *  「把这部片收进清单」与「排下这一场」是两个动作,前者需要一个只建记录的落点。
- *  幂等:已在清单里则原样返回(记录里的场次 / 备注都不动)。 */
-export function addPickFilm(key: string): void {
-  if (store.picks.has(key)) return;
-  commit(key, { key, picks: [], note: "" });
+ *
+ *  ★ **只有一场的影片直接落进行程**(2026-09-16,`PLAN-20260916004024`)——
+ *    没有第二种选择时,「挑场次」这一步就是纯白增的使用成本,故 `soleShowCode` 给定时
+ *    顺手把该场排进行程(与 `toggleScreening()` 同一条 `commit()` 出口:落盘 / 重建索引 / 广播)。
+ *
+ *  幂等:已在清单里则原样返回(记录里的场次 / 备注都不动)。
+ *
+ *  @param soleShowCode 该片唯一场次 code;多场片传 `undefined`(只收影片,场次去「我的选片」挑)
+ *  @returns 是否把唯一场次直接排进了行程(调用方据此决定 toast 文案) */
+export function addPickFilm(key: string, soleShowCode?: string): boolean {
+  if (store.picks.has(key)) return false;
+  commit(key, { key, picks: soleShowCode ? [{ code: soleShowCode }] : [], note: "" });
+  return Boolean(soleShowCode);
 }
 
 /** 网格 / 影片库场次行点选某场:已在 → 移出;不在 → 加入行程。

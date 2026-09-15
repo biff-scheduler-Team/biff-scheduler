@@ -42,6 +42,34 @@ test("search, select a film, add a screening, edit notes, refresh and remove", a
   ]);
 });
 
+// 只有一场的影片:「加入我的选片」直接落进行程(2026-09-16,PLAN-20260916004024)。
+// 回归点 = **少掉的那一步** —— 改前这里会写出 `picks: []` 的空记录,用户还得再跳去
+// 「我的选片」点一次「加入行程」;改后存储里应立刻带上那唯一一场,且按钮不再引导去排场次。
+test("a single-screening film goes straight into the agenda", async ({ page }) => {
+  await ready(page, "/library");
+  await page.getByRole("searchbox", { name: "搜索影片" }).fill("蓦然回首");
+  const film = page.locator('[data-film-key="cat:f002"]');
+  await expect(film).toBeVisible();
+  await film
+    .getByRole("button", { name: "加入行程 蓦然回首", exact: true })
+    .click();
+  expect(JSON.parse((await storage(page))["biff.picks.v2"])).toEqual([
+    { key: "cat:f002", picks: [{ code: "003" }], note: "" },
+  ]);
+  await expect(
+    film.getByRole("button", { name: "已在行程，去查看", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "主要导航" })
+    .getByRole("link", { name: "我的行程", exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole("region", { name: "我的行程", exact: true })
+      .locator('[data-screening="003"]'),
+  ).toBeVisible();
+});
+
 test("detail URLs, browser back and direct reload preserve library context", async ({
   page,
 }) => {
