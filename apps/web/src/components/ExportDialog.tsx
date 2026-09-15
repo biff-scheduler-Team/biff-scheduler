@@ -5,11 +5,12 @@ import { buildPosterModel, type PosterModel } from "../poster";
 import { dateInfo } from "../util";
 import type { Catalog } from "../types";
 import type { SavedPlan } from "../state";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActionButton,
   Button,
   ButtonGroup,
+  Checkbox,
   Content,
   Dialog,
   Heading,
@@ -32,6 +33,9 @@ import {
 import { talkOnOf } from "../gv";
 import { todayIsoLocal } from "../util";
 import { copyText } from "../clipboard";
+import { groupMatesOf } from "../plans";
+import { batchHeading, programOf } from "../extras";
+import { ticketBatchOf } from "../batch";
 
 export function planOutline(cat: Catalog, plan: SavedPlan): string {
   const shows = plan.codes
@@ -182,9 +186,13 @@ function ImportData() {
   );
 }
 export function ExportDialog() {
-  const { cat } = useCatalog();
+  const { cat, plans } = useCatalog();
   const [planId, setPlanId] = useState(savedPlans.at(-1)?.id ?? "");
   const [preview, setPreview] = useState(false);
+  // 「带上顺位」/「带上开票批次」:分享文案的两个可选扩展(见 share.ts 的 ShareOptions)。
+  // 默认关 —— 关掉时输出就是「CODE 前置 + 两行一场」的基线版式,与旧版逐字一致(除 CODE 位置)。
+  const [withRank, setWithRank] = useState(false);
+  const [withBatch, setWithBatch] = useState(false);
   const generation = useRef(0);
   const [image, setImage] = useState<{
     id: number;
@@ -208,7 +216,19 @@ export function ExportDialog() {
       code,
       note: store.picks.get(slotOf(code)?.key ?? "")?.note ?? "",
     }));
-  const share = buildShareText(cat, rows, store.mappings, talkOnOf);
+  // 备选来自**当前行程**的冲突组(方案快照每组只留第 1 顺位,拿它印顺位恒为「顺位 1」)
+  const groupMates = useMemo(() => groupMatesOf(plans.groups), [plans.groups]);
+  const share = buildShareText(cat, rows, store.mappings, talkOnOf, {
+    ranking: withRank
+      ? { rankOf: plans.rankOf, matesOf: (code) => groupMates.get(code) ?? [] }
+      : undefined,
+    batching: withBatch
+      ? {
+          batchOf: (s) => ticketBatchOf(s, { kindOf: (code) => programOf(code)?.kind }),
+          headOf: (batch) => batchHeading(cat.schedule.festival.year, batch),
+        }
+      : undefined,
+  });
   const buildImage = () => {
     const model = buildPosterModel(cat, rows, store.mappings, talkOnOf);
     if (!model || !plan) return;
@@ -245,6 +265,17 @@ export function ExportDialog() {
                   <p className="muted">
                     {rows.length} 场有效排期。日历时间会自动转换到手机所在时区。
                   </p>
+                  <Checkbox isSelected={withRank} onChange={setWithRank}>
+                    带上顺位（含备选场次）
+                  </Checkbox>
+                  {withRank && !plans.groups.length && (
+                    <p className="muted">
+                      当前行程没有时间重叠的场次，顺位不会有内容。
+                    </p>
+                  )}
+                  <Checkbox isSelected={withBatch} onChange={setWithBatch}>
+                    带上开票批次（第 1 批 / 第 2 批分节）
+                  </Checkbox>
                   <div className="inline-actions">
                     <Button
                       isDisabled={!rows.length}

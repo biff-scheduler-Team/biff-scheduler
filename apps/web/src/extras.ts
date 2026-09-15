@@ -101,6 +101,18 @@ export function ticketOpens(year: number): TicketOpen[] {
   return out.sort((a, b) => a.at - b.at);
 }
 
+/** 批次节头文案 —— 「第 1 批 · 9/17 14:00 KST / 北京 13:00」。
+ *  分享文案的批次分节(`share.ts`)与「抢票」页横幅共用同一份,别在两处各拼一次。
+ *  extras 缺文件 / 该批次解析不出来(旧部署 / 首次离线)→ 退化成「第 N 批」,**绝不编造时间**。 */
+export function batchHeading(year: number, batch: number): string {
+  const open = ticketOpens(year)[batch - 1];
+  if (!open) return `第 ${batch} 批`;
+  // 北京时刻与韩国时刻**同日**时省掉重复日期(`9/17 14:00 KST / 北京 13:00`);
+  // 跨日(开票点在深夜)才把日期带上 —— 一行标题里印两遍 9/17 是噪声。
+  const day = open.kst.split(" ")[0];
+  return `第 ${batch} 批 · ${open.kst} KST / 北京 ${open.bj.replace(`${day} `, "")}`;
+}
+
 /** 下一个尚未到达的开票时刻;全部已过 → null(横幅切「售票中」态) */
 export function nextTicketOpen(year: number, nowMs: number): TicketOpen | null {
   return ticketOpens(year).find((t) => t.at > nowMs) ?? null;

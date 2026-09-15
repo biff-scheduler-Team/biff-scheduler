@@ -23,6 +23,7 @@ import { normalizeDiscussionPost } from "./screening-discussion";
 import {
   createScreeningPost,
   deleteScreeningPost,
+  listDiscussionPosts,
   listScreeningPosts,
   parseDiscussionCursor,
   parseDiscussionLimit,
@@ -597,6 +598,26 @@ app.post("/api/stats/screening-attendance-ping", async (c) => {
 /* ---------------- 场次讨论(2026-09-14,PLAN-20260914164050) ----------------
  * 公开读 + 登录写 + 作者可删 + emoji 反应 toggle;与 /api/feedback 同一套形状,
  * 但按「场次 code + edition」收窄。分类白名单在 `@biff/contracts/screening`。 */
+
+/* 讨论区聚合读(2026-09-15,PLAN-20260915233816):全站帖子墙 —— 与单场讨论同一套分页 / 反应口径,
+ * 差别只在「不按场次 code 收窄」。公开读,登录时额外回自己的 myReactions。 */
+app.get("/api/discussions", async (c) => {
+  const edition = c.req.query("edition") || DEFAULT_WANT_EDITION;
+  if (edition.length > 64) return c.json({ error: "INVALID_EDITION" }, 422);
+  const config = configuration(c.env);
+  const session = await sessionFor(
+    c.env,
+    getCookie(c, sessionCookieName(config)),
+    c.req.header("cf-connecting-ip"),
+  );
+  const result = await listDiscussionPosts(database(c.env.DB), {
+    edition,
+    limit: parseDiscussionLimit(c.req.query("limit")),
+    cursor: parseDiscussionCursor(c.req.query("cursor")),
+    mySubject: session?.row.subject ?? null,
+  });
+  return c.json(result);
+});
 
 app.get("/api/screenings/:code/discussion", async (c) => {
   const code = c.req.param("code");

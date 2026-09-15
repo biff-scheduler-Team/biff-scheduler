@@ -107,7 +107,8 @@
         "review-state-export",
         "review-shared",
         "workflows",
-        "parity-dialogs"
+        "parity-dialogs",
+        "rush"
       ]
     },
     {
@@ -173,6 +174,17 @@
       ]
     },
     {
+      "id": "rush",
+      "note": "抢票页（行程场次按开票批次分组）/ 开票批次判据（分享文案批次分节共用）",
+      "paths": [
+        "apps/web/src/pages/RushPage.tsx",
+        "apps/web/src/batch.ts"
+      ],
+      "specs": [
+        "rush"
+      ]
+    },
+    {
       "id": "want-counts",
       "note": "想看人数加权统计 API + 影片库/详情展示",
       "paths": [
@@ -213,6 +225,7 @@
         "apps/web/src/components/ScreeningCard.tsx",
         "apps/web/src/components/ScreeningTickets.tsx",
         "apps/web/src/components/ScreeningDiscussionDialog.tsx",
+        "apps/web/src/pages/DiscussionsPage.tsx",
         "apps/web/src/components/TransferAddDialog.tsx",
         "apps/web/src/components/screening-social.css",
         "apps/api/src/reactions.ts",
