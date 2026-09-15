@@ -16,7 +16,7 @@ import { useFilters, useQuery } from "../app/hooks";
 import { filmInUnit, libraryUnits, searchFilm, type FilmNode } from "../app/model";
 import { setFilmExpanded, useLibraryExpansion } from "../app/library-state";
 import { hasActiveFilter, LS_FILTERS_LIB, matchesFilters } from "../filters";
-import { addPickFilm, removePick, setPickNote, store } from "../state";
+import { addPickFilm, removePick, setPickNote, soleShowCode, store } from "../state";
 import { dateInfo, doubanScoreOf, doubanUrlOf, unitLabel } from "../util";
 import { loadWantCounts, onWantCountsChange, peekWantCounts } from "../want-counts";
 
@@ -41,10 +41,9 @@ function FilmCard({
   const navigate = useNavigate();
   const entry = store.picks.get(film.key);
   // 只有一场的影片没有「挑场次」这一步:点一下就**直接落进行程**(2026-09-16,`PLAN-20260916004024`)。
-  // ⚠ 判据用**全量** `film.shows`,不用传进来的 `shows`(那是筛选后的视图态)——
-  //    「只有一场」是数据事实,不该随筛选器变化。文案也随之为「加入行程」。
-  const soleShow = film.shows.length === 1 ? film.shows[0] : null;
-  const addLabel = soleShow ? "加入行程" : "加入我的选片";
+  // 判据走 state 注入的 `soleShowCode()` —— 与移除口径同一份实现(注入点在 `store.tsx::hydrateStorage`)。
+  const soleCode = soleShowCode(film.key);
+  const addLabel = soleCode ? "加入行程" : "加入我的选片";
   const score = doubanScoreOf(film.cats[0], film.map);
   // 豆瓣映射:优先这个片节点的映射(排期片 = 场次 code,目录片 = `f###`),
   // 再退回目录条目 id —— 与改版前影片卡操作行里那条外链的取值链逐字一致。
@@ -124,7 +123,7 @@ function FilmCard({
           <Button
             variant="primary"
             onPress={() => {
-              if (addPickFilm(film.key, soleShow?.code)) {
+              if (addPickFilm(film.key, soleCode ?? undefined)) {
                 ToastQueue.positive(`《${film.zh}》只有一场，已直接加入行程。`);
                 return;
               }
@@ -146,7 +145,7 @@ function FilmCard({
             }}
           >
             {/* 单场片加入即已排好场次 —— 再写「去排场次」会让人以为还差一步(2026-09-16) */}
-            {soleShow && entry.picks.length > 0 ? "已在行程，去查看" : "已在选片，去排场次"}
+            {soleCode && entry.picks.length > 0 ? "已在行程，去查看" : "已在选片，去排场次"}
           </ActionButton>
         ) : pickedView ? (
           <ActionButton

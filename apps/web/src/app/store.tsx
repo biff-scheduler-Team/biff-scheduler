@@ -13,6 +13,7 @@ import { loadRelated } from "../related";
 import {
   allCodes,
   agendaFolded,
+  fillSoleShowPicks,
   gvTalk,
   gvTalkMinOv,
   loadAgendaFold,
@@ -26,6 +27,7 @@ import {
   loadTickets,
   notify,
   rankOf,
+  registerSoleShows,
   savedPlans,
   store,
   subscribe,
@@ -36,7 +38,7 @@ import { computeConflicts } from "../conflict";
 import { buildPlanSet } from "../plans";
 import { effEndMin, talkOnOf } from "../gv";
 import { filmNodeKey, hmsToMin } from "../util";
-import { buildFilms } from "./model";
+import { buildFilms, soleShowIndex } from "./model";
 import type { Catalog } from "../types";
 
 let revision = 0;
@@ -75,6 +77,13 @@ export function hydrateStorage(cat: Catalog) {
     const s = cat.byCode.get(code);
     return s ? filmNodeKey(cat, s) : null;
   });
+  // ★「只有一场」的影片:选定 = 排定(2026-09-16,`PLAN-20260916004024`)。
+  //   判据在这里注入一次 —— 移除口径(`state.ts::toggleScreening`)与影片库入口都用它,
+  //   免得网格 / 选片卡 / 行程卡各判一次「这算不算单场片」。
+  //   随后补齐:单场影片若在选片清单里却没场次(旧版本只建了空记录)→ 直接排上那一场。
+  const sole = soleShowIndex(cat);
+  registerSoleShows((key) => sole.get(key)?.code ?? null);
+  fillSoleShowPicks();
   notify();
 }
 let pending: Promise<Catalog> | undefined;
