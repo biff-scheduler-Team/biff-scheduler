@@ -215,7 +215,7 @@ app.get("/api/auth/callback", async (c) => {
     const refreshToken = result.refresh_token;
     if (!refreshToken) {
       console.warn("oidc_missing_refresh_token");
-      return c.redirect("/?account_error=no_refresh_token");
+      return c.redirect("/?account_error=authorization");
     }
     const infoResponse = await oauth.userInfoRequest(as, p.client, result.access_token, p.options);
     const info = await oauth.processUserInfoResponse(as, p.client, subject, infoResponse);
@@ -255,12 +255,9 @@ app.get("/api/auth/callback", async (c) => {
 const requireIdentity: MiddlewareHandler<AppEnv> = async (c, next) => {
   const config = configuration(c.env);
   const cookie = getCookie(c, sessionCookieName(config));
-  // 三种 401 的成因完全不同(NO_COOKIE = 浏览器压根没存住 cookie,多半是登录回调没走到写 cookie;
-  // NO_SESSION = cookie 有但服务端会话已不在;IDENTITY_REJECTED = 会话在,上游不认这个 token),
-  // 统一回 UNAUTHENTICATED 会让「重新登录也没用」无从下手。先分诊,前端只认 401。
-  if (!cookie) return c.json({ error: "NO_COOKIE" }, 401);
+  if (!cookie) return c.json({ error: "UNAUTHENTICATED" }, 401);
   const session = await sessionFor(c.env, cookie, c.req.header("cf-connecting-ip"));
-  if (!session) return c.json({ error: "NO_SESSION" }, 401);
+  if (!session) return c.json({ error: "UNAUTHENTICATED" }, 401);
   const identity = await c.env.IFFDAY_API.fetch(
     new Request(`${config.IFFDAY_ORIGIN}/api/v1/profile`, {
       headers: { Authorization: `Bearer ${session.tokens.accessToken}` },
@@ -270,11 +267,9 @@ const requireIdentity: MiddlewareHandler<AppEnv> = async (c, next) => {
     // 上游说 token 无效时**不再立刻删行**。一次上游抖动(或刷新出来的 token 丢了 audience)
     // 就会把健康会话变成「cookie 还在、行没了」的永久 401,此后每个请求都是 401,只能重新登录。
     // 改成只记日志放行:会话本身靠 1 天滑窗自然过期,上游恢复后无需重新登录。
-    // 带上上游的原话(截断),否则只能看到 401 却不知道是 token 过期、audience 不对还是端点变了。
-    const detail = (await identity.text().catch(() => "")).slice(0, 200);
-    console.warn("identity_rejected", identity.status, detail, session.row.subject);
+    console.warn("identity_rejected", identity.status);
     return c.json(
-      { error: identity.status === 401 ? "IDENTITY_REJECTED" : "IDENTITY_UNAVAILABLE" },
+      { error: identity.status === 401 ? "UNAUTHENTICATED" : "IDENTITY_UNAVAILABLE" },
       identity.status === 401 ? 401 : 503,
     );
   }
@@ -291,40 +286,6 @@ const requireIdentity: MiddlewareHandler<AppEnv> = async (c, next) => {
   c.set("profile", profile);
   await next();
 };
-/**
- * 401 分诊端点。**临时**排查工具:Cloudflare 日志这边看不到,靠它一次请求就能分清
- * 「浏览器没 cookie」「cookie 有但会话没了」「会话在但上游不认 token」。只回状态与秒数,
- * 不回 token 本身。定位完会删。
- */
-app.get("/api/account/debug", async (c) => {
-  const config = configuration(c.env);
-  const cookie = getCookie(c, sessionCookieName(config));
-  if (!cookie) return c.json({ cookie: false, session: false, profile: null });
-  let session: Awaited<ReturnType<typeof sessionFor>> = null;
-  let sessionError: string | null = null;
-  try {
-    session = await sessionFor(c.env, cookie, c.req.header("cf-connecting-ip"));
-  } catch (error) {
-    sessionError = error instanceof Error ? error.message : "unknown";
-  }
-  if (!session) return c.json({ cookie: true, session: false, sessionError });
-  const identity = await c.env.IFFDAY_API.fetch(
-    new Request(`${config.IFFDAY_ORIGIN}/api/v1/profile`, {
-      headers: { Authorization: `Bearer ${session.tokens.accessToken}` },
-    }),
-  );
-  const body = await identity.text();
-  return c.json({
-    cookie: true,
-    session: true,
-    sessionError,
-    sessionExpiresInSec: Math.round((session.row.expires_at - Date.now()) / 1000),
-    tokenExpiresInSec: Math.round((session.row.token_expires_at - Date.now()) / 1000),
-    hasRefreshToken: Boolean(session.tokens.refreshToken),
-    profileStatus: identity.status,
-    profileBody: body.slice(0, 200),
-  });
-});
 app.use("/api/account/*", requireIdentity);
 app.get("/api/account/me", (c) => {
   const { row, tokens } = c.get("session");
