@@ -53,6 +53,23 @@ describe("legacy library search and section parity", () => {
     expect(nodes.filter((n) => filmInUnit(n, award[0].key))).toHaveLength(4);
   });
 
+  it("counts a film in every unit it belongs to, midnight block members included", () => {
+    // 2026-09-15(`PLAN-20260915144335`):午夜单元 = 3 个联映块的**成员并集**
+    // (官网 `prog_list.asp?c_idx=438` 共 9 部),但其中 4 部的主单元在别处 ——
+    // Sapiens = Korean Cinema Today – Special Premiere、Angel′s Egg = 日本动画特别企划、
+    // The Spiral = Open Cinema、Jim Queen = World Cinema。只看单值 `unit` 时午夜单元
+    // 少数这 4 部(实测 5 部),故单元归属口径 = 主单元 ∪ `also_units`。
+    const units = libraryUnits(films);
+    expect(units.find((u) => u.key === "Midnight Passion")!.count).toBe(9);
+    expect(nodes.filter((n) => filmInUnit(n, "Midnight Passion"))).toHaveLength(9);
+    // 另属单元**不夺走**主单元:这 4 部在原单元里照旧各计一次(同一部片两个单元都出现是预期)
+    expect(units.find((u) => u.key === "Open Cinema")!.count).toBe(5);
+    expect(nodes.filter((n) => filmInUnit(n, "Open Cinema"))).toHaveLength(5);
+    expect(units.find((u) => u.key === "World Cinema")!.count).toBe(
+      nodes.filter((n) => filmInUnit(n, "World Cinema")).length,
+    );
+  });
+
   it("includes ordinary screenings with a special talk in the activity section", () => {
     expect(filmInUnit(nodes.find((n) => n.key === "cat:f072")!, "act:special_talk")).toBe(true);
     expect(libraryUnits(films).filter((u) => u.key.startsWith("act:")).map((u) => u.key)).toEqual([

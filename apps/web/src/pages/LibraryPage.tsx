@@ -45,6 +45,9 @@ function FilmCard({
   // 再退回目录条目 id —— 与改版前影片卡操作行里那条外链的取值链逐字一致。
   const map = film.map ?? store.mappings.get(film.cats[0]?.id ?? "");
   const gone = entry?.picks.filter((p) => !film.shows.some((s) => s.code === p.code)).length ?? 0;
+  // 「另属」单元(2026 只有午夜联映块)—— 不显示的话,按午夜单元筛出来的片里
+  // 会有 4 部卡片副标题写着别的单元,看着像筛错了(见 `model.ts::unitsOfFilm`)。
+  const alsoUnits = film.cats[0]?.also_units ?? [];
   return (
     <article className="film-card" data-film-key={film.key} tabIndex={-1}>
       <div className="film-heading">
@@ -58,7 +61,16 @@ function FilmCard({
         )}
         <div className="film-heading-text">
           <div className="film-unit">
-            {unitLabel(film.cats[0]?.unit) || "特别节目"}
+            {/* 主单元与「另属」单元同处一个 flex 项 —— `.film-unit` 是 space-between,
+                拆成两个子项会把「联映」推到卡片中间去 */}
+            <span>
+              {unitLabel(film.cats[0]?.unit) || "特别节目"}
+              {alsoUnits.length > 0 && (
+                <span>
+                  （联映 {alsoUnits.map((u) => unitLabel(u).replaceAll(" · ", "，")).join("、")}）
+                </span>
+              )}
+            </span>
             {score && (
               <span className="score">豆瓣 {score.rating.toFixed(1)}</span>
             )}

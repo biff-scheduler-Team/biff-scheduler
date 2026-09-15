@@ -98,16 +98,28 @@ export function unitKey(raw: string | null | undefined): string {
   return value || "未标注单元";
 }
 
+/** 一部目录片**归属的全部单元键**(主单元 ∪ 联映块单元)。
+ *
+ *  为什么不是单值:午夜单元的成员是「块内成员片」,而官网只给每部片一个主单元 ——
+ *  实测 4 部(Sapiens / Angel′s Egg / The Spiral / Jim Queen)主单元在别处,却在午夜块里放,
+ *  只看 `unit` 会让午夜单元少数这 4 部(5 部 vs 官网 9 部,`PLAN-20260915144335`)。
+ *  ⚠ **计数(`libraryUnits`)与筛选(`filmInUnit`)必须同源走这里** —— 否则会出现
+ *    「下拉说 9 部、点进去只有 5 张卡」。`unit` 本身仍是唯一身份,本函数不改它。
+ */
+export function unitsOfFilm(film: FilmItem): string[] {
+  return [...new Set([film.unit, ...(film.also_units ?? [])])].map(unitKey);
+}
+
 export function filmInUnit(film: FilmNode, unit: string): boolean {
   if (unit.startsWith("act:")) return film.shows.some((s) => programOf(s.code)?.kind === unit.slice(4));
-  return film.cats.some((item) => unitKey(item.unit) === unit);
+  return film.cats.some((item) => unitsOfFilm(item).includes(unit));
 }
 
 export function libraryUnits(films: FilmItem[]) {
   const counts = new Map<string, number>();
   for (const film of films) {
-    const key = unitKey(film.unit);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+    // 一部片可能归属多个单元(联映块成员)—— 每个单元各计一次,不是「择一」
+    for (const key of unitsOfFilm(film)) counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   const units = [...counts].map(([key, count]) => ({ key, count, label: unitLabel(key) }))
     .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key, "zh"));

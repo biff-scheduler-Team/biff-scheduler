@@ -110,6 +110,14 @@ export interface FilmItem {
    *  匹配一律优先走它,中文名 / 原始片名只作兜底。 */
   title_en?: string;
   unit: string; // 单元:主竞赛 / Icons / 亚洲电影之窗 …
+  /** **联映块成员**才有的「另属单元」(2026 只有午夜联映块,`tools/build_films_2026.py::block_unit`)——
+   *  午夜单元的成员是「块内成员片」,而官网详情页只给每部片**一个**主单元:实测 Sapiens 是
+   *  `Korean Cinema Today – Special Premiere`、Angel′s Egg 是 `日本动画特别企划`、The Spiral 是
+   *  `Open Cinema`、Jim Queen 是 `World Cinema`,四者却都在 Midnight Passion 块里放。
+   *  只认 `unit` 时午夜单元会少数这 4 部(实测 5 部 vs 官网 9 部,`PLAN-20260915144335`)。
+   *  ⚠ `unit` 仍是**唯一身份**(卡片副标题 / 排期匹配都认它),这里只用于**归属并集**;
+   *    取用一律走 `app/model.ts::unitsOfFilm()`。可选 → 旧 JSON 仍合法。 */
+  also_units?: string[];
   remark: string; // 备注:世界首映 …
   title_zh: string;
   title_orig: string; // 原始片名(英/日/韩,可能与排期 title_en 不同)
