@@ -247,6 +247,9 @@
    ],
    "catalog_id": "f178",
    "block_code": "269",
+   "also_units": [
+    "Midnight Passion"
+   ],
    "poster": "/posters/tmdb-15916-m.jpg",
    "catalogue": {
     "page": 165,
@@ -1180,6 +1183,9 @@
    ],
    "catalog_id": "f218",
    "block_code": "075",
+   "also_units": [
+    "Midnight Passion"
+   ],
    "poster": "/posters/tmdb-1617774-m.jpg",
    "catalogue": {
     "page": 113,
@@ -3704,6 +3710,9 @@
    "catalog_id": "f093",
    "poster": "/posters/tmdb-1412795-m.jpg",
    "block_code": "075",
+   "also_units": [
+    "Midnight Passion"
+   ],
    "catalogue": {
     "page": 163,
     "format": "DCP",
@@ -6789,6 +6798,9 @@
    "catalog_id": "f121",
    "poster": "/posters/tmdb-1061798-m.jpg",
    "block_code": "269",
+   "also_units": [
+    "Midnight Passion"
+   ],
    "catalogue": {
     "page": 126,
     "format": "DCP",

@@ -113,6 +113,29 @@ def norm_title(raw: str) -> str:
     return re.sub(r"[^0-9a-z\u4e00-\u9fff\uac00-\ud7af]+", "", s)
 
 
+# 联映块名的尾部块号(如 `Midnight Passion 1` 的 ` 1`)—— 去掉它即单元名。
+BLOCK_NO = re.compile(r"\s*\d+$")
+
+
+def block_unit(screening: dict[str, Any]) -> str:
+    """联映块场次所属的**单元名**(不是联映块 → 空串)。
+
+    为什么需要:午夜单元的成员是「块内成员片」,而官网详情页只给每部片**一个**主单元 ——
+    实测 Sapiens 主单元是 `Korean Cinema Today – Special Premiere`、Angel's Egg 是
+    `日本动画特别企划`、The Spiral 是 `Open Cinema`、Jim Queen 是 `Korean Cinema Today`,
+    但四者都在 Midnight Passion 块里放。影片库按单值 `unit` 计数时,午夜单元因此少数 4 部
+    (实测 5 部 vs 官网 9 部,`PLAN-20260915144335`)—— 故这里把块单元另存为 `also_units`
+    (见下面 step 2),由前端做并集计数。
+
+    ⚠ **只认带 `midnight` 标记的块**:其它联映块(`Asian / Korean Short Film Competition 1-3`、
+    `Kakurenbo + Shiranui` 这类双片连映)是**竞赛 / 展映合集**,不是单元 —— 拿块名当单元会
+    凭空造出「Kakurenbo + Shiranui」这种单元,并让单元下拉多出十几条垃圾选项。
+    """
+    if "midnight" not in (screening.get("tags") or []):
+        return ""
+    return BLOCK_NO.sub("", (screening.get("title_en") or "").strip()).strip()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="合并官网片目与 xlsx 目录")
     ap.add_argument("--web", required=True, help="scrape_biff_web.py 产出的 films-web.json")
@@ -250,14 +273,21 @@ def main() -> int:
     # ---- 2) 合集块成员(只在块里出现 → 挂 block_code,不当「无排期」) ----
     block_members = 0
     for s in screenings:
+        unit_of_block = block_unit(s)
         for m in s.get("midnight_members") or []:
             if m in have_en:
                 # 成员短片**有自己的官网详情页**(在 films-web.json 里),但没有独立场次 ——
                 # 它只在块里放。给已有条目补 `block_code`,前端据此显示「收录于合集 XXX」
                 # 而不是「暂无排期」。不计入 block_members(没新增条目)。
+                # 同时登记**块单元** `also_units`:块成员比主单元多一个身份,漏登记的话
+                # 午夜单元就会少数(2026-09-15,`PLAN-20260915144335`)。
                 for f in films:
                     if f["title_en"] == m:
                         f.setdefault("block_code", s["code"])
+                        if unit_of_block:
+                            extra = f.setdefault("also_units", [])
+                            if unit_of_block not in extra:
+                                extra.append(unit_of_block)
                         break
                 continue
             have_en.add(m)
@@ -268,7 +298,8 @@ def main() -> int:
                 "title_kr": "",
                 "title_zh": "",
                 "title_orig": "",
-                "unit": WEB_UNIT.get("", ""),
+                # 只在块里出现的成员:主单元就是**块单元**(非午夜块 → 空串,与旧行为一致)
+                "unit": unit_of_block,
                 "remark": "",
                 "year": None,
                 "rating": None,
@@ -302,6 +333,16 @@ def main() -> int:
         override = UNIT_OVERRIDE.get(f["title_en"])
         if override:
             f["unit"] = override
+
+    # ---- 3c) 块单元去重:主单元 == 块单元时不重复登记 ----
+    # 产物里只留「**另属**的单元」(`Welcome to Dolly′s House` 的主单元本来就是 Midnight Passion,
+    # 再记一条 also_units 只会让下游多做一次去重)。放在 3b 之后 —— 主单元可能刚被人工裁决改过。
+    for f in films:
+        extra = [u for u in f.get("also_units", []) if u != f.get("unit")]
+        if extra:
+            f["also_units"] = extra
+        else:
+            f.pop("also_units", None)
 
     # ---- 4) 编号:有排期的按首次开映时间排,其余(纯目录/合集成员)按目录序排在后面 ----
     first_code = {}

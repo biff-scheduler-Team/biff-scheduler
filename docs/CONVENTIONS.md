@@ -396,6 +396,15 @@
 - **`FilmItem` 契约**(`apps/web/src/types.ts`):`{ id, unit, remark, title_zh, title_orig, year, rating, rating_count, country, director }`
   —— 10 字段,**无** `runtime_min`/`title_kr`/`codes`。`displayTitle` = `title_zh || mappingTitleCn || title_en`。
   `library.ts::unitKey()` 对未知 unit **回退原字符串**,故英文单元名安全。
+- **★ 影片库「单元归属」= 主单元 ∪ 联映块单元**(2026-09-15,`PLAN-20260915144335`):唯一取用口
+  `apps/web/src/app/model.ts::unitsOfFilm(film)` —— `libraryUnits()`(下拉计数)与 `filmInUnit()`(筛选)
+  **必须同源走它**,否则会出现「下拉说 9 部、点进去只有 5 张卡」。为什么不是单值:午夜单元的成员是
+  「联映块成员片」,而官网详情页只给每部片**一个**主单元 —— 实测 4 部(Sapiens / Angel′s Egg /
+  The Spiral / Jim Queen)主单元在别处(Open Cinema / 日本动画特别企划 / World Cinema /
+  Korean Cinema Today – Special Premiere),却在 Midnight Passion 块里放;管线把块单元另存为
+  `FilmItem.also_units`(`tools/build_films_2026.py::block_unit`,**只认带 `midnight` 标记的块** ——
+  其它联映块(Asian / Korean Short Film Competition、`A + B` 双片连映)是竞赛 / 展映合集,不是单元)。
+  `unit` 本身仍是**唯一身份**(卡片副标题 / 排期匹配认它);同一部片在两个单元各计一次属预期。
 
 - **★ 票务结果 = 用户自述三态(2026-09-14,`PLAN-20260914164050`)**:`biff.tickets.v1` =
   `Record<场次 code, {state: "got" | "missed" | "dropped", via?: "self" | "transfer"}>`,
