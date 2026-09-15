@@ -111,15 +111,22 @@ export function slackBetween(
   return { gap, need, slack, verdict };
 }
 
-/** 片名显示口径(全站唯一来源,2026-09-11 需求):**英文名在前,中文名以「 · 」跟在后面**。
- *  两侧任一缺失只留存在的一侧;两侧同名(纯排期片的 `zh` 会退化成英文名)只印一次 ——
- *  绝不会产出「Foo · Foo」或首尾带分隔符的空片名。 */
-export function bilingualTitle(en: string | null | undefined, zh: string | null | undefined): string {
+/** 片名拆开:**英文名 / 中文名**各一行(判同 / 去重规则与 `bilingualTitle` **完全一致** ——
+ *  两侧任一缺失只留存在的一侧;两侧同名(纯排期片的 `zh` 会退化成英文名)只留一行)。
+ *  ⚠ 分享文案的缩进块要「英文名一行、中文名一行」(2026-09-16,`PLAN-20260916002752`),
+ *    所以把规则拆到这里 —— 别在 `share.ts` 里另写一份 `zh === en` 的比较。 */
+export function bilingualRows(en: string | null | undefined, zh: string | null | undefined): string[] {
   const e = (en ?? "").trim();
   const z = (zh ?? "").trim();
-  if (!e) return z;
-  if (!z || normText(z) === normText(e)) return e;
-  return `${e} · ${z}`;
+  if (!e) return z ? [z] : [];
+  if (!z || normText(z) === normText(e)) return [e];
+  return [e, z];
+}
+
+/** 片名显示口径(全站唯一来源,2026-09-11 需求):**英文名在前,中文名以「 · 」跟在后面**。
+ *  拆行规则见 `bilingualRows`(本函数 = 它的一行版)—— 绝不会产出「Foo · Foo」或首尾带分隔符的空片名。 */
+export function bilingualTitle(en: string | null | undefined, zh: string | null | undefined): string {
+  return bilingualRows(en, zh).join(" · ");
 }
 
 /** 显示名:排期场次 → 「**英文名 · 中文名**」(口径见 `bilingualTitle`)。

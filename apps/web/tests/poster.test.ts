@@ -78,7 +78,7 @@ describe("buildPosterModel:单场文案口径", () => {
     expect(model.days[0].rows[0].time).toBe("23:59–次日 05:35");
   });
 
-  it("GV 三态:含映后谈 / 仅正片 / 非 GV 无标记", () => {
+  it("GV 三态:映后 / 仅正片 / 非 GV 无标记", () => {
     const cat = catalog([
       show({ code: "001", is_gv: true }),
       show({ code: "002", is_gv: true }),
@@ -87,8 +87,8 @@ describe("buildPosterModel:单场文案口径", () => {
     const on = buildPosterModel(cat, [row("001")], NO_MAP, () => true)!;
     const off = buildPosterModel(cat, [row("002")], NO_MAP, () => false)!;
     const plain = buildPosterModel(cat, [row("003")], NO_MAP, () => true)!;
-    // 文案与分享文案同源(`share.ts::gvMark`):2026-09-15 起缩掉「GV」前缀,chip 更短
-    expect(on.days[0].rows[0].gv).toBe("含映后谈");
+    // 文案与分享文案同源(`share.ts::gvMark`):2026-09-16 起「含映后谈」缩成「映后」,chip 更短
+    expect(on.days[0].rows[0].gv).toBe("映后");
     expect(off.days[0].rows[0].gv).toBe("仅正片");
     expect(plain.days[0].rows[0].gv).toBe("");
     // 谈段时长(默认 25min)计入结束时间

@@ -65,9 +65,10 @@ test("分享文案可勾选「带上顺位」与「带上开票批次」", async
   await dialog.getByRole("button", { name: "分享文案", exact: true }).click();
   const text = dialog.getByRole("textbox", { name: "行程分享文案", exact: true });
 
-  // 默认(两个都不勾):CODE 前置 + 两行一场,没有顺位 / 备选 / 批次字样
+  // 默认(两个都不勾):CODE 前置 + 三行缩进块,没有主选 / 备选 / 批次字样
   await expect(text).toContainText("070  20:00");
-  await expect(text).not.toContainText("顺位");
+  await expect(text).not.toContainText("主选");
+  await expect(text).not.toContainText("备选");
   await expect(text).not.toContainText("批");
 
   // ⚠ S2 复选的可点区是外层 <label>(input 被视觉层盖住,裸点 checkbox 会被拦指针)——
@@ -79,7 +80,8 @@ test("分享文案可勾选「带上顺位」与「带上开票批次」", async
 
   await expect(text).toContainText("【第 1 批");
   await expect(text).toContainText("【第 2 批");
-  await expect(text).toContainText("顺位");
-  await expect(text).toContainText("↳ 备选 126"); // 同冲突组的备选场次,带 CODE
+  // 第 1 顺位印「主选」,同组备选另起一块(前缀 ↳ + CODE)
+  await expect(text).toContainText("主选");
+  await expect(text).toContainText("↳ 126");
   await expect(text).toContainText("070  20:00–22:25");
 });
