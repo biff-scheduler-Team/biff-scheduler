@@ -54,8 +54,6 @@ import {
   pendingCookieName,
   sessionCookieName,
   sessionFor,
-  sessionMaxAge,
-  SESSION_TTL_MS,
   type SessionTokens,
 } from "./oauth";
 
@@ -204,24 +202,11 @@ app.get("/api/auth/callback", async (c) => {
     await oauth.validateApplicationLevelSignature(as, response, p.options);
     const claims = oauth.getValidatedIdTokenClaims(result);
     const subject = subjectSchema.parse(claims?.sub);
-    // 同 session_token_refreshed:只记寿命与「有没有 RT」,不记 token。
-    console.log(
-      "oidc_token_issued",
-      result.expires_in ?? "unset",
-      result.refresh_token ? "rt" : "no-rt",
-    );
-    // 没有 refresh token 的会话撑不过第一个 access token 窗口(15 分钟),
-    // 之后必然「cookie 还在、行没了」的永久 401。宁可这次登录失败,也不建一个注定短命的会话。
-    const refreshToken = result.refresh_token;
-    if (!refreshToken) {
-      console.warn("oidc_missing_refresh_token");
-      return c.redirect("/?account_error=authorization");
-    }
     const infoResponse = await oauth.userInfoRequest(as, p.client, result.access_token, p.options);
     const info = await oauth.processUserInfoResponse(as, p.client, subject, infoResponse);
     const tokens: SessionTokens = {
       accessToken: result.access_token,
-      refreshToken,
+      refreshToken: result.refresh_token,
       idToken: result.id_token,
       email: z.email().parse(info.email),
       emailVerified: info.email_verified === true,
@@ -233,18 +218,13 @@ app.get("/api/auth/callback", async (c) => {
       token_hash: tokenHash,
       subject,
       payload: await seal(tokens, p.config.SESSION_SECRET, `session:${tokenHash}`),
-      expires_at: Date.now() + SESSION_TTL_MS,
+      expires_at: Date.now() + 7 * 86400_000,
       token_expires_at: Date.now() + (result.expires_in ?? 900) * 1000,
     }).run();
     const oldCookie = getCookie(c, sessionCookieName(p.config));
     if (oldCookie)
       await db.delete(appSession).where(eq(appSession.token_hash, await hash(oldCookie))).run();
-    setCookie(
-      c,
-      sessionCookieName(p.config),
-      sessionToken,
-      cookieOptions(p.config, sessionMaxAge(Date.now() + SESSION_TTL_MS)),
-    );
+    setCookie(c, sessionCookieName(p.config), sessionToken, cookieOptions(p.config, 7 * 86400));
     return c.redirect("/?account=connected");
   } catch (error) {
     console.warn("oidc_callback_failed", error instanceof Error ? error.name : "UnknownError");
@@ -254,9 +234,11 @@ app.get("/api/auth/callback", async (c) => {
 /** 与 /api/account/* 相同：会话 + IFFDAY profile；反馈写路径复用。 */
 const requireIdentity: MiddlewareHandler<AppEnv> = async (c, next) => {
   const config = configuration(c.env);
-  const cookie = getCookie(c, sessionCookieName(config));
-  if (!cookie) return c.json({ error: "UNAUTHENTICATED" }, 401);
-  const session = await sessionFor(c.env, cookie, c.req.header("cf-connecting-ip"));
+  const session = await sessionFor(
+    c.env,
+    getCookie(c, sessionCookieName(config)),
+    c.req.header("cf-connecting-ip"),
+  );
   if (!session) return c.json({ error: "UNAUTHENTICATED" }, 401);
   const identity = await c.env.IFFDAY_API.fetch(
     new Request(`${config.IFFDAY_ORIGIN}/api/v1/profile`, {
@@ -264,10 +246,8 @@ const requireIdentity: MiddlewareHandler<AppEnv> = async (c, next) => {
     }),
   );
   if (!identity.ok) {
-    // 上游说 token 无效时**不再立刻删行**。一次上游抖动(或刷新出来的 token 丢了 audience)
-    // 就会把健康会话变成「cookie 还在、行没了」的永久 401,此后每个请求都是 401,只能重新登录。
-    // 改成只记日志放行:会话本身靠 1 天滑窗自然过期,上游恢复后无需重新登录。
-    console.warn("identity_rejected", identity.status);
+    if (identity.status === 401)
+      await database(c.env.DB).delete(appSession).where(eq(appSession.token_hash, session.row.token_hash)).run();
     return c.json(
       { error: identity.status === 401 ? "UNAUTHENTICATED" : "IDENTITY_UNAVAILABLE" },
       identity.status === 401 ? 401 : 503,
@@ -275,13 +255,6 @@ const requireIdentity: MiddlewareHandler<AppEnv> = async (c, next) => {
   }
   const profile = accountProfileSchema.parse(await identity.json());
   if (profile.userId !== session.row.subject) return c.json({ error: "IDENTITY_MISMATCH" }, 401);
-  // 滑动续期:cookie 的 maxAge 要跟 D1 会话一起往后推,否则活跃用户会被浏览器先一步踢掉。
-  setCookie(
-    c,
-    sessionCookieName(config),
-    cookie,
-    cookieOptions(config, sessionMaxAge(session.row.expires_at)),
-  );
   c.set("session", session);
   c.set("profile", profile);
   await next();
