@@ -21,7 +21,7 @@ import {
 } from "./spectrum";
 import { useCatalog } from "../app/store";
 import { buildIcs, type PickRow } from "../ics";
-import { buildShareText } from "../share";
+import { buildShareText, type ShareOptions } from "../share";
 import { parseBackupText, parseIcsCodes, restore, snapshot } from "../backup";
 import {
   mergeScreenings,
@@ -218,19 +218,34 @@ export function ExportDialog() {
     }));
   // 备选来自**当前行程**的冲突组(方案快照每组只留第 1 顺位,拿它印顺位恒为「顺位 1」)
   const groupMates = useMemo(() => groupMatesOf(plans.groups), [plans.groups]);
-  const share = buildShareText(cat, rows, store.mappings, talkOnOf, {
-    ranking: withRank
-      ? { rankOf: plans.rankOf, matesOf: (code) => groupMates.get(code) ?? [] }
-      : undefined,
-    batching: withBatch
-      ? {
-          batchOf: (s) => ticketBatchOf(s, { kindOf: (code) => programOf(code)?.kind }),
-          headOf: (batch) => batchHeading(cat.schedule.festival.year, batch),
-        }
-      : undefined,
-  });
+  // ⚠ 一份选项同时喂**分享文案与分享图片**(`share.ts` / `poster.ts` 共用同一个 `ShareOptions`)——
+  //   两处各建一份必然出现「文案有顺位、图上没有」这种对不上的成品。
+  const shareOptions: ShareOptions = useMemo(
+    () => ({
+      ranking: withRank
+        ? { rankOf: plans.rankOf, matesOf: (code) => groupMates.get(code) ?? [] }
+        : undefined,
+      batching: withBatch
+        ? {
+            batchOf: (s) => ticketBatchOf(s, { kindOf: (code) => programOf(code)?.kind }),
+            headOf: (batch) => batchHeading(cat.schedule.festival.year, batch),
+          }
+        : undefined,
+    }),
+    [withRank, withBatch, plans.rankOf, groupMates, cat.schedule.festival.year]
+  );
+  const share = buildShareText(cat, rows, store.mappings, talkOnOf, shareOptions);
+  // 改选项就作废已出的图 —— 否则上一次按旧选项画好的图会留在弹层里,看着「没生效」
+  const toggleRank = (on: boolean) => {
+    setWithRank(on);
+    setImage(null);
+  };
+  const toggleBatch = (on: boolean) => {
+    setWithBatch(on);
+    setImage(null);
+  };
   const buildImage = () => {
-    const model = buildPosterModel(cat, rows, store.mappings, talkOnOf);
+    const model = buildPosterModel(cat, rows, store.mappings, talkOnOf, shareOptions);
     if (!model || !plan) return;
     setImage({
       id: ++generation.current,
@@ -265,7 +280,7 @@ export function ExportDialog() {
                   <p className="muted">
                     {rows.length} 场有效排期。日历时间会自动转换到手机所在时区。
                   </p>
-                  <Checkbox isSelected={withRank} onChange={setWithRank}>
+                  <Checkbox isSelected={withRank} onChange={toggleRank}>
                     带上顺位（含备选场次）
                   </Checkbox>
                   {withRank && !plans.groups.length && (
@@ -273,9 +288,12 @@ export function ExportDialog() {
                       当前行程没有时间重叠的场次，顺位不会有内容。
                     </p>
                   )}
-                  <Checkbox isSelected={withBatch} onChange={setWithBatch}>
+                  <Checkbox isSelected={withBatch} onChange={toggleBatch}>
                     带上开票批次（第 1 批 / 第 2 批分节）
                   </Checkbox>
+                  <p className="muted">
+                    以上两项同时作用于分享文案与分享图片。
+                  </p>
                   <div className="inline-actions">
                     <Button
                       isDisabled={!rows.length}

@@ -116,6 +116,32 @@ export async function ready(page: Page, path = "/schedule") {
 export function scheduleHeading(page: Page) {
   return page.getByRole("heading", { name: /^排片表/ });
 }
+/** 记录画布上**画过的文字** —— 海报是 canvas 手绘,没有 DOM 可断言,只能挂 `fillText`。
+ *  装上后每次 `fillText` 都把文本追加进 `window.__paintedTexts`。
+ *  ⚠ 必须在首次 `goto` 之前调用;数组**跨多次出图累加** —— 要断言「这一张图上有什么」,
+ *  前后各读一次 `paintedTexts()`,比对新增的部分(或直接断言「现在包含 / 不含」)。 */
+export async function trackPaintedTexts(page: Page) {
+  await page.addInitScript(() => {
+    const state = window as typeof window & { __paintedTexts: string[] };
+    state.__paintedTexts = [];
+    const fillText = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (
+      text,
+      ...args: [number, number, number?]
+    ) {
+      state.__paintedTexts.push(text);
+      return fillText.call(this, text, ...args);
+    };
+  });
+}
+
+/** 已画到画布上的全部文字(换行拼接;配合 `trackPaintedTexts` 用) */
+export async function paintedTexts(page: Page): Promise<string> {
+  return page.evaluate(() =>
+    (window as typeof window & { __paintedTexts: string[] }).__paintedTexts.join("\n"),
+  );
+}
+
 /** 打开「我的观影」浮层；整页路由上 FAB 被隐藏时先回排片表。 */
 export async function openViewingPanel(page: Page) {
   if (await page.locator("#viewing-panel").count()) return;

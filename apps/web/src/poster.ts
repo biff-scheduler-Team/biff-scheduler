@@ -16,16 +16,45 @@
 //   · 时间 = **有效结束**(`gv.ts::effEndMin`,含 / 弃映后谈按单场解析);
 //   · 片名 = `util.ts::displayTitle`(英文名 · 中文名);
 //   · 影院 = `legend.ts::venueShort`(短名);
-//   · 排序 / 概要 = `share.ts::orderedPickRows` / `shareSummary`。
+//   · 排序 / 概要 = `share.ts::orderedPickRows` / `shareSummary`;
+//   · GV 文案 / 顺位措辞 / 备选标记 = `share.ts::gvMark` / `rankMark` / `ALT_MARK`
+//     (**同一份**,别在画布上另写「首选」「含映后」这类同义异形);
+//   · 开票批次判据 = `batch.ts::ticketBatchOf`(经 `ShareOptions.batching` 注入,图上不重判)。
+//
+// ★ 两个可选扩展(2026-09-16,与分享文案**同一份 `ShareOptions`、同一组勾选框**):
+//   · `ranking`  → 状态列多一个「主选 / 备选②」,并在该场下方画**同冲突组的备选行**(`↳ 备选② …`);
+//   · `batching` → 先按开票批次分节(节头文案来自 `extras.ts::batchHeading`),节内再按日期分节。
+//   ⚠ 两个都不勾时,输出与「没有这两个开关的老图」一致(无顺位字、无备选行、无批次节头)。
 
-import type { Catalog, Mapping } from "./types";
+import type { Catalog, Mapping, Screening } from "./types";
 import { dateInfo, displayTitle, filmInfoOf, fmtMinRangeMin, groupByDate, hmsToMin } from "./util";
 import { effEndMin, gvTalkMin } from "./gv";
 import { venueShort } from "./legend";
 import type { PickRow } from "./ics";
-import { gvMark, orderedPickRows, shareSummary } from "./share";
+import {
+  ALT_MARK,
+  batchSections,
+  gvMark,
+  orderedPickRows,
+  rankMark,
+  shareSummary,
+  type ShareOptions,
+} from "./share";
 
 /* ---------------- 模型(纯数据,可单测) ---------------- */
+
+/** 备选行(带顺位时才有)= 同冲突组其余场次在海报上要的字段(与文案的备选块同一份取值口径)。 */
+export interface PosterAlt {
+  code: string;
+  /** 「13:20–14:50」(跨午夜印「次日 05:35」) */
+  time: string;
+  /** 英文名 · 中文名 */
+  title: string;
+  /** 影院短名 */
+  venue: string;
+  /** 组内顺位(2 起 = 备选②…);查不到 / 未设 → undefined,不印 */
+  rank: number | undefined;
+}
 
 /** 一场已排场次在海报上需要的全部文案(与 DOM 无关,便于断言口径)。 */
 export interface PosterRow {
@@ -41,6 +70,10 @@ export interface PosterRow {
   note: string;
   /** 海报图相对路径(目录命中且已下载才有;缺图走占位块) */
   poster?: string;
+  /** 组内顺位(勾「带上顺位」且该场在冲突组里才有;共同场次 undefined ⇒ 不印) */
+  rank: number | undefined;
+  /** 同冲突组其余场次(按顺位升序;不勾「带上顺位」时为空数组) */
+  alts: PosterAlt[];
 }
 
 export interface PosterDay {
@@ -48,6 +81,13 @@ export interface PosterDay {
   weekday: string; // 周四
   count: number;
   rows: PosterRow[];
+}
+
+/** 一批(带开票批次时才分节):节头 + 节内按天。 */
+export interface PosterSection {
+  /** 批次节头文案(`第 1 批 · 9/17 14:00 KST / 北京 13:00`);不按批次分节时 null */
+  heading: string | null;
+  days: PosterDay[];
 }
 
 export interface PosterModel {
@@ -60,53 +100,103 @@ export interface PosterModel {
   range: string; // OCT 6–OCT 15
   count: number; // 场次总数
   films: number; // 影片总数
+  /** 分节(**唯一结构**):不按批次分节时 = 单个 `heading: null` 的节 */
+  sections: PosterSection[];
+  /** ⚠ **派生字段** = `sections` 里所有天的扁平列表(顺序一致)。
+   *  给不看批次的消费方用(海报缩略图 `PosterPreview` / 方案「查看场次」弹层 / 行高计算)——
+   *  别再单独算一遍,否则两处会出现「图上分了节、列表里没有」这种不一致。 */
   days: PosterDay[];
 }
+
+/** 分享图片的两个可选扩展 —— 与分享文案**同一份类型**(`share.ts::ShareOptions`),
+ *  导出弹层里那组勾选框同时驱动两者,口径不会分叉。 */
+export type PosterOptions = ShareOptions;
 
 /** 已选场次 → 海报模型。空输入(无有效场次)返回 null,调用方据此给「还没有选片」提示。 */
 export function buildPosterModel(
   cat: Catalog,
   entries: PickRow[],
   mappings: Map<string, Mapping>,
-  talkOf: (code: string) => boolean
+  talkOf: (code: string) => boolean,
+  options: PosterOptions = {}
 ): PosterModel | null {
   const rows = orderedPickRows(cat, entries);
   const sum = shareSummary(cat, rows);
   if (!sum) return null;
 
   const fest = cat.schedule.festival;
-  const days: PosterDay[] = [];
-  for (const [iso, group] of groupByDate(rows, (r) => r.s.date)) {
-    const { label, weekday } = dateInfo(iso);
-    days.push({
-      label,
-      weekday,
-      count: group.length,
-      rows: group.map(({ e, s }) => {
-        // 映后谈取舍与网格 / .ics / 分享文案同一解析:有谈段才问 talkOf,谈段为 0 的场无开关
-        const talk = gvTalkMin(s);
-        const talkOn = talk > 0 ? talkOf(e.code) : true;
-        const map = mappings.get(e.code);
-        const v = cat.venueById.get(s.venue_id);
-        return {
-          code: e.code,
-          time: fmtMinRangeMin(hmsToMin(s.start_time), effEndMin(s, talkOn)),
-          title: displayTitle(s, map?.title_cn),
-          venue: v ? venueShort(v) : s.venue_display,
-          gv: gvMark(s, talkOn),
-          note: e.note,
-          poster: filmInfoOf(cat, s, map).cats[0]?.poster,
-        };
+  /** 一场 → 海报行(备选在带顺位时才装配) */
+  const rowOf = ({ e, s }: { e: PickRow; s: Screening }): PosterRow => {
+    // 映后谈取舍与网格 / .ics / 分享文案同一解析:有谈段才问 talkOf,谈段为 0 的场无开关
+    const talk = gvTalkMin(s);
+    const talkOn = talk > 0 ? talkOf(e.code) : true;
+    const map = mappings.get(e.code);
+    const v = cat.venueById.get(s.venue_id);
+    const rank = options.ranking?.rankOf.get(e.code);
+    return {
+      code: e.code,
+      time: fmtMinRangeMin(hmsToMin(s.start_time), effEndMin(s, talkOn)),
+      title: displayTitle(s, map?.title_cn),
+      venue: v ? venueShort(v) : s.venue_display,
+      gv: gvMark(s, talkOn),
+      note: e.note,
+      poster: filmInfoOf(cat, s, map).cats[0]?.poster,
+      rank,
+      alts: (options.ranking?.matesOf(e.code) ?? []).flatMap((code) => {
+        const alt = altRowOf(cat, code, mappings, talkOf, options.ranking?.rankOf.get(code));
+        return alt ? [alt] : []; // 排期里已不存在(换版)→ 静默跳过
       }),
+    };
+  };
+
+  const daysOf = (group: { e: PickRow; s: Screening }[]): PosterDay[] =>
+    groupByDate(group, (r) => r.s.date).map(([iso, list]) => {
+      const { label, weekday } = dateInfo(iso);
+      return { label, weekday, count: list.length, rows: list.map(rowOf) };
     });
-  }
+
+  const batching = options.batching;
+  const grouped = batching
+    ? batchSections(rows, (row) => batching.batchOf(row.s))
+    : [{ batch: null as number | null, rows }];
+  const sections: PosterSection[] = grouped.map((section) => ({
+    heading:
+      section.batch === null || !batching ? null : batching.headOf(section.batch),
+    days: daysOf(section.rows),
+  }));
+
   return {
     festName: fest.name,
     title: `${fest.year} 看片计划`,
     range: sum.range,
     count: sum.count,
     films: sum.films,
-    days,
+    sections,
+    days: sections.flatMap((section) => section.days),
+  };
+}
+
+/** 一条备选 → 海报备选行;排期里查不到(换版)→ null。
+ *  ⚠ 时间 / 片名 / 影院 / 顺位的取值口径与分享文案的备选块**逐项一致**
+ *  (`effEndMin` + `displayTitle` + `venueShort` + `rankMark` 的入参 rank)。 */
+function altRowOf(
+  cat: Catalog,
+  code: string,
+  mappings: Map<string, Mapping>,
+  talkOf: (code: string) => boolean,
+  rank: number | undefined
+): PosterAlt | null {
+  const s = cat.byCode.get(code);
+  if (!s) return null;
+  const talk = gvTalkMin(s);
+  const talkOn = talk > 0 ? talkOf(code) : true;
+  const v = cat.venueById.get(s.venue_id);
+  return {
+    code,
+    time: fmtMinRangeMin(hmsToMin(s.start_time), effEndMin(s, talkOn)),
+    title: displayTitle(s, mappings.get(code)?.title_cn),
+    venue: v ? venueShort(v) : s.venue_display,
+    rank,
   };
 }
 
@@ -128,6 +218,8 @@ const DAY_HEAD_H = 76;
 const DAY_GAP = 24;
 const ROW_H = 168; // 无备注的一行(海报缩略图 144 高 + 上下各 12)
 const ROW_H_NOTE = 200;
+const ALT_H = 26; // 一条备选行(带顺位时才画)
+const BATCH_HEAD_H = 76; // 批次节头(带开票批次时才画,每节一条)
 const THUMB_W = 96;
 const THUMB_H = 144;
 const THUMB_R = 10;
@@ -156,13 +248,23 @@ function font(size: number, weight: number): string {
   return `${weight} ${size}px ${FONT}`;
 }
 
-/** 海报总高(逻辑像素,含上下品牌红条)—— 行高随「有无备注」变,故必须由模型算。 */
+/** 一行场次的高度 —— 随「有无备注」「有几条备选」变,故**唯一写这里**:
+ *  `posterHeight()` 与 `drawPoster()` 都读它,各算一份必然出现「算出来 3000 高、实际画了 3200」,
+ *  而画布是按 `posterHeight()` 设的 → 多出来的内容**被裁掉且不报错**(最难查的一类)。 */
+function rowHeight(r: PosterRow): number {
+  return (r.note ? ROW_H_NOTE : ROW_H) + r.alts.length * ALT_H;
+}
+
+/** 海报总高(逻辑像素,含上下品牌红条)—— 行高 / 节头随内容变,故必须由模型算。 */
 export function posterHeight(model: PosterModel): number {
   let h = ACCENT_H + HEADER_H;
-  for (const d of model.days) {
-    h += DAY_HEAD_H;
-    for (const r of d.rows) h += r.note ? ROW_H_NOTE : ROW_H;
-    h += DAY_GAP;
+  for (const section of model.sections) {
+    if (section.heading) h += BATCH_HEAD_H;
+    for (const d of section.days) {
+      h += DAY_HEAD_H;
+      for (const r of d.rows) h += rowHeight(r);
+      h += DAY_GAP;
+    }
   }
   return h + FOOTER_H + ACCENT_H;
 }
@@ -248,7 +350,18 @@ function drawGvChip(ctx: CanvasRenderingContext2D, text: string, x: number, base
   ctx.fillText(text, x + 10, baseline);
 }
 
-/** 一行场次:左海报缩略图 + 右侧三行(时间 / 片名 / 影院 · CODE),有备注时多一行。 */
+/** 批次节头(带开票批次时,每节一条):红条 + 「第 1 批 · 9/17 14:00 KST / 北京 13:00」。 */
+function drawBatchHead(ctx: CanvasRenderingContext2D, heading: string, y: number): void {
+  ctx.fillStyle = C.red2;
+  roundRectPath(ctx, PAD, y + 18, 6, 30, 3);
+  ctx.fill();
+  ctx.font = font(26, 700);
+  ctx.fillStyle = C.ink;
+  ctx.fillText(fitText(ctx, heading, POSTER_W - PAD * 2 - 20), PAD + 20, y + 44);
+}
+
+/** 一行场次:左海报缩略图 + 右侧三行(**CODE · 时间** / 片名 / 影院 · 状态列),
+ *  有备注多一行、带顺位时再跟上该场的备选行。 */
 function drawRow(
   ctx: CanvasRenderingContext2D,
   r: PosterRow,
@@ -283,26 +396,42 @@ function drawRow(
   const maxW = POSTER_W - PAD - tx;
   let ty = top + 46;
 
+  // 首行 = CODE + 时间(与分享文案同序:CODE 行首 —— 抢票时朋友按它找场次 / 在群里报号)
   ctx.font = font(27, 700);
   ctx.fillStyle = C.ink;
-  ctx.fillText(r.time, tx, ty);
-  if (r.gv) drawGvChip(ctx, r.gv, tx + ctx.measureText(r.time).width + 14, ty);
+  const head = `${r.code}  ${r.time}`;
+  ctx.fillText(head, tx, ty);
+  if (r.gv) drawGvChip(ctx, r.gv, tx + ctx.measureText(head).width + 14, ty);
 
   ty += 42;
   ctx.font = font(29, 600);
   ctx.fillStyle = C.ink;
   ctx.fillText(fitText(ctx, r.title, maxW), tx, ty);
 
+  // 状态列 = 影院 · 顺位标记(主选 / 备选②),与分享文案的措辞同源(`share.ts::rankMark`)
   ty += 36;
   ctx.font = font(22, 400);
   ctx.fillStyle = C.ink2;
-  ctx.fillText(fitText(ctx, `${r.venue} · ${r.code}`, maxW), tx, ty);
+  const mark = rankMark(r.rank);
+  const venueLine = mark ? `${r.venue} · ${mark}` : r.venue;
+  ctx.fillText(fitText(ctx, venueLine, maxW), tx, ty);
 
   if (r.note) {
     ty += 32;
     ctx.font = font(21, 400);
     ctx.fillStyle = C.note;
     ctx.fillText(fitText(ctx, `备注 ${r.note}`, maxW), tx, ty);
+  }
+
+  // 备选行(带顺位时才有):`↳ 备选②  045  13:20–14:50  Foo · 福  LOTTE 6`
+  for (const alt of r.alts) {
+    ty += ALT_H;
+    ctx.font = font(20, 400);
+    ctx.fillStyle = C.muted;
+    const bits = [alt.code, alt.time, alt.title, alt.venue];
+    const altMark = rankMark(alt.rank);
+    const line = `${ALT_MARK} ${altMark}  ${bits.join("  ")}`;
+    ctx.fillText(fitText(ctx, line, maxW), tx, ty);
   }
 }
 
@@ -357,28 +486,35 @@ export function drawPoster(
   ctx.fillStyle = C.line;
   ctx.fillRect(PAD, y - 24, POSTER_W - PAD * 2, 1);
 
-  // ---- 日期分节 + 场次 ----
-  for (const d of model.days) {
-    ctx.fillStyle = C.red;
-    roundRectPath(ctx, PAD, y + 20, 6, 30, 3);
-    ctx.fill();
-
-    const dayText = `${d.label} ${d.weekday}`;
-    ctx.font = font(31, 700);
-    ctx.fillStyle = C.ink;
-    ctx.fillText(dayText, PAD + 20, y + 46);
-    const dayW = ctx.measureText(dayText).width; // 同上:量完再换字体
-    ctx.font = font(22, 500);
-    ctx.fillStyle = C.muted;
-    ctx.fillText(`${d.count} 场`, PAD + 20 + dayW + 14, y + 46);
-    y += DAY_HEAD_H;
-
-    for (const r of d.rows) {
-      const rowH = r.note ? ROW_H_NOTE : ROW_H;
-      drawRow(ctx, r, y, rowH, images);
-      y += rowH;
+  // ---- 批次节头(带开票批次时) + 日期分节 + 场次 ----
+  // ⚠ 遍历 `sections`(不是 `days`):批次节头要插在节与节之间;`days` 是它的扁平派生视图。
+  for (const section of model.sections) {
+    if (section.heading) {
+      drawBatchHead(ctx, section.heading, y);
+      y += BATCH_HEAD_H;
     }
-    y += DAY_GAP;
+    for (const d of section.days) {
+      ctx.fillStyle = C.red;
+      roundRectPath(ctx, PAD, y + 20, 6, 30, 3);
+      ctx.fill();
+
+      const dayText = `${d.label} ${d.weekday}`;
+      ctx.font = font(31, 700);
+      ctx.fillStyle = C.ink;
+      ctx.fillText(dayText, PAD + 20, y + 46);
+      const dayW = ctx.measureText(dayText).width; // 同上:量完再换字体
+      ctx.font = font(22, 500);
+      ctx.fillStyle = C.muted;
+      ctx.fillText(`${d.count} 场`, PAD + 20 + dayW + 14, y + 46);
+      y += DAY_HEAD_H;
+
+      for (const r of d.rows) {
+        const rowH = rowHeight(r);
+        drawRow(ctx, r, y, rowH, images);
+        y += rowH;
+      }
+      y += DAY_GAP;
+    }
   }
 
   // ---- 页脚(绝对定位:内容再长也不会把它顶出画面) ----

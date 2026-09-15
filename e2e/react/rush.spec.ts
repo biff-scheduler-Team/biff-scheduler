@@ -8,7 +8,7 @@
 //   批次判据见 apps/web/src/batch.ts;露天场必须落第 1 批是本需求的核心回归点。
 
 import { test, expect } from "@playwright/test";
-import { keyOf, ready, seed } from "./helpers";
+import { keyOf, paintedTexts, ready, seed, trackPaintedTexts } from "./helpers";
 
 /** 已选场次 → `biff.picks.v2`(每场一个 key,与行程页口径一致) */
 const picks = (...codes: string[]) =>
@@ -84,4 +84,46 @@ test("分享文案可勾选「带上顺位」与「带上开票批次」", async
   await expect(text).toContainText("主选");
   await expect(text).toContainText("↳ 126");
   await expect(text).toContainText("070  20:00–22:25");
+});
+
+test("分享图片同样受「带上顺位」「带上开票批次」控制", async ({ page }) => {
+  await trackPaintedTexts(page); // 海报是 canvas 手绘:断言只能读画上去的文字
+  await seed(page, {
+    "biff.picks.v2": picks("070", "126"),
+    "biff.savedplans.v1": plan("070", "126"),
+  });
+  await ready(page, "/rush");
+  await page.getByRole("button", { name: "导出与分享", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "导出与分享" });
+  const generate = dialog.getByRole("button", { name: "生成分享图片", exact: true });
+  const canvas = dialog.getByLabel("行程分享图片", { exact: true });
+
+  await generate.click();
+  await expect(canvas).toBeVisible();
+  const plain = await paintedTexts(page);
+  // 默认(两个都不勾):图上没有顺位字、没有备选行、没有批次节头
+  expect(plain).not.toContain("主选");
+  expect(plain).not.toContain("备选");
+  expect(plain).not.toContain("第 1 批");
+  const plainHeight = await canvas.evaluate((el) => (el as HTMLCanvasElement).height);
+
+  // ⚠ S2 复选的可点区是外层 <label>(见上一条用例的说明)
+  await dialog.locator("label", { hasText: "带上顺位" }).click();
+  await dialog.locator("label", { hasText: "带上开票批次" }).click();
+  // 改选项会作废已出的图(否则弹层里留着按旧选项画好的图,看着「没生效」)
+  await expect(canvas).toHaveCount(0);
+
+  await generate.click();
+  await expect(canvas).toBeVisible();
+  const ranked = await paintedTexts(page);
+  // 126 是组内顺位 1 → 主选;070 顺位 2 → 备选②,其备选行指向 126(措辞与分享文案同源)
+  expect(ranked).toContain("主选");
+  expect(ranked).toContain("备选②");
+  expect(ranked).toContain("↳");
+  expect(ranked).toContain("第 1 批");
+  expect(ranked).toContain("第 2 批");
+  // 备选行 + 批次节头都会让图变长(canvas 按模型算高,不涨就是没画进去)
+  expect(await canvas.evaluate((el) => (el as HTMLCanvasElement).height)).toBeGreaterThan(
+    plainHeight,
+  );
 });

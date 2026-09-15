@@ -57,8 +57,12 @@ import type { PickRow } from "./ics";
 /** 概要下方的分隔线(全角制表符,微信里是一条实线)—— 只出现一次,把「概要」与「场次」分开。 */
 const DIVIDER = "━━━━━━━━━━━━";
 
+/** 备选块的行首标记 —— 分享文案拼成 `    ↳ ` 前缀,分享图片画成同一枚箭头
+ *  (`poster.ts` 读它,别再各写一个符号)。 */
+export const ALT_MARK = "↳";
+
 /** 备选块的行首前缀 —— 比主选块多一层缩进,一眼看出「这是同一组的备选方案」。 */
-const ALT_PREFIX = "    ↳ ";
+const ALT_PREFIX = `    ${ALT_MARK} `;
 
 /** GV 标记:有谈段 → 「映后」/「仅正片」;`is_gv` 但谈段配成 0 → 只标「GV」。非 GV 场返回空串。
  *  ⚠ 文案是**分享文案 / 分享图片 chip / 方案「查看场次」弹层**共用的单一来源
@@ -75,8 +79,9 @@ function circled(n: number): string {
   return n >= 1 && n <= CIRCLED.length ? CIRCLED[n - 1] : String(n);
 }
 
-/** 顺位标记:组内第 1 = 「主选」,第 2 起 = 「备选②」。共同场次(无顺位)返回空串 —— 别兜底成「主选」。 */
-function rankMark(rank: number | undefined): string {
+/** 顺位标记:组内第 1 = 「主选」,第 2 起 = 「备选②」。共同场次(无顺位)返回空串 —— 别兜底成「主选」。
+ *  ⚠ 分享文案与分享图片**共用本函数**(`poster.ts` 的状态列也读它)—— 措辞只有这一处,别各写一份。 */
+export function rankMark(rank: number | undefined): string {
   if (rank === undefined) return "";
   return rank === 1 ? "主选" : `备选${circled(rank)}`;
 }
@@ -181,18 +186,20 @@ export interface ShareOptions {
 
 type ShareRow = { e: PickRow; s: Screening };
 
-/** 按批次切段(保持段内原有「日期 → 开场时间」顺序;批次升序,空批次不出现)。 */
-function batchSections(rows: ShareRow[], batchOf: (s: Screening) => number): { batch: number; rows: ShareRow[] }[] {
-  const sections: { batch: number; rows: ShareRow[] }[] = [];
-  const index = new Map<number, ShareRow[]>();
+/** 按批次切段(保持段内原有「日期 → 开场时间」顺序;批次升序,空批次不出现)。
+ *  ⚠ **分享文案与分享图片共用**(`poster.ts` 也读它)—— 两处各切一遍必然出现
+ *  「文案分了 2 节、图上只有 1 节」这种对不上的图。 */
+export function batchSections<T>(rows: T[], batchOf: (row: T) => number): { batch: number; rows: T[] }[] {
+  const sections: { batch: number; rows: T[] }[] = [];
+  const index = new Map<number, T[]>();
   for (const row of rows) {
-    const batch = batchOf(row.s);
+    const batch = batchOf(row);
     const list = index.get(batch);
     if (list) {
       list.push(row);
       continue;
     }
-    const created: ShareRow[] = [row];
+    const created: T[] = [row];
     index.set(batch, created);
     sections.push({ batch, rows: created });
   }
@@ -246,7 +253,9 @@ export function buildShareText(
   };
 
   const batching = options.batching;
-  const sections = batching ? batchSections(rows, batching.batchOf) : [{ batch: null, rows }];
+  const sections = batching
+    ? batchSections(rows, (row) => batching.batchOf(row.s))
+    : [{ batch: null, rows }];
   for (const section of sections) {
     if (section.batch !== null && batching) lines.push("", `【${batching.headOf(section.batch)}】`);
     for (const [date, group] of groupByDate(section.rows, (r) => r.s.date)) {
