@@ -14,6 +14,15 @@ BIFF cookie 为 `__Host-biff.session`，设置 Secure、HttpOnly、SameSite=Lax 
 
 访问 token 有效期为 15 分钟。BIFF 会话有效期为七天，刷新 token 在后端轮换；并发刷新使用 D1 锁，并保留 30 秒的刷新响应重试窗口。退出 BIFF 删除其会话并撤销刷新 token。切换账号会重新进入 IFFDAY 登录流程。
 
+`GET /api/account/me` 额外返回 `renewable`：这个会话能不能自动续期（即登录时账号系统有没有下发 refresh token）。
+没有 refresh token 的会话撑不过第一个 access token 窗口（15 分钟），之后会话必然被判失效、用户被要求重新登录
+—— 这是 2026-09-16 那次「重登后十几分钟又被踢」的排查入口（见 `docs/plans/PLAN-20260916104514.md`）。
+
+会话不可用时，401 会带上具体原因，不再统一是 `UNAUTHENTICATED`：`SESSION_NO_COOKIE`（浏览器没带凭证）、
+`SESSION_NOT_FOUND`（服务端没有这一行）、`SESSION_NO_REFRESH_TOKEN`（登录时就没拿到长效凭证）、
+`SESSION_REFRESH_REJECTED`（账号系统拒绝续期）、`IDENTITY_REJECTED`（账号系统拒绝身份校验）。
+前端会把中文原因拼进「登录已过期」那句提示里。
+
 ## 本地数据与同步
 
 登录后，尚未导入过的账号会自动合并非空本机数据。合并前保留本机副本。选片、场次、备注、已保存方案和现有 `biff.*` 偏好都参与同步，公开的影片资料仍从静态文件读取。

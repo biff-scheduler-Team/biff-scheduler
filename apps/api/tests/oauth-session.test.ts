@@ -205,12 +205,16 @@ describe("sessionFor:刷新失败不得破坏会话", () => {
     expect(sessionRow(sqlite)?.refresh_until).toBe(0);
   });
 
-  it("invalid_grant 且行未被他人改写 → 删行并返回 null(确实失效,强制重新登录)", async () => {
+  it("invalid_grant 且行未被他人改写 → 删行,并报出「上游拒绝续期」", async () => {
     const { sqlite, seeded } = setup();
     await seeded;
     refreshResponse.mockRejectedValue(invalidGrant());
 
-    expect(await sessionFor(environment(sqlite), COOKIE)).toBeNull();
+    const lookup = await sessionFor(environment(sqlite), COOKIE);
+
+    expect(lookup.session).toBeNull();
+    // 与「登录时就没拿到 RT」区分开:两条成因的修法完全不同。
+    expect(lookup.failure).toBe("SESSION_REFRESH_REJECTED");
     expect(sessionRow(sqlite)).toBeUndefined();
   });
 
@@ -230,7 +234,7 @@ describe("sessionFor:刷新失败不得破坏会话", () => {
       throw invalidGrant();
     });
 
-    const session = await sessionFor(environment(sqlite), COOKIE);
+    const { session } = await sessionFor(environment(sqlite), COOKIE);
 
     expect(session).not.toBeNull();
     expect(session?.tokens.accessToken).toBe("at-won");
@@ -266,7 +270,7 @@ describe("sessionFor:刷新失败不得破坏会话", () => {
       return freshTokens("at-loser", "rt-3");
     });
 
-    const session = await sessionFor(environment(sqlite), COOKIE);
+    const { session } = await sessionFor(environment(sqlite), COOKIE);
 
     expect(session?.tokens.accessToken).toBe("at-won");
   });
@@ -276,7 +280,7 @@ describe("sessionFor:刷新失败不得破坏会话", () => {
     await seeded;
     refreshResponse.mockResolvedValue(freshTokens("at-2", "rt-2"));
 
-    const session = await sessionFor(environment(sqlite), COOKIE);
+    const { session } = await sessionFor(environment(sqlite), COOKIE);
 
     expect(session?.tokens.accessToken).toBe("at-2");
     expect(session?.tokens.refreshToken).toBe("rt-2");
@@ -296,11 +300,16 @@ describe("sessionFor:刷新失败不得破坏会话", () => {
     expect(sessionRow(sqlite)).toBeDefined();
   });
 
-  it("没有 refresh token 时直接删行返回 null(不尝试刷新)", async () => {
+  it("★ 没有 refresh token(登录时上游没给)→ 删行,并报出可区分的原因", async () => {
     const { sqlite, seeded } = setup({ payload: await sealedPayload({ accessToken: "at-1" }) });
     await seeded;
 
-    expect(await sessionFor(environment(sqlite), COOKIE)).toBeNull();
+    const lookup = await sessionFor(environment(sqlite), COOKIE);
+
+    // 这条路径**不依赖任何上游往返**:登录时没拿到 RT,access token 一过期(15 分钟)
+    // 必然走到这里。线上「重登后十几分钟又被踢」最可能就是它(PLAN-20260916104514 成因 A)。
+    expect(lookup.failure).toBe("SESSION_NO_REFRESH_TOKEN");
+    expect(lookup.session).toBeNull();
     expect(sessionRow(sqlite)).toBeUndefined();
   });
 
@@ -309,7 +318,7 @@ describe("sessionFor:刷新失败不得破坏会话", () => {
     await seeded;
     sqlite.prepare("UPDATE app_session SET token_expires_at = ?").run(Date.now() + 600_000);
 
-    const session = await sessionFor(environment(sqlite), COOKIE);
+    const { session } = await sessionFor(environment(sqlite), COOKIE);
 
     expect(session?.tokens.accessToken).toBe("at-1");
     expect(refreshResponse).not.toHaveBeenCalled();
@@ -329,6 +338,41 @@ describe("sessionFor:窗口口径(锁与等待必须对齐)", () => {
     expect(oauthModule.IDENTITY_TIMEOUT_MS).toBeGreaterThan(0);
     // 持有者顺序跑 discovery + refresh,租约短于 2 倍超时就会中途过期 → 别人接管 → 同一个 RT 刷两次。
     expect(oauthModule.IDENTITY_TIMEOUT_MS * 2).toBeLessThanOrEqual(oauthModule.REFRESH_LEASE_MS);
+  });
+});
+
+describe("sessionFor:401 分诊(失败原因必须可区分)", () => {
+  // 以前四条成因都塌成 `null` → 前端只能统一说「登录已过期」,线上排查只能靠猜
+  // (PLAN-20260916104514)。这里把「可区分」写成断言,防止日后又被合并回去。
+  it("cookie 有、但服务端没有这一行 → SESSION_NOT_FOUND", async () => {
+    const sqlite = new DatabaseSync(":memory:");
+    createSchema(sqlite);
+
+    const lookup = await sessionFor(environment(sqlite), COOKIE);
+
+    expect(lookup.session).toBeNull();
+    expect(lookup.failure).toBe("SESSION_NOT_FOUND");
+  });
+
+  it("完全没带 cookie(访客)→ SESSION_NO_COOKIE", async () => {
+    const sqlite = new DatabaseSync(":memory:");
+    createSchema(sqlite);
+
+    const lookup = await sessionFor(environment(sqlite), undefined);
+
+    expect(lookup.session).toBeNull();
+    expect(lookup.failure).toBe("SESSION_NO_COOKIE");
+  });
+
+  it("命中时 failure 必须是 null(可选登录的调用点靠它区分访客)", async () => {
+    const { sqlite, seeded } = setup();
+    await seeded;
+    sqlite.prepare("UPDATE app_session SET token_expires_at = ?").run(Date.now() + 600_000);
+
+    const lookup = await sessionFor(environment(sqlite), COOKIE);
+
+    expect(lookup.failure).toBeNull();
+    expect(lookup.session?.tokens.accessToken).toBe("at-1");
   });
 });
 

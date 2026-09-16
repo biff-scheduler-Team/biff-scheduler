@@ -16,6 +16,33 @@ const tokensSchema = z.object({
   emailVerified: z.boolean(),
 });
 export type SessionTokens = z.infer<typeof tokensSchema>;
+
+/**
+ * 会话不可用的**可区分原因**。
+ *
+ * 以前所有失败都塌成「401 UNAUTHENTICATED」,前端只能统一显示「登录已过期」——
+ * 而线上「cookie 还在、行没了」至少有三条成因(登录没拿到 refresh token / 上游拒绝刷新 /
+ * 上游拒绝身份校验),不分开就只能靠猜。见 `PLAN-20260916104514`。
+ */
+export type SessionFailure =
+  | "SESSION_NO_COOKIE"
+  | "SESSION_NOT_FOUND"
+  | "SESSION_NO_REFRESH_TOKEN"
+  | "SESSION_REFRESH_REJECTED";
+
+export type SessionRow = typeof appSession.$inferSelect;
+
+/**
+ * `sessionFor()` 的返回值:命中给会话,未命中给**原因**(而不是笼统的 `null`)。
+ *
+ * 可选取登录的调用点只关心 `session`(cookie 缺失本来就是「访客」的正常语义),
+ * 只有 `requireIdentity` 需要 `failure` 把它变成可读的错误码。
+ */
+export interface SessionLookup {
+  session: { row: SessionRow; tokens: SessionTokens } | null;
+  failure: SessionFailure | null;
+}
+
 export const sessionCookieName = (config: Configuration) =>
   config.APP_ENV === "production" ? "__Host-biff.session" : "biff.session";
 export const pendingCookieName = (config: Configuration) =>
@@ -88,8 +115,12 @@ export function provider(env: Env, clientIp?: string, origin?: string) {
   };
 }
 
-export async function sessionFor(env: Env, cookie: string | undefined, clientIp?: string) {
-  if (!cookie) return null;
+export async function sessionFor(
+  env: Env,
+  cookie: string | undefined,
+  clientIp?: string,
+): Promise<SessionLookup> {
+  if (!cookie) return { session: null, failure: "SESSION_NO_COOKIE" };
   const config = configuration(env);
   const tokenHash = await hash(cookie);
   const db = database(env.DB);
@@ -98,14 +129,19 @@ export async function sessionFor(env: Env, cookie: string | undefined, clientIp?
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const row = await db.select().from(appSession)
       .where(and(eq(appSession.token_hash, tokenHash), gt(appSession.expires_at, Date.now()))).get();
-    if (!row) return null;
+    if (!row) return { session: null, failure: "SESSION_NOT_FOUND" };
     const tokens = tokensSchema.parse(
       await unseal(row.payload, config.SESSION_SECRET, `session:${tokenHash}`),
     );
-    if (row.token_expires_at > Date.now() + 30_000) return { row, tokens };
+    if (row.token_expires_at > Date.now() + 30_000)
+      return { session: { row, tokens }, failure: null };
     if (!tokens.refreshToken) {
+      // 登录时上游没给 refresh token 的会话,撑不过第一个 access token 窗口(15 分钟)——
+      // 到点必然走到这里删行,用户只看到「登录已过期」而线上不留痕迹。打点是为了让这条
+      // 路径可被观察,并与「上游拒绝刷新」区分开(PLAN-20260916104514 成因 A)。
+      console.warn("session_without_refresh_token", row.subject);
       await db.delete(appSession).where(eq(appSession.token_hash, tokenHash)).run();
-      return null;
+      return { session: null, failure: "SESSION_NO_REFRESH_TOKEN" };
     }
     const leaseUntil = Date.now() + REFRESH_LEASE_MS;
     const lease = await db.update(appSession).set({ refresh_until: leaseUntil })
@@ -142,6 +178,13 @@ export async function sessionFor(env: Env, cookie: string | undefined, clientIp?
         refreshToken: result.refresh_token ?? tokens.refreshToken,
         idToken: result.id_token ?? tokens.idToken,
       };
+      // 只记寿命与「是否轮换」,绝不记 token —— 上游到底有没有下发 RT 是本次故障的关键疑点,
+      // 有了这一行,下次拿到生产日志就能直接判。
+      console.log(
+        "session_token_refreshed",
+        result.expires_in ?? "unset",
+        result.refresh_token ? "rt-rotated" : "rt-reused",
+      );
       const payload = await seal(fresh, config.SESSION_SECRET, `session:${tokenHash}`);
       const saved = await db.update(appSession).set({
         payload, token_expires_at: Date.now() + (result.expires_in ?? 900) * 1000, refresh_until: 0,
@@ -157,7 +200,10 @@ export async function sessionFor(env: Env, cookie: string | undefined, clientIp?
         const removed = await db.delete(appSession)
           .where(and(eq(appSession.token_hash, tokenHash), eq(appSession.payload, row.payload)))
           .run();
-        if (removed.meta.changes) return null;
+        if (removed.meta.changes) {
+          console.warn("session_invalid_grant", row.subject);
+          return { session: null, failure: "SESSION_REFRESH_REJECTED" };
+        }
         console.warn("session_refresh_invalid_grant_superseded");
         continue;
       }

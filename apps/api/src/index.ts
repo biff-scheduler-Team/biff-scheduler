@@ -55,13 +55,14 @@ import {
   pendingCookieName,
   sessionCookieName,
   sessionFor,
+  type SessionLookup,
   type SessionTokens,
 } from "./oauth";
 
 type AppEnv = {
   Bindings: Env;
   Variables: {
-    session: NonNullable<Awaited<ReturnType<typeof sessionFor>>>;
+    session: NonNullable<SessionLookup["session"]>;
     profile: AccountProfile;
   };
 };
@@ -203,6 +204,13 @@ app.get("/api/auth/callback", async (c) => {
     await oauth.validateApplicationLevelSignature(as, response, p.options);
     const claims = oauth.getValidatedIdTokenClaims(result);
     const subject = subjectSchema.parse(claims?.sub);
+    // 登录这一刻「有没有 RT」决定这个会话能不能自动续期(PLAN-20260916104514 成因 A)。
+    // 只记寿命与有无,不打 token。
+    console.log(
+      "oidc_token_issued",
+      result.expires_in ?? "unset",
+      result.refresh_token ? "rt" : "no-rt",
+    );
     const infoResponse = await oauth.userInfoRequest(as, p.client, result.access_token, p.options);
     const info = await oauth.processUserInfoResponse(as, p.client, subject, infoResponse);
     const tokens: SessionTokens = {
@@ -235,12 +243,14 @@ app.get("/api/auth/callback", async (c) => {
 /** 与 /api/account/* 相同：会话 + IFFDAY profile；反馈写路径复用。 */
 const requireIdentity: MiddlewareHandler<AppEnv> = async (c, next) => {
   const config = configuration(c.env);
-  const session = await sessionFor(
+  const { session, failure } = await sessionFor(
     c.env,
     getCookie(c, sessionCookieName(config)),
     c.req.header("cf-connecting-ip"),
   );
-  if (!session) return c.json({ error: "UNAUTHENTICATED" }, 401);
+  // 把**具体原因**回给前端:线上「cookie 还在、行没了」至少有三条完全不同的成因,
+  // 只回一句 UNAUTHENTICATED 的话,用户和我们只能靠猜(见 PLAN-20260916104514)。
+  if (!session) return c.json({ error: failure ?? "UNAUTHENTICATED" }, 401);
   const identity = await c.env.IFFDAY_API.fetch(
     new Request(`${config.IFFDAY_ORIGIN}/api/v1/profile`, {
       headers: { Authorization: `Bearer ${session.tokens.accessToken}` },
@@ -249,8 +259,9 @@ const requireIdentity: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (!identity.ok) {
     if (identity.status === 401)
       await database(c.env.DB).delete(appSession).where(eq(appSession.token_hash, session.row.token_hash)).run();
+    // 上游拒绝 ≠ 本地会话不存在:错误码必须分开,否则这一条会伪装成「登录已过期」。
     return c.json(
-      { error: identity.status === 401 ? "UNAUTHENTICATED" : "IDENTITY_UNAVAILABLE" },
+      { error: identity.status === 401 ? "IDENTITY_REJECTED" : "IDENTITY_UNAVAILABLE" },
       identity.status === 401 ? 401 : 503,
     );
   }
@@ -266,6 +277,10 @@ app.get("/api/account/me", (c) => {
   return c.json({
     user: { id: row.subject, email: tokens.email, emailVerified: tokens.emailVerified },
     profile: c.get("profile"),
+    // 这个会话能不能自动续期 = 登录时上游有没有给 refresh token。没有它,access token 一过期
+    // (15 分钟)会话就必然被判失效 —— 以前这件事只能靠等服务端删行后看 401,现在**登录后立刻**
+    // 就能读出来(PLAN-20260916104514)。前端据此在账号面板给出说明。
+    renewable: Boolean(tokens.refreshToken),
   });
 });
 app.patch("/api/account/profile", async (c) => {
@@ -446,7 +461,7 @@ async function applyWantFromRecords(
 
 app.get("/api/feedback", async (c) => {
   const config = configuration(c.env);
-  const session = await sessionFor(
+  const { session } = await sessionFor(
     c.env,
     getCookie(c, sessionCookieName(config)),
     c.req.header("cf-connecting-ip"),
@@ -509,7 +524,7 @@ app.post("/api/stats/want-ping", async (c) => {
   const { edition, films } = parsed.data;
   const config = configuration(c.env);
   const db = database(c.env.DB);
-  const session = await sessionFor(
+  const { session } = await sessionFor(
     c.env,
     getCookie(c, sessionCookieName(config)),
     c.req.header("cf-connecting-ip"),
@@ -567,7 +582,7 @@ app.post("/api/stats/screening-attendance-ping", async (c) => {
   const { edition, codes } = parsed.data;
   const config = configuration(c.env);
   const db = database(c.env.DB);
-  const session = await sessionFor(
+  const { session } = await sessionFor(
     c.env,
     getCookie(c, sessionCookieName(config)),
     c.req.header("cf-connecting-ip"),
@@ -605,7 +620,7 @@ app.get("/api/discussions", async (c) => {
   const edition = c.req.query("edition") || DEFAULT_WANT_EDITION;
   if (edition.length > 64) return c.json({ error: "INVALID_EDITION" }, 422);
   const config = configuration(c.env);
-  const session = await sessionFor(
+  const { session } = await sessionFor(
     c.env,
     getCookie(c, sessionCookieName(config)),
     c.req.header("cf-connecting-ip"),
@@ -625,7 +640,7 @@ app.get("/api/screenings/:code/discussion", async (c) => {
   const edition = c.req.query("edition") || DEFAULT_WANT_EDITION;
   if (edition.length > 64) return c.json({ error: "INVALID_EDITION" }, 422);
   const config = configuration(c.env);
-  const session = await sessionFor(
+  const { session } = await sessionFor(
     c.env,
     getCookie(c, sessionCookieName(config)),
     c.req.header("cf-connecting-ip"),
