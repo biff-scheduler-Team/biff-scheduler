@@ -165,13 +165,9 @@
   font-size: 12px;
 }
 
-/* ---------- 示例贴纸提示 ---------- */
+/* ---------- 空榜引导(不再有示例贴纸,只留一句怎么开始) ---------- */
 
-.rb-demo {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
+.rb-hint {
   margin: 0;
   padding: 8px 12px;
   border: 1px solid var(--line);
@@ -179,22 +175,6 @@
   background: var(--brand-soft);
   color: var(--text);
   font-size: 12px;
-}
-
-.rb-demo-btn {
-  margin-left: auto;
-  padding: 4px 12px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.rb-demo-btn:hover {
-  border-color: var(--brand);
-  color: var(--brand);
 }
 
 /* ---------- 两列网格 ---------- */

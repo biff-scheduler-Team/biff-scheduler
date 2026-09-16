@@ -16,13 +16,13 @@ import {
   clampSpot,
   countsOf,
   crowdOf,
-  demoSeed,
   loadStickers,
   loadWatched,
   makeSticker,
   MAX_PER_FILM,
   moveSticker,
   placeSticker,
+  purgeDemoLeavings,
   saveStickers,
   saveWatched,
   scoreOf,
@@ -60,6 +60,8 @@ const mem = new Map<string, string>();
 const LS_V2 = "biff.redblack.v2";
 const LS_V1 = "biff.redblack.v1";
 const LS_WATCHED = "biff.redblack.watched.v1";
+/** 废弃键:原来记「已关掉示例铺底」,现在只被清理函数删掉 */
+const LS_SEEN = "biff.redblack.seen.v1";
 
 /** 最小 FilmNode:只填被测函数真正读的字段 */
 function film(key: string, shows: FilmNode["shows"] = []): FilmNode {
@@ -390,41 +392,47 @@ describe("boardFilms:只列有排期的影片", () => {
   });
 });
 
-// 示例铺底(2026-09-16):空榜看不出颜色分布 / 排序 / 拖拽的效果,首次进入先铺一份内存态示例。
-// 为什么单测它:它是**唯一**会往用户数据里「凭空多出内容」的路径,判错的后果是
-// 「用户没标记却看到一堆贴纸」或「用户自己弄的被示例覆盖」,两种都很难解释。
-describe("demoSeed:示例铺底", () => {
-  const films = [...Array(9).keys()].map((i) => film(`f${i}`, [show({ code: `s${i}` })]));
-
-  it("确定性:同一份影片每次生成完全一样", () => {
-    expect(demoSeed(films)).toEqual(demoSeed(films));
+// 示例残留清理(2026-09-16):早先版本首次进入会自动铺一份示例贴纸,用户要求正式环境从空榜开始。
+// 为什么单测它:这是**唯一**会动用户已有数据的清理路径,判错的两种后果都很难解释 ——
+// 「用户自己贴的被一起删掉」或「示例一直清不掉、用户永远顶着一堆没贴过的贴纸」。
+describe("purgeDemoLeavings:清理示例残留", () => {
+  it("没有示例残留 → 原样返回,一个字节都不动", () => {
+    const mine = placeSticker(new Map(), "cat:f001", sticker("s1", "red", 0.3, 0.3));
+    saveStickers(mine);
+    saveWatched(new Set(["cat:f002"]));
+    const result = purgeDemoLeavings();
+    expect(result.board).toEqual(mine);
+    expect(result.watched).toEqual(new Set(["cat:f002"]));
   });
 
-  it("用户已有的内容原样保留,只补他没有的影片", () => {
-    const mine: StickerBoard = new Map([["f1", [sticker("mine", "black", 0.3, 0.3)]]] as never);
-    const seed = demoSeed(films, 60, mine, new Set(["f2"]));
-    expect(seed.board.get("f1")).toEqual([{ id: "mine", type: "black", posX: 0.3, posY: 0.3 }]);
-    expect(seed.watched.has("f2")).toBe(true);
+  it("贴纸全是示例生成的 → board 与 watched 一起清空(整份都是自动铺的)", () => {
+    saveStickers(placeSticker(new Map(), "cat:f001", sticker("demo-cat:f001-red", "red")));
+    saveWatched(new Set(["cat:f001", "cat:f002"]));
+    const result = purgeDemoLeavings();
+    expect(result.board.size).toBe(0);
+    expect(result.watched.size).toBe(0);
+    // 当场落盘:只清内存的话刷新一次示例又回来了
+    expect(loadStickers().size).toBe(0);
+    expect(loadWatched().size).toBe(0);
   });
 
-  it("三段循环:留白 / 已贴 / 待贴 都出现(否则看不出差别)", () => {
-    const seed = demoSeed(films);
-    const placed = [...seed.board.values()].filter((l) => l.length > 0).length;
-    expect(placed).toBeGreaterThan(0);
-    expect(seed.watched.size).toBeGreaterThan(placed); // 有标记了但还没贴的
-    expect(seed.watched.size).toBeLessThan(films.length); // 也有留白让用户自己点
+  it("混着自己贴的 → 只摘示例那几枚,用户自己的贴纸与标记原样保留", () => {
+    let board = placeSticker(new Map(), "cat:f001", sticker("demo-cat:f001-red", "red"));
+    board = placeSticker(board, "cat:f002", sticker("s-mine", "black", 0.4, 0.6));
+    saveStickers(board);
+    saveWatched(new Set(["cat:f002"]));
+    const result = purgeDemoLeavings();
+    expect([...result.board.keys()]).toEqual(["cat:f002"]);
+    expect(result.board.get("cat:f002")).toEqual([
+      { id: "s-mine", type: "black", posX: 0.4, posY: 0.6 },
+    ]);
+    expect(result.watched).toEqual(new Set(["cat:f002"]));
+    expect(loadStickers().has("cat:f001")).toBe(false);
   });
 
-  it("坐标合法、每部不超过一枚、红黑都出现(清一色的话三档排序看不出差别)", () => {
-    const seed = demoSeed(films);
-    const all = [...seed.board.values()].flat();
-    for (const s of all) {
-      expect(s.posX).toBeGreaterThanOrEqual(0.08);
-      expect(s.posX).toBeLessThanOrEqual(0.92);
-      expect(s.id).not.toBe("");
-    }
-    for (const list of seed.board.values()) expect(list.length).toBeLessThanOrEqual(MAX_PER_FILM);
-    expect(all.some((s) => s.type === "red")).toBe(true);
-    expect(all.some((s) => s.type === "black")).toBe(true);
+  it("顺手收掉废弃的「关掉示例」键(功能已删,留着只是垃圾)", () => {
+    mem.set(LS_SEEN, "off");
+    purgeDemoLeavings();
+    expect(mem.has(LS_SEEN)).toBe(false);
   });
 });
