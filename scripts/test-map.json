@@ -218,6 +218,22 @@
       ]
     },
     {
+      "id": "eats",
+      "note": "吃喝页（《BIFF吃喝》餐厅清单 + Google/Naver/Kakao 三站地图跳转 + 用户自存店铺 + 地图数据源代理）",
+      "paths": [
+        "apps/web/src/pages/EatsPage.tsx",
+        "apps/web/src/pages/eats.css",
+        "apps/web/src/eats.ts",
+        "apps/web/public/eats.json",
+        "apps/web/src/legend.ts",
+        "apps/api/src/place-lookup.ts",
+        "tools/build_eats.py"
+      ],
+      "specs": [
+        "eats"
+      ]
+    },
+    {
       "id": "feedback",
       "note": "建议反馈留言板（/feedback + /api/feedback）",
       "paths": [
