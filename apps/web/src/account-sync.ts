@@ -86,6 +86,8 @@ export const accountState = {
   conflicts: [] as SyncConflict[],
   /** 这个会话能不能自动续期(登录时上游有没有给 refresh token)。null = 还不知道。 */
   renewable: null as boolean | null,
+  /** 上一次登录失败时服务端分诊出来的 `account_error` 码(没有失败过就是 null)。 */
+  loginError: null as string | null,
 };
 let owner = "guest";
 let cache = emptyCache();
@@ -210,6 +212,8 @@ function activate(account: Account | null) {
   accountState.authenticated = Boolean(account);
   // 登出 / 切账号时清掉上一次的结论,免得面板显示的是上一个会话的续期能力。
   if (!account) accountState.renewable = null;
+  // 登录真的成功了才清掉「上次登录失败」的原因:失败后本机是 guest,不能再挂着那条提示误导人。
+  if (account) accountState.loginError = null;
   const pending = account ? localStorage.getItem(importKey(owner)) : null;
   accountState.pendingImport = pending ? recordsSchema.parse(JSON.parse(pending)) : null;
   accountState.conflicts = [];

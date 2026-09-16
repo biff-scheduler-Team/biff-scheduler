@@ -119,6 +119,7 @@
       "paths": [
         "apps/web/src/account.ts",
         "apps/web/src/account-sync.ts",
+        "apps/web/src/account-errors.ts",
         "apps/web/src/sync-data.ts",
         "apps/web/src/workspace-storage.ts",
         "apps/web/src/components/AccountHost.tsx",

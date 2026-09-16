@@ -29,6 +29,21 @@ BIFF cookie 为 `__Host-biff.session`，设置 Secure、HttpOnly、SameSite=Lax 
 token 过去 —— 一次抖动不该等于永久登出（cookie 还在、行没了）。该调用带 3 秒硬超时并转发
 `cf-connecting-ip`，与 OIDC 调用的口径一致。
 
+**登录入口**的失败同样带可区分原因（回调在 `apps/api/src/auth-callback.ts`）：失败时重定向到
+`/?account_error=<code>`，码的清单是共享契约 `packages/contracts/src/account.ts` 里的
+`loginFailureCodeSchema` —— `pending_cookie_missing`（浏览器没带回临时 cookie）、
+`pending_expired`（临时记录已取用/超时/重复登录）、`pending_unreadable`（临时记录解不开）、
+`upstream_unreachable`（发现文档拿不到或配置不符）、`authorize_denied`（上游在授权环节拒绝）、
+`state_mismatch`（与本次登录的 state 对不上）、`token_rejected`（换 token 被拒）、
+`id_token_invalid`（验签/声明不通过）、`subject_invalid`（`sub` 不合白名单）、
+`userinfo_failed`（读资料失败）、`session_store_failed`（写会话失败）、
+`pending_store_failed`（登录一开始就写不了临时记录），以及兜底的 `authorization`。
+文案的唯一来源是 `apps/web/src/account-errors.ts`（`Record<LoginFailureCode, string>` 保证漏写即编译不过），
+toast 与账号面板都会显示这一条，原始码同时打到控制台便于用户复制。
+`/api/auth/login` 自身失败也回同样的码，不再抛 500 —— 2026-09-16 之前 7 条失败路径里有 6 条都塌成
+`authorization`，线上「点登录 → 跳回来提示登录未完成」完全无法定位（见
+`docs/plans/PLAN-20260916215100.md`）。
+
 ## 本地数据与同步
 
 登录后，尚未导入过的账号会自动合并非空本机数据。合并前保留本机副本。选片、场次、备注、已保存方案和现有 `biff.*` 偏好都参与同步，公开的影片资料仍从静态文件读取。
