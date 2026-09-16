@@ -312,9 +312,17 @@ test("imports ICS by file, previews invalid data, and merges without duplicates"
 test("saved plans export text and a real PNG, and ticket reminders use UTC", async ({
   page,
 }) => {
-  await seed(page, { "biff.savedplans.v1": legacyData["biff.savedplans.v1"] });
+  await seed(page, {
+    "biff.picks.v2": JSON.stringify([
+      { key: keyOf("001"), picks: [{ code: "001" }], note: "" },
+    ]),
+    "biff.savedplans.v1": legacyData["biff.savedplans.v1"],
+  });
   await ready(page, "/agenda");
   const dialog = await openExport(page);
+  // ⚠ 导出范围默认是「当前行程」（PLAN-20260916135942）；本用例验证的是**已保存方案**照常导出，故显式选它
+  await dialog.getByRole("button", { name: /导出范围/ }).click();
+  await page.getByRole("option", { name: /^方案 7/ }).click();
   await dialog.getByRole("button", { name: "分享文案", exact: true }).click();
   await expect(
     dialog.getByRole("textbox", { name: "行程分享文案", exact: true }),

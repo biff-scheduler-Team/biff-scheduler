@@ -66,19 +66,28 @@ test("行程为空时给空态,不渲染批次卡", async ({ page }) => {
   await expect(page.locator("[data-ticket-batch]")).toHaveCount(0);
 });
 
-test("分享文案可勾选「带上顺位」与「带上开票批次」", async ({ page }) => {
+test("分享文案默认按「当前行程」导出,批次分节与 /rush 逐条一致", async ({ page }) => {
   await seed(page, {
     "biff.picks.v2": picks("070", "126"),
-    "biff.savedplans.v1": plan("070", "126"),
+    "biff.ranks.v1": JSON.stringify({ "126": 1, "070": 2 }),
+    // ⚠ 方案里故意放一个**与行程无关**的 code:默认范围必须是「当前行程」（PLAN-20260916135942）。
+    //   若哪天回归成「默认选最后一个已保存方案」，下面的 126 / 070 会整个从文案里消失。
+    "biff.savedplans.v1": plan("033"),
   });
   await ready(page, "/rush");
+  // /rush 的批次归属是本用例的基准:070(露天 Open Cinema)第 1 批 / 126(一般放映)第 2 批
+  await expect(page.locator('[data-ticket-batch="1"] [data-screening="070"]')).toBeVisible();
+  await expect(page.locator('[data-ticket-batch="2"] [data-screening="126"]')).toBeVisible();
+
   await page.getByRole("button", { name: "导出与分享", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "导出与分享" });
+  await expect(dialog.getByRole("button", { name: /导出范围/ })).toContainText("当前行程");
   await dialog.getByRole("button", { name: "分享文案", exact: true }).click();
   const text = dialog.getByRole("textbox", { name: "行程分享文案", exact: true });
 
   // 默认(两个都不勾):CODE 前置 + 三行缩进块,没有主选 / 备选 / 批次字样
-  await expect(text).toContainText("070  20:00");
+  await expect(text).toContainText("126  18:00");
+  await expect(text).not.toContainText("033");
   await expect(text).not.toContainText("主选");
   await expect(text).not.toContainText("备选");
   await expect(text).not.toContainText("批");
@@ -92,16 +101,25 @@ test("分享文案可勾选「带上顺位」与「带上开票批次」", async
 
   await expect(text).toContainText("【第 1 批");
   await expect(text).toContainText("【第 2 批");
-  // 第 1 顺位印「主选」,同组备选另起一块(前缀 ↳ + CODE)
+  // 第 1 顺位印「主选」;跨批次的备选 070 抬到**第 1 批**并印「126 的备选②」(不是埋在 126 下面)
   await expect(text).toContainText("主选");
-  await expect(text).toContainText("↳ 126");
+  await expect(text).toContainText("↳ 070");
+  await expect(text).toContainText("126 的备选②");
   await expect(text).toContainText("070  20:00–22:25");
+  // 批次节归属逐条对齐 /rush:第 1 批 = 070、第 2 批 = 126
+  const shared = await text.evaluate((el) => (el as HTMLTextAreaElement).value);
+  const marks = ["【第 1 批", "↳ 070", "【第 2 批", "126  18:00"].map((needle) =>
+    shared.indexOf(needle),
+  );
+  expect(marks.every((i) => i >= 0)).toBe(true);
+  expect(marks).toEqual([...marks].sort((a, b) => a - b));
 });
 
 test("分享图片同样受「带上顺位」「带上开票批次」控制", async ({ page }) => {
   await trackPaintedTexts(page); // 海报是 canvas 手绘:断言只能读画上去的文字
   await seed(page, {
     "biff.picks.v2": picks("070", "126"),
+    "biff.ranks.v1": JSON.stringify({ "126": 1, "070": 2 }),
     "biff.savedplans.v1": plan("070", "126"),
   });
   await ready(page, "/rush");
@@ -134,6 +152,11 @@ test("分享图片同样受「带上顺位」「带上开票批次」控制", as
   expect(ranked).toContain("↳");
   expect(ranked).toContain("第 1 批");
   expect(ranked).toContain("第 2 批");
+  // 跨批次的备选 070(露天、第 1 批)在图上被抬进**第 1 批**节并印「126 的备选②」——
+  // 与 /rush 的第 1 批同一条,不是像修复前那样埋在 126 下面
+  expect(ranked).toContain("126 的备选②");
+  expect(ranked.indexOf("第 1 批")).toBeLessThan(ranked.indexOf("126 的备选②"));
+  expect(ranked.indexOf("126 的备选②")).toBeLessThan(ranked.indexOf("第 2 批"));
   // 备选行 + 批次节头都会让图变长(canvas 按模型算高,不涨就是没画进去)
   expect(await canvas.evaluate((el) => (el as HTMLCanvasElement).height)).toBeGreaterThan(
     plainHeight,

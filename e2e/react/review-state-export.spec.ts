@@ -81,6 +81,10 @@ for (const removeAll of [false, true]) {
     });
     await ready(page, "/agenda");
     const dialog = await openExport(page);
+    // ⚠ 默认范围是「当前行程」（PLAN-20260916135942），而本用例验证的是「**选中的方案**在别的标签页被删」——
+    //   故先显式把范围切到方案 2（它同时是最后一个方案，改动前也正是默认值）。
+    await dialog.getByRole("button", { name: /导出范围/ }).click();
+    await page.getByRole("option", { name: /^方案 2/ }).click();
     const generate = dialog.locator("button").filter({ hasText: "生成分享图片" });
     await generate.click();
     await waitForBlobJobs(page, 1);
@@ -91,11 +95,13 @@ for (const removeAll of [false, true]) {
       await ready(other, "/agenda");
       await other.getByRole("button", { name: "删除方案 2", exact: true }).click();
       if (removeAll) {
-        await expect(dialog.getByRole("heading", { name: "先保存一个方案", exact: true })).toBeVisible();
+        // 方案全删掉不再是「先保存一个方案」的死胡同：范围自动回落到当前行程（仍有 033 可导出）
+        await expect(dialog.getByRole("button", { name: /导出范围/ })).toContainText("当前行程");
+        await expect(generate).toBeEnabled();
         await expect(dialog.locator("[data-pending]" )).toHaveCount(0);
         await other.getByRole("button", { name: "保存当前方案", exact: true }).click();
       }
-      await expect(dialog.getByRole("button", { name: /导出方案/ })).toContainText("方案 1");
+      await expect(dialog.getByRole("button", { name: /导出范围/ })).toContainText("方案 1");
       await expect(generate).toBeEnabled();
       await expect(dialog.getByRole("button", { name: "下载 PNG 图片", exact: true })).toHaveCount(0);
 
