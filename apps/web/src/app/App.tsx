@@ -70,7 +70,7 @@ function Shell() {
   const dark = theme === "dark" || (theme === "system" && systemDark);
   const viewingRoute = /^\/(picks|agenda)(\/|$)/.test(location.pathname);
   const panelOpen = viewingRoute && new URLSearchParams(location.search).get("quick") === "1";
-  const fullPage = /^\/(library|feedback|discussions|rush)(?:\/|$)/.test(location.pathname) || (viewingRoute && !panelOpen);
+  const fullPage = /^\/(library|feedback|discussions|rush|redblack)(?:\/|$)/.test(location.pathname) || (viewingRoute && !panelOpen);
   const pageParams = new URLSearchParams(location.search);
   pageParams.delete("quick");
   const pageSearch = pageParams.size ? `?${pageParams}` : "";
@@ -124,6 +124,9 @@ function Shell() {
     ["/rush", "抢票"],
     ["/feedback", "建议"],
     ["/discussions", "讨论区"],
+    // 「红黑榜」排在末尾(2026-09-16,PLAN-20260916102339):它是**观影之后**的动作,
+    // 与「抢票」那种行程期视图不同序 —— 不动 2026-09-15 用户指定的抢票位置。
+    ["/redblack", "红黑榜"],
   ];
   return (
     <Provider

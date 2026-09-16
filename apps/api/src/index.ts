@@ -9,6 +9,8 @@ import {
   wantWeightFor,
 } from "./want-stats";
 import { readWantCounts, replaceContributorWants } from "./want-store";
+import { MAX_VOTES_PER_PING, normalizeVotes } from "./film-vote-stats";
+import { readVoteCounts, replaceContributorVotes } from "./film-vote-store";
 import {
   normalizeFeedbackBody,
   writeAuthError,
@@ -552,6 +554,62 @@ app.post("/api/stats/want-ping", async (c) => {
   }
   await replaceContributorWants(db, edition, contributor, weight, films);
   return c.json({ ok: true, weight, count: films.length });
+});
+
+/* ---------------- 红黑榜投票(2026-09-16,PLAN-20260916102339) ----------------
+ * 口径与「想看人数」**刻意不同**:这里是**一人一部一票(红 / 黑)**,不做 0.75 / 1.0 加权 ——
+ * 贴纸是离散的实体隐喻,3 个人贴了红就该显示 3(见 `film-vote-stats.ts` 的说明)。
+ * 读公开(榜单本来就是给大家看的),写匿名也可用(身份口径与 want-ping 完全一致)。 */
+
+const filmVotePingSchema = z
+  .object({
+    edition: z.string().min(1).max(64).optional().default(DEFAULT_WANT_EDITION),
+    votes: z
+      .array(z.object({ key: z.string().min(1).max(128), vote: z.enum(["red", "black"]) }).strict())
+      .max(MAX_VOTES_PER_PING),
+  })
+  .strict();
+
+app.get("/api/stats/film-votes", async (c) => {
+  const edition = c.req.query("edition") || DEFAULT_WANT_EDITION;
+  if (edition.length > 64) return c.json({ error: "INVALID_EDITION" }, 422);
+  const votes = await readVoteCounts(database(c.env.DB), edition);
+  return c.json({ edition, votes });
+});
+
+app.post("/api/stats/film-votes-ping", async (c) => {
+  const parsed = filmVotePingSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "INVALID_FILM_VOTE_PING" }, 422);
+  const { edition, votes } = parsed.data;
+  const config = configuration(c.env);
+  const db = database(c.env.DB);
+  const { session } = await sessionFor(
+    c.env,
+    getCookie(c, sessionCookieName(config)),
+    c.req.header("cf-connecting-ip"),
+  );
+  let contributor: string;
+  if (session) {
+    contributor = session.row.subject;
+    const anon = getCookie(c, wantAnonCookie(config));
+    if (anon) {
+      // 与 want / screening 同一条:不清匿名行的话,同一人会以「匿名 + 登录」被算成两票
+      // (注释详见 screening-stats-store.ts::clearAnonContributions)
+      await clearAnonContributions(db, edition, `anon:${await hash(anon)}`);
+      deleteCookie(c, wantAnonCookie(config), cookieOptions(config, 0));
+    }
+  } else {
+    let anon = getCookie(c, wantAnonCookie(config));
+    if (!anon) {
+      anon = randomToken();
+      setCookie(c, wantAnonCookie(config), anon, cookieOptions(config, 180 * 86400));
+    }
+    contributor = `anon:${await hash(anon)}`;
+  }
+  // 归一化兜一层:zod 挡结构,这里挡「同一部片发了两条」这类语义重复(以最后一条为准)
+  const normalized = normalizeVotes(votes);
+  await replaceContributorVotes(db, edition, contributor, normalized);
+  return c.json({ ok: true, count: normalized.size });
 });
 
 /* ---------------- 同场观影人数(2026-09-14,PLAN-20260914164050) ----------------
