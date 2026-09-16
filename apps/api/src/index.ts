@@ -46,7 +46,7 @@ import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import * as oauth from "oauth4webapi";
-import { accountProfileSchema, type AccountProfile } from "@biff/contracts/account";
+import type { AccountProfile } from "@biff/contracts/account";
 import { canonical } from "@biff/contracts/canonical";
 import { configuration } from "./config";
 import { randomToken, hash, seal, unseal } from "./crypto";
@@ -57,6 +57,7 @@ import {
   pendingCookieName,
   sessionCookieName,
   sessionFor,
+  resolveIdentity,
   type SessionLookup,
   type SessionTokens,
 } from "./oauth";
@@ -245,32 +246,21 @@ app.get("/api/auth/callback", async (c) => {
 /** 与 /api/account/* 相同：会话 + IFFDAY profile；反馈写路径复用。 */
 const requireIdentity: MiddlewareHandler<AppEnv> = async (c, next) => {
   const config = configuration(c.env);
-  const { session, failure } = await sessionFor(
-    c.env,
-    getCookie(c, sessionCookieName(config)),
-    c.req.header("cf-connecting-ip"),
-  );
+  const cookie = getCookie(c, sessionCookieName(config));
+  const { session, failure } = await sessionFor(c.env, cookie, c.req.header("cf-connecting-ip"));
   // 把**具体原因**回给前端:线上「cookie 还在、行没了」至少有三条完全不同的成因,
   // 只回一句 UNAUTHENTICATED 的话,用户和我们只能靠猜(见 PLAN-20260916104514)。
   if (!session) return c.json({ error: failure ?? "UNAUTHENTICATED" }, 401);
-  const identity = await c.env.IFFDAY_API.fetch(
-    new Request(`${config.IFFDAY_ORIGIN}/api/v1/profile`, {
-      headers: { Authorization: `Bearer ${session.tokens.accessToken}` },
-    }),
-  );
-  if (!identity.ok) {
-    if (identity.status === 401)
-      await database(c.env.DB).delete(appSession).where(eq(appSession.token_hash, session.row.token_hash)).run();
-    // 上游拒绝 ≠ 本地会话不存在:错误码必须分开,否则这一条会伪装成「登录已过期」。
+  // cookie 一并传下去:上游若拒了这份 token,`resolveIdentity` 会强制换一份再验一次。
+  const outcome = await resolveIdentity(c.env, cookie, c.req.header("cf-connecting-ip"), session);
+  if ("failure" in outcome)
+    // 上游暂时不可用(503)与身份被拒(401)必须分开 —— 前者前端会按可重试处理并自动恢复。
     return c.json(
-      { error: identity.status === 401 ? "IDENTITY_REJECTED" : "IDENTITY_UNAVAILABLE" },
-      identity.status === 401 ? 401 : 503,
+      { error: outcome.failure },
+      outcome.failure === "IDENTITY_UNAVAILABLE" ? 503 : 401,
     );
-  }
-  const profile = accountProfileSchema.parse(await identity.json());
-  if (profile.userId !== session.row.subject) return c.json({ error: "IDENTITY_MISMATCH" }, 401);
-  c.set("session", session);
-  c.set("profile", profile);
+  c.set("session", outcome.session);
+  c.set("profile", outcome.profile);
   await next();
 };
 app.use("/api/account/*", requireIdentity);

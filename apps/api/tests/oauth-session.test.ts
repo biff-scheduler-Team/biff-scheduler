@@ -2,8 +2,8 @@ import { DatabaseSync } from "node:sqlite";
 import { HTTPException } from "hono/http-exception";
 import * as oauth from "oauth4webapi";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { hash, seal } from "../src/crypto";
-import { provider, sessionFor } from "../src/oauth";
+import { hash, seal, unseal } from "../src/crypto";
+import { provider, resolveIdentity, sessionFor } from "../src/oauth";
 import * as oauthModule from "../src/oauth";
 
 // `sessionFor()` 是账号体系里唯一会**在请求路径上改会话状态**的函数:access token 快到期时
@@ -162,13 +162,13 @@ function invalidGrant(): oauth.ResponseBodyError {
   } as never);
 }
 
-function freshTokens(accessToken: string, refreshToken: string) {
+function freshTokens(accessToken: string, refreshToken: string, expiresIn = 900) {
   return {
     // `TokenEndpointResponse.token_type` 是 `Lowercase<string>`,字面量要显式收窄。
     token_type: "bearer" as const,
     access_token: accessToken,
     refresh_token: refreshToken,
-    expires_in: 900,
+    expires_in: expiresIn,
   };
 }
 
@@ -184,7 +184,13 @@ function idTokenClaims(sub: string) {
 }
 
 // 只清调用记录,保留各 mock 在工厂里设的默认实现(clearAllMocks 不动实现)。
-beforeEach(() => vi.clearAllMocks());
+// ⚠ 但 `...Once` 队列**不受 `clearAllMocks` 影响**,漏消费的一次性响应会串到下一个用例,
+//    所以这两个按用例设置的 mock 额外 reset。
+beforeEach(() => {
+  vi.clearAllMocks();
+  refreshResponse.mockReset();
+  bindingFetch.mockReset();
+});
 
 function setup(overrides: { payload?: string; refreshUntil?: number } = {}) {
   const sqlite = new DatabaseSync(":memory:");
@@ -417,5 +423,95 @@ describe("provider:service binding 调用边界", () => {
     const forwarded = bindingFetch.mock.calls.at(-1)?.[0] as Request;
 
     expect(forwarded.headers.get("cf-connecting-ip")).toBe("1.2.3.4");
+  });
+});
+
+/** 符合 `accountProfileSchema` 的上游资料响应。 */
+const PROFILE = {
+  userId: SUBJECT,
+  displayName: "观众",
+  bio: "",
+  website: "",
+  avatarUrl: null,
+  updatedAt: "2026-09-16T00:00:00.000Z",
+  version: 1,
+};
+
+describe("sessionFor:刷新链路的边界", () => {
+  it("★ 上游给的寿命很短时,同一请求内只允许刷新一次", async () => {
+    const { sqlite, seeded } = setup();
+    await seeded;
+    refreshResponse.mockResolvedValue(freshTokens("at-2", "rt-2", 10));
+
+    const lookup = await sessionFor(environment(sqlite), COOKIE);
+
+    // 旧实现:刷新成功后回到循环重读,新 token 只剩 10s(不满足「还有 30s」)→ 再刷、再刷……
+    // 最多 52 次,每次都拿刚得到的 RT 再去上游换一次 —— 开了轮换 + 重用检测的上游极易判异常。
+    expect(refreshResponse).toHaveBeenCalledTimes(1);
+    expect(lookup.session?.tokens.accessToken).toBe("at-2");
+  });
+
+  it("★ 上游回空串 refresh token 时,不得用空串覆盖已有的", async () => {
+    const { sqlite, seeded } = setup();
+    await seeded;
+    refreshResponse.mockResolvedValue({ ...freshTokens("at-2", ""), refresh_token: "" });
+
+    await sessionFor(environment(sqlite), COOKIE);
+
+    const tokens = (await unseal(
+      sessionRow(sqlite)?.payload as string,
+      SESSION_SECRET,
+      `session:${await hash(COOKIE)}`,
+    )) as { refreshToken?: string };
+    // 空串会让下一次刷新命中 `!tokens.refreshToken` → 删行踢人,而错误码还会误报成
+    // 「登录时就没拿到 RT」——把「上游给了个空的」伪装成「上游一开始没给」。
+    expect(tokens.refreshToken).toBe("rt-1");
+  });
+});
+
+describe("resolveIdentity:上游一次 401 不得变成永久登出", () => {
+  it("★ 上游 401 → 换一份 token 重试成功 → 会话必须保留", async () => {
+    const { sqlite, seeded } = setup();
+    await seeded;
+    refreshResponse
+      .mockResolvedValueOnce(freshTokens("at-2", "rt-2"))
+      .mockResolvedValueOnce(freshTokens("at-3", "rt-3"));
+    // 第一次拿 at-2 被上游拒(边界过期 / 瞬时故障),换 at-3 之后成功。
+    bindingFetch
+      .mockResolvedValueOnce(new Response("{}", { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(PROFILE), { status: 200 }));
+
+    const { session } = await sessionFor(environment(sqlite), COOKIE);
+    const outcome = await resolveIdentity(environment(sqlite), COOKIE, undefined, session!);
+
+    expect("profile" in outcome).toBe(true);
+    // 旧实现:见到 401 就按 token_hash 删行 → cookie 还在、行没了 → 用户被永久踢出。
+    expect(sessionRow(sqlite)).toBeDefined();
+  });
+
+  it("换新 token 之后仍被拒 → 才判会话真失效(删行 + IDENTITY_REJECTED)", async () => {
+    const { sqlite, seeded } = setup();
+    await seeded;
+    refreshResponse.mockResolvedValue(freshTokens("at-2", "rt-2"));
+    bindingFetch.mockResolvedValue(new Response("{}", { status: 401 }));
+
+    const { session } = await sessionFor(environment(sqlite), COOKIE);
+    const outcome = await resolveIdentity(environment(sqlite), COOKIE, undefined, session!);
+
+    expect(outcome).toEqual({ failure: "IDENTITY_REJECTED" });
+    expect(sessionRow(sqlite)).toBeUndefined();
+  });
+
+  it("上游 5xx 不回 401:既不能删会话,也不能说成「身份被拒」", async () => {
+    const { sqlite, seeded } = setup();
+    await seeded;
+    refreshResponse.mockResolvedValue(freshTokens("at-2", "rt-2"));
+    bindingFetch.mockResolvedValue(new Response("{}", { status: 503 }));
+
+    const { session } = await sessionFor(environment(sqlite), COOKIE);
+    const outcome = await resolveIdentity(environment(sqlite), COOKIE, undefined, session!);
+
+    expect(outcome).toEqual({ failure: "IDENTITY_UNAVAILABLE" });
+    expect(sessionRow(sqlite)).toBeDefined();
   });
 });
