@@ -222,4 +222,62 @@ describe("buildPosterModel:顺位 / 备选 / 开票批次(与分享文案同一�
     })!;
     expect(posterHeight(batched)).toBeGreaterThan(posterHeight(flat));
   });
+
+  it("★ 备选与主选**不同批次**时抬成独立行(归自己的批次节,带 altOf;不计入「N 场」)", () => {
+    const cat = catalog([
+      show({
+        code: "003",
+        title_en: "Look Back",
+        date: "2026-10-07",
+        start_time: "20:00",
+        end_time: "21:40",
+        venue_id: "bt",
+        venue_display: "BCC Roof",
+      }),
+      show({ code: "004", title_en: "Alpha" }),
+    ]);
+    const model = buildPosterModel(cat, [row("004")], NO_MAP, () => true, {
+      ranking: ranking({ "004": 1, "003": 2 }, [["004", "003"]]),
+      batching: { batchOf: (s) => ticketBatchOf(s), headOf: (b) => `第 ${b} 批` },
+    })!;
+    expect(model.sections.map((s) => s.heading)).toEqual(["第 1 批", "第 2 批"]);
+    // 003(第 1 批)自己成行:画成 `↳ 004 的备选②` 那一行,不再挂在 004(第 2 批)下面
+    const first = model.sections[0].days[0];
+    expect(first.rows.map((r) => r.code)).toEqual(["003"]);
+    expect(first.rows[0].altOf).toBe("004");
+    expect(first.rows[0].rank).toBe(2);
+    expect(first.count).toBe(0); // 备选不是「要去看的那一场」⇒ 不计入当天场次
+    // 主选下面不再重复挂它,概要也只数主选
+    expect(model.sections[1].days[0].rows[0].alts).toEqual([]);
+    expect(model.count).toBe(1);
+  });
+
+  it("与主选**同批次**的备选仍是主选行下的 alts(不抬出来)", () => {
+    const cat = catalog([
+      show({
+        code: "003",
+        date: "2026-10-07",
+        start_time: "20:00",
+        end_time: "21:40",
+        venue_id: "bt",
+        venue_display: "BCC Roof",
+      }),
+      show({
+        code: "005",
+        date: "2026-10-07",
+        start_time: "22:00",
+        end_time: "23:40",
+        venue_id: "bt",
+        venue_display: "BCC Roof",
+      }),
+    ]);
+    const model = buildPosterModel(cat, [row("003")], NO_MAP, () => true, {
+      ranking: ranking({ "003": 1, "005": 2 }, [["003", "005"]]),
+      batching: { batchOf: (s) => ticketBatchOf(s), headOf: (b) => `第 ${b} 批` },
+    })!;
+    expect(model.sections).toHaveLength(1);
+    expect(model.sections[0].days[0].rows.map((r) => r.code)).toEqual(["003"]);
+    expect(model.sections[0].days[0].rows[0].altOf).toBeUndefined();
+    expect(model.sections[0].days[0].rows[0].alts.map((a) => a.code)).toEqual(["005"]);
+  });
 });

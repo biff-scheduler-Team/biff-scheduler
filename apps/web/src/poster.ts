@@ -26,7 +26,7 @@
 //   · `batching` → 先按开票批次分节(节头文案来自 `extras.ts::batchHeading`),节内再按日期分节。
 //   ⚠ 两个都不勾时,输出与「没有这两个开关的老图」一致(无顺位字、无备选行、无批次节头)。
 
-import type { Catalog, Mapping, Screening } from "./types";
+import type { Catalog, Mapping } from "./types";
 import { dateInfo, displayTitle, filmInfoOf, fmtMinRangeMin, groupByDate, hmsToMin } from "./util";
 import { effEndMin, gvTalkMin } from "./gv";
 import { venueShort } from "./legend";
@@ -35,10 +35,11 @@ import {
   ALT_MARK,
   batchSections,
   gvMark,
-  orderedPickRows,
   rankMark,
   shareSummary,
+  shareUnits,
   type ShareOptions,
+  type ShareUnit,
 } from "./share";
 
 /* ---------------- 模型(纯数据,可单测) ---------------- */
@@ -74,6 +75,11 @@ export interface PosterRow {
   rank: number | undefined;
   /** 同冲突组其余场次(按顺位升序;不勾「带上顺位」时为空数组) */
   alts: PosterAlt[];
+  /** 「本行**是**一条脱离主选的备选行」= 所属主选的 code(见 `share.ts::shareUnits`)。
+   *  该备选与它主选的**开票批次不同**,故不被画成主选下面的备选行,而是自己占一行
+   *  (画成 `↳ 349 的备选③ …`),归到它自己的批次节里。主选行恒为 undefined。
+   *  ⚠ 这类行**不计入** `PosterDay.count` / 概要的「共 N 场」—— 它不是要去看的那一场。 */
+  altOf?: string;
 }
 
 export interface PosterDay {
@@ -120,13 +126,17 @@ export function buildPosterModel(
   talkOf: (code: string) => boolean,
   options: PosterOptions = {}
 ): PosterModel | null {
-  const rows = orderedPickRows(cat, entries);
-  const sum = shareSummary(cat, rows);
+  // ⚠ 走 `shareUnits`(与分享文案**同一个**排版单元):备选按**自己的**开票批次归节,
+  //   否则图上的备选行会跟着主选待在错误的批次节里(抢票当天按节扫图就漏了)。
+  const units = shareUnits(cat, entries, options.ranking, options.batching);
+  // ⚠ 概要只数**主选行**:被抬出来的备选不是「要去看的那一场」,计进「共 N 场」会与场次行对不上
+  const sum = shareSummary(cat, units.filter((u) => !u.altOf));
   if (!sum) return null;
 
   const fest = cat.schedule.festival;
-  /** 一场 → 海报行(备选在带顺位时才装配) */
-  const rowOf = ({ e, s }: { e: PickRow; s: Screening }): PosterRow => {
+  /** 一个打印单元 → 海报行(主选:卡片 + 紧跟的备选行;被抬出来的备选:单独一行) */
+  const rowOf = (u: ShareUnit): PosterRow => {
+    const { e, s } = u;
     // 映后谈取舍与网格 / .ics / 分享文案同一解析:有谈段才问 talkOf,谈段为 0 的场无开关
     const talk = gvTalkMin(s);
     const talkOn = talk > 0 ? talkOf(e.code) : true;
@@ -140,25 +150,32 @@ export function buildPosterModel(
       venue: v ? venueShort(v) : s.venue_display,
       gv: gvMark(s, talkOn),
       note: e.note,
-      poster: filmInfoOf(cat, s, map).cats[0]?.poster,
+      poster: u.altOf ? undefined : filmInfoOf(cat, s, map).cats[0]?.poster,
       rank,
-      alts: (options.ranking?.matesOf(e.code) ?? []).flatMap((code) => {
-        const alt = altRowOf(cat, code, mappings, talkOf, options.ranking?.rankOf.get(code));
-        return alt ? [alt] : []; // 排期里已不存在(换版)→ 静默跳过
+      alts: u.alts.flatMap((alt) => {
+        const row = altRowOf(cat, alt.e.code, mappings, talkOf, options.ranking?.rankOf.get(alt.e.code));
+        return row ? [row] : []; // 排期里已不存在(换版)→ 静默跳过
       }),
+      altOf: u.altOf,
     };
   };
 
-  const daysOf = (group: { e: PickRow; s: Screening }[]): PosterDay[] =>
-    groupByDate(group, (r) => r.s.date).map(([iso, list]) => {
+  const daysOf = (group: ShareUnit[]): PosterDay[] =>
+    groupByDate(group, (u) => u.s.date).map(([iso, list]) => {
       const { label, weekday } = dateInfo(iso);
-      return { label, weekday, count: list.length, rows: list.map(rowOf) };
+      // ⚠ 被抬出来的备选行不计入「N 场」(它跟概要的「共 N 场」必须是同一个口径)
+      return {
+        label,
+        weekday,
+        count: list.filter((u) => !u.altOf).length,
+        rows: list.map(rowOf),
+      };
     });
 
   const batching = options.batching;
   const grouped = batching
-    ? batchSections(rows, (row) => batching.batchOf(row.s))
-    : [{ batch: null as number | null, rows }];
+    ? batchSections(units, (u) => batching.batchOf(u.s))
+    : [{ batch: null as number | null, rows: units }];
   const sections: PosterSection[] = grouped.map((section) => ({
     heading:
       section.batch === null || !batching ? null : batching.headOf(section.batch),
@@ -219,6 +236,7 @@ const DAY_GAP = 24;
 const ROW_H = 168; // 无备注的一行(海报缩略图 144 高 + 上下各 12)
 const ROW_H_NOTE = 200;
 const ALT_H = 26; // 一条备选行(带顺位时才画)
+const ALT_ALONE_H = 40; // 一条**脱离主选**的备选行(与它主选的开票批次不同 ⇒ 自己占一行,不画卡片)
 const BATCH_HEAD_H = 76; // 批次节头(带开票批次时才画,每节一条)
 const THUMB_W = 96;
 const THUMB_H = 144;
@@ -252,6 +270,8 @@ function font(size: number, weight: number): string {
  *  `posterHeight()` 与 `drawPoster()` 都读它,各算一份必然出现「算出来 3000 高、实际画了 3200」,
  *  而画布是按 `posterHeight()` 设的 → 多出来的内容**被裁掉且不报错**(最难查的一类)。 */
 function rowHeight(r: PosterRow): number {
+  // 脱离主选的备选行:不画海报卡片,一行文字就够(它的主选在另一节里,画成卡片会误认成主选)
+  if (r.altOf) return ALT_ALONE_H;
   return (r.note ? ROW_H_NOTE : ROW_H) + r.alts.length * ALT_H;
 }
 
@@ -369,6 +389,17 @@ function drawRow(
   rowH: number,
   images: Map<string, HTMLImageElement>
 ): void {
+  // 脱离主选的备选行(批次不同 ⇒ 归到自己的批次节):画成一行,不占卡片位
+  if (r.altOf) {
+    const tx = PAD + THUMB_W + 26;
+    const bits = [r.code, r.time, r.title, r.venue];
+    const line = `${ALT_MARK} ${rankMark(r.rank, r.altOf)}  ${bits.join("  ")}`;
+    ctx.font = font(20, 400);
+    ctx.fillStyle = C.muted;
+    ctx.fillText(fitText(ctx, line, POSTER_W - PAD - tx), tx, top + 26);
+    return;
+  }
+
   const thumbY = top + (rowH - THUMB_H) / 2;
   const img = r.poster ? images.get(r.poster) : undefined;
   if (img) {

@@ -271,4 +271,67 @@ describe("buildShareText:开票批次分节", () => {
     const text = buildShareText(cat, [row("003"), row("004")], NO_MAP, () => true);
     expect(text).not.toContain("批");
   });
+
+  it("★ 备选按**自己的**批次归节:第 1 批的备选不再被埋在第 2 批的主选下面(抢票当天按节扫清单)", () => {
+    // 主选 004(第 2 批)的备选 003 是露天场(第 1 批)—— 旧版它被印在 004 底下,
+    // 于是「第 1 批开票那天」按节扫根本扫不到它,而那一天恰恰唯一需要它的时刻。
+    const text = buildShareText(cat, [row("004")], NO_MAP, () => true, {
+      ranking: ranking({ "004": 1, "003": 2 }, [["004", "003"]]),
+      batching,
+    });
+    expect(text).toBe(
+      [
+        "BIFF 2026 看片计划",
+        "OCT 8 · 共 1 场 / 1 部", // 概要只数主选:备选不是「要去看的那一场」
+        "━━━━━━━━━━━━",
+        "",
+        "【第 1 批 · 9/17 14:00 KST / 北京 13:00】",
+        "",
+        "【OCT 7 · 周三】",
+        "↳ 003  20:00–21:40  Look Back",
+        "                    BCC Roof · 004 的备选②",
+        "",
+        "【第 2 批 · 9/21 14:00 KST / 北京 13:00】",
+        "",
+        "【OCT 8 · 周四】",
+        "004  10:00–11:40  Alpha",
+        "                  BCC 1 · 主选",
+      ].join("\n")
+    );
+  });
+
+  it("与主选**同批次**的备选仍紧跟主选(不抬出来,保持「主选 + 备选」同框)", () => {
+    const same = catalog([
+      show({
+        code: "003",
+        title_en: "Look Back",
+        date: "2026-10-07",
+        start_time: "20:00",
+        end_time: "21:40",
+        venue_id: "bt",
+        venue_display: "BCC Roof",
+      }),
+      show({
+        code: "005",
+        title_en: "Beta",
+        date: "2026-10-07",
+        start_time: "22:00",
+        end_time: "23:40",
+        venue_id: "bt",
+        venue_display: "BCC Roof",
+      }),
+    ]);
+    const text = buildShareText(same, [row("003")], NO_MAP, () => true, {
+      ranking: ranking({ "003": 1, "005": 2 }, [["003", "005"]]),
+      batching,
+    });
+    expect(text).toContain(
+      [
+        "003  20:00–21:40  Look Back",
+        "                  BCC Roof · 主选",
+        "    ↳ 005  22:00–23:40  Beta",
+        "                        BCC Roof · 备选②",
+      ].join("\n")
+    );
+  });
 });
