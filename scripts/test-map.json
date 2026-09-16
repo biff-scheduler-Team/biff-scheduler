@@ -175,9 +175,10 @@
     },
     {
       "id": "rush",
-      "note": "抢票页（行程场次按开票批次分组）/ 开票批次判据（分享文案批次分节共用）",
+      "note": "抢票页（行程场次按开票批次分组的紧凑清单）/ 开票批次判据（分享文案批次分节共用）",
       "paths": [
         "apps/web/src/pages/RushPage.tsx",
+        "apps/web/src/pages/rush.css",
         "apps/web/src/batch.ts"
       ],
       "specs": [
