@@ -70,7 +70,7 @@ function Shell() {
   const dark = theme === "dark" || (theme === "system" && systemDark);
   const viewingRoute = /^\/(picks|agenda)(\/|$)/.test(location.pathname);
   const panelOpen = viewingRoute && new URLSearchParams(location.search).get("quick") === "1";
-  const fullPage = /^\/(library|feedback|discussions|rush|redblack)(?:\/|$)/.test(location.pathname) || (viewingRoute && !panelOpen);
+  const fullPage = /^\/(library|feedback|discussions|rush|redblack|eats)(?:\/|$)/.test(location.pathname) || (viewingRoute && !panelOpen);
   const pageParams = new URLSearchParams(location.search);
   pageParams.delete("quick");
   const pageSearch = pageParams.size ? `?${pageParams}` : "";
@@ -127,6 +127,9 @@ function Shell() {
     // 「红黑榜」排在末尾(2026-09-16,PLAN-20260916102339):它是**观影之后**的动作,
     // 与「抢票」那种行程期视图不同序 —— 不动 2026-09-15 用户指定的抢票位置。
     ["/redblack", "红黑榜"],
+    // 「吃喝」跟在红黑榜之后(2026-09-16,PLAN-20260916232230):它是**与选片完全无关**的
+    // 第二份刚需(电影节期间吃哪儿),不属于选片 → 观影 → 复盘这条主线,所以放最后。
+    ["/eats", "吃喝"],
   ];
   return (
     <Provider

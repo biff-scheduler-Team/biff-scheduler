@@ -1,0 +1,153 @@
+/* 「吃喝」页样式(2026-09-16,`PLAN-20260916232230`)。
+ *
+ * ⚠ 刻意**独立成文件**而不是追加进 `style.css`:后者命中 TEST-MAP 的 allOn(全局样式),
+ *   改它要跑三浏览器全量 E2E(5–9 min)。这里只复用既有 token,不新增视觉语言 ——
+ *   与 `rush.css` / `components/screening-social.css` 同一处置口径。 */
+
+.eats-page .panel-heading {
+  align-items: flex-start;
+}
+
+.eats-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.eats-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  /* 宽屏两列:一张卡信息不多,单列会让右半边空着 */
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+
+.eat-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 用户自己加的店给一条左侧色条 —— 一眼能把它和表里的店分开 */
+.eat-mine {
+  border-left: 3px solid var(--brand);
+}
+
+.eat-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 10px;
+}
+
+.eat-name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.eat-sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.eat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.eat-chip {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.eat-chip-mine {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.eat-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.eat-addr {
+  margin: 0;
+  font-size: 12px;
+}
+
+.eat-addr-alt {
+  color: var(--muted);
+}
+
+/* 电话是查地图数据源时补出来的,表里没这一列 —— 与「营业时间」同排但不抢视线 */
+.eat-phone {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.eat-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 三个跳转平铺成一行;窄屏自动折行,不留空档 */
+.eat-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 2px 0 0;
+  font-size: 12px;
+}
+
+.eat-links a {
+  white-space: nowrap;
+}
+
+/* 人工整理的那条(小红书 / naver.me / instagram)—— 与三个地图入口区分开,
+   它是「别人写的食记 / 精确短链」,性质不同 */
+.eat-curated {
+  font-weight: 600;
+}
+
+.eat-notice {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.eat-add {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.eat-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.eats-footnote {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 11px;
+}

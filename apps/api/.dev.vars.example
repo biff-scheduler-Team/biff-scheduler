@@ -5,3 +5,12 @@ OIDC_CLIENT_ID=biff-scheduler-local
 # Use npm run dev:account with IFFDAY_ACCOUNT_PATH to generate matching local secrets.
 OIDC_CLIENT_SECRET=replace-with-matching-local-client-secret
 SESSION_SECRET=replace-with-random-secret-at-least-32-characters
+
+# 「吃喝」页的地图数据源密钥(可选)。**不配也完全可用** —— 页面会退回三个搜索链接,
+# 只是少了「精确到店的 Naver 链接 + 电话」。生产环境用 `wrangler secret put` 配,
+# 别写进 wrangler.jsonc(仓库不留密钥)。注册步骤见 docs/plans/PLAN-20260916232230.md 修订 1。
+# Naver:developers.naver.com → 애플리케이션 등록 → 使用 API 勾「검색」→ 地域搜索 25,000 次/天
+# NAVER_CLIENT_ID=
+# NAVER_CLIENT_SECRET=
+# Kakao:developers.kakao.com → 应用 → REST API 密钥 → 카카오맵(키워드로 장소 검색) 100,000 次/天
+# KAKAO_REST_API_KEY=

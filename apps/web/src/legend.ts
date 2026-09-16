@@ -242,9 +242,25 @@ export function venuePlace(group: string | undefined): VenuePlace | undefined {
 }
 
 /** Google Maps 检索链接 —— 用**地址查询**而非坐标(坐标无从核实,交给 Google 自行解析更稳)。
- *  移动端打开会自动唤起已安装的 Google Maps App,否则回落到网页版。 */
+ *  移动端打开会自动唤起已安装的 Google Maps App,否则回落到网页版。
+ *  ⚠ 链接模板只此一处:场地卡片与「吃喝」店卡都从这里取,别在页面里另拼一份 query 串。 */
+export function mapsUrlForQuery(query: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
 export function mapsUrl(place: VenuePlace): string {
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${place.name} ${place.address}`)}`;
+  return mapsUrlForQuery(`${place.name} ${place.address}`);
+}
+
+/** Naver 地图检索链接 —— 韩国本地店(尤其小馆子)在 Naver 上的收录率明显高于 Google,
+ *  所以「吃喝」页除了 Google 还挂这一个;同样是普通 URL,不需要任何 API Key。 */
+export function naverMapUrlForQuery(query: string): string {
+  return `https://map.naver.com/p/search/${encodeURIComponent(query)}`;
+}
+
+/** Kakao 地图检索链接 —— 与上同理,给用户第三个选择。 */
+export function kakaoMapUrlForQuery(query: string): string {
+  return `https://map.kakao.com/link/search/${encodeURIComponent(query)}`;
 }
 
 export function venueTip(v: Venue): string {

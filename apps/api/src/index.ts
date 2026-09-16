@@ -50,6 +50,14 @@ import { accountUserIdSchema, type AccountProfile, type LoginFailureCode } from 
 import { canonical } from "@biff/contracts/canonical";
 import { authCallback } from "./auth-callback";
 import { configuration } from "./config";
+import {
+  kakaoConfigured,
+  lookupKakao,
+  lookupNaver,
+  lookupSecrets,
+  naverConfigured,
+  type PlaceHit,
+} from "./place-lookup";
 import { randomToken, hash, seal } from "./crypto";
 import {
   AUTH_FLOW_TIMEOUT_MS,
@@ -693,6 +701,58 @@ app.post("/api/screenings/:code/discussion/:id/reactions", requireIdentity, asyn
     reactionCounts: result.reactionCounts,
     myReactions: result.myReactions,
   });
+});
+
+/* ---------------- 吃喝:地图数据源代理(2026-09-16,PLAN-20260916232230 修订 1) ----------------
+ * 公开读、只读不写。密钥走 `wrangler secret put`(**刻意不进 wrangler.jsonc** —— 仓库不留密钥);
+ * 一个都没配就返回 503,前端自动退回「三个搜索链接」,功能不缺失(见 `eats.ts::lookupPlaces`)。
+ *
+ * ⚠ 缓存只在本 isolate 的内存里:本项目此前没有任何 `caches.default` / KV 用法,
+ *   为这一个端点新增绑定不划算。冷 isolate 只是多打一次上游 —— 额度是 25,000 / 100,000 每天。
+ *   客户端另有一层会话内缓存(`eats.ts`),响应也带 `private, max-age`,重开页面基本不再打上游。 */
+const LOOKUP_CACHE = new Map<string, { at: number; hit: PlaceHit | null }>();
+const LOOKUP_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const LOOKUP_CACHE_MAX = 500;
+
+async function cachedLookup(key: string, run: () => Promise<PlaceHit | null>): Promise<PlaceHit | null> {
+  const now = Date.now();
+  const cached = LOOKUP_CACHE.get(key);
+  if (cached && now - cached.at < LOOKUP_CACHE_TTL_MS) return cached.hit;
+  const hit = await run();
+  // 满了就整体清空:条目少、清空成本低,比实现 LRU 划算
+  if (LOOKUP_CACHE.size >= LOOKUP_CACHE_MAX) LOOKUP_CACHE.clear();
+  LOOKUP_CACHE.set(key, { at: now, hit });
+  return hit;
+}
+
+app.get("/api/eats/lookup", async (c) => {
+  const name = (c.req.query("name") ?? "").trim();
+  const address = (c.req.query("address") ?? "").trim();
+  if (!name || name.length > 80 || address.length > 160)
+    return c.json({ error: "INVALID_QUERY" }, 422);
+  const secrets = lookupSecrets(c.env);
+  if (!naverConfigured(secrets) && !kakaoConfigured(secrets)) {
+    // 前端据此**静默降级**:卡片保持搜索链接,不显示任何「定位失败」噪声
+    return c.json({ error: "LOOKUP_DISABLED" }, 503);
+  }
+  const wanted = c.req.query("provider");
+  // Naver 优先(韩国店收录最全);显式点名 kakao 时反过来
+  const order: PlaceHit["provider"][] = wanted === "kakao" ? ["kakao", "naver"] : ["naver", "kakao"];
+  const cacheKey = `${name}\u0000${address}`;
+  for (const provider of order) {
+    const configured = provider === "naver" ? naverConfigured(secrets) : kakaoConfigured(secrets);
+    if (!configured) continue;
+    const hit = await cachedLookup(`${provider}:${cacheKey}`, () =>
+      provider === "naver" ? lookupNaver(secrets, name, address) : lookupKakao(secrets, name, address),
+    );
+    if (hit) {
+      c.header("Cache-Control", "private, max-age=86400");
+      return c.json({ hit });
+    }
+  }
+  // 查不到也缓存(空结果),免得反复为一个搜不到的店打上游
+  c.header("Cache-Control", "private, max-age=86400");
+  return c.json({ hit: null });
 });
 
 app.all("/api/*", (c) => c.json({ error: "NOT_FOUND" }, 404));
