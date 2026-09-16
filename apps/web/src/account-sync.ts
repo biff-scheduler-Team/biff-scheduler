@@ -84,6 +84,8 @@ export const accountState = {
   lastSyncAt: 0,
   pendingImport: null as WorkspaceRecords | null,
   conflicts: [] as SyncConflict[],
+  /** 这个会话能不能自动续期(登录时上游有没有给 refresh token)。null = 还不知道。 */
+  renewable: null as boolean | null,
 };
 let owner = "guest";
 let cache = emptyCache();
@@ -148,11 +150,37 @@ function schedule() {
     setStatus(navigator.onLine ? "pending" : "offline");
   timer = window.setTimeout(() => void syncAccount(), 800);
 }
-async function identify(): Promise<Account | null> {
+/** `/api/account/me` 的响应 = 账号资料 + 会话的续期能力(`renewable`)。 */
+const meSchema = accountSchema.extend({ renewable: z.boolean().optional() });
+
+/** 服务端分诊出来的 401 原因(见 PLAN-20260916104514)。 */
+let failureCode: string | null = null;
+const failureReasons: Record<string, string> = {
+  SESSION_NO_COOKIE: "浏览器里没有带上登录凭证",
+  SESSION_NOT_FOUND: "服务端已经没有这个会话",
+  SESSION_NO_REFRESH_TOKEN: "登录时没有拿到可自动续期的凭证",
+  SESSION_REFRESH_REJECTED: "账号系统拒绝了续期",
+  IDENTITY_REJECTED: "账号系统拒绝了身份校验",
+};
+
+/** 「登录已过期」这句话必须带上原因 —— 否则用户和我们只能靠猜(上次的排查就卡在这里)。 */
+function expiredMessage() {
+  const reason = failureCode ? failureReasons[failureCode] : undefined;
+  return `登录已过期${reason ? `（${reason}）` : ""}。本机数据已保留，请重新登录继续同步。`;
+}
+
+async function identify(): Promise<{ account: Account | null; renewable: boolean | null }> {
   try {
-    return accountSchema.parse(await (await api("/api/account/me")).json());
+    const parsed = meSchema.parse(await (await api("/api/account/me")).json());
+    failureCode = null;
+    accountState.renewable = parsed.renewable ?? null;
+    return { account: parsed, renewable: accountState.renewable };
   } catch (error) {
-    if (error instanceof ApiFailure && error.status === 401) return null;
+    if (error instanceof ApiFailure && error.status === 401) {
+      failureCode = error.code;
+      accountState.renewable = null;
+      return { account: null, renewable: null };
+    }
     throw error;
   }
 }
@@ -180,6 +208,8 @@ function activate(account: Account | null) {
   persist();
   accountState.account = account;
   accountState.authenticated = Boolean(account);
+  // 登出 / 切账号时清掉上一次的结论,免得面板显示的是上一个会话的续期能力。
+  if (!account) accountState.renewable = null;
   const pending = account ? localStorage.getItem(importKey(owner)) : null;
   accountState.pendingImport = pending ? recordsSchema.parse(JSON.parse(pending)) : null;
   accountState.conflicts = [];
@@ -203,9 +233,8 @@ export async function initAccountSync(onWorkspaceChanged: () => void) {
   accountState.account = cache.account;
   try {
     const identity = await identify();
-    if (!identity && owner !== "guest")
-      setStatus("error", "登录已过期。本机数据已保留，请重新登录继续同步。");
-    else activate(identity);
+    if (!identity.account && owner !== "guest") setStatus("error", expiredMessage());
+    else activate(identity.account);
   } catch {
     setStatus("offline", "账号暂时无法连接，本机修改会保留。");
   }
@@ -241,10 +270,10 @@ export async function syncAccount() {
   running = true;
   try {
     remember();
-    const account = await identify();
+    const { account } = await identify();
     if (!account && owner !== "guest") {
       accountState.authenticated = false;
-      setStatus("error", "登录已过期。本机数据已保留，请重新登录继续同步。");
+      setStatus("error", expiredMessage());
       return;
     }
     if (account?.user.id !== accountState.account?.user.id) activate(account);
@@ -434,7 +463,7 @@ export async function signOutAccount() {
   setStatus("guest");
 }
 export async function refreshAccountProfile() {
-  const account = await identify();
+  const { account } = await identify();
   if (account?.user.id !== owner) throw new Error("账号已变化，请刷新页面。");
   accountState.account = account;
   cache.account = account;

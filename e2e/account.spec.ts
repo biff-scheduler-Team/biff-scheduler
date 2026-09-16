@@ -92,6 +92,10 @@ test("OIDC login migrates local data, syncs a second device and edits the global
   await registerFromBiff(page, userEmail);
   await waitSynced(page);
   const identity = await (await page.request.get("/api/account/me")).json();
+  // 会话能不能自动续期 = 登录时账号系统有没有下发 refresh token。这条断言是**守门**:
+  // 一旦停止下发,会话会在 15 分钟后必然失效,而用户只看到「登录已过期」——
+  // 在这里红,比在生产上靠猜要好(PLAN-20260916104514 成因 A)。
+  expect(identity.renewable).toBe(true);
   const stored = await (await page.request.get("/api/account/sync/biff-2026")).json();
   expect(JSON.parse(stored.records[record]).note).toBe(initial[0]!.note);
   expect(JSON.parse(stored.records["local:biff.settings.v1"]).transitMin).toBe(15);

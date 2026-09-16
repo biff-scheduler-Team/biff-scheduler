@@ -149,6 +149,16 @@ export function openAccountPanel() {
       ),
     );
   } else {
+    // 没有 refresh token 的会话撑不过 15 分钟。这句提示同时是给用户和我们看的诊断:
+    // 以前这件事只在服务端删行之后表现为「莫名其妙的登录过期」(PLAN-20260916104514)。
+    if (accountState.renewable === false)
+      body.append(
+        el(
+          "p",
+          "text-14 text-muted",
+          "这次登录没有拿到可自动续期的凭证，登录状态大约 15 分钟后会失效，需要再登录一次。如果反复出现，把这句提示告诉我们。",
+        ),
+      );
     const form = el("form", "grid gap-4") as HTMLFormElement;
     form.append(el("p", "text-14 text-muted", "这里修改的名称、头像和简介用于所有 IFFDAY 应用。"));
     const name = el("input", inputClass) as HTMLInputElement;
