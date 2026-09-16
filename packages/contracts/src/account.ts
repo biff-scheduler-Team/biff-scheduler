@@ -56,3 +56,40 @@ export const loginFailureCodeSchema = z.enum([
   "authorization",
 ]);
 export type LoginFailureCode = z.infer<typeof loginFailureCodeSchema>;
+
+/**
+ * 「失败细节」的白名单：上游给的 error 码（`invalid_grant` 等），或我们自己归的类
+ * （`network_timeout` / `unexpected_response`…）。
+ *
+ * 只允许小写字母与下划线 —— 上游响应 / 异常里的任何东西都**不得原样**进 URL、DOM 与提示语
+ * （它们可能裹着 token 或用户数据）。不匹配就整段丢掉，只留步骤码。
+ */
+export const loginFailureDetailSchema = z.string().regex(/^[a-z_]{1,32}$/);
+
+/**
+ * `?account_error=` 的取值形态：`<步骤码>` 或 `<步骤码>:<细节>`。
+ *
+ * 拼在服务端（`apps/api/src/auth-callback.ts`）、拆在前端（`apps/web/src/account-errors.ts`），
+ * 两边共用这一对函数 —— 不允许各写一遍（红线 5）。
+ * 2026-09-16 之前这条通道只有步骤码，于是「账号系统真的拒绝」与「我们等它等到超时」
+ * 长得一模一样，只能靠猜（见 PLAN-20260916220942）。
+ */
+export function loginFailureParam(code: string, detail?: string | null): string {
+  const safe = detail && loginFailureDetailSchema.safeParse(detail).success ? detail : null;
+  return safe ? `${code}:${safe}` : code;
+}
+
+/** `loginFailureParam` 的逆运算。未知码原样返回（用户还要把它发给我们），非法细节丢弃。 */
+export function parseLoginFailure(value: string | null | undefined): {
+  code: string;
+  detail: string | null;
+} {
+  if (!value) return { code: "", detail: null };
+  const separator = value.indexOf(":");
+  if (separator < 0) return { code: value, detail: null };
+  const code = value.slice(0, separator);
+  const raw = value.slice(separator + 1);
+  const detail = loginFailureDetailSchema.safeParse(raw).success ? raw : null;
+  // `:x` 这种只有细节没有步骤码的畸形值，整段当码看，免得前端显示成空白。
+  return code ? { code, detail } : { code: value, detail: null };
+}

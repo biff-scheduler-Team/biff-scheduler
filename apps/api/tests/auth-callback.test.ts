@@ -165,9 +165,23 @@ async function seedPending(sqlite: DatabaseSync) {
     .run(cookieHash, payload, Date.now() + 600_000);
 }
 
+function callbackQuery(response: Response): URLSearchParams {
+  return new URL(response.headers.get("location") ?? "", "https://biff.lcandy.co").searchParams;
+}
+
+/** Location 里 `account_error` 的**原始值**（可能带 `:<上游细节>`）。 */
+async function failureParam(response: Response): Promise<string> {
+  return callbackQuery(response).get("account_error") ?? "";
+}
+
+/** 只取步骤码（冒号前那一段）。 */
 async function failureCode(response: Response): Promise<string> {
-  const location = response.headers.get("location") ?? "";
-  return new URL(location, "https://biff.lcandy.co").searchParams.get("account_error") ?? "";
+  return (await failureParam(response)).split(":")[0] ?? "";
+}
+
+/** 冒号后那一段（未给细节时为 null）。 */
+async function failureDetail(response: Response): Promise<string | null> {
+  return (await failureParam(response)).split(":")[1] ?? null;
 }
 
 let warn: ReturnType<typeof vi.spyOn>;
@@ -197,6 +211,14 @@ describe("callback 的失败必须可区分", () => {
     expect(await failureCode(await callback(sqlite))).toBe("pending_expired");
   });
 
+  it("没走到上游的失败不带 account_ms —— 那个数专指「失败那一步的上游耗时」", async () => {
+    const sqlite = new DatabaseSync(":memory:");
+    createSchema(sqlite);
+    const response = await callback(sqlite, `code=x&state=${STATE}`, { cookie: null });
+    expect(await failureCode(response)).toBe("pending_cookie_missing");
+    expect(callbackQuery(response).get("account_ms")).toBeNull();
+  });
+
   it("上游在授权环节直接拒绝 → authorize_denied(旧实现只给 authorization)", async () => {
     const sqlite = new DatabaseSync(":memory:");
     createSchema(sqlite);
@@ -223,7 +245,7 @@ describe("callback 的失败必须可区分", () => {
     expect(await failureCode(await callback(sqlite))).toBe("upstream_unreachable");
   });
 
-  it("换 token 被拒 → token_rejected(并记下步骤,不打 token)", async () => {
+  it("换 token 被上游拒 → token_rejected + 上游错误码 + 本步耗时(并记下步骤,不打 token)", async () => {
     const sqlite = new DatabaseSync(":memory:");
     createSchema(sqlite);
     await seedPending(sqlite);
@@ -233,8 +255,47 @@ describe("callback 的失败必须可区分", () => {
         response: new Response("{}", { status: 400 }),
       }),
     );
-    expect(await failureCode(await callback(sqlite))).toBe("token_rejected");
-    expect(warn).toHaveBeenCalledWith("oidc_callback_failed", "token_rejected", "ResponseBodyError:invalid_grant");
+    const response = await callback(sqlite);
+    expect(await failureCode(response)).toBe("token_rejected");
+    // 「上游明确拒绝」与「我们等到超时」的分界线就在这个细节码上(PLAN-20260916220942)。
+    expect(await failureDetail(response)).toBe("invalid_grant");
+    const ms = Number(callbackQuery(response).get("account_ms"));
+    expect(Number.isFinite(ms)).toBe(true);
+    expect(ms).toBeGreaterThanOrEqual(0);
+    expect(warn).toHaveBeenCalledWith(
+      "oidc_callback_failed",
+      "token_rejected",
+      expect.any(Number),
+      "ResponseBodyError:invalid_grant",
+    );
+  });
+
+  it("换 token 时连不上上游 → token_rejected:network_timeout(与「被拒」分开)", async () => {
+    const sqlite = new DatabaseSync(":memory:");
+    createSchema(sqlite);
+    await seedPending(sqlite);
+    const timedOut = new Error("the operation was aborted due to timeout");
+    timedOut.name = "TimeoutError";
+    vi.mocked(oauth.authorizationCodeGrantRequest).mockRejectedValueOnce(timedOut);
+    const response = await callback(sqlite);
+    expect(await failureCode(response)).toBe("token_rejected");
+    expect(await failureDetail(response)).toBe("network_timeout");
+  });
+
+  it("上游细节码不合白名单时整段丢掉,不得原样进 URL", async () => {
+    const sqlite = new DatabaseSync(":memory:");
+    createSchema(sqlite);
+    await seedPending(sqlite);
+    vi.mocked(oauth.authorizationCodeGrantRequest).mockRejectedValueOnce(
+      new oauth.ResponseBodyError("INVALID GRANT!", {
+        cause: { error: "INVALID GRANT!" },
+        response: new Response("{}", { status: 400 }),
+      }),
+    );
+    const response = await callback(sqlite);
+    expect(await failureCode(response)).toBe("token_rejected");
+    expect(await failureDetail(response)).toBeNull();
+    expect(await failureParam(response)).toBe("token_rejected");
   });
 
   it("ID token 验签不过 → id_token_invalid", async () => {

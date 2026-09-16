@@ -1,6 +1,6 @@
 import {el, openModal, closeModal, toast} from "./components/AccountHost";
 import { workspaceCounts } from "./sync-data";
-import { loginFailureMessage, loginFailureReason } from "./account-errors";
+import { loginFailureElapsed, loginFailureMessage, loginFailureReason } from "./account-errors";
 import {
   accountState,
   api,
@@ -71,20 +71,24 @@ export async function initAccount(
   }
   const url = new URL(location.href);
   const connected = url.searchParams.has("account");
-  // 服务端把「登录在哪一步失败」分诊成 `account_error=<code>`(`apps/api/src/auth-callback.ts`)。
+  // 服务端把「登录在哪一步失败」分诊成 `account_error=<步骤码>[:<上游细节>]`(`apps/api/src/auth-callback.ts`)。
   // 旧实现只判断参数**在不在**,把那句话之外的信息全丢了 —— 线上「点登录 → 跳回来提示登录未完成」
-  // 因此完全无法定位(见 PLAN-20260916215100)。这里必须把码带出来。
+  // 因此完全无法定位(见 PLAN-20260916215100)。这里必须把码带出来,连同失败那一步的耗时
+  // `account_ms`(区分「上游明确拒绝」与「我们等它等到超时」,见 PLAN-20260916220942)。
   const failed = url.searchParams.get("account_error");
+  const failedMs = url.searchParams.get("account_ms");
   if (connected || failed) {
     url.searchParams.delete("account");
     url.searchParams.delete("account_error");
+    url.searchParams.delete("account_ms");
     if (replaceUrl) replaceUrl(url);
     else history.replaceState(null, "", url);
     if (failed) {
       accountState.loginError = failed;
-      toast(loginFailureMessage(failed));
-      // 原始码同时打到控制台:用户按 F12 就能复制给我们,不必去地址栏抢那一下。
-      console.warn("account_login_failed", failed);
+      accountState.loginErrorElapsed = failedMs;
+      toast(loginFailureMessage(failed, failedMs));
+      // 原始码与耗时同时打到控制台:用户按 F12 就能复制给我们,不必去地址栏抢那一下。
+      console.warn("account_login_failed", failed, failedMs ?? "");
     }
     setTimeout(openAccountPanel, 0);
   }
@@ -137,7 +141,12 @@ export function openAccountPanel() {
   // toast 几秒就没了,这行不会 —— 登录失败的原因必须留在面板上,不然用户想复述时已经没了。
   if (accountState.loginError)
     body.append(
-      el("p", "text-14", `上次登录失败：${loginFailureReason(accountState.loginError)}`),
+      el(
+        "p",
+        "text-14",
+        `上次登录失败：${loginFailureReason(accountState.loginError)}` +
+          loginFailureElapsed(accountState.loginErrorElapsed),
+      ),
     );
   const refreshStatus = () => {
     report.textContent = accountState.message || statusLabels[accountState.status];

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { loginFailureCodeSchema } from "@biff/contracts/account";
 import {
   LOGIN_FAILURE_REASONS,
+  loginFailureElapsed,
   loginFailureMessage,
   loginFailureReason,
 } from "../src/account-errors";
@@ -40,5 +41,42 @@ describe("登录失败原因文案", () => {
   it("连码都没有时也要给出一句完整的话,而不是空串", () => {
     expect(loginFailureReason(null)).toBe("登录没有完成。请重试。");
     expect(loginFailureReason(undefined)).toBe("登录没有完成。请重试。");
+  });
+
+  it("带上游细节码时把人话补上(invalid_grant = 上游明确拒绝)", () => {
+    expect(loginFailureReason("token_rejected:invalid_grant")).toContain(
+      "授权码已经被用过或已过期",
+    );
+  });
+
+  it("network_timeout 与 invalid_grant 必须指向两件不同的事 —— 这就是「是不是超时太短」的判据", () => {
+    expect(loginFailureReason("token_rejected:network_timeout")).toContain("我们等上游等到超时");
+    expect(loginFailureReason("token_rejected:invalid_grant")).not.toContain("超时");
+  });
+
+  it("没登记过的合法细节码原样显示(它已过白名单)", () => {
+    expect(loginFailureReason("token_rejected:some_new_detail")).toContain("some_new_detail");
+  });
+
+  it("非法细节(大写 / 空格)被丢掉,只留基础文案", () => {
+    expect(loginFailureReason("token_rejected:BAD DETAIL")).toBe(
+      loginFailureReason("token_rejected"),
+    );
+  });
+
+  it("畸形值(只有细节没有步骤码)不吞掉内容", () => {
+    expect(loginFailureReason(":invalid_grant")).toContain(":invalid_grant");
+  });
+
+  it("失败那一步的耗时要拼进整句", () => {
+    expect(loginFailureMessage("token_rejected:invalid_grant", "2600")).toContain(
+      "失败那一步耗时 2.6 秒",
+    );
+  });
+
+  it("没有耗时 / 耗时非法时不拼那一句", () => {
+    expect(loginFailureElapsed(null)).toBe("");
+    expect(loginFailureElapsed("abc")).toBe("");
+    expect(loginFailureElapsed("0")).toBe("");
   });
 });

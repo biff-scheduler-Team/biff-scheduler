@@ -5,7 +5,20 @@
 > API `biff-scheduler` + 静态资源 `biff-scheduler-web`)+ React / Router / Spectrum S2 + Vite + TS
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-16(**登录失败病因可见** —— callback 的 7 条失败路径原先有 6 条都塌成同一个
+> 最后更新:2026-09-16(**登录失败再深一层:上游错误码 + 本步耗时可见** —— 上一轮把失败**步骤**变成
+> 可见的码后,用户拿到 `token_rejected`(「账号系统拒绝发放登录凭证」),并追问「是不是超时太短了」。
+> 实测发现答案拿不到:`describeError` 只落在 **Worker 侧**日志(CF 控制台,本机与用户都读不到);
+> 现已把**上游 OAuth error 码**(白名单 `^[a-z_]{1,32}$`,绝不回传响应体)与**失败那一步自己的耗时**
+> 一并回传(`?account_error=<步骤>:<细节>&account_ms=<ms>`),`network_timeout` 与 `invalid_grant`
+> 的分界就是「我们主动放弃」与「上游明确拒绝」的判据。同时纠正 `IDENTITY_TIMEOUT_MS` 的注释口径:
+> 实测有一次 4.39s 的成功请求,但混了 D1 耗时,**尚未坐实该 3 秒上限是否真的能中断**
+> —— 所以在拿到 `account_ms` 之前不动任何超时数值。见 `PLAN-20260916220942`;
+> **同日追加(修订 1,用户要求):登录流程的上游预算改为 10 秒** —— 新增
+> `AUTH_FLOW_TIMEOUT_MS`,只给 `/api/auth/login` + `/api/auth/callback`(单次上限 10 秒 +
+> 整条流程共享一个 deadline);**共享的那 3 秒一个字没动** —— 它被刷新链路的租约不变量绑着
+> (`REFRESH_LEASE_MS >= 2 × IDENTITY_TIMEOUT_MS`),直接调大等于让并发刷新拿同一个 refresh token
+> 去换、上游撤销整个 token family。这条已写成断言,把它改成 10_000 会立刻红 3 条;
+> 上一轮(**登录失败病因可见** —— callback 的 7 条失败路径原先有 6 条都塌成同一个
 > `account_error=authorization`,前端又把 `account_error` 的具体值丢掉,于是线上「点登录 → 跳回首页
 > 提示登录未完成」**没有任何可观察手段**(CF 日志 / D1 本机都够不着);现按**步骤**分诊成 13 个码,
 > 唯一口径放进共享契约 `loginFailureCodeSchema`,回调抽成 `auth-callback.ts`(可单测),
