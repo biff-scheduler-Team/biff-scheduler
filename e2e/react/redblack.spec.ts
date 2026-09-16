@@ -24,6 +24,8 @@ test("首次进入是空榜:一枚贴纸都没有,只留一句怎么开始", asy
   await expect(page.locator(".rb-hint")).toBeVisible();
   await expect(page.locator(".rb-dot")).toHaveCount(0);
   await expect(page.locator(".rb-card").first()).toBeVisible();
+  // 没有人贴过 → 单部评分显示「—」,而不是 0 分(0 分会被读成「大家都觉得烂」)
+  await expect(page.locator(".rb-card").first().locator(".rb-chip--score")).toHaveText("评分 —");
 });
 
 test("榜单铺出去重后的影片,同一部只出现一次,且能按场次 code 搜到", async ({ page }) => {
@@ -87,6 +89,10 @@ test("服务端的全体票数渲染成卡片上的红黑数字与只读小点",
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
   await expect(card.locator(".rb-chip--red")).toHaveText("红 3");
   await expect(card.locator(".rb-chip--black")).toHaveText("黑 2");
+  // 评分是**每部各自的**:3 红 2 黑 → 3/5 × 10 = 6.0;
+  // 顶部那个「全站评分」已经不需要了(用户 2026-09-16)
+  await expect(card.locator(".rb-chip--score")).toHaveText("评分 6.0");
+  await expect(page.locator(".rb-score")).toHaveCount(0);
   // 别人的 5 枚画在画布上,且**不可拖**(不挂 pointerdown → 不是可抓取的手型)
   await expect(card.locator(".rb-dot--crowd")).toHaveCount(5);
 });
