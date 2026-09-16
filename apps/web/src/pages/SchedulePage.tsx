@@ -34,14 +34,12 @@ import {
   dateInfo,
   doubanScoreOf,
   filmInfoOf,
-  filmNodeKey,
   fmtEndClock,
   hmsToMin,
   todayIsoLocal,
 } from "../util";
 import { venueShort, venueTip } from "../legend";
 import { timelineEntries } from "../timeline";
-import type { Screening } from "../types";
 import { tightScreeningTips } from "../app/schedule-model";
 import { verticalGeometry, screeningLanes, captureVerticalAnchor, restoreVerticalAnchor, type VerticalAnchor, type VerticalGeometry } from "../app/vertical-schedule";
 import "./schedule-parity.css";
