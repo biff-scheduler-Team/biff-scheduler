@@ -14,7 +14,7 @@ const plans = [
   { id: "one", name: "方案 1", codes: ["001"], createdAt: 1 },
   { id: "two", name: "方案 2", codes: ["033"], createdAt: 2 },
 ];
-const pickerLabel = /导出方案/;
+const pickerLabel = /导出范围/;
 
 test("cancel discards settings drafts and reopening reads current preferences", async ({
   page,
@@ -107,14 +107,21 @@ test("restoring GV duration preserves attendance, and editing requires confirmat
   });
 });
 
-test("export defaults to the latest plan and reopening never exposes an empty downloadable canvas", async ({
+test("export defaults to 当前行程 and reopening never exposes an empty downloadable canvas", async ({
   page,
 }) => {
-  await seed(page, { "biff.savedplans.v1": JSON.stringify(plans) });
+  // ⚠ 默认范围 = 「当前行程」（与 /rush 同源），不是最后一个已保存方案（PLAN-20260916135942）——
+  //   故这里必须播种行程，否则默认范围是 0 场、按钮禁用，后面的画布断言就无从谈起。
+  await seed(page, {
+    "biff.picks.v2": JSON.stringify([
+      { key: keyOf("001"), picks: [{ code: "001" }], note: "" },
+    ]),
+    "biff.savedplans.v1": JSON.stringify(plans),
+  });
   await ready(page, "/agenda");
   let dialog = await openExport(page);
   await expect(dialog.getByRole("button", { name: pickerLabel })).toContainText(
-    "方案 2",
+    "当前行程",
   );
   await dialog
     .getByRole("button", { name: "生成分享图片", exact: true })
@@ -239,7 +246,12 @@ test("clipboard image failure automatically downloads the rendered PNG", async (
       value: { write: () => Promise.reject(new Error("denied")) },
     }),
   );
-  await seed(page, { "biff.savedplans.v1": JSON.stringify(plans) });
+  await seed(page, {
+    "biff.picks.v2": JSON.stringify([
+      { key: keyOf("033"), picks: [{ code: "033" }], note: "" },
+    ]),
+    "biff.savedplans.v1": JSON.stringify(plans),
+  });
   await ready(page, "/agenda");
   const dialog = await openExport(page);
   await dialog

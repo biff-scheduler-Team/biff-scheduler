@@ -20,6 +20,7 @@ import {
   ToastQueue,
 } from "./spectrum";
 import { useCatalog } from "../app/store";
+import { topPlanCodes } from "../app/agenda-model";
 import { buildIcs, type PickRow } from "../ics";
 import { buildShareText, type ShareOptions } from "../share";
 import { parseBackupText, parseIcsCodes, restore, snapshot } from "../backup";
@@ -37,8 +38,13 @@ import { groupMatesOf } from "../plans";
 import { batchHeading, programOf } from "../extras";
 import { ticketBatchOf } from "../batch";
 
-export function planOutline(cat: Catalog, plan: SavedPlan): string {
-  const shows = plan.codes
+/** 「导出范围」里的**伪方案 id** —— 选中它 = 按**当前行程**导出(`/rush` 同源)。 */
+export const SCOPE_CURRENT = "current";
+
+/** 场次集合概要:`29 场，OCT 7–OCT 10`(排期里查不到的 code 记「N 场已不在排期」)。
+ *  ⚠ 已保存方案与「当前行程」两个范围**共用本函数** —— 各算一份必然让同一份数据印出两个场数。 */
+export function codesOutline(cat: Catalog, codes: string[]): string {
+  const shows = codes
     .flatMap((code) => {
       const s = cat.byCode.get(code);
       return s ? [s] : [];
@@ -54,9 +60,14 @@ export function planOutline(cat: Catalog, plan: SavedPlan): string {
     const last = dateInfo(shows.at(-1)!.date).label;
     parts.push(first === last ? first : `${first}–${last}`);
   }
-  const missing = plan.codes.length - shows.length;
+  const missing = codes.length - shows.length;
   if (missing) parts.push(`${missing} 场已不在排期`);
   return parts.join("，");
+}
+
+/** 已保存方案的概要(薄封装,见 `codesOutline`)。 */
+export function planOutline(cat: Catalog, plan: SavedPlan): string {
+  return codesOutline(cat, plan.codes);
 }
 
 function ImportData() {
@@ -187,7 +198,8 @@ function ImportData() {
 }
 export function ExportDialog() {
   const { cat, plans } = useCatalog();
-  const [planId, setPlanId] = useState(savedPlans.at(-1)?.id ?? "");
+  // 导出范围:默认「当前行程」(与 `/rush` 同源),已保存方案仍可显式选。
+  const [scope, setScope] = useState<string>(SCOPE_CURRENT);
   const [preview, setPreview] = useState(false);
   // 「带上顺位」/「带上开票批次」:分享文案的两个可选扩展(见 share.ts 的 ShareOptions)。
   // 默认关 —— 关掉时输出就是「CODE 前置 + 两行一场」的基线版式,与旧版逐字一致(除 CODE 位置)。
@@ -200,17 +212,26 @@ export function ExportDialog() {
     model: PosterModel;
     loading: boolean;
   } | null>(null);
-  const plan = savedPlans.find((p) => p.id === planId) ?? savedPlans.at(-1);
-  const effectivePlanId = plan?.id;
-  const activeImage = image?.planId === effectivePlanId ? image : null;
+  // ⚠ 范围决定「导出哪些场次」,**顺位 / 备选 / 批次一律取当前行程**(`plans.rankOf` /
+  //   `groupMatesOf(plans.groups)` / `batch.ts::ticketBatchOf`)—— 两者混用会出现「方案里的 A 印成主选、
+  //   它的备选 B 反而印成『A 的主选』」这种自相矛盾的清单(`PLAN-20260916135942`)。
+  const currentCodes = useMemo(() => topPlanCodes(plans), [plans]);
+  // 选了已保存方案 → 按方案快照;方案被别的标签页删掉(没有 Picker 事件) → 回落最后一个方案;都没有 → 当前行程。
+  const plan =
+    scope === SCOPE_CURRENT
+      ? undefined
+      : savedPlans.find((p) => p.id === scope) ?? savedPlans.at(-1);
+  const scopeCodes = plan?.codes ?? currentCodes;
+  const scopeId = plan?.id ?? SCOPE_CURRENT;
+  const activeImage = image?.planId === scopeId ? image : null;
   useEffect(() => {
     // Storage sync may remove the selected plan without a Picker change event.
-    setImage((current) => current?.planId === effectivePlanId ? current : null);
-  }, [effectivePlanId]);
+    setImage((current) => current?.planId === scopeId ? current : null);
+  }, [scopeId]);
   const onImageLoadingChange = useCallback((id: number, loading: boolean) => {
     setImage((current) => current?.id === id ? { ...current, loading } : current);
   }, []);
-  const rows: PickRow[] = (plan?.codes ?? [])
+  const rows: PickRow[] = scopeCodes
     .filter((c) => cat.byCode.has(c))
     .map((code) => ({
       code,
@@ -246,10 +267,10 @@ export function ExportDialog() {
   };
   const buildImage = () => {
     const model = buildPosterModel(cat, rows, store.mappings, talkOnOf, shareOptions);
-    if (!model || !plan) return;
+    if (!model) return;
     setImage({
       id: ++generation.current,
-      planId: plan.id,
+      planId: scopeId,
       model,
       loading: true,
     });
@@ -261,22 +282,29 @@ export function ExportDialog() {
           <Heading slot="title">导出与分享</Heading>
           <Content>
             <div className="export-content">
-              {savedPlans.length ? (
+              {rows.length || savedPlans.length ? (
                 <section className="form-stack">
                   <Picker
-                    label="导出方案"
-                    value={plan?.id ?? ""}
+                    label="导出范围"
+                    value={scopeId}
                     onChange={(id) => {
-                      setPlanId(String(id));
+                      setScope(String(id));
                       setImage(null);
                     }}
                   >
+                    <PickerItem id={SCOPE_CURRENT}>
+                      当前行程（{codesOutline(cat, currentCodes)}）
+                    </PickerItem>
                     {savedPlans.map((p) => (
                       <PickerItem key={p.id} id={p.id}>
                         {p.name}（{planOutline(cat, p)}）
                       </PickerItem>
                     ))}
                   </Picker>
+                  <p className="muted">
+                    「当前行程」与「抢票」页同源（每组第一顺位 + 共同场次），改完行程直接导出即可；
+                    已保存方案是快照，之后改行程不会跟着变。
+                  </p>
                   <p className="muted">
                     {rows.length} 场有效排期。日历时间会自动转换到手机所在时区。
                   </p>
@@ -371,9 +399,9 @@ export function ExportDialog() {
                 </section>
               ) : (
                 <div className="notice">
-                  <h2>先保存一个方案</h2>
+                  <h2>还没有安排场次</h2>
                   <p>
-                    在「我的行程」点击「保存当前方案」，再导出日历或分享图片。
+                    在排片表里把要看 / 要抢的场次加进行程，再回这里导出日历、分享文案或分享图片。
                   </p>
                 </div>
               )}
