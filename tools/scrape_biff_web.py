@@ -369,6 +369,27 @@ def build_title_index(films_path: Path, alias_path: Optional[Path] = None) -> di
     return index
 
 
+def build_event_index(event_path: Optional[Path]) -> dict[str, str]:
+    """活动译名表 → {归一化活动英文名: 中文名}。
+
+    为什么单开一张表(而不是塞进 `title-alias-2026.json`):
+    `build_title_index` 是从**影片目录**反查中文名,而 Actors' House / Master Class /
+    Cine Class / Special Talk 这批**纯活动**场次在目录里根本没有条目 →
+    `title_zh` 恒为空,站上只剩英文名(用户 2026-09-16:「这种只有英文的 能不能也翻译成中文」)。
+    两张表的语义不同(一张的值是目录片名,一张是人工译文),混在一起会让
+    `build_films_2026.py` 的直查也跟着漂移,故分开。人名译名须人工核,理由见该文件 `_note`。
+    """
+    if not event_path or not event_path.exists():
+        return {}
+    data = json.loads(event_path.read_text(encoding="utf-8"))
+    index: dict[str, str] = {}
+    for name, zh in (data.get("events") or {}).items():
+        k = norm_title(name)
+        if k and zh:
+            index[k] = zh
+    return index
+
+
 def venue_sort_key(name: str) -> tuple[int, str, int]:
     """泳道排序键:影院组 → 字母段 → 数字段(自然序)。
 
@@ -424,6 +445,8 @@ def main() -> int:
     parser.add_argument("--no-kr", action="store_true", help="跳过韩文详情页(省一半请求,韩文片名留空)")
     parser.add_argument("--films-json", help="影片目录(apps/web/public/films.json);给了就回填 title_zh 并报匹配率")
     parser.add_argument("--alias", default="data/title-alias-2026.json", help="人工别名表(官方片名 → 目录中文名)")
+    parser.add_argument("--event-titles", default="data/event-titles-2026.json",
+                        help="人工活动译名表(活动英文名 → 中文名;纯活动场次目录里查不到)")
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
@@ -493,10 +516,15 @@ def main() -> int:
     if args.films_json:
         title_index = build_title_index(Path(args.films_json), Path(args.alias))
         print(f"[目录] {args.films_json} → {len(title_index)} 个片名键")
+    # 活动译名表**独立于目录**加载:没给 --films-json 时它也应当生效(否则纯活动场次又变回英文名)
+    event_index = build_event_index(Path(args.event_titles))
+    if event_index:
+        print(f"[活动] {args.event_titles} → {len(event_index)} 个活动译名")
 
     screenings: list[dict[str, Any]] = []
     estimated: list[str] = []
     zh_missed: list[str] = []
+    zh_from_events = 0
     for r in rows:
         vid = VENUE_TABLE[r["venue_name"]][0]
         meta = film_meta.get(r["film_idx"] or "", {}) or {}
@@ -532,11 +560,17 @@ def main() -> int:
 
         # title_zh 是「排期 ↔ 中文目录」的唯一桥:命中则影片库按目录条目归并,
         # 否则前端当「纯排期片」单独成条(不串片,但会出现一对重复)。
+        # 顺序:目录(自动) → 活动译名表(人工) —— 纯活动场次只可能走第二条。
         title_zh = ""
-        if title_index:
+        if title_index or event_index:
             title_zh = title_index.get(norm_title(title_en), "")
             if not title_zh and title_kr:
                 title_zh = title_index.get(norm_title(title_kr), "")
+            if not title_zh and event_index:
+                title_zh = (event_index.get(norm_title(title_en), "")
+                            or (event_index.get(norm_title(title_kr), "") if title_kr else ""))
+                if title_zh:
+                    zh_from_events += 1
             if not title_zh and not r["is_bundle"]:
                 zh_missed.append(title_en)
 
@@ -576,9 +610,10 @@ def main() -> int:
     print(f"联映块        : {sum(1 for s in screenings if s.get('midnight_members'))}")
     print(f"估算片长      : {len(estimated)} 条(按 {FALLBACK_DURATION_MIN}min 兜底)"
           + (f" → {estimated}" if estimated else ""))
-    if title_index:
+    if title_index or event_index:
         uniq = sorted(set(zh_missed))
-        print(f"目录匹配      : {len(screenings) - len(zh_missed)}/{len(screenings)} 场命中中文名"
+        print(f"中文名        : {len(screenings) - len(zh_missed)}/{len(screenings)} 场有中文名"
+              f"(其中活动译名表 {zh_from_events} 场)"
               f";未命中 {len(uniq)} 个片名(前端按「纯排期片」处理)")
 
     # 6) 落盘

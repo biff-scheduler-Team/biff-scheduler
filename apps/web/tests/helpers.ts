@@ -20,7 +20,7 @@ export function show(patch: Partial<Screening> & { code: string }): Screening {
   };
 }
 
-/** 最小 Catalog:目录 films 默认留空 → `filmNodeKey` 走 `sched:<中文名小写>` 分支,
+/** 最小 Catalog:目录 films 默认留空 → `filmNodeKey` 走 `sched:<英文名小写>` 分支,
  *  测试里用 `sched:alpha` 这种可读 key 即可(与线上 `filmNodeKey` 口径一致)。 */
 export function catalog(shows: Screening[], films: FilmItem[] = []): Catalog {
   const venues: Venue[] = [
