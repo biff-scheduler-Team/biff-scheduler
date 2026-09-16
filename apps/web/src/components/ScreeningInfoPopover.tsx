@@ -17,10 +17,16 @@ export function ScreeningInfoPopover({screening: s}: {screening: Screening}) {
   const {cat} = useCatalog();
   const openFilm = useFilmNavigation();
   const compact = useMedia("(max-width: 768px)");
+  // 显示口径(2026-09-17,`PLAN-20260917003630`):鼠标**悬停即展开、指针移开即收**。
+  //   `pinned`(点开点关)只留给没有 hover 可依赖的键盘 / 触摸 —— 原先鼠标点一下也会钉住,
+  //   而弹层就压在网格上,点错一下就得再点「×」才收(用户原话「点击了之后 还要点击关闭」)。
   const [mode, setMode] = useState<'closed' | 'hover' | 'pinned'>('closed');
   const trigger = useRef<HTMLButtonElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 最近一次 pointerdown 的指针类型:用来把「鼠标点击」与「键盘 / 触摸激活」分开
+  // (键盘激活按钮不产生 pointerdown,故这里为空串 → 走 pinned 分支)
+  const pointerKind = useRef('');
   const id = useId();
   const cancel = () => { if (timer.current) clearTimeout(timer.current); };
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
@@ -49,14 +55,24 @@ export function ScreeningInfoPopover({screening: s}: {screening: Screening}) {
       aria-label={`场次 ${s.code} 影片资料`} aria-haspopup="dialog" aria-expanded={mode !== 'closed'} aria-controls={mode !== 'closed' ? id : undefined}
       onPointerEnter={event => { if(event.pointerType === 'mouse') { cancel(); if(mode === 'closed') timer.current = setTimeout(()=>setMode('hover'),180); } }}
       onPointerLeave={leave}
-      onClick={() => { cancel(); requestAnimationFrame(() => setMode('pinned')); }}
+      onPointerDown={event => { pointerKind.current = event.pointerType; }}
+      onClick={() => {
+        cancel();
+        const mouse = pointerKind.current === 'mouse';
+        pointerKind.current = '';
+        // 鼠标:只负责「立刻展开」(不等 180ms 延时),收不收交给指针移开 —— 一律不进入 pinned
+        if (mouse) { setMode('hover'); return; }
+        // 键盘 / 触摸:没有 hover 可依赖,点开 → 再点一次 ⓘ / `×` / Escape 才收
+        if (mode === 'closed') setMode('pinned');
+        else close();
+      }}
     ><svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="10" cy="10" r="7.5" /><path d="M10 9v6" /><circle cx="10" cy="6" r="1" fill="currentColor" stroke="none" /></svg></button>
     <Popover triggerRef={trigger} isOpen={mode !== 'closed'} onOpenChange={open => {if(!open) close();}}
       shouldCloseOnInteractOutside={element => !trigger.current?.contains(element)}
       isNonModal placement={compact ? "bottom" : "right top"} offset={8} className="screening-info-popover"
       onPointerEnter={cancel} onPointerLeave={leave}>
-      <div ref={content} id={id} role="dialog" tabIndex={-1} aria-label={`场次 ${s.code} 影片预览`}
-        onFocus={() => {cancel();setMode('pinned');}}>
+      {/* 不再用 `onFocus` 钉住:React 的 focus 是冒泡的,鼠标点弹层里任何一处都会把它锁死 */}
+      <div ref={content} id={id} role="dialog" tabIndex={-1} aria-label={`场次 ${s.code} 影片预览`}>
         <button className="preview-close" type="button" aria-label="关闭影片预览" onClick={close}>×</button>
         <div className="preview-hero">
           {info.cats[0]?.poster && <img className="preview-poster" src={info.cats[0].poster} alt={`${info.zh || info.en} 海报`} />}
