@@ -76,28 +76,6 @@
   background: rgb(255 255 255 / 30%);
 }
 
-/* 红黑榜评分:比统计块更醒目一档(它是这一页唯一的「结论」) */
-.rb-score {
-  display: grid;
-  gap: 2px;
-  min-width: 96px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgb(255 255 255 / 26%);
-  text-align: center;
-}
-
-.rb-score strong {
-  font-size: 26px;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.rb-score small {
-  font-size: 11px;
-  opacity: 0.85;
-}
-
 /* ---------- 搜索 / 排序 ---------- */
 
 .rb-controls {
@@ -276,6 +254,16 @@
   border: 1px solid var(--line);
   background: var(--raised);
   color: var(--text);
+}
+
+/* 单部影片的评分:卡片上唯一带「结论」性质的块 —— 比红黑计数重一档,但仍是一枚小徽章
+ * (卡片信息列只有 158px,放大字会把它挤垮)。 */
+.rb-chip--score {
+  border: 1px solid currentcolor;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 「看过」标记 —— 卡片上唯一的开关,点它就是能不能贴的闸门 */

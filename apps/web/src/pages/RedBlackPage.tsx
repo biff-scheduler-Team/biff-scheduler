@@ -145,16 +145,12 @@ export function RedBlackPage() {
       placed += tally.total;
       quota += tally.quota;
     }
-    let red = 0;
-    let black = 0;
-    for (const counts of filmCounts.values()) {
-      red += counts.red;
-      black += counts.black;
-    }
-    return { marked, placed, quota, red, black, total: red + black };
+    // 全站总票数:只用来判断「榜是不是空的」(决定要不要显示那句引导)。
+    // ⚠ 分数**不是**看全站 —— 评分是**每部各自的**(见卡片里的 `filmScore`)。
+    let total = 0;
+    for (const counts of filmCounts.values()) total += counts.red + counts.black;
+    return { marked, placed, quota, total };
   }, [tallies, filmCounts]);
-  // 红黑榜评分 = **全体**红票占比(0–10 分);还没有人贴时不显示分数
-  const score = scoreOf(totals);
 
   // 落点处理要按 key 反查影片(提示里要片名、贴纸要挂到它上面),先按当前榜单建索引
   const filmByKey = useMemo(
@@ -314,10 +310,6 @@ export function RedBlackPage() {
           </p>
         </div>
         <div className="rb-totals" aria-live="polite">
-          <span className="rb-score" title="全体红票占比折算成 0–10 分；还没有人贴时不显示">
-            <strong>{score === null ? "—" : score.toFixed(1)}</strong>
-            <small>红黑榜评分</small>
-          </span>
           <span className="rb-total">
             <strong>{totals.marked}</strong>
             <small>标记看过</small>
@@ -385,6 +377,8 @@ export function RedBlackPage() {
             const tally = tallies.get(film.key)!;
             const placed = board.get(film.key) ?? [];
             const counts = filmCounts.get(film.key)!;
+            // 这一部**自己的**评分(红票占比折算 0–10);还没有人贴过 → null(显示成「—」)
+            const filmScore = scoreOf(counts);
             // 「别人的贴纸」= 全体票数 − 我自己那几枚。服务端那份**含我**,不减掉会把我这枚画重。
             const mine = countsOf(placed);
             const others = {
@@ -410,6 +404,12 @@ export function RedBlackPage() {
                   <h2 className="rb-title">{film.zh}</h2>
                   {film.en && film.en !== film.zh && <p className="rb-en">{film.en}</p>}
                   <p className="rb-chips">
+                    <span
+                      className="rb-chip rb-chip--score"
+                      title="这部片的红票占比折算成 0–10 分；还没有人贴时不显示分数"
+                    >
+                      评分 {filmScore === null ? "—" : filmScore.toFixed(1)}
+                    </span>
                     <button
                       type="button"
                       className="rb-mark"
