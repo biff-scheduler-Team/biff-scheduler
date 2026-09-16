@@ -23,6 +23,12 @@ BIFF cookie 为 `__Host-biff.session`，设置 Secure、HttpOnly、SameSite=Lax 
 `SESSION_REFRESH_REJECTED`（账号系统拒绝续期）、`IDENTITY_REJECTED`（账号系统拒绝身份校验）。
 前端会把中文原因拼进「登录已过期」那句提示里。
 
+账号系统对 `/api/v1/profile` 回 401 时**不再直接删会话**（`resolveIdentity`）：先用 refresh token
+强制换一份再验一次，只有新 token 依然被拒才判会话真失效。本地 `token_expires_at` 是按
+「收到响应那一刻 + `expires_in`」算的，比上游签发时刻晚一个网络往返，边界上本就会拿着刚过期的
+token 过去 —— 一次抖动不该等于永久登出（cookie 还在、行没了）。该调用带 3 秒硬超时并转发
+`cf-connecting-ip`，与 OIDC 调用的口径一致。
+
 ## 本地数据与同步
 
 登录后，尚未导入过的账号会自动合并非空本机数据。合并前保留本机副本。选片、场次、备注、已保存方案和现有 `biff.*` 偏好都参与同步，公开的影片资料仍从静态文件读取。

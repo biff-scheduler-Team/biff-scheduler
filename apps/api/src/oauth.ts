@@ -2,6 +2,7 @@ import { and, eq, gt, lt } from "drizzle-orm";
 import { database } from "./db";
 import { appSession } from "./db/schema";
 import * as oauth from "oauth4webapi";
+import { accountProfileSchema, type AccountProfile } from "@biff/contracts/account";
 import { z } from "zod";
 import { HTTPException } from "hono/http-exception";
 import { configuration, type Configuration } from "./config";
@@ -119,6 +120,7 @@ export async function sessionFor(
   env: Env,
   cookie: string | undefined,
   clientIp?: string,
+  options: { force?: boolean } = {},
 ): Promise<SessionLookup> {
   if (!cookie) return { session: null, failure: "SESSION_NO_COOKIE" };
   const config = configuration(env);
@@ -126,15 +128,22 @@ export async function sessionFor(
   const db = database(env.DB);
   const deadline = Date.now() + REFRESH_WAIT_MS;
   const maxAttempts = Math.ceil(REFRESH_WAIT_MS / REFRESH_POLL_MS) + 2;
+  // `force` 只对**第一次**读到的行生效:若我们是等别人刷完再重读,别人的成果就是我们要的东西,
+  // 再强制换一次只会白白多烧一轮 refresh token。
+  let force = options.force === true;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    // 「抢不到租约」与「invalid_grant 被别人抢先」两条路径都会 `continue` —— 统一在这里卡
+    // deadline,任何路径都不允许空转到 `maxAttempts`(旧实现的 superseded 分支绕过了它)。
+    if (attempt > 0 && Date.now() >= deadline) break;
     const row = await db.select().from(appSession)
       .where(and(eq(appSession.token_hash, tokenHash), gt(appSession.expires_at, Date.now()))).get();
     if (!row) return { session: null, failure: "SESSION_NOT_FOUND" };
     const tokens = tokensSchema.parse(
       await unseal(row.payload, config.SESSION_SECRET, `session:${tokenHash}`),
     );
-    if (row.token_expires_at > Date.now() + 30_000)
-      return { session: { row, tokens }, failure: null };
+    const stillValid = row.token_expires_at > Date.now() + 30_000;
+    if (stillValid && !force) return { session: { row, tokens }, failure: null };
+    force = false;
     if (!tokens.refreshToken) {
       // 登录时上游没给 refresh token 的会话,撑不过第一个 access token 窗口(15 分钟)——
       // 到点必然走到这里删行,用户只看到「登录已过期」而线上不留痕迹。打点是为了让这条
@@ -175,7 +184,10 @@ export async function sessionFor(
       const fresh: SessionTokens = {
         ...tokens,
         accessToken: result.access_token,
-        refreshToken: result.refresh_token ?? tokens.refreshToken,
+        // 必须用 `||`:上游回 `refresh_token: ""` 时 `??` 会放行空串,空串进了会话之后,
+        // 下一次刷新命中 `!tokens.refreshToken` → 删行踢人,而错误码还会把这误报成
+        // 「登录时上游就没给 RT」。空串与「没给」要当成同一件事。
+        refreshToken: result.refresh_token || tokens.refreshToken,
         idToken: result.id_token ?? tokens.idToken,
       };
       // 只记寿命与「是否轮换」,绝不记 token —— 上游到底有没有下发 RT 是本次故障的关键疑点,
@@ -185,13 +197,27 @@ export async function sessionFor(
         result.expires_in ?? "unset",
         result.refresh_token ? "rt-rotated" : "rt-reused",
       );
+      const tokenExpiresAt = Date.now() + (result.expires_in ?? 900) * 1000;
       const payload = await seal(fresh, config.SESSION_SECRET, `session:${tokenHash}`);
       const saved = await db.update(appSession).set({
-        payload, token_expires_at: Date.now() + (result.expires_in ?? 900) * 1000, refresh_until: 0,
+        payload, token_expires_at: tokenExpiresAt, refresh_until: 0,
       }).where(and(eq(appSession.token_hash, tokenHash), eq(appSession.payload, row.payload))).run();
-      // 命中 0 行 = 另一个并发刷新已经写入了更新的 payload,我们这次拿到的 token 已被轮换取代。
-      // 不能当成成功继续用(会带着可能已作废的 token 往下走),回到循环重读、采用胜者的 token。
-      if (!saved.meta.changes) console.warn("session_refresh_superseded");
+      if (!saved.meta.changes) {
+        // 命中 0 行 = 另一个并发刷新已经写入了更新的 payload,我们这次拿到的 token 已被轮换取代。
+        // 不能当成成功继续用(会带着可能已作废的 token 往下走),回到循环重读、采用胜者的 token。
+        console.warn("session_refresh_superseded");
+        continue;
+      }
+      // 直接返回刚写入的会话。**不要**回到循环重读:上游若只给很短的有效期(比如 10 秒),
+      // 重读会立刻再次满足「该刷新」的条件 → 同一个请求里连环刷新,每次都拿刚得到的 RT
+      // 再去上游换一次 —— 开了轮换 + 重用检测的上游很容易把这判成异常。
+      return {
+        session: {
+          row: { ...row, payload, token_expires_at: tokenExpiresAt, refresh_until: 0 },
+          tokens: fresh,
+        },
+        failure: null,
+      };
     } catch (error) {
       if (error instanceof oauth.ResponseBodyError && error.error === "invalid_grant") {
         // 只有「我们读到的 payload 仍是当前行」时才认定会话失效。
@@ -225,4 +251,70 @@ export async function sessionFor(
   }
   console.warn("session_refresh_in_progress");
   throw new HTTPException(503, { message: "Session refresh in progress" });
+}
+
+/** 调上游 profile。口径必须与 `provider().customFetch` 一致:硬超时 + 转发真实客户端 IP。
+ *
+ *  少了超时,上游挂死会把请求拖到 isolate 被回收 —— 那时连 catch 都不会执行;
+ *  少了 IP,上游的风控 / 限流看到的是一个没有来源的请求。 */
+async function requestProfile(env: Env, accessToken: string, clientIp?: string) {
+  const config = configuration(env);
+  const headers = new Headers({ Authorization: `Bearer ${accessToken}` });
+  if (clientIp) headers.set("cf-connecting-ip", clientIp);
+  return env.IFFDAY_API.fetch(
+    new Request(`${config.IFFDAY_ORIGIN}/api/v1/profile`, {
+      headers,
+      signal: AbortSignal.timeout(IDENTITY_TIMEOUT_MS),
+    }),
+  );
+}
+
+/** 身份验证结果。`failure` 的取值直接作为响应的 `error` 回给前端。 */
+export type IdentityOutcome =
+  | { session: NonNullable<SessionLookup["session"]>; profile: AccountProfile }
+  | {
+      failure:
+        | "IDENTITY_REJECTED"
+        | "IDENTITY_UNAVAILABLE"
+        | "IDENTITY_MISMATCH"
+        | "UNAUTHENTICATED"
+        | SessionFailure;
+    };
+
+/**
+ * 验证会话身份,并在上游拒绝时**先救一次再判死**。
+ *
+ * 上游回 401 的成因不止「会话失效」:本地 `token_expires_at` 是按「收到响应那一刻 + expires_in」
+ * 算的(比上游签发时刻晚一个网络往返),边界上就可能拿着刚过期的 token 过去;上游瞬时故障、
+ * 限流也会回 401。旧实现一律按 `token_hash` 删行 —— 一次抖动 = 永久登出(cookie 还在、行没了),
+ * 用户只能重新登录,而且看起来像「登录已过期」。
+ *
+ * 所以改为:先强制换一份 token 再验一次。刷新成功即自愈;刷新失败(上游明确回 invalid_grant)
+ * 说明会话真的没了 —— 那时删会话、让用户重新登录才是对的判定。
+ */
+export async function resolveIdentity(
+  env: Env,
+  cookie: string | undefined,
+  clientIp: string | undefined,
+  session: NonNullable<SessionLookup["session"]>,
+): Promise<IdentityOutcome> {
+  let current = session;
+  let response = await requestProfile(env, current.tokens.accessToken, clientIp);
+  if (response.status === 401) {
+    const retry = await sessionFor(env, cookie, clientIp, { force: true });
+    if (!retry.session) return { failure: retry.failure ?? "UNAUTHENTICATED" };
+    current = retry.session;
+    response = await requestProfile(env, current.tokens.accessToken, clientIp);
+  }
+  if (!response.ok) {
+    if (response.status === 401)
+      await database(env.DB)
+        .delete(appSession)
+        .where(eq(appSession.token_hash, current.row.token_hash))
+        .run();
+    return { failure: response.status === 401 ? "IDENTITY_REJECTED" : "IDENTITY_UNAVAILABLE" };
+  }
+  const profile = accountProfileSchema.parse(await response.json());
+  if (profile.userId !== current.row.subject) return { failure: "IDENTITY_MISMATCH" };
+  return { session: current, profile };
 }
