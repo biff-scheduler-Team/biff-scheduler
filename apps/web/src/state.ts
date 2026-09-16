@@ -41,7 +41,7 @@ export const store = {
   /** 派生索引:全部已排场次 code。`allCodes()` O(1) 取用,避免每次全量遍历 picks */
   allIndex: [] as string[],
   mappings: new Map<string, Mapping>(),
-  settings: { alarmMin: 45, transitMin: 0, gvTalkOn: true, gvTalkMin: 25 } as Settings,
+  settings: { alarmMin: 45, transitMin: 0, gvTalkOn: true, gvTalkMin: 25, showPni: false } as Settings,
 };
 
 /* ---------- 派生查询(视图层只读这些,不再自己遍历 picks) ---------- */

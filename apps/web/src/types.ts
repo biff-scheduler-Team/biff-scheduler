@@ -38,6 +38,13 @@ export interface Screening {
    * 成员片的介绍页会把所属块 CODE 列为自己的一场 → 该片场次列表里会出现这条块场次。
    */
   midnight_members?: string[];
+  /**
+   * P&I(Press & Industry)记者 / 业界场 —— 册子排期页 BD(Indieplus)/ CGV 7 两列,
+   * **不印场次编号、不对外售票**,官网排期页与影片介绍页都不列它们。
+   * 单独存在 `public/pni.json`,默认**不显示**;设置里勾选「显示 P&I 场次」后才并进 catalog
+   * (见 `pni.ts`)。`code` 形如 `PI-09-01`,是**本工具内部键,不是官方编号**。
+   */
+  pni?: boolean;
 }
 
 export interface ScheduleFile {
@@ -49,6 +56,15 @@ export interface ScheduleFile {
     generated_at?: string;
   };
   screenings: Screening[];
+}
+
+/** `public/pni.json` —— P&I(记者 / 业界场)**单独一份产物**。
+ *  独立成文件而不是混进 `schedule.json`,是为了不动公开排期口径(哨兵见
+ *  `apps/web/tests/catalogue-data.test.ts`):默认不加载进视图,勾选设置后才并入。 */
+export interface PniFile {
+  screenings: Screening[];
+  /** P&I 场次用到的厅(2026 届 = bd / c7);勾选后才并进 `Catalog.venues`。 */
+  venues: Venue[];
 }
 
 export interface Venue {
@@ -224,6 +240,10 @@ export interface Settings {
    *  视图偏好:随设置持久化,但不出现在设置弹层。
    *  ⚠ 旧版这个字段存的是**横向**刻度倍率(0.35~3)或旧行高倍率,读取时由 `clampZoom` 钳进新阶梯 —— 无需迁移。 */
   zoom?: number;
+  /** 是否把 **P&I(Press & Industry)记者 / 业界场**并进排期。默认 **false** ——
+   *  不勾选 = 只有对外售票的普通场次;勾选 = 普通场次 + P&I(见 `pni.ts::withPni`)。
+   *  数据来自 `public/pni.json`(册子 BD / CGV 7 两列),公开 `schedule.json` 不含它们。 */
+  showPni: boolean;
 }
 
 export interface Catalog {
@@ -232,6 +252,11 @@ export interface Catalog {
   venues: Venue[];
   venueById: Map<string, Venue>;
   byCode: Map<string, Screening>;
+  /** P&I(记者 / 业界场)场次 —— 只回答「有没有、有哪些」,**不在** `schedule.screenings` /
+   *  `byCode` / `venues` 里;设置勾选后才由 `pni.ts::withPni()` 按同一套口径并进来。 */
+  pniScreenings: Screening[];
+  /** P&I 场次用到的厅(bd / c7);同上,勾选后才进 `venues`。 */
+  pniVenues: Venue[];
   films: FilmItem[]; // 影片目录(由官网片目生成,见 tools/build_films_2026.py)
   /** 目录索引:**官网英文片名 → 条目** —— 排期与片单的唯一身份口径(命中优先级最高)。 */
   filmByEn: Map<string, FilmItem>;

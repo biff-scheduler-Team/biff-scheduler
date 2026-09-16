@@ -26,6 +26,9 @@ export const catalog: Catalog = {
   venueById: new Map(venues.map((v) => [v.id, v])),
   films,
   byCode: new Map(schedule.screenings.map((s) => [s.code, s])),
+  // P&I(记者 / 业界场)留空 = 线上**未勾选**时的口径(单独存在 public/pni.json,不混进公开产物)
+  pniScreenings: [],
+  pniVenues: [],
   ...buildFilmIndex(films),
 };
 export const keyOf = (code: string) =>

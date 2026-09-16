@@ -21,8 +21,16 @@ export function show(patch: Partial<Screening> & { code: string }): Screening {
 }
 
 /** 最小 Catalog:目录 films 默认留空 → `filmNodeKey` 走 `sched:<英文名小写>` 分支,
- *  测试里用 `sched:alpha` 这种可读 key 即可(与线上 `filmNodeKey` 口径一致)。 */
-export function catalog(shows: Screening[], films: FilmItem[] = []): Catalog {
+ *  测试里用 `sched:alpha` 这种可读 key 即可(与线上 `filmNodeKey` 口径一致)。
+ *
+ *  `pni` / `pniVenues` = P&I(记者 / 业界场)那份 —— 与线上 `pni.json` 同口径:
+ *  **不进** `shows` / `venues`,要测「勾选后并进来」就传给 `pni.ts::withPni()`。 */
+export function catalog(
+  shows: Screening[],
+  films: FilmItem[] = [],
+  pni: Screening[] = [],
+  pniVenues: Venue[] = [],
+): Catalog {
   const venues: Venue[] = [
     { id: "b1", name: "BCC Cinema 1", name_kr: "", group: "bcc", short: "BCC 1" },
     { id: "b2", name: "BCC Cinema 2", name_kr: "", group: "bcc", short: "BCC 2" },
@@ -33,6 +41,8 @@ export function catalog(shows: Screening[], films: FilmItem[] = []): Catalog {
     venues,
     venueById: new Map(venues.map((v) => [v.id, v])),
     byCode: new Map(shows.map((s) => [s.code, s])),
+    pniScreenings: pni,
+    pniVenues,
     films,
     ...buildFilmIndex(films),
   };

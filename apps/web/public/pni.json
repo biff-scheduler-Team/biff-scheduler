@@ -1,0 +1,832 @@
+{
+  "festival": {
+    "name": "2026 Busan International Film Festival",
+    "year": 2026,
+    "dates": [
+      "2026-10-06",
+      "2026-10-07",
+      "2026-10-08",
+      "2026-10-09",
+      "2026-10-10",
+      "2026-10-11",
+      "2026-10-12",
+      "2026-10-13",
+      "2026-10-14",
+      "2026-10-15"
+    ],
+    "note": "P&I(Press & Industry)记者 / 业界场 —— 册子排期页 BD(BCC Indieplus)/ C7(CGV Centrum City 7) 两列,不印场次编号、不对外售票,官网排期页不列。code 形如 `PI-<册页2位>-<页内序2位>`,是**非官方编号**,只作本工具内部键;前端「设置 → 显示 P&I 场次」勾选后才并进排期表。",
+    "generated_at": "2026-09-16T18:29:14+08:00"
+  },
+  "screenings": [
+    {
+      "code": "PI-09-04",
+      "title_en": "Selvi",
+      "title_kr": "셀비",
+      "title_zh": "Selvi",
+      "date": "2026-10-07",
+      "start_time": "11:00",
+      "end_time": "12:37",
+      "duration_min": 97,
+      "venue_id": "c7",
+      "venue_display": "CGV Centum City 7",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": [
+        "KE"
+      ],
+      "page": 86,
+      "pni": true
+    },
+    {
+      "code": "PI-09-01",
+      "title_en": "Satoko Always",
+      "title_kr": "사토코는 언제나",
+      "title_zh": "Satoko总是这样",
+      "date": "2026-10-07",
+      "start_time": "13:00",
+      "end_time": "15:18",
+      "duration_min": 138,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "12",
+      "subs": [
+        "KE"
+      ],
+      "page": 53,
+      "pni": true
+    },
+    {
+      "code": "PI-09-06",
+      "title_en": "There Will Be Snow",
+      "title_kr": "다시 눈이 올 거야",
+      "title_zh": "有一场雪",
+      "date": "2026-10-07",
+      "start_time": "13:30",
+      "end_time": "15:00",
+      "duration_min": 90,
+      "venue_id": "c7",
+      "venue_display": "CGV Centum City 7",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": [
+        "KE"
+      ],
+      "page": 87,
+      "pni": true
+    },
+    {
+      "code": "PI-09-03",
+      "title_en": "The First Taste of Loneliness",
+      "title_kr": "처음 만난 외로움",
+      "title_zh": "初次尝到寂寞",
+      "date": "2026-10-07",
+      "start_time": "17:10",
+      "end_time": "19:25",
+      "duration_min": 135,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "12",
+      "subs": [
+        "KE"
+      ],
+      "page": 48,
+      "pni": true
+    },
+    {
+      "code": "PI-09-05",
+      "title_en": "Dead End",
+      "title_kr": "데드 엔드",
+      "title_zh": "被杀的那天",
+      "date": "2026-10-07",
+      "start_time": "20:30",
+      "end_time": "21:58",
+      "duration_min": 88,
+      "venue_id": "c7",
+      "venue_display": "CGV Centum City 7",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": [
+        "KE"
+      ],
+      "page": 85,
+      "pni": true
+    },
+    {
+      "code": "PI-09-02",
+      "title_en": "The Day After Sunday",
+      "title_kr": "일요일 다음날",
+      "title_zh": "周日之后",
+      "date": "2026-10-07",
+      "start_time": "21:20",
+      "end_time": "22:42",
+      "duration_min": 82,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "12",
+      "subs": [
+        "KE"
+      ],
+      "page": 47,
+      "pni": true
+    },
+    {
+      "code": "PI-10-03",
+      "title_en": "1982 1982",
+      "title_kr": "",
+      "title_zh": "",
+      "date": "2026-10-08",
+      "start_time": "10:20",
+      "end_time": "11:48",
+      "duration_min": 88,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": [
+        "KE"
+      ],
+      "page": 82,
+      "pni": true
+    },
+    {
+      "code": "PI-10-06",
+      "title_en": "After the Song",
+      "title_kr": "노래가 끝난 후",
+      "title_zh": "最初的告别",
+      "date": "2026-10-08",
+      "start_time": "11:30",
+      "end_time": "13:03",
+      "duration_min": 93,
+      "venue_id": "c7",
+      "venue_display": "CGV Centum City 7",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "12",
+      "subs": [
+        "KE"
+      ],
+      "page": 83,
+      "pni": true
+    },
+    {
+      "code": "PI-10-04",
+      "title_en": "Shaving",
+      "title_kr": "면도",
+      "title_zh": "剃刀",
+      "date": "2026-10-08",
+      "start_time": "13:50",
+      "end_time": "15:23",
+      "duration_min": 93,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": [
+        "KE"
+      ],
+      "page": 55,
+      "pni": true
+    },
+    {
+      "code": "PI-10-07",
+      "title_en": "Ria",
+      "title_kr": "리아",
+      "title_zh": "里亚的呐喊",
+      "date": "2026-10-08",
+      "start_time": "15:30",
+      "end_time": "17:05",
+      "duration_min": 95,
+      "venue_id": "c7",
+      "venue_display": "CGV Centum City 7",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": [
+        "KE"
+      ],
+      "page": 86,
+      "pni": true
+    },
+    {
+      "code": "PI-10-05",
+      "title_en": "IBUKU",
+      "title_kr": "마이 마더",
+      "title_zh": "我的母亲",
+      "date": "2026-10-08",
+      "start_time": "17:20",
+      "end_time": "18:56",
+      "duration_min": 96,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": [
+        "KE"
+      ],
+      "page": 50,
+      "pni": true
+    },
+    {
+      "code": "PI-10-08",
+      "title_en": "Bua",
+      "title_kr": "부아",
+      "title_zh": "莲",
+      "date": "2026-10-08",
+      "start_time": "18:10",
+      "end_time": "20:19",
+      "duration_min": 129,
+      "venue_id": "c7",
+      "venue_display": "CGV Centum City 7",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": [
+        "KE"
+      ],
+      "page": 84,
+      "pni": true
+    },
+    {
+      "code": "PI-10-01",
+      "title_en": "Nothing Has Happened Yet",
+      "title_kr": "아직 아무 일도 일어나지 않은",
+      "title_zh": "一切尚未发生",
+      "date": "2026-10-08",
+      "start_time": "19:40",
+      "end_time": "21:18",
+      "duration_min": 98,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": null,
+      "page": 93,
+      "pni": true
+    },
+    {
+      "code": "PI-10-02",
+      "title_en": "Some Detective",
+      "title_kr": "모종의 탐정",
+      "title_zh": "某种侦探",
+      "date": "2026-10-08",
+      "start_time": "22:00",
+      "end_time": "23:25",
+      "duration_min": 85,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "12",
+      "subs": null,
+      "page": 94,
+      "pni": true
+    },
+    {
+      "code": "PI-10-09",
+      "title_en": "Long Long Night",
+      "title_kr": "긴긴밤",
+      "title_zh": "漫漫长夜",
+      "date": "2026-10-08",
+      "start_time": "22:10",
+      "end_time": "23:49",
+      "duration_min": 99,
+      "venue_id": "c7",
+      "venue_display": "CGV Centum City 7",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "ALL",
+      "subs": null,
+      "page": 51,
+      "pni": true
+    },
+    {
+      "code": "PI-11-06",
+      "title_en": "Birds in the Dark",
+      "title_kr": "어둠 속의 새들",
+      "title_zh": "黑暗中的鸟儿",
+      "date": "2026-10-09",
+      "start_time": "09:40",
+      "end_time": "12:01",
+      "duration_min": 141,
+      "venue_id": "c7",
+      "venue_display": "CGV Centum City 7",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": [
+        "KE"
+      ],
+      "page": 83,
+      "pni": true
+    },
+    {
+      "code": "PI-11-02",
+      "title_en": "Zogsool",
+      "title_kr": "멈춰서다",
+      "title_zh": "加油站的闯入者",
+      "date": "2026-10-09",
+      "start_time": "10:40",
+      "end_time": "12:29",
+      "duration_min": 109,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": [
+        "KE"
+      ],
+      "page": 88,
+      "pni": true
+    },
+    {
+      "code": "PI-11-04",
+      "title_en": "The Flower",
+      "title_kr": "화곡사",
+      "title_zh": "花烬",
+      "date": "2026-10-09",
+      "start_time": "13:00",
+      "end_time": "14:11",
+      "duration_min": 71,
+      "venue_id": "c7",
+      "venue_display": "CGV Centum City 7",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "12",
+      "subs": null,
+      "page": 92,
+      "pni": true
+    },
+    {
+      "code": "PI-11-03",
+      "title_en": "Space",
+      "title_kr": "스페이스",
+      "title_zh": "空间之间",
+      "date": "2026-10-09",
+      "start_time": "13:20",
+      "end_time": "15:40",
+      "duration_min": 140,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": null,
+      "page": 94,
+      "pni": true
+    },
+    {
+      "code": "PI-11-05",
+      "title_en": "Hinotama: Ball of Fire",
+      "title_kr": "환상의 불빛",
+      "title_zh": "火球",
+      "date": "2026-10-09",
+      "start_time": "15:20",
+      "end_time": "17:12",
+      "duration_min": 112,
+      "venue_id": "c7",
+      "venue_display": "CGV Centum City 7",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "12",
+      "subs": [
+        "KE"
+      ],
+      "page": 85,
+      "pni": true
+    },
+    {
+      "code": "PI-11-07",
+      "title_en": "Slumber",
+      "title_kr": "미몽",
+      "title_zh": "梦痕",
+      "date": "2026-10-09",
+      "start_time": "18:00",
+      "end_time": "19:46",
+      "duration_min": 106,
+      "venue_id": "c7",
+      "venue_display": "CGV Centum City 7",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": [
+        "KE"
+      ],
+      "page": 87,
+      "pni": true
+    },
+    {
+      "code": "PI-11-01",
+      "title_en": "Midday Meal",
+      "title_kr": "빵과 책",
+      "title_zh": "午间餐",
+      "date": "2026-10-09",
+      "start_time": "20:40",
+      "end_time": "22:53",
+      "duration_min": 133,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "12",
+      "subs": [
+        "KE"
+      ],
+      "page": 52,
+      "pni": true
+    },
+    {
+      "code": "PI-11-08",
+      "title_en": "The Cord",
+      "title_kr": "탯줄",
+      "title_zh": "脐带",
+      "date": "2026-10-09",
+      "start_time": "21:40",
+      "end_time": "23:40",
+      "duration_min": 120,
+      "venue_id": "c7",
+      "venue_display": "CGV Centum City 7",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": [
+        "KE"
+      ],
+      "page": 84,
+      "pni": true
+    },
+    {
+      "code": "PI-12-04",
+      "title_en": "BALER",
+      "title_kr": "베일러",
+      "title_zh": "田野的打包声",
+      "date": "2026-10-10",
+      "start_time": "10:20",
+      "end_time": "11:55",
+      "duration_min": 95,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": null,
+      "page": 89,
+      "pni": true
+    },
+    {
+      "code": "PI-12-01",
+      "title_en": "FULL MOON",
+      "title_kr": "풀문",
+      "title_zh": "满月",
+      "date": "2026-10-10",
+      "start_time": "12:50",
+      "end_time": "14:26",
+      "duration_min": 96,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "ALL",
+      "subs": null,
+      "page": 92,
+      "pni": true
+    },
+    {
+      "code": "PI-12-06",
+      "title_en": "Hilol",
+      "title_kr": "힐롤",
+      "title_zh": "未盈之月",
+      "date": "2026-10-10",
+      "start_time": "14:50",
+      "end_time": "16:17",
+      "duration_min": 87,
+      "venue_id": "c7",
+      "venue_display": "CGV Centum City 7",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": [
+        "KE"
+      ],
+      "page": 49,
+      "pni": true
+    },
+    {
+      "code": "PI-12-02",
+      "title_en": "Things I Left at the Theater",
+      "title_kr": "극장에 두고 온 것들",
+      "title_zh": "留在剧场里的东西",
+      "date": "2026-10-10",
+      "start_time": "15:20",
+      "end_time": "17:17",
+      "duration_min": 117,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "ALL",
+      "subs": null,
+      "page": 95,
+      "pni": true
+    },
+    {
+      "code": "PI-12-07",
+      "title_en": "Beach Fictions",
+      "title_kr": "그날의 태주",
+      "title_zh": "那天的泰珠",
+      "date": "2026-10-10",
+      "start_time": "17:20",
+      "end_time": "19:44",
+      "duration_min": 144,
+      "venue_id": "c7",
+      "venue_display": "CGV Centum City 7",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "12",
+      "subs": null,
+      "page": 45,
+      "pni": true
+    },
+    {
+      "code": "PI-12-03",
+      "title_en": "The Birds",
+      "title_kr": "새",
+      "title_zh": "群鸟",
+      "date": "2026-10-10",
+      "start_time": "18:20",
+      "end_time": "20:39",
+      "duration_min": 139,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": null,
+      "page": 90,
+      "pni": true
+    },
+    {
+      "code": "PI-12-08",
+      "title_en": "silver express",
+      "title_kr": "실버 익스프레스",
+      "title_zh": "银色快车",
+      "date": "2026-10-10",
+      "start_time": "21:10",
+      "end_time": "22:47",
+      "duration_min": 97,
+      "venue_id": "c7",
+      "venue_display": "CGV Centum City 7",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "12",
+      "subs": [
+        "KE"
+      ],
+      "page": 56,
+      "pni": true
+    },
+    {
+      "code": "PI-12-05",
+      "title_en": "Not for You",
+      "title_kr": "당신을 위한 것은 아닌",
+      "title_zh": "与你无关",
+      "date": "2026-10-10",
+      "start_time": "21:30",
+      "end_time": "23:32",
+      "duration_min": 122,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "12",
+      "subs": null,
+      "page": 93,
+      "pni": true
+    },
+    {
+      "code": "PI-13-01",
+      "title_en": "Cosmic Trace",
+      "title_kr": "우주의 흔적",
+      "title_zh": "宇宙痕迹",
+      "date": "2026-10-11",
+      "start_time": "10:00",
+      "end_time": "11:46",
+      "duration_min": 106,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "12",
+      "subs": null,
+      "page": 91,
+      "pni": true
+    },
+    {
+      "code": "PI-13-05",
+      "title_en": "Earbug",
+      "title_kr": "귀벌레",
+      "title_zh": "耳虫",
+      "date": "2026-10-11",
+      "start_time": "12:00",
+      "end_time": "13:24",
+      "duration_min": 84,
+      "venue_id": "c7",
+      "venue_display": "CGV Centum City 7",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": null,
+      "page": 91,
+      "pni": true
+    },
+    {
+      "code": "PI-13-02",
+      "title_en": "Between Two Lovers",
+      "title_kr": "비트윈 투 러버스",
+      "title_zh": "事到如今谈什么爱",
+      "date": "2026-10-11",
+      "start_time": "13:00",
+      "end_time": "15:08",
+      "duration_min": 128,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "12",
+      "subs": [
+        "KE"
+      ],
+      "page": 46,
+      "pni": true
+    },
+    {
+      "code": "PI-13-06",
+      "title_en": "Beyond Love’s Horizon",
+      "title_kr": "사랑의 지평선 너머로",
+      "title_zh": "爱在地平线之后",
+      "date": "2026-10-11",
+      "start_time": "15:00",
+      "end_time": "16:36",
+      "duration_min": 96,
+      "venue_id": "c7",
+      "venue_display": "CGV Centum City 7",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "ALL",
+      "subs": null,
+      "page": 90,
+      "pni": true
+    },
+    {
+      "code": "PI-13-03",
+      "title_en": "To Be Ordinary",
+      "title_kr": "평범하기 위하여",
+      "title_zh": "有用的人",
+      "date": "2026-10-11",
+      "start_time": "17:00",
+      "end_time": "18:52",
+      "duration_min": 112,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "12",
+      "subs": [
+        "KE"
+      ],
+      "page": 57,
+      "pni": true
+    },
+    {
+      "code": "PI-13-04",
+      "title_en": "The Sea Speaks His Name",
+      "title_kr": "바다에 새겨진 이름",
+      "title_zh": "海的诉说",
+      "date": "2026-10-11",
+      "start_time": "20:50",
+      "end_time": "23:03",
+      "duration_min": 133,
+      "venue_id": "bd",
+      "venue_display": "Busan Cinema Center Indieplus",
+      "is_gv": false,
+      "tags": [
+        "pni"
+      ],
+      "rating": "15",
+      "subs": [
+        "KE"
+      ],
+      "page": 54,
+      "pni": true
+    }
+  ],
+  "venues": [
+    {
+      "id": "bd",
+      "name": "Busan Cinema Center Indieplus",
+      "name_kr": "영화의전당 인디플러스",
+      "short": "BCC Indieplus",
+      "group": "bcc",
+      "region": "centum",
+      "code": "BD",
+      "lat": null,
+      "lng": null
+    },
+    {
+      "id": "c7",
+      "name": "CGV Centum City 7",
+      "name_kr": "CGV센텀시티 7관",
+      "short": "CGV 7",
+      "group": "cgv",
+      "region": "centum",
+      "code": "C7",
+      "lat": null,
+      "lng": null
+    }
+  ]
+}

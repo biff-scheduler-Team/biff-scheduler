@@ -14,7 +14,7 @@
       "2026-10-14",
       "2026-10-15"
     ],
-    "note": "数据来源:官方排期页 www.biff.kr/eng/html/schedule/date.asp(由 tools/scrape_biff_web.py 抓取) ∪ 2026 官方 Ticket Catalogue PDF(2026-09-10 付印,由 tools/extract_schedule.py 解析,由 tools/merge_schedule.py 合成)。以官网为骨架(活数据:改时间/加场/活动场次),册子补官网完全没有的场次(MEGABOX Busan Theater 1–4 Community BIFF、Busan Cinema Center Indieplus、CGV Centum City 7)与册页号;场馆按「厅」建 id(id = 官方影院代码小写,如 b1/c3/l10);GV 场次的 end_time 已含 25min 映后谈;联映块(묶)的 duration_min 为块内成员片长之和;开闭幕式与获奖片重映的片长以册子印的为准(官网无详情页时是 120min 兜底值);两源会持续变动,以开映前官方页面为准。",
+    "note": "数据来源:官方排期页 www.biff.kr/eng/html/schedule/date.asp(由 tools/scrape_biff_web.py 抓取) ∪ 2026 官方 Ticket Catalogue PDF(2026-09-10 付印,由 tools/extract_schedule.py 解析,由 tools/merge_schedule.py 合成)。以官网为骨架(活数据:改时间/加场/活动场次),册子补官网完全没有的场次(MEGABOX Busan Theater 1–4 Community BIFF,官方编号 901–942)与册页号;**不含 P&I(Press & Industry)场次** —— 册子排期页的 BD/C7 两列是记者/业界场,不对外售票;场馆按「厅」建 id(id = 官方影院代码小写,如 b1/c3/l10);GV 场次的 end_time 已含 25min 映后谈;联映块(묶)的 duration_min 为块内成员片长之和;开闭幕式与获奖片重映的片长以册子印的为准(官网无详情页时是 120min 兜底值);两源会持续变动,以开映前官方页面为准。",
     "generated_at": "2026-09-14T19:44:58+08:00"
   },
   "screenings": [
