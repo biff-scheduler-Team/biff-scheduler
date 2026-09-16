@@ -11,6 +11,7 @@ import { screeningAttendanceContribution, screeningAttendanceStat } from "./db/s
 import { formatAttendanceCounts, SCREENING_CODE_MAX_LENGTH } from "./screening-stats";
 import { diffFilmKeys } from "./want-stats";
 import { clearContributorWants } from "./want-store";
+import { clearContributorVotes } from "./film-vote-store";
 
 type Db = ReturnType<typeof database>;
 
@@ -155,13 +156,15 @@ export async function readScreeningCounts(db: Db, edition: string) {
 }
 
 /**
- * 登录后把「同一浏览器匿名身份」在**两张**贡献表里的行都清掉。
+ * 登录后把「同一浏览器匿名身份」在**所有**贡献表里的行都清掉。
  *
- * ⚠ 两个 ping(want / screening)都必须调它:先跑的那条会顺手删掉匿名 cookie,
+ * ⚠ 每一个 ping(want / screening / film-votes)都必须调它:先跑的那条会顺手删掉匿名 cookie,
  *   后跑的那条就再也算不出自己的匿名 contributor —— 只清一张表的话,
- *   同一人会以「匿名 0.75 + 登录 1.0」被算两次(展示成 2 人)。
+ *   同一人会以「匿名 + 登录」被算两次(展示成 2 人 / 2 票)。
  */
 export async function clearAnonContributions(db: Db, edition: string, contributor: string) {
   await clearContributorWants(db, edition, contributor);
   await clearContributorScreenings(db, edition, contributor);
+  // 红黑榜投票(2026-09-16,PLAN-20260916102339):同一份「同一人只算一次」的要求
+  await clearContributorVotes(db, edition, contributor);
 }

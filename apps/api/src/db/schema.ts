@@ -135,3 +135,28 @@ export const screeningReaction = sqliteTable("screening_reaction", {
   primaryKey({ columns: [table.post_id, table.subject, table.emoji] }),
   index("screening_reaction_post").on(table.post_id),
 ]);
+
+/** 红黑榜投票（2026-09-16,PLAN-20260916102339）：每人**每部片一票**，值为红 / 黑。
+ *  唯一约束压住「同一个人反复点同一部」—— 改票走 update、撤票走 delete，聚合表永远等于人数。 */
+export const filmVoteContribution = sqliteTable("film_vote_contribution", {
+  edition: text().notNull(),
+  film_key: text().notNull(),
+  contributor: text().notNull(),
+  vote: text().notNull(), // "red" | "black";白名单收口在 film-vote-stats.ts，不写 CHECK（旧行迁移过来时更宽松）
+  updated_at: integer().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.edition, table.film_key, table.contributor] }),
+  index("film_vote_contribution_contributor").on(table.edition, table.contributor),
+]);
+
+/** 每部影片的红 / 黑票数，供榜单读取（O(影片数)）。**不做加权** —— 贴纸是「一人一枚」的离散
+ *  隐喻，3 个人贴了红就该显示 3（想看人数那套 0.75 / 1.0 权重会把这里读成 2.25）。 */
+export const filmVoteStat = sqliteTable("film_vote_stat", {
+  edition: text().notNull(),
+  film_key: text().notNull(),
+  red_count: integer().notNull().default(0),
+  black_count: integer().notNull().default(0),
+  updated_at: integer().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.edition, table.film_key] }),
+]);

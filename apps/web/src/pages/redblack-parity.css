@@ -1,0 +1,503 @@
+/* 红黑榜页面样式(2026-09-16,PLAN-20260916102339)
+ * ⚠ 只作用于 `.rb-*` 与页面根 `.rb-page`:全站 token 一个都不改(改 `style.css` 会命中
+ *   TEST-MAP 的 allOn,触发三浏览器全量 E2E)。
+ * ⚠ 贴纸的坐标是**相对画布的百分比**(由 React 写成 inline left/top),CSS 只负责把自身
+ *   居中到那个点(`translate(-50%, -50%)`)并套上歪斜角(`--rb-tilt`,由 `redblack.ts::tiltOf` 推导)。 */
+
+.rb-page {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ---------- 顶部红榜带 ---------- */
+
+.rb-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 22px 24px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--brand) 0%, #8d1426 100%);
+  color: #fff;
+}
+
+.rb-eyebrow {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.82;
+}
+
+.rb-hero h1 {
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+}
+
+.rb-lede {
+  margin: 8px 0 0;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.rb-totals {
+  display: flex;
+  gap: 8px;
+}
+
+.rb-total {
+  display: grid;
+  gap: 2px;
+  min-width: 82px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 14%);
+  text-align: center;
+}
+
+.rb-total strong {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.rb-total small {
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.rb-total--hot {
+  background: rgb(255 255 255 / 30%);
+}
+
+/* 红黑榜评分:比统计块更醒目一档(它是这一页唯一的「结论」) */
+.rb-score {
+  display: grid;
+  gap: 2px;
+  min-width: 96px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 26%);
+  text-align: center;
+}
+
+.rb-score strong {
+  font-size: 26px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.rb-score small {
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+/* ---------- 搜索 / 排序 ---------- */
+
+.rb-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.rb-sort {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.rb-sort-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.rb-sort-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.rb-sort-btn[aria-pressed="true"] {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* 「重新排序」:顺序被冻住之后,重排要由用户主动触发(贴纸变化不自动重排,见页面注释) */
+.rb-resort {
+  padding: 6px 14px;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.rb-resort:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+/* 冻住顺序之后又贴了纸 → 亮起来提醒「该重排了」 */
+.rb-resort[data-rb-stale] {
+  border-style: solid;
+  border-color: var(--brand);
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.rb-sort-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ---------- 示例贴纸提示 ---------- */
+
+.rb-demo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--brand-soft);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.rb-demo-btn {
+  margin-left: auto;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.rb-demo-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+/* ---------- 两列网格 ---------- */
+
+.rb-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .rb-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 卡片 = 左边信息 + 右边贴纸画布 */
+.rb-card {
+  display: grid;
+  grid-template-columns: 158px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.rb-card[data-rb-hover] {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-soft);
+}
+
+/* 左侧信息列:固定宽度 —— 所有卡的画布起点一致,整张榜单看起来才齐 */
+.rb-card-info {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 5px;
+  min-width: 0;
+}
+
+.rb-poster {
+  width: 58px;
+  height: 76px;
+  border-radius: 8px;
+  background: var(--raised);
+  object-fit: cover;
+}
+
+.rb-poster--none {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.rb-title {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.rb-en {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  /* 窄列:长英文名宁可折行也不截断 —— 截断之后认不出是哪部片 */
+  overflow-wrap: anywhere;
+}
+
+.rb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin: 2px 0 0;
+}
+
+.rb-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.rb-chip--red {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+.rb-chip--black {
+  border: 1px solid var(--line);
+  background: var(--raised);
+  color: var(--text);
+}
+
+/* 「看过」标记 —— 卡片上唯一的开关,点它就是能不能贴的闸门 */
+.rb-mark {
+  padding: 3px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.rb-mark:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.rb-mark[aria-pressed="true"] {
+  border-style: solid;
+  border-color: var(--selected-line);
+  background: var(--selected);
+  color: var(--selected-line);
+  font-weight: 600;
+}
+
+/* ---------- 待贴的两枚贴纸(点一下就落到右边) ---------- */
+
+.rb-tray {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.rb-src {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 48% 52% 45% 55% / 52% 46% 54% 48%;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 18%),
+    0 1px 1px rgb(0 0 0 / 16%),
+    0 3px 6px rgb(0 0 0 / 12%);
+  cursor: pointer;
+}
+
+.rb-src--red {
+  background-color: #cf3b52;
+  transform: rotate(-4deg);
+}
+
+.rb-src--black {
+  background-color: #2f2f36;
+  transform: rotate(4deg);
+}
+
+/* 已经贴过这一色 / 还没标记「看过」→ 淡下来(不写解释文字,靠形态表达) */
+.rb-src[data-rb-spent],
+.rb-card:not([data-rb-marked]) .rb-src {
+  opacity: 0.3;
+}
+
+.rb-src:not([data-rb-spent]):hover {
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 30%),
+    0 2px 4px rgb(0 0 0 / 22%),
+    0 5px 10px rgb(0 0 0 / 16%);
+}
+
+/* ---------- 贴纸画布(卡片右侧那片留白) ---------- */
+
+.rb-canvas {
+  position: relative;
+  /* 允许重叠、也不避让 —— 线下打卡墙本来就不整齐;超出部分裁掉,免得贴纸漫到隔壁卡 */
+  overflow: hidden;
+  min-height: 176px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: var(--raised);
+}
+
+/* 标记之后这张卡才「可贴」:边框收实、底色提亮一档 */
+.rb-card[data-rb-marked] .rb-canvas {
+  border-style: solid;
+  border-color: var(--selected-line);
+  background: var(--selected);
+}
+
+.rb-card[data-rb-hover] .rb-canvas {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.rb-canvas-hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* ---------- 贴纸本体:纸片 ----------
+ * ① 边缘不是正圆 —— 手工剪/撕下来的圆片总是不规则;
+ * ② 每枚歪一个固定角度(`--rb-tilt`,±15°,由 id 推导)—— 这是「手贴上去的」最直接的信号;
+ * ③ **哑光**:没有按钮式的渐变高光,只留一层极轻的纸边和落影;
+ * ④ 坐标指的是**贴纸中心**,靠 `translate(-50%,-50%)` 对齐(先平移再旋转,旋转绕自身中心)。 */
+
+.rb-dot {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 48% 52% 45% 55% / 52% 46% 54% 48%;
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 18%),
+    0 1px 1px rgb(0 0 0 / 16%),
+    0 2px 4px rgb(0 0 0 / 12%);
+  transform: translate(-50%, -50%) rotate(var(--rb-tilt, 0deg));
+  cursor: grab;
+  touch-action: none;
+}
+
+.rb-dot:active {
+  cursor: grabbing;
+}
+
+.rb-dot--red {
+  background-color: #cf3b52;
+  background-image:
+    repeating-linear-gradient(115deg, rgb(255 255 255 / 5%) 0 1px, transparent 1px 3px),
+    radial-gradient(circle at 34% 28%, rgb(255 255 255 / 14%), transparent 62%);
+}
+
+.rb-dot--black {
+  background-color: #2f2f36;
+  background-image:
+    repeating-linear-gradient(115deg, rgb(255 255 255 / 5%) 0 1px, transparent 1px 3px),
+    radial-gradient(circle at 34% 28%, rgb(255 255 255 / 10%), transparent 62%);
+}
+
+/* 「别人的贴纸」:同一张画布上的只读小点 —— 比我贴的那枚小一圈、淡一档,
+ * 一眼能分出「我贴的(可拖可点)」和「大家贴的(不能动)」。
+ * ⚠ `pointer-events: none` 是必须的:不然它们会挡住拖拽落点的命中测试,
+ *   用户往这张卡上拖的时候会拖不进来。 */
+.rb-dot--crowd {
+  width: 18px;
+  height: 18px;
+  opacity: 0.62;
+  cursor: default;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 12%);
+}
+
+/* ---------- 拖拽中的浮动贴纸 ---------- */
+
+.rb-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 60;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  border-radius: 48% 52% 45% 55% / 52% 46% 54% 48%;
+  box-shadow: 0 6px 14px rgb(0 0 0 / 30%);
+  opacity: 0.95;
+  pointer-events: none;
+  /* ⚠ 歪斜角由 JS 拼进 `transform`(见页面里的 `GHOST_TILT`):独立 `rotate` 属性
+   *   会连 `transform` 的平移量一起旋转,贴纸会比指针偏出几十像素。 */
+}
+
+.rb-ghost--red {
+  background-color: #cf3b52;
+}
+
+.rb-ghost--black {
+  background-color: #2f2f36;
+}
+
+/* 窄屏:信息列收窄,画布还是占剩下的全部 */
+@media (max-width: 560px) {
+  .rb-card {
+    grid-template-columns: 116px minmax(0, 1fr);
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .rb-poster {
+    width: 48px;
+    height: 66px;
+  }
+
+  .rb-canvas {
+    min-height: 150px;
+  }
+}

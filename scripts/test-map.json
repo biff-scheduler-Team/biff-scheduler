@@ -199,6 +199,22 @@
       ]
     },
     {
+      "id": "redblack",
+      "note": "电影红黑榜（看完贴红/黑贴纸 + 全体票数聚合，一人一部一票）",
+      "paths": [
+        "apps/web/src/pages/RedBlackPage.tsx",
+        "apps/web/src/pages/redblack-parity.css",
+        "apps/web/src/redblack.ts",
+        "apps/web/src/film-votes.ts",
+        "apps/api/src/film-vote-stats.ts",
+        "apps/api/src/film-vote-store.ts",
+        "apps/api/migrations/0006_ordinary_silvermane.sql"
+      ],
+      "specs": [
+        "redblack"
+      ]
+    },
+    {
       "id": "feedback",
       "note": "建议反馈留言板（/feedback + /api/feedback）",
       "paths": [

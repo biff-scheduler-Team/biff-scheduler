@@ -7,6 +7,7 @@ import { LibraryPage } from "./pages/LibraryPage";
 import { FeedbackPage } from "./pages/FeedbackPage";
 import { DiscussionsPage } from "./pages/DiscussionsPage";
 import { AgendaPage } from "./pages/AgendaPage";
+import { RedBlackPage } from "./pages/RedBlackPage";
 import { RushPage } from "./pages/RushPage";
 import { FilmDialog } from "./pages/FilmDialog";
 import "./style.css";
@@ -33,6 +34,7 @@ const router = createBrowserRouter([
         children: filmRoute(),
       },
       { path: "agenda", element: <AgendaPage />, children: filmRoute() },
+      { path: "redblack", element: <RedBlackPage />, children: filmRoute() },
       { path: "rush", element: <RushPage />, children: filmRoute() },
       { path: "feedback", element: <FeedbackPage /> },
       { path: "discussions", element: <DiscussionsPage /> },
