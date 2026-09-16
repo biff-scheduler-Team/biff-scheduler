@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { matchScreenings } from "../app/schedule-search";
 import { useCatalog } from "../app/store";
 import { venueShort } from "../legend";
 import { setTicket, slotOf, store, toggleScreening } from "../state";
@@ -16,28 +17,6 @@ import {
   ToastQueue,
 } from "./spectrum";
 import "./screening-social.css";
-
-/** 候选上限 —— 这个弹层的场景是「手上有张转来的票,快点找到那一场」,不是全量检索工具 */
-const MAX_RESULTS = 20;
-
-/** 按官方场次编号 / 英文名 / 韩文名 / 中文名(含豆瓣中文名)模糊匹配,按日期开场时间排序。 */
-function matchScreenings(all: Screening[], keyword: string): Screening[] {
-  const q = keyword.trim().toLowerCase();
-  if (!q) return [];
-  return all
-    .filter((s) => {
-      const zh = store.mappings.get(s.code)?.title_cn ?? "";
-      return (
-        s.code.includes(q) ||
-        s.title_en.toLowerCase().includes(q) ||
-        s.title_kr.includes(q) ||
-        s.title_zh.includes(q) ||
-        zh.toLowerCase().includes(q)
-      );
-    })
-    .sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time))
-    .slice(0, MAX_RESULTS);
-}
 
 /** 「我的行程」顶部的「添加转票场次」入口。 */
 export function TransferAddEntry() {

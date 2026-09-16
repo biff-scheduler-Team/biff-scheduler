@@ -16,7 +16,8 @@
     "apps/web/public/venues.json",
     "apps/web/public/films.json",
     "apps/web/public/festival-extras.json",
-    "apps/web/public/changelog.json"
+    "apps/web/public/changelog.json",
+    "apps/web/public/pni.json"
   ],
   "rules": [
     {
@@ -108,7 +109,8 @@
         "review-shared",
         "workflows",
         "parity-dialogs",
-        "rush"
+        "rush",
+        "settings-pni"
       ]
     },
     {
@@ -229,7 +231,7 @@
     },
     {
       "id": "screening-social",
-      "note": "同场观影人数 + 场次讨论（票务三态 / 实际行程 / 转票补入 / 场次公告）",
+      "note": "同场观影人数 + 场次讨论（票务三态 / 实际行程 / 转票补入 / 讨论区方格墙与直接发帖）",
       "paths": [
         "apps/web/src/pages/AgendaPage.tsx",
         "apps/web/src/state.ts",
@@ -238,6 +240,7 @@
         "apps/web/src/screening-counts.ts",
         "apps/web/src/screening-discussion.ts",
         "apps/web/src/app/App.tsx",
+        "apps/web/src/app/schedule-search.ts",
         "apps/web/src/main.tsx",
         "apps/web/src/components/ScreeningCard.tsx",
         "apps/web/src/components/ScreeningTickets.tsx",
@@ -270,6 +273,22 @@
         "tools/build_changelog.py"
       ],
       "specs": [
+        "data-update"
+      ]
+    },
+    {
+      "id": "pni",
+      "note": "P&I(Press & Industry)记者 / 业界场:册子 BD/CGV 7 两列的录入产物 + 「设置 → 显示 P&I 场次」开关(默认不显示,勾选后才并进 catalog)",
+      "paths": [
+        "apps/web/src/pni.ts",
+        "apps/web/src/data.ts",
+        "apps/web/src/app/store.tsx",
+        "apps/web/public/pni.json",
+        "tools/extract_schedule.py",
+        "tools/merge_schedule.py"
+      ],
+      "specs": [
+        "settings-pni",
         "data-update"
       ]
     }
