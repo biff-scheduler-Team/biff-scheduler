@@ -27,14 +27,10 @@ import {
   countsOf,
   crowdOf,
   crowdStickers,
-  demoDismissed,
-  demoSeed,
-  dismissDemo,
-  loadStickers,
-  loadWatched,
   makeSticker,
   moveSticker,
   placeSticker,
+  purgeDemoLeavings,
   saveStickers,
   saveWatched,
   scoreOf,
@@ -81,21 +77,12 @@ export function RedBlackPage() {
   const query = params.get("q") ?? "";
   const mode = (params.get("sort") as SortMode | null) ?? "total";
 
-  // 空榜看不出效果(颜色分布 / 排序 / 拖拽都得有东西才看得出来),首次进入先铺一份内存态示例。
-  // ⚠ 判据是**「看过」标记**而不是贴纸:新口径下没有标记就没有贴纸可言,
-  //   所以旧模型按场次发出来的那些贴纸(没有标记支撑)正好该被示例补齐。
-  const [boot] = useState(() => {
-    const stored = loadStickers();
-    const watched = loadWatched();
-    if (watched.size || demoDismissed()) {
-      return { board: stored, watched, demo: false };
-    }
-    const seed = demoSeed(boardFilms(films), 60, stored);
-    return { board: seed.board, watched: seed.watched, demo: true };
-  });
+  // 榜单**从空榜开始**:贴纸只来自用户自己(用户 2026-09-16:「正式环境不应该是空的让用户自己贴的吗」)。
+  // ⚠ 早先版本会在这里自动铺一份示例,那段逻辑已删;`purgeDemoLeavings` 负责把**已经铺出去**
+  //   的那份数据收干净 —— 老用户本机存着示例,光删代码他们还是会一直顶着一堆没贴过的贴纸。
+  const [boot] = useState(() => purgeDemoLeavings());
   const [board, setBoard] = useState<StickerBoard>(boot.board);
   const [watched, setWatched] = useState(boot.watched);
-  const [demo, setDemo] = useState(boot.demo);
   const [drag, setDrag] = useState<RbDrag | null>(null);
 
   // 全体票数(服务端聚合,见 `film-votes.ts`)。节奏与「想看人数」完全一致:
@@ -107,12 +94,14 @@ export function RedBlackPage() {
     return onFilmVotesChange(() => setVotes(peekFilmVotes()));
   }, []);
   const crowd: CrowdCounts = useMemo(() => crowdOf(votes), [votes]);
-  // 我的贴纸一变就上报(整份替换)。⚠ 示例没转正前不上报 —— 否则会把「示例铺底」
-  // 当成我的真实投票传上去,全站就凭空多出一批谁都没贴过的票。
+  // 我的贴纸一变就上报整份(服务端据此校正)。
+  // ⚠ **只在用户动过手之后**才上报:载入时把空榜报上去,会把「服务端上属于我的那些票」误清掉 ——
+  //   换设备 / 清过缓存时本地本来就是空的,而那不是「我撤票了」,只是「这台机器还没数据」。
+  const actedRef = useRef(false);
   useEffect(() => {
-    if (demo) return;
+    if (!actedRef.current) return;
     scheduleFilmVotesPing(votesOf(board));
-  }, [board, demo]);
+  }, [board]);
 
   const candidates = useMemo(
     () => boardFilms(films).filter((film) => searchFilm(film, query)),
@@ -175,9 +164,8 @@ export function RedBlackPage() {
 
   const commitBoard = (next: StickerBoard) => {
     setBoard(next);
-    // 示例贴纸在这一刻「转正」:用户动完的结果随整份 board 落库,刷新不会丢。
-    // 同时关掉示例横幅 —— 用户都已经动手了还挂着「这是示例」的提示只会让人困惑。
-    if (demo) setDemo(false);
+    // 用户动过手了 —— 从这里开始才允许把「我的票」上报给服务端(见上面 actedRef 的说明)。
+    actedRef.current = true;
     saveStickers(next);
   };
 
@@ -213,19 +201,6 @@ export function RedBlackPage() {
       return;
     }
     commitBoard(placeSticker(board, filmKey, makeSticker(type, spot)));
-  };
-
-  /** 清空示例:落一个空榜 + 记下「不再自动铺」,之后就是纯自己的数据 */
-  const resetDemo = () => {
-    const empty: StickerBoard = new Map();
-    const none = new Set<string>();
-    setBoard(empty);
-    setWatched(none);
-    setDemo(false);
-    dismissDemo();
-    saveStickers(empty);
-    saveWatched(none);
-    ToastQueue.neutral("已清空示例，现在从零开始贴自己的。", { timeout: 4000 });
   };
 
   // ⚠ 落点处理要用**最新**的 board,而 window 监听只在开始拖拽时挂一次 ——
@@ -393,12 +368,9 @@ export function RedBlackPage() {
         </div>
       </div>
 
-      {demo && (
-        <p className="rb-demo" role="status">
-          示例贴纸：先铺一份给你看效果 —— 还没存进本机。改动任意一枚之后，它就变成你自己的了。
-          <button type="button" className="rb-demo-btn" onClick={resetDemo}>
-            清空，从零开始
-          </button>
+      {totals.marked === 0 && totals.total === 0 && (
+        <p className="rb-hint" role="status">
+          榜还是空的。在卡片上点「标记看过」，再挑一枚红或黑贴上去 —— 这是你自己的榜。
         </p>
       )}
 

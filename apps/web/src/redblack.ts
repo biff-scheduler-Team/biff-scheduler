@@ -34,7 +34,9 @@ export const LS_REDBLACK = "biff.redblack.v2";
 const LS_REDBLACK_V1 = "biff.redblack.v1";
 /** 「看过」标记 —— 独立键(存影片 key 数组):标记与贴纸是两件事,合在一个键里只会互相牵连 */
 export const LS_REDBLACK_WATCHED = "biff.redblack.watched.v1";
-/** 是否已明确关掉示例铺底(点过「清空,从零开始」) */
+/** ⚠ **已废弃**(2026-09-16):「示例铺底」功能已删 —— 正式环境就该是空的,让用户自己贴
+ *  (用户原话:「正式环境不应该是空的让用户自己贴的吗」)。这个键现在只在一次性清理
+ *  (`purgeDemoLeavings`) 里被删掉一次,新代码不要再读它。 */
 export const LS_REDBLACK_SEEN = "biff.redblack.seen.v1";
 
 /** 一部电影只有一枚贴纸(用户 2026-09-16 定:「标记看过只能选一个贴纸」)——
@@ -376,62 +378,57 @@ export function boardFilms(films: readonly FilmNode[]): FilmNode[] {
   return films.filter((f) => f.shows.length > 0);
 }
 
-/* ---------------- 示例贴纸(2026-09-16) ----------------
- * 空榜看不出效果(颜色分布 / 排序 / 拖拽都得有东西才看得出来),首次进入先铺一份示例:
- *   · 纯内存态:推导过程不读也不写 localStorage;
- *   · 用户一动手(标记 / 贴 / 挪 / 取下)就随结果一起落库「转正」;
- *   · 点「清空,从零开始」→ 记一个关掉标记(`LS_REDBLACK_SEEN`),之后不再自动铺。
- * 内容**确定性**(id 推导角度与落点):同一份排期每次进来都一样,免得用户以为看错了。 */
+/* ---------------- 清理「示例铺底」的残留(2026-09-16) ----------------
+ * 早先版本首次进入会**自动铺一份示例贴纸**(本意是让空榜也能看出颜色分布与排序),
+ * 用户指出正式环境就该是空的(「正式环境不应该是空的让用户自己贴的吗」),该功能已删。
+ * 这里只负责把**已经铺出去**的那批数据收干净 —— 否则老用户本地那份会一直顶着一堆
+ * 自己从没贴过的贴纸,光删代码救不了他们。 */
 
-export interface DemoSeed {
-  board: StickerBoard;
-  watched: Set<string>;
-}
+/** 示例贴纸的 id 前缀(铺底时代生成的贴纸长这样;用户自己贴的是 `s-` 前缀) */
+const DEMO_ID_PREFIX = "demo-";
 
-/** 用户是否已明确关掉示例(点过「清空,从零开始」) */
-export function demoDismissed(): boolean {
-  try {
-    return localStorage.getItem(LS_REDBLACK_SEEN) === "off";
-  } catch {
-    return false;
-  }
-}
-
-export function dismissDemo(): void {
-  try {
-    writeWorkspaceItem(LS_REDBLACK_SEEN, "off");
-  } catch {
-    /* ignore */
-  }
-}
-
-/** 示例铺底:前 `limit` 部按三段循环 —— 三分之一留白(让用户自己点)、三分之一已贴、三分之一待贴。
- *  已贴的那些红黑各半,首屏就能看到两种颜色。
- *  `existing*` 里的内容**原样保留**,只补用户没有的影片。 */
-export function demoSeed(
-  films: readonly FilmNode[],
-  limit = 60,
-  existingBoard?: StickerBoard,
-  existingWatched?: ReadonlySet<string>,
-): DemoSeed {
-  const board: StickerBoard = new Map(existingBoard ?? []);
-  const watched = new Set(existingWatched ?? []);
-  films.slice(0, limit).forEach((film, i) => {
-    // 「我自己」的贴纸:三段循环 —— 留白 / 已贴 / 待贴
-    // ⚠ 只铺**我自己**那一份(board / watched)。「大家的票数」一律来自服务端聚合,
-    //   本地绝不造 —— 造出来的假数字会在接口上线后与真实票数打架(用户 2026-09-16 明确要求)。
-    if (watched.has(film.key) || board.has(film.key)) return;
-    const stage = i % 3;
-    if (stage === 0) return; // 留白:让用户自己点「看过」
-    watched.add(film.key);
-    if (stage === 1) {
-      const type: StickerType = i % 2 === 0 ? "red" : "black";
-      const id = `demo-${film.key}-${type}`;
-      board.set(film.key, [{ id, type, ...spotOf(id) }]);
+/**
+ * 清掉示例残留,返回清理后的 `board` / `watched`(页面载入时调一次)。
+ *
+ * 判据分两档,**保守优先**:
+ *  ① 贴纸**全部**是示例生成的(或压根没有贴纸)→ 整份都是自动铺的,board 与 watched 一起清空;
+ *  ② 混着自己贴的(存在 `s-` 前缀)→ **只摘掉示例那几枚**,用户自己的贴纸与标记一律不动。
+ *
+ * ⚠ 只在确实读到示例残留时才写盘:清一次即止,之后每次载入都是空转。
+ */
+export function purgeDemoLeavings(): { board: StickerBoard; watched: Set<string> } {
+  const stored = loadStickers();
+  const watched = loadWatched();
+  const stickers = [...stored.values()].flat();
+  if (!stickers.some((s) => s.id.startsWith(DEMO_ID_PREFIX))) {
+    // 没有示例残留 —— 顺手把「关掉示例」那个废弃键收掉(功能没了,留着只是一份垃圾数据)
+    try {
+      removeWorkspaceItem(LS_REDBLACK_SEEN);
+    } catch {
+      /* ignore */
     }
-  });
-  // 已有贴纸却没有标记的(旧模型数据)→ 视为标记过:贴了纸必然代表看过,
-  // 否则卡片会显示成「有贴纸但没标记」的自相矛盾状态。
-  for (const key of board.keys()) watched.add(key);
+    return { board: stored, watched };
+  }
+
+  const mine = stickers.filter((s) => !s.id.startsWith(DEMO_ID_PREFIX));
+  if (!mine.length) {
+    const empty: StickerBoard = new Map();
+    const none = new Set<string>();
+    saveStickers(empty);
+    saveWatched(none);
+    try {
+      removeWorkspaceItem(LS_REDBLACK_SEEN);
+    } catch {
+      /* ignore */
+    }
+    return { board: empty, watched: none };
+  }
+
+  const board: StickerBoard = new Map();
+  for (const [key, list] of stored) {
+    const kept = list.filter((s) => !s.id.startsWith(DEMO_ID_PREFIX));
+    if (kept.length) board.set(key, kept);
+  }
+  saveStickers(board);
   return { board, watched };
 }
