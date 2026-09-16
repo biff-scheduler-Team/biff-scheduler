@@ -75,7 +75,17 @@ export function DiscussionEntry({ screening }: { screening: Screening }) {
   );
 }
 
-export function ScreeningDiscussionDialog({ screening }: { screening: Screening }) {
+/** 场次讨论弹层 —— 发帖 / 反应 / 删除 / 社区提醒的**唯一实现**。
+ *
+ *  `onPosted` 是给「讨论区方格墙」用的:弹层自己维护一份列表,但墙是另一份状态;
+ *  不回调的话关掉弹层后墙上还是旧内容,用户会以为没发出去(2026-09-16,`PLAN-20260916102631`)。 */
+export function ScreeningDiscussionDialog({
+  screening,
+  onPosted,
+}: {
+  screening: Screening;
+  onPosted?: (post: DiscussionPost) => void;
+}) {
   const counts = useScreeningCounts();
   const code = screening.code;
   const [posts, setPosts] = useState<DiscussionPost[]>([]);
@@ -151,6 +161,7 @@ export function ScreeningDiscussionDialog({ screening }: { screening: Screening 
       const post = await createDiscussion(code, category, body);
       setDraft("");
       setPosts((prev) => [post, ...prev]);
+      onPosted?.(post);
       ToastQueue.positive("已发布");
     } catch (error) {
       if (error instanceof ApiFailure && error.status === 401) openAccountPanel();
