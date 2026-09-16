@@ -1,0 +1,23 @@
+{
+  "_note": "人工活动译名表：官网**活动场次**英文名 → 中文名。只放「纯活动」场次（Actors' House / Master Class / Cine Class / Special Talk）—— 这批场次在影片目录（films.json）里没有条目，scrape_biff_web.py 的目录反查必然落空，title_zh 会一直是空，站上只显示英文名。本表由 scrape_biff_web.py --event-titles 与 tools/apply_event_titles.py 共用（同一份实现，不各写一套匹配）。键按 official norm_title 归一化后匹配，故原样抄官网英文名即可。",
+  "_why_2026_09_16": "用户 2026-09-16 需求原话「Actors' House: RYU Seung-ryong 这种只有英文的 能不能也翻译成中文」。人名走**通行中文译名**，并与站内已有口径对齐（罗泓轸 / 拉夫·迪亚兹 / 林太郎 / 朱迪丝·戈德雷什 / 张律 / 毕赣 / 沈恩京 / 许鞍华，见 data/films-catalog-2026.json 的 director 字段）。两处由用户拍板：① 824 用韩文口径「张元锡」（官网英文写 Billy ACUMEN、韩文写 장원석）；② Master Class 定译「大师班」。值不得与 data/films-catalog-2026.json 任何 title_zh 相同 —— 否则前端 filmNodeKey 会把活动误当某部片归并到 cat:<id>（哨兵见 apps/web/tests/catalogue-data.test.ts）。",
+  "events": {
+    "Actors' House: LEE Minho": "演员之家：李敏镐",
+    "Actors' House: KIM Goeun": "演员之家：金高银",
+    "Actors' House: KIM Minha": "演员之家：金敏荷",
+    "Actors' House: RYU Seung-ryong": "演员之家：柳承龙",
+    "Actors' House: JU Jihoon": "演员之家：朱智勋",
+    "Actors' House: SHIN Mina": "演员之家：申敏儿",
+    "[Master Class] NA Hong-jin, A Genre of His Own": "[大师班] 罗泓轸：自成类型的作者",
+    "[Master Class] Lav DIAZ - Time and Memory": "[大师班] 拉夫·迪亚兹：时间与记忆",
+    "[Master Class] Rintaro, a Living Legend of Japanese Animation": "[大师班] 林太郎：日本动画的活传奇",
+    "[Master Class] Bertrand MANDICO, A Magician of Wild Cinema": "[大师班] 贝特朗·芒迪科：狂野电影的魔术师",
+    "[Cine Class] ZHANG Lu: Embracing the Unfamiliar World of The Other": "[电影课] 张律：拥抱他者陌生的世界",
+    "[Cine Class] Seifollah SAMADIAN: 30 Years with Abbas KIAROSTAMI as His Cinematographer and Friend": "[电影课] 塞福拉·萨马迪安：与阿巴斯·基亚罗斯塔米同行的三十年",
+    "[Cine Class] Women, Rewriting the Screen: A Conversation with Judith GODRÈCHE": "[电影课] 重写银幕的女性：与朱迪丝·戈德雷什对谈",
+    "[Cine Class] Billy ACUMEN: The Box-Office Producer′s Secret Behind The King’s Warden, The Outlaws, The Roundup Series": "[电影课] 张元锡：《和王一起生活的男人》《犯罪都市》系列背后的卖座秘诀",
+    "[Cine Class] BI Gan: On Making Strange and Beautiful Films": "[电影课] 毕赣：如何拍出奇异而美丽的电影",
+    "[Cine Class] SHIM Eun-kyung: Transcending Borders, Discovering Craft": "[电影课] 沈恩京：跨越边界，发现技艺",
+    "[Special Talk] The Cinematic Life of Ann HUI, Winner of the Camellia Award": "[特别对谈] 山茶花奖得主许鞍华：与电影共生的人生"
+  }
+}

@@ -160,7 +160,10 @@ export function groupByDate<T>(list: T[], dateOf: (x: T) => string): [string, T[
 
 /** 影片节点 key —— 全站单一来源(影片库节点合并 / 选片总览 / 甘特打标共用)。
  *  口径与影片库 catFor 完全一致:①目录中文名(无中文名则原始片名)精确命中 → `cat:<目录 id>`;
- *  ②原始片名 == 排期英文名 → `cat:<id>`;③都不命中(纯排期片)→ `sched:<中文名|英文名 小写>`。
+ *  ②原始片名 == 排期英文名 → `cat:<id>`;③都不命中(纯排期片 / 活动场次)→ `sched:<英文名 小写>`。
+ *  ⚠ ③ 一律以**官方英文名**为准(2026-09-16,`PLAN-20260916142713`):中文名是展示用译名,
+ *  会被补录 / 润色(活动场次给 Actors' House 等补中文名时就踩过),拿它当身份会让
+ *  `biff.picks.v2` 里已选的记录**静默失配**(用户只看到「选好的场次不见了」)。
  *  守卫:title_zh 缺失时不做空值相等匹配(否则会与「两个片名都为空」的目录条目假命中);两片名皆缺则退回 code。 */
 /** `filmNodeKey()` 判身份只用这三项 —— 参数类型按**结构最小化**:
  *  `changelog.ts` 只有新增场次的子集字段(没有整条 `Screening`),但它同样要按
@@ -176,7 +179,7 @@ export function filmNodeKey(cat: Catalog, s: FilmIdentity): string {
     (zh ? cat.filmByZh.get(zh)?.[0] : undefined) ??
     (s.title_en ? cat.filmByOrig.get(s.title_en)?.[0] : undefined);
   if (hit) return `cat:${hit.id}`;
-  return `sched:${(s.title_zh || s.title_en || s.code).toLowerCase().trim()}`;
+  return `sched:${(s.title_en || s.title_zh || s.code).toLowerCase().trim()}`;
 }
 
 /* ---------------- 影片信息(片名 + 元信息行) ----------------

@@ -17,6 +17,8 @@ const norm = (s: string): string => s.toLowerCase().replace(/[^0-9a-z\uac00-\ud7
 interface Screening {
   code: string;
   title_en: string;
+  /** 活动场次中文名(2026-09-16 起由 data/event-titles-2026.json 补,见文件末尾哨兵) */
+  title_zh?: string;
   date: string;
   end_time: string;
   duration_min: number;
@@ -31,6 +33,7 @@ interface Venue {
 }
 interface Film {
   title_en?: string;
+  title_zh?: string;
   catalogue?: {
     page: number;
     format?: string | null;
@@ -201,5 +204,41 @@ describe("票务补充字段", () => {
     expect(rules?.items.some((r) => r.text.includes("15 minutes after the screening starts"))).toBe(true);
     // 附注必须挂在条目上,不能被拼进正文
     expect(rules?.items.some((r) => r.notes.length > 0)).toBe(true);
+  });
+});
+
+// 活动场次中文名(2026-09-16 立,`PLAN-20260916142713`):
+// Actors' House / Master Class / Cine Class / Special Talk 在**影片目录里没有条目**,
+// 抓取脚本的目录反查必然落空 → 这批场次曾经只有英文名。中文名的唯一来源是
+// `data/event-titles-2026.json`(人工表),由 `scrape_biff_web.py --event-titles` 与
+// `tools/apply_event_titles.py` 共用同一份匹配。三条断言分别钉:①补了、②表与产物没漂、
+// ③译文不与任何片名撞车(撞车会让 `filmNodeKey` 把活动误当归并到某部片)。
+describe("活动场次的中文名(人工活动译名表)", () => {
+  const ACTIVITY_CODES = [
+    "801", "802", "803", "804", "805", "806", // Actors' House
+    "811", "812", "813", "814", // Master Class
+    "821", "822", "823", "824", "825", "826", // Cine Class
+    "831", // Special Talk
+  ];
+  const eventTitles = JSON.parse(read("../../data/event-titles-2026.json")) as {
+    events: Record<string, string>;
+  };
+  const zhOf = (code: string): string => (byCode.get(code)?.title_zh ?? "").trim();
+
+  it("17 场活动场次都有中文名(全空 = 本轮需求原先的症状)", () => {
+    const missing = ACTIVITY_CODES.filter((c) => !zhOf(c));
+    expect(missing.map((c) => `${c} ${byCode.get(c)?.title_en ?? "?"}`)).toEqual([]);
+  });
+
+  it("活动译名表逐条落进产物(表改了就必须重跑 apply/抓取)", () => {
+    const zhSet = new Set(Object.values(eventTitles.events));
+    const drifted = ACTIVITY_CODES.filter((c) => !zhSet.has(zhOf(c)));
+    expect(drifted.map((c) => `${c} ${zhOf(c)}`)).toEqual([]);
+  });
+
+  it("活动中文名不与影片目录任何片名相同", () => {
+    const filmTitles = new Set(films.map((f) => f.title_zh).filter((t): t is string => Boolean(t)));
+    const clash = ACTIVITY_CODES.map(zhOf).filter((zh) => filmTitles.has(zh));
+    expect(clash).toEqual([]);
   });
 });
