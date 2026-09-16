@@ -183,3 +183,82 @@ test("讨论区:集合成方格墙、行程里的讨论跳过去定位;发帖门
   await dialog.getByRole("button", { name: "登录后发布", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "IFFDAY 账号", exact: true })).toBeVisible();
 });
+
+/** 定位条上的「发帖」入口(2026-09-16,PLAN-20260916102631)。
+ *
+ *  回归的 bug:行程卡上的「讨论」只做跳转,而方格墙的格子是**已存在的帖子** —— 某场一条帖子都
+ *  没有时讨论区里没有任何可点的发帖口,用户被空态文案指回行程,点「讨论」又跳回来,成闭环。 */
+test("讨论区:定位到没有帖子的场次也能直接发帖,发完立刻出现在墙上", async ({ page }) => {
+  const id = "user_00000000000000000000000001";
+  const account = {
+    user: { id, email: "viewer@example.com", emailVerified: true },
+    profile: {
+      userId: id,
+      displayName: "观众",
+      bio: "",
+      website: "",
+      avatarUrl: null,
+      updatedAt: "2026-09-13T00:00:00Z",
+      version: 1,
+    },
+  };
+  const posted: Record<string, unknown>[] = [];
+  await page.route("**/api/account/me", (route) => route.fulfill({ json: account }));
+  await page.route("**/api/account/sync/biff-2026", async (route) => {
+    if (route.request().method() === "PUT") await route.fulfill({ json: { revision: 1 } });
+    else
+      await route.fulfill({
+        json: { subject: id, revision: 0, records: {}, updatedAt: 0, importedAt: null },
+      });
+  });
+  // 001 这场**一条帖子都没有** —— 正是原 bug 里走不通的场景
+  await mockCounts(page, { attendance: {}, discussions: {} });
+  await page.route("**/api/discussions**", (route) =>
+    route.fulfill({ json: { posts: [], nextCursor: null } }),
+  );
+  await page.route("**/api/screenings/*/discussion**", async (route) => {
+    const request = route.request();
+    if (request.method() === "GET") {
+      await route.fulfill({ json: { posts: [], nextCursor: null } });
+      return;
+    }
+    const body = request.postDataJSON() as { category: string; body: string };
+    const post = {
+      id: `post_${posted.length + 1}`,
+      code: "001",
+      subject: id,
+      displayName: "观众",
+      category: body.category,
+      body: body.body,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      reactionCounts: {},
+      myReactions: [],
+    };
+    posted.unshift(post);
+    await route.fulfill({ status: 201, json: post });
+  });
+
+  await ready(page, "/discussions?focus=001");
+
+  // 定位条给出发帖口,且文案承认这场还没有帖子
+  const bar = page.locator(".discussion-locate-bar");
+  await expect(bar).toContainText("这场还没有帖子");
+  await expect(page.locator(".discussion-tile")).toHaveCount(0);
+  await bar.getByRole("button", { name: /发帖/ }).click();
+
+  const dialog = page.getByRole("dialog", { name: "001 场次讨论", exact: true });
+  await expect(dialog).toBeVisible();
+  await dialog.locator("textarea").fill("多带了一张 10/8 的票，原价转。");
+  await dialog.getByRole("button", { name: "发布", exact: true }).click();
+  await expect(dialog.locator(".discussion-card")).toContainText("多带了一张 10/8 的票");
+  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+
+  // 关掉弹层后,方格墙首位立刻有这条新帖(否则用户会以为没发出去)
+  const grid = page.locator(".discussion-grid");
+  await expect(grid.locator(".discussion-tile")).toHaveCount(1);
+  await expect(grid.locator('.discussion-tile[data-discussion-code="001"]')).toContainText(
+    "多带了一张 10/8 的票",
+  );
+  await expect(page.locator(".discussion-locate-bar")).toContainText("共 1 帖");
+});

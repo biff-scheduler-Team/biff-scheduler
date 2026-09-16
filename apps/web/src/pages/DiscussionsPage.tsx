@@ -28,10 +28,13 @@ function DiscussionTile({
   post,
   screening,
   located,
+  onPosted,
 }: {
   post: DiscussionPost;
   screening: Screening | undefined;
   located: boolean;
+  /** 弹层里发帖成功后把新帖插到方格墙首位(见 `ScreeningDiscussionDialog.onPosted`)。 */
+  onPosted: (post: DiscussionPost) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [session, setSession] = useState(0);
@@ -95,7 +98,7 @@ function DiscussionTile({
             进入讨论
           </ActionButton>
           {open && screening && (
-            <ScreeningDiscussionDialog key={session} screening={screening} />
+            <ScreeningDiscussionDialog key={session} screening={screening} onPosted={onPosted} />
           )}
         </DialogTrigger>
       </div>
@@ -108,6 +111,10 @@ function DiscussionTile({
  *  与行程页的关系:行程场次卡上的「讨论 N」跳到 `/discussions?focus=<场次 code>`,
  *  这里滚动到该场次的第一条并高亮该场次的所有格子 —— 即「直接定位到这个区域的这个帖子」。
  *  口径上定位的是**场次**(入口只有场次级信息),不是单条帖子。
+ *
+ *  ⚠ **定位条自带「发帖」入口**(2026-09-16,`PLAN-20260916102631`):行程卡上的「讨论」只做跳转,
+ *    而方格墙的格子是**已存在的帖子** —— 某场一条帖子都没有时,没有这个入口就无法发首帖
+ *    (会形成「回行程点『讨论』→ 又跳回来」的闭环)。发帖仍走 `ScreeningDiscussionDialog`(唯一实现)。
  */
 export function DiscussionsPage() {
   const { cat } = useCatalog();
@@ -118,6 +125,9 @@ export function DiscussionsPage() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  // 定位条上的「发帖」:与格子上的「进入讨论」共用同一个弹层,只是入口不同(见文件头注释)。
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerSession, setComposerSession] = useState(0);
   const grid = useRef<HTMLUListElement>(null);
   const focus = new URLSearchParams(location.search).get("focus");
   const located = focus ? posts.filter((post) => post.code === focus) : [];
@@ -169,6 +179,9 @@ export function DiscussionsPage() {
 
   const clearFocus = () => navigate("/discussions", { replace: true });
 
+  // 新帖按时间倒序排在最前 —— 与 `fetchDiscussionBoard` 的排序口径一致,不做二次比较。
+  const prependPost = (post: DiscussionPost) => setPosts((prev) => [post, ...prev]);
+
   const focusScreening = focus ? cat.byCode.get(focus) : undefined;
   const focusTitle =
     focus && focusScreening
@@ -205,6 +218,28 @@ export function DiscussionsPage() {
               这场更早的帖子还没加载，点「加载更多」继续找。
             </span>
           )}
+          {/* 定位条自带发帖口(2026-09-16,`PLAN-20260916102631`):某场**一条帖子都没有**时,
+              方格墙里没有任何格子可点 —— 没有这个入口就只能回行程再点「讨论」,而那个按钮
+              现在本身就跳回这里,形成闭环。发帖仍走既有弹层(唯一实现),这里只是多一个入口。 */}
+          {focusScreening && (
+            <DialogTrigger
+              isOpen={composerOpen}
+              onOpenChange={(next) => {
+                // 每次打开都重挂载弹层:清空草稿 / 重新拉第一页(与格子上的「进入讨论」同一手法)
+                if (next) setComposerSession((n) => n + 1);
+                setComposerOpen(next);
+              }}
+            >
+              <ActionButton aria-label={`在《${focusTitle ?? focus}》发帖`}>发帖</ActionButton>
+              {composerOpen && (
+                <ScreeningDiscussionDialog
+                  key={composerSession}
+                  screening={focusScreening}
+                  onPosted={prependPost}
+                />
+              )}
+            </DialogTrigger>
+          )}
           <ActionButton onPress={clearFocus}>清除定位</ActionButton>
         </div>
       )}
@@ -216,7 +251,9 @@ export function DiscussionsPage() {
       ) : posts.length === 0 ? (
         <div className="empty-state">
           <h2>还没有人发言</h2>
-          <p>到「我的行程」里挑一场，点卡片上的「讨论」写下第一条。</p>
+          {/* ⚠ 别写回「点卡片上的『讨论』写下第一条」—— 那个按钮自 `PLAN-20260915233816` 起只做跳转
+              (跳到这里),发帖入口在定位条上(2026-09-16,`PLAN-20260916102631`)。 */}
+          <p>到「我的行程」里挑一场，点卡片上的「讨论」跳到这里，再点「发帖」写下第一条。</p>
         </div>
       ) : (
         <ul className="discussion-grid" ref={grid}>
@@ -226,6 +263,7 @@ export function DiscussionsPage() {
               post={post}
               screening={cat.byCode.get(post.code)}
               located={focus === post.code}
+              onPosted={prependPost}
             />
           ))}
         </ul>
