@@ -1,6 +1,6 @@
 import { hasImportableData } from "@biff/contracts/import";
 import { isReactionEmoji } from "@biff/contracts/reactions";
-import { and, eq, gt, lt, notExists, sql } from "drizzle-orm";
+import { and, eq, lt, notExists, sql } from "drizzle-orm";
 import { database } from "./db";
 import { accountImport, appSession, festivalDocument, oauthPending } from "./db/schema";
 import {
@@ -46,10 +46,11 @@ import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import * as oauth from "oauth4webapi";
-import type { AccountProfile } from "@biff/contracts/account";
+import { accountUserIdSchema, type AccountProfile, type LoginFailureCode } from "@biff/contracts/account";
 import { canonical } from "@biff/contracts/canonical";
+import { authCallback } from "./auth-callback";
 import { configuration } from "./config";
-import { randomToken, hash, seal, unseal } from "./crypto";
+import { randomToken, hash, seal } from "./crypto";
 import {
   provider,
   scopes,
@@ -59,7 +60,6 @@ import {
   sessionFor,
   resolveIdentity,
   type SessionLookup,
-  type SessionTokens,
 } from "./oauth";
 
 type AppEnv = {
@@ -70,8 +70,7 @@ type AppEnv = {
   };
 };
 const app = new Hono<AppEnv>();
-const pendingSchema = z.object({ state: z.string(), nonce: z.string(), verifier: z.string() });
-const subjectSchema = z.string().regex(/^user_[0-7][0-9A-HJKMNP-TV-Z]{25}$/);
+
 const recordsSchema = z
   .record(
     z
@@ -93,7 +92,7 @@ const recordsSchema = z
   .refine((value) => Object.keys(value).length <= 10000);
 const syncSchema = z
   .object({
-    subject: subjectSchema,
+    subject: accountUserIdSchema,
     revision: z.number().int().nonnegative(),
     operationId: z.uuid(),
     records: recordsSchema,
@@ -127,122 +126,58 @@ app.get("/api/health", async (c) => {
 });
 app.get("/api/auth/login", async (c) => {
   const p = provider(c.env, c.req.header("cf-connecting-ip"), new URL(c.req.url).origin);
-  const as = await p.metadata();
-  if (!as.authorization_endpoint || !as.code_challenge_methods_supported?.includes("S256"))
-    throw new Error("Provider must support PKCE S256");
-  const state = oauth.generateRandomState();
-  const nonce = oauth.generateRandomNonce();
-  const verifier = oauth.generateRandomCodeVerifier();
-  const cookie = randomToken();
-  const cookieHash = await hash(cookie);
-  const payload = await seal(
-    { state, nonce, verifier },
-    p.config.SESSION_SECRET,
-    `oauth:${cookieHash}`,
-  );
-  const db = database(c.env.DB);
-  await db.batch([
-    db.delete(oauthPending).where(lt(oauthPending.expires_at, Date.now())),
-    db.delete(appSession).where(lt(appSession.expires_at, Date.now())),
-    db.insert(oauthPending).values({ cookie_hash: cookieHash, payload, expires_at: Date.now() + 600_000 }),
-  ]);
-  setCookie(c, pendingCookieName(p.config), cookie, cookieOptions(p.config, 600));
-  const url = new URL(as.authorization_endpoint);
-  if (url.origin !== p.config.IFFDAY_ORIGIN) throw new Error("Unexpected authorization endpoint");
-  for (const [key, value] of Object.entries({
-    client_id: p.client.client_id,
-    response_type: "code",
-    redirect_uri: p.redirectUri,
-    scope: scopes,
-    state,
-    nonce,
-    code_challenge: await oauth.calculatePKCECodeChallenge(verifier),
-    code_challenge_method: "S256",
-    resource: p.resource,
-  }))
-    url.searchParams.set(key, value);
-  if (c.req.query("prompt") === "login") url.searchParams.set("prompt", "login");
-  return c.redirect(url.toString());
-});
-app.get("/api/auth/callback", async (c) => {
-  const p = provider(c.env, c.req.header("cf-connecting-ip"), new URL(c.req.url).origin);
-  const cookie = getCookie(c, pendingCookieName(p.config));
-  deleteCookie(c, pendingCookieName(p.config), cookieOptions(p.config, 0));
-  if (!cookie) {
-    console.warn("oidc_pending_cookie_missing");
-    return c.redirect("/?account_error=expired");
-  }
-  const cookieHash = await hash(cookie);
-  const [pending] = await database(c.env.DB).delete(oauthPending)
-    .where(and(eq(oauthPending.cookie_hash, cookieHash), gt(oauthPending.expires_at, Date.now())))
-    .returning({ payload: oauthPending.payload });
-  if (!pending) {
-    console.warn("oidc_pending_record_missing");
-    return c.redirect("/?account_error=expired");
-  }
+  // 「点了登录什么都没发生 / 只看到一张错误页」也必须有可读原因:旧实现让异常直接冒泡,
+  // 用户拿到的是 500 页面,分不清是「账号系统连不上」还是「服务端写不了临时记录」
+  // (见 PLAN-20260916215100)。
+  let step: LoginFailureCode = "upstream_unreachable";
   try {
-    const transaction = pendingSchema.parse(
-      await unseal(pending.payload, p.config.SESSION_SECRET, `oauth:${cookieHash}`),
-    );
     const as = await p.metadata();
-    const parameters = oauth.validateAuthResponse(
-      as,
-      p.client,
-      new URL(c.req.url),
-      transaction.state,
+    if (!as.authorization_endpoint || !as.code_challenge_methods_supported?.includes("S256"))
+      throw new Error("Provider must support PKCE S256");
+    const url = new URL(as.authorization_endpoint);
+    if (url.origin !== p.config.IFFDAY_ORIGIN) throw new Error("Unexpected authorization endpoint");
+    const state = oauth.generateRandomState();
+    const nonce = oauth.generateRandomNonce();
+    const verifier = oauth.generateRandomCodeVerifier();
+    const cookie = randomToken();
+    const cookieHash = await hash(cookie);
+    const payload = await seal(
+      { state, nonce, verifier },
+      p.config.SESSION_SECRET,
+      `oauth:${cookieHash}`,
     );
-    const response = await oauth.authorizationCodeGrantRequest(
-      as,
-      p.client,
-      p.auth,
-      parameters,
-      p.redirectUri,
-      transaction.verifier,
-      { ...p.options, additionalParameters: new URLSearchParams({ resource: p.resource }) },
-    );
-    const result = await oauth.processAuthorizationCodeResponse(as, p.client, response, {
-      expectedNonce: transaction.nonce,
-      requireIdToken: true,
-    });
-    await oauth.validateApplicationLevelSignature(as, response, p.options);
-    const claims = oauth.getValidatedIdTokenClaims(result);
-    const subject = subjectSchema.parse(claims?.sub);
-    // 登录这一刻「有没有 RT」决定这个会话能不能自动续期(PLAN-20260916104514 成因 A)。
-    // 只记寿命与有无,不打 token。
-    console.log(
-      "oidc_token_issued",
-      result.expires_in ?? "unset",
-      result.refresh_token ? "rt" : "no-rt",
-    );
-    const infoResponse = await oauth.userInfoRequest(as, p.client, result.access_token, p.options);
-    const info = await oauth.processUserInfoResponse(as, p.client, subject, infoResponse);
-    const tokens: SessionTokens = {
-      accessToken: result.access_token,
-      refreshToken: result.refresh_token,
-      idToken: result.id_token,
-      email: z.email().parse(info.email),
-      emailVerified: info.email_verified === true,
-    };
-    const sessionToken = randomToken();
-    const tokenHash = await hash(sessionToken);
     const db = database(c.env.DB);
-    await db.insert(appSession).values({
-      token_hash: tokenHash,
-      subject,
-      payload: await seal(tokens, p.config.SESSION_SECRET, `session:${tokenHash}`),
-      expires_at: Date.now() + 7 * 86400_000,
-      token_expires_at: Date.now() + (result.expires_in ?? 900) * 1000,
-    }).run();
-    const oldCookie = getCookie(c, sessionCookieName(p.config));
-    if (oldCookie)
-      await db.delete(appSession).where(eq(appSession.token_hash, await hash(oldCookie))).run();
-    setCookie(c, sessionCookieName(p.config), sessionToken, cookieOptions(p.config, 7 * 86400));
-    return c.redirect("/?account=connected");
+    step = "pending_store_failed";
+    await db.batch([
+      db.delete(oauthPending).where(lt(oauthPending.expires_at, Date.now())),
+      db.delete(appSession).where(lt(appSession.expires_at, Date.now())),
+      db
+        .insert(oauthPending)
+        .values({ cookie_hash: cookieHash, payload, expires_at: Date.now() + 600_000 }),
+    ]);
+    setCookie(c, pendingCookieName(p.config), cookie, cookieOptions(p.config, 600));
+    for (const [key, value] of Object.entries({
+      client_id: p.client.client_id,
+      response_type: "code",
+      redirect_uri: p.redirectUri,
+      scope: scopes,
+      state,
+      nonce,
+      code_challenge: await oauth.calculatePKCECodeChallenge(verifier),
+      code_challenge_method: "S256",
+      resource: p.resource,
+    }))
+      url.searchParams.set(key, value);
+    if (c.req.query("prompt") === "login") url.searchParams.set("prompt", "login");
+    return c.redirect(url.toString());
   } catch (error) {
-    console.warn("oidc_callback_failed", error instanceof Error ? error.name : "UnknownError");
-    return c.redirect("/?account_error=authorization");
+    console.warn("oidc_login_failed", step, error instanceof Error ? error.name : "UnknownError");
+    return c.redirect(`/?account_error=${step}`);
   }
 });
+// 回调的失败步骤分诊在 `auth-callback.ts`(它按步骤给出可区分、用户可见的 `account_error`,
+// 见 PLAN-20260916215100)。放在这里就只是闭包里的一团,没有办法单测。
+app.get("/api/auth/callback", authCallback);
 /** 与 /api/account/* 相同：会话 + IFFDAY profile；反馈写路径复用。 */
 const requireIdentity: MiddlewareHandler<AppEnv> = async (c, next) => {
   const config = configuration(c.env);

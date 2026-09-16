@@ -5,7 +5,14 @@
 > API `biff-scheduler` + 静态资源 `biff-scheduler-web`)+ React / Router / Spectrum S2 + Vite + TS
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-16(**P&I 记者 / 业界场录入 + 显示开关** —— 册子排期页 BD(Indieplus)/ CGV 7
+> 最后更新:2026-09-16(**登录失败病因可见** —— callback 的 7 条失败路径原先有 6 条都塌成同一个
+> `account_error=authorization`,前端又把 `account_error` 的具体值丢掉,于是线上「点登录 → 跳回首页
+> 提示登录未完成」**没有任何可观察手段**(CF 日志 / D1 本机都够不着);现按**步骤**分诊成 13 个码,
+> 唯一口径放进共享契约 `loginFailureCodeSchema`,回调抽成 `auth-callback.ts`(可单测),
+> `/api/auth/login` 也不再抛 500 而是回同名码;前端 `account-errors.ts` 用
+> `Record<LoginFailureCode, string>` 保证漏写文案即编译不过,toast / 账号面板 / 控制台三处都带上原因与原始码。
+> **本轮以「病因坐实到具体一步」结案,不以「已修复」结案**(用户重试一次即可读出具体码),见 `PLAN-20260916215100`;
+> 上一轮(**P&I 记者 / 业界场录入 + 显示开关** —— 册子排期页 BD(Indieplus)/ CGV 7
 > 两列共 37 场原先整批跳过(不印场次编号、不对外售票),现单独收口到 `apps/web/public/pni.json`,
 > **公开 `schedule.json` / `venues.json` 一个字节不变**(哨兵照旧);前端在 catalog 里带一份,
 > 默认**不显示**,只在「设置 → 场次范围 → 显示 P&I 场次」勾选后才并进排期表 / 片单 / 行程 / 冲突 / 导出。
