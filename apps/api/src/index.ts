@@ -52,6 +52,7 @@ import { authCallback } from "./auth-callback";
 import { configuration } from "./config";
 import { randomToken, hash, seal } from "./crypto";
 import {
+  AUTH_FLOW_TIMEOUT_MS,
   provider,
   scopes,
   cookieOptions,
@@ -125,7 +126,11 @@ app.get("/api/health", async (c) => {
   return c.json({ status: "ok" });
 });
 app.get("/api/auth/login", async (c) => {
-  const p = provider(c.env, c.req.header("cf-connecting-ip"), new URL(c.req.url).origin);
+  // 登录流程的预算见 `oauth.ts::AUTH_FLOW_TIMEOUT_MS`(与刷新链路那 3 秒刻意分开:
+  // 后者被租约不变量绑着,调大会让并发刷新互相踩)。
+  const p = provider(c.env, c.req.header("cf-connecting-ip"), new URL(c.req.url).origin, {
+    timeoutMs: AUTH_FLOW_TIMEOUT_MS,
+  });
   // 「点了登录什么都没发生 / 只看到一张错误页」也必须有可读原因:旧实现让异常直接冒泡,
   // 用户拿到的是 500 页面,分不清是「账号系统连不上」还是「服务端写不了临时记录」
   // (见 PLAN-20260916215100)。

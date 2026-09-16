@@ -57,9 +57,17 @@ export const cookieOptions = (config: Configuration, maxAge: number) => ({
 });
 
 /**
- * 单次上游调用的硬上限。没有它,上游挂死会把请求拖到 isolate 被回收 ——
- * 那时 `sessionFor` 的 `catch` 不会执行,`refresh_until` 租约会残留最长一个窗口,
- * 该会话在此期间每个请求都是 503。有了超时,失败就变成「可捕获的 503」而不是「被回收」。
+ * 单次上游调用的**期望**上限。
+ *
+ * 设计意图:没有它,上游挂死会把请求拖到 isolate 被回收 —— 那时 `sessionFor` 的 `catch`
+ * 不会执行,`refresh_until` 租约会残留最长一个窗口,该会话在此期间每个请求都是 503。
+ *
+ * ⚠ 2026-09-16 实测:这个 `AbortSignal.timeout` 在 **service binding**(`IFFDAY_API`)这条路上
+ * **没有观察到真正中断过请求** —— `/api/auth/login`(内部只调一次发现文档)10 次里有 1 次
+ * 花了 **4.39 秒却仍然成功**;若上限真生效,它应在第 3 秒被中断并回 `upstream_unreachable`。
+ * ⚠ 但**尚未坐实**:那 4.39 秒里还含一次 D1 批量写(2 删 1 插),两段没有分开计时。
+ * 所以在动这个值(包括把它换成真正可中断的写法)之前,**必须先把上游调用与 D1 分开计时** ——
+ * callback 回传 `account_ms`(失败那一步自己的耗时)就是为这件事准备的,见 PLAN-20260916220942。
  */
 export const IDENTITY_TIMEOUT_MS = 3_000;
 
@@ -83,7 +91,34 @@ export const REFRESH_WAIT_MS = 10_000;
 /** 轮询租约的间隔。 */
 const REFRESH_POLL_MS = 200;
 
-export function provider(env: Env, clientIp?: string, origin?: string) {
+/**
+ * **登录流程**(`/api/auth/login` + `/api/auth/callback`)给上游的预算:10 秒。
+ *
+ * 刻意与 `IDENTITY_TIMEOUT_MS` 分开:**那条 3 秒被上面三条不变量绑着**
+ * (`REFRESH_LEASE_MS >= 2 × IDENTITY_TIMEOUT_MS` 等),刷新链路上任何一个会话请求都会用到它,
+ * 从调用点随手调大会让租约提前过期、两个并发刷新拿同一个 refresh token 去换 → 上游撤销整个 token family。
+ * 登录流程则**没有租约、也不在 `sessionFor` 的请求路径上**,可以放宽。
+ *
+ * 为什么是 10 秒:2026-09-16 实测账号系统**单次**发现文档就要 1.8–4.4 秒(本机直连 2.4s,
+ * 经 service binding 同样),而登录 + 回调会**串行调 4 次**(发现文档 → 换 token → JWKS → userinfo)。
+ * 3 秒这种单步上限正好压在正常延迟的上沿,等于随机掐断合法登录(见 PLAN-20260916220942 修订 1)。
+ */
+export const AUTH_FLOW_TIMEOUT_MS = 10_000;
+
+/** `provider()` 的上游预算:默认值与刷新链路一致,只有登录流程显式放宽。 */
+export interface ProviderBudget {
+  /** 单次上游调用的上限,默认 `IDENTITY_TIMEOUT_MS`。 */
+  timeoutMs?: number;
+  /** 整条流程共享的总预算(可选):避免「4 步 × 单步上限」把用户晾在半分钟里。 */
+  deadline?: AbortSignal;
+}
+
+export function provider(
+  env: Env,
+  clientIp?: string,
+  origin?: string,
+  budget: ProviderBudget = {},
+) {
   const config = configuration(env);
   const issuer = new URL(`${config.IFFDAY_ORIGIN}/api/v1/auth`);
   const client: oauth.Client = { client_id: config.OIDC_CLIENT_ID };
@@ -95,8 +130,12 @@ export function provider(env: Env, clientIp?: string, origin?: string) {
         throw new Error("Unexpected identity endpoint");
       const headers = new Headers(init.headers);
       if (clientIp) headers.set("cf-connecting-ip", clientIp);
-      const timeout = AbortSignal.timeout(IDENTITY_TIMEOUT_MS);
-      const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+      const timeout = AbortSignal.timeout(budget.timeoutMs ?? IDENTITY_TIMEOUT_MS);
+      // 调用方自己的 signal 与整条流程的 deadline 一起拼进去:谁先到算谁。
+      const extra = [init.signal, budget.deadline].filter(
+        (value): value is AbortSignal => value instanceof AbortSignal,
+      );
+      const signal = extra.length ? AbortSignal.any([timeout, ...extra]) : timeout;
       return env.IFFDAY_API.fetch(new Request(url, { ...init, headers, signal }));
     },
   };

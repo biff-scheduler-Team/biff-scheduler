@@ -3,7 +3,15 @@ import { HTTPException } from "hono/http-exception";
 import * as oauth from "oauth4webapi";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { hash, seal, unseal } from "../src/crypto";
-import { provider, resolveIdentity, sessionFor } from "../src/oauth";
+import {
+  AUTH_FLOW_TIMEOUT_MS,
+  IDENTITY_TIMEOUT_MS,
+  REFRESH_LEASE_MS,
+  REFRESH_WAIT_MS,
+  provider,
+  resolveIdentity,
+  sessionFor,
+} from "../src/oauth";
 import * as oauthModule from "../src/oauth";
 
 // `sessionFor()` 是账号体系里唯一会**在请求路径上改会话状态**的函数:access token 快到期时
@@ -513,5 +521,52 @@ describe("resolveIdentity:上游一次 401 不得变成永久登出", () => {
 
     expect(outcome).toEqual({ failure: "IDENTITY_UNAVAILABLE" });
     expect(sessionRow(sqlite)).toBeDefined();
+  });
+});
+
+// 这几个常量彼此绑着(见 `oauth.ts` 的注释)。2026-09-16 有人想把「上游超时」从 3 秒提到 10 秒 ——
+// 直接改 `IDENTITY_TIMEOUT_MS` 会同时把刷新链路的三条不变量一起破坏(并发刷新拿同一个 refresh token
+// 去换 → 上游撤销整个 token family)。所以把不变量**写成断言**,并规定:登录流程要放宽,
+// 就加自己的预算(`AUTH_FLOW_TIMEOUT_MS`),不要动这条链路上的常量。
+describe("刷新链路的窗口不变量(动超时值之前先看这里)", () => {
+  it("租约必须 >= 2 × 单次上游上限(持有者要顺序跑 discovery + refresh)", () => {
+    expect(REFRESH_LEASE_MS).toBeGreaterThanOrEqual(2 * IDENTITY_TIMEOUT_MS);
+  });
+
+  it("等待别人刷新的上限必须 >= 租约(否则等待者会先认输,而那次刷新其实会成功)", () => {
+    expect(REFRESH_WAIT_MS).toBeGreaterThanOrEqual(REFRESH_LEASE_MS);
+  });
+
+  it("等待上限必须 < 前端 `/api/account/*` 的 12 秒 abort(见 account-sync.ts::api)", () => {
+    expect(REFRESH_WAIT_MS).toBeLessThan(12_000);
+  });
+
+  it("登录流程的预算更宽,且不参与上面三条 —— 它没有租约、也不在会话请求路径上", () => {
+    expect(AUTH_FLOW_TIMEOUT_MS).toBeGreaterThan(IDENTITY_TIMEOUT_MS);
+  });
+});
+
+describe("provider 的上游预算", () => {
+  it("整条流程的 deadline 会被拼进请求信号,到时真的中断(登录流程 10 秒总预算的机制)", async () => {
+    const sqlite = new DatabaseSync(":memory:");
+    // 上游「永不返回」,但**遵守**传进去的 signal —— 真 fetch 的行为。
+    bindingFetch.mockImplementationOnce(
+      (request: Request) =>
+        new Promise((_, reject) =>
+          request.signal.addEventListener("abort", () => reject(request.signal.reason)),
+        ),
+    );
+    const p = provider(environment(sqlite), undefined, "https://biff.lcandy.co", {
+      timeoutMs: 5_000,
+      deadline: AbortSignal.timeout(20),
+    });
+    const customFetch = p.options[oauth.customFetch] as unknown as (
+      input: string,
+      init: RequestInit,
+    ) => Promise<Response>;
+
+    await expect(
+      customFetch("https://account.iff.day/api/v1/auth/oauth2/token", {}),
+    ).rejects.toThrow();
   });
 });

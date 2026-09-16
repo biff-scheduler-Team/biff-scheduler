@@ -26,11 +26,12 @@ BIFF cookie 为 `__Host-biff.session`，设置 Secure、HttpOnly、SameSite=Lax 
 账号系统对 `/api/v1/profile` 回 401 时**不再直接删会话**（`resolveIdentity`）：先用 refresh token
 强制换一份再验一次，只有新 token 依然被拒才判会话真失效。本地 `token_expires_at` 是按
 「收到响应那一刻 + `expires_in`」算的，比上游签发时刻晚一个网络往返，边界上本就会拿着刚过期的
-token 过去 —— 一次抖动不该等于永久登出（cookie 还在、行没了）。该调用带 3 秒硬超时并转发
-`cf-connecting-ip`，与 OIDC 调用的口径一致。
+token 过去 —— 一次抖动不该等于永久登出（cookie 还在、行没了）。该调用带 3 秒上限并转发
+`cf-connecting-ip`，与会话路径的 OIDC 调用同口径（**登录流程**是单独的 10 秒预算，见下）。
 
 **登录入口**的失败同样带可区分原因（回调在 `apps/api/src/auth-callback.ts`）：失败时重定向到
-`/?account_error=<code>`，码的清单是共享契约 `packages/contracts/src/account.ts` 里的
+`/?account_error=<步骤码>[:<上游细节>]&account_ms=<失败那一步自己的耗时>`，
+码的清单是共享契约 `packages/contracts/src/account.ts` 里的
 `loginFailureCodeSchema` —— `pending_cookie_missing`（浏览器没带回临时 cookie）、
 `pending_expired`（临时记录已取用/超时/重复登录）、`pending_unreadable`（临时记录解不开）、
 `upstream_unreachable`（发现文档拿不到或配置不符）、`authorize_denied`（上游在授权环节拒绝）、
@@ -43,6 +44,22 @@ toast 与账号面板都会显示这一条，原始码同时打到控制台便�
 `/api/auth/login` 自身失败也回同样的码，不再抛 500 —— 2026-09-16 之前 7 条失败路径里有 6 条都塌成
 `authorization`，线上「点登录 → 跳回来提示登录未完成」完全无法定位（见
 `docs/plans/PLAN-20260916215100.md`）。
+
+冒号后的**上游细节**把三件容易混淆的事分开：上游明确拒绝（回它的 OAuth error 码，如
+`invalid_grant` / `invalid_client` / `invalid_target`）、我们连不上/被中断（`network_timeout` /
+`network_aborted` / `network_error`）、上游应答不成形（`unexpected_response`）。
+细节码经 `loginFailureDetailSchema`（`^[a-z_]{1,32}$`）白名单收口，**上游响应体与异常消息一律不回传**
+（可能裹着 token）。`account_ms` 是**失败那一步自己**的耗时，用来回答「是不是我们等上游等到超时」：
+配上 `network_timeout` 就是撞上了 `IDENTITY_TIMEOUT_MS`（3 秒），配上 `invalid_grant` 则与超时无关
+（见 `docs/plans/PLAN-20260916220942.md`）。
+
+⚠ 实测（2026-09-16）：账号系统的发现文档**单次就要 2–4 秒**（本机直连 2.4s，经 service binding 同样），
+而登录 + 回调会**串行调用上游 4 次**（发现文档 → 换 token → JWKS → userinfo）——
+所以「点了登录十几秒才回来」是链路本身慢，不是故障。**登录流程因此单独给了 10 秒预算**
+（`oauth.ts::AUTH_FLOW_TIMEOUT_MS`：单次上限 10 秒 + 整条流程共享同一个 deadline）；
+**会话 / 刷新链路仍是 3 秒** —— 那个值被租约不变量绑着，调大会让并发刷新互相踩、
+上游撤销整个 token family（断言见 `apps/api/tests/oauth-session.test.ts`，见
+`docs/plans/PLAN-20260916220942.md` 修订 1）。
 
 ## 本地数据与同步
 
