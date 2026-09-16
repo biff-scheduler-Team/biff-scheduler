@@ -5,7 +5,17 @@
 > API `biff-scheduler` + 静态资源 `biff-scheduler-web`)+ React / Router / Spectrum S2 + Vite + TS
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-16(**活动场次补中文名** —— Actors' House / Master Class / Cine Class / Special Talk
+> 最后更新:2026-09-16(**P&I 记者 / 业界场录入 + 显示开关** —— 册子排期页 BD(Indieplus)/ CGV 7
+> 两列共 37 场原先整批跳过(不印场次编号、不对外售票),现单独收口到 `apps/web/public/pni.json`,
+> **公开 `schedule.json` / `venues.json` 一个字节不变**(哨兵照旧);前端在 catalog 里带一份,
+> 默认**不显示**,只在「设置 → 场次范围 → 显示 P&I 场次」勾选后才并进排期表 / 片单 / 行程 / 冲突 / 导出。
+> 见 `PLAN-20260916182254`;
+> 上一轮(**讨论区页头可直接按场次发帖** —— `/discussions` 原先只有「定位条发帖」与
+> 「点格子的『进入讨论』」两个入口,两个都要求场次已知(一个来自 `focus`、一个要求那一场已有帖子);
+> 现补**常驻发帖口**:页头按钮内联展开场次检索(官方编号 / 片名),选中后开**同一个**
+> `ScreeningDiscussionDialog`,发完立刻落方格墙首位。检索口径提取为 `app/schedule-search.ts`,
+> 与「添加转票场次」共用一份;选择区刻意不做成弹层(两层 modal 交接的焦点归还不可靠)。见 `PLAN-20260916154255`;
+> 上一轮(**活动场次补中文名** —— Actors' House / Master Class / Cine Class / Special Talk
 > 共 17 场原先只有英文名(这批在影片目录里没有条目,抓取脚本的目录反查必然落空,`title_zh` 恒空),
 > 现由人工表 `data/event-titles-2026.json` 补译名,`scrape_biff_web.py --event-titles` 与
 > `tools/apply_event_titles.py` 共用同一份匹配(不各写一套);配套把 `filmNodeKey` 的 `sched:` 口径改为

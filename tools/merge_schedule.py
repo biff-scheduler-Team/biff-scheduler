@@ -41,6 +41,13 @@
         --films apps/web/public/films.json \\
         --out apps/web/public/schedule.json --venues-out apps/web/public/venues.json
 
+P&I(Press & Industry,记者 / 业界场)走**单独一份产物** `apps/web/public/pni.json`:
+前端「设置 → 显示 P&I 场次」勾选后才并进排期表,公开 `schedule.json` / `venues.json` 不含它们。
+它是册子产物(`extract_schedule.py --pni-out`)的收尾 —— 只做一件事:补 `title_zh`
+(复用本文件的 `build_title_index`,与 `data.ts::buildFilmIndex` 同口径,不另写一份)。
+
+    python tools/merge_schedule.py ... --pni-in /tmp/pni-raw.json --pni-out apps/web/public/pni.json
+
 冲突与统计一律打到 stderr;`--strict` 下出现**未登记的字段冲突**即退出码 1(CI 用)。
 """
 
@@ -286,6 +293,8 @@ def main() -> int:
     ap.add_argument("--films", required=True, help="films.json(补 title_zh 用)")
     ap.add_argument("--out", default="schedule.json")
     ap.add_argument("--venues-out", default=None)
+    ap.add_argument("--pni-in", default=None, help="extract_schedule.py --pni-out 的产物")
+    ap.add_argument("--pni-out", default=None, help="P&I 上线产物(如 apps/web/public/pni.json)")
     ap.add_argument("--strict", action="store_true", help="有未登记冲突时退出码 1")
     args = ap.parse_args()
 
@@ -310,6 +319,18 @@ def main() -> int:
     log("SANITY", f"每日场次: {dict(sorted(per_day.items()))}")
     log("SANITY", f"场馆场次: {dict(Counter(s['venue_id'] for s in merged).most_common())}")
 
+    # 幂等重放**不前进版本号**:`festival.generated_at` 是**数据版本** —— 前端拿
+    # `changelog.json` 里那个同名字段比对「用户已确认过的那一版」。重跑一次却没产生任何
+    # 场次差异时翻新版本号,会让每个用户都看到一条「数据已更新」的假提示,而 changelog 侧
+    # 又算不出差异(两版逐条相同)→ 产物自相矛盾,`apps/web/tests/catalogue-data.test.ts` 会红。
+    # 判据只看 `screenings`(note 是文案,改了照写)。
+    generated_at = datetime.now().astimezone().isoformat(timespec="seconds")
+    if Path(args.out).exists():
+        prev = load_json(args.out)
+        if prev.get("screenings") == merged:
+            generated_at = prev.get("festival", {}).get("generated_at", generated_at)
+            log("INFO", "场次与现有产物逐条相同 → 沿用原 generated_at(幂等重放,不刷版本号)")
+
     schedule = {
         "festival": {
             **web_file["festival"],
@@ -324,7 +345,7 @@ def main() -> int:
                 "开闭幕式与获奖片重映的片长以册子印的为准(官网无详情页时是 120min 兜底值);"
                 "两源会持续变动,以开映前官方页面为准。"
             ),
-            "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "generated_at": generated_at,
         },
         "screenings": merged,
     }
@@ -337,6 +358,29 @@ def main() -> int:
                               {s["venue_id"] for s in merged})
         write_json(args.venues_out, {"venues": venues})
         log("OK", f"写出 {args.venues_out}:{len(venues)} 场馆")
+
+    if args.pni_out:
+        # P&I 收尾 —— 只补 `title_zh`(册子产物没有官网那一侧可合成,其余字段一律照原样)。
+        if not args.pni_in:
+            log("FAIL", "--pni-out 必须配 --pni-in(extract_schedule.py 的 P&I 产物)")
+            return 1
+        if args.strict and any(f["venue_id"] in ("bd", "c7") for f in merged):
+            log("FAIL", "P&I 场次混进了公开排期(BD / C7 不该出现在 schedule.json)")
+            return 1
+        pni_file = load_json(args.pni_in)
+        pni_rows = pni_file["screenings"]
+        filled = 0
+        for row in pni_rows:
+            zh = title_index.get(norm_title(row.get("title_en", "")), "")
+            if zh:
+                row["title_zh"] = zh
+                filled += 1
+        write_json(args.pni_out, {
+            "festival": pni_file["festival"],
+            "screenings": pni_rows,
+            "venues": pni_file["venues"],
+        })
+        log("OK", f"写出 {args.pni_out}:{len(pni_rows)} 场 P&I(title_zh 补齐 {filled} 条)")
 
     if stats["unregistered_conflict"] and args.strict:
         return 1

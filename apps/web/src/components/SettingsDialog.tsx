@@ -68,6 +68,7 @@ export function SettingsDialog() {
     transitMin: store.settings.transitMin,
     gvTalkOn: store.settings.gvTalkOn,
     gvTalkMin: store.settings.gvTalkMin,
+    showPni: store.settings.showPni,
     theme: store.settings.theme ?? "system",
   }));
   const [themeChanged, setThemeChanged] = useState(false);
@@ -94,6 +95,19 @@ export function SettingsDialog() {
                 value={draft.transitMin}
                 onChange={(n) => setDraft((v) => ({ ...v, transitMin: n }))}
               />
+              <h2>场次范围</h2>
+              <Checkbox
+                isSelected={draft.showPni}
+                onChange={(on) => setDraft((v) => ({ ...v, showPni: on }))}
+              >
+                显示 P&amp;I 场次
+              </Checkbox>
+              <p className="muted">
+                P&amp;I(Press &amp; Industry)是记者 / 业界场:官方册子排期页的
+                BD(Indieplus)/ CGV 7 两列。官方不为这两列印场次编号、官网排期页也不列,
+                且不对外售票。勾选后它们会与普通场次一起出现在排片表 / 片单 / 行程里
+                (编号形如 PI-09-01,是本工具的内部键,不是官方编号)。
+              </p>
               <h2>GV 映后谈</h2>
               <Checkbox
                 isSelected={draft.gvTalkOn}
@@ -130,6 +144,7 @@ export function SettingsDialog() {
                     transitMin: 0,
                     gvTalkOn: true,
                     gvTalkMin: 25,
+                    showPni: false,
                     theme: "system",
                   });
                 }}
@@ -163,6 +178,7 @@ export function SettingsDialog() {
                   gvTalkMin: Number.isFinite(draft.gvTalkMin)
                     ? Math.max(0, Math.round(draft.gvTalkMin))
                     : 0,
+                  showPni: draft.showPni,
                 };
                 if (themeChanged) patch.theme = draft.theme;
                 setSettings(patch);

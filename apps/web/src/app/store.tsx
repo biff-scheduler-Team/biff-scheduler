@@ -37,6 +37,7 @@ import { loadScreeningCounts } from "../screening-counts";
 import { computeConflicts } from "../conflict";
 import { buildPlanSet } from "../plans";
 import { effEndMin, talkOnOf } from "../gv";
+import { withPni } from "../pni";
 import { filmNodeKey, hmsToMin } from "../util";
 import { buildFilms, soleShowIndex } from "./model";
 import type { Catalog } from "../types";
@@ -63,6 +64,7 @@ export function hydrateStorage(cat: Catalog) {
     transitMin: 0,
     gvTalkOn: true,
     gvTalkMin: 25,
+    showPni: false,
   };
   loadSettings();
   loadGvTalk();
@@ -110,7 +112,11 @@ export function bootstrap(): Promise<Catalog> {
   return pending;
 }
 
-function derive(cat: Catalog) {
+function derive(base: Catalog) {
+  // P&I(Press & Industry)记者 / 业界场**默认不显示**;设置里勾选「显示 P&I 场次」后才并进来。
+  // 合并点只此一处:冲突 / 网格 / 片单 / 行程 / 导出 / 抢票读的都是这份 catalog,自动一致 ——
+  // 不必在每个视图里各判一次「这场算不算 P&I」(那就是第二份口径)。纯函数,见 `pni.ts`。
+  const cat = store.settings.showPni ? withPni(base) : base;
   const codes = allCodes().filter((c) => cat.byCode.has(c));
   const keyOf = (code: string) => {
     const s = cat.byCode.get(code);

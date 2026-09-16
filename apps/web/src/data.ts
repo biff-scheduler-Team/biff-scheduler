@@ -1,6 +1,6 @@
 // 静态数据加载:schedule.json / venues.json / films.json / douban.json(随部署走静态资源)
 
-import type { Catalog, FilmItem, FilmsFile, Mapping, Screening, Venue, VenuesFile, ScheduleFile } from "./types";
+import type { Catalog, FilmItem, FilmsFile, Mapping, PniFile, Screening, Venue, VenuesFile, ScheduleFile } from "./types";
 import { hmsToMin, minToHms } from "./util";
 
 async function loadJson<T>(url: string): Promise<T | null> {
@@ -46,11 +46,14 @@ export async function loadDoubanMappings(): Promise<Mapping[]> {
 }
 
 export async function loadCatalog(): Promise<Catalog> {
-  // 三个只读 JSON 互不依赖 → 并行拉取(旧版串行 await 白等两个 RTT)
-  const [schedule, venuesFile, filmsFile] = await Promise.all([
+  // 四个只读 JSON 互不依赖 → 并行拉取(旧版串行 await 白等两个 RTT)
+  const [schedule, venuesFile, filmsFile, pniFile] = await Promise.all([
     loadJson<ScheduleFile>("/schedule.json"),
     loadJson<VenuesFile>("/venues.json"),
     loadJson<FilmsFile>("/films.json"),
+    // P&I(记者 / 业界场)单独一份 —— 旧部署缺这个文件时静默降级(与 films.json 同口径)。
+    // ⚠ 这里只是**载入**,不是显示:是否并进排期由 `settings.showPni` 决定,见 `pni.ts`。
+    loadJson<PniFile>("/pni.json"),
   ]);
 
   // 结构守卫:文件存在但字段缺失(空对象 / 换版漏字段)时**显式报错**,
@@ -61,10 +64,16 @@ export async function loadCatalog(): Promise<Catalog> {
   const venueById = new Map<string, Venue>();
   for (const v of venuesFile.venues) venueById.set(v.id, v);
 
+  const pniScreenings = pniFile?.screenings ?? [];
+
+  // ⚠ 下面两条归一化对 **P&I 与公开场次是同一套** —— 所以先把两批拼起来跑完再按原样拆回去
+  //   (`pniScreenings` 是同一批对象引用)。分开各写一遍就是第二份实现,迟早漂。
+  const allScreenings = [...schedule.screenings, ...pniScreenings];
+
   // 跨午夜场唯一归一化闸门 —— 数据端一律 24+ 时制(end_time ≥ "24:00",如 23:59 场 → "29:35")。
   // 前端全部算术(轴界 / 卡片宽度 / 排序 / 整点筛选 / 冲突 / ICS 进位)都建立在 end > start 上;
   // 这里原地补 24h,既兜解析器漏改,也让手改 / 旧版 JSON 自愈(所有消费方读的是同一批对象)。
-  for (const s of schedule.screenings) {
+  for (const s of allScreenings) {
     const st = hmsToMin(s.start_time);
     const en = hmsToMin(s.end_time);
     if (!Number.isFinite(st) || !Number.isFinite(en)) continue; // 脏数据:不写回 "NaN:NaN",交由下游原样暴露
@@ -74,7 +83,7 @@ export async function loadCatalog(): Promise<Catalog> {
   // 原册有一部分场次**只印韩文片名**(2025 版 M1–M4 南浦洞共 41 场),title_en 为空 →
   // 片名(displayTitle 的**英文位**就是 title_en,缺则整条空白)会丢。原地用 title_kr 兜底,
   // 单一入口,不动 util / library 各自的取值链(它们读的是同一批对象)。
-  for (const s of schedule.screenings) {
+  for (const s of allScreenings) {
     if (!s.title_en) s.title_en = s.title_kr;
   }
 
@@ -86,7 +95,17 @@ export async function loadCatalog(): Promise<Catalog> {
 
   const films = filmsFile?.films ?? [];
 
-  return { schedule, dates, venues: venuesFile.venues, venueById, byCode, films, ...buildFilmIndex(films) };
+  return {
+    schedule,
+    dates,
+    venues: venuesFile.venues,
+    venueById,
+    byCode,
+    pniScreenings,
+    pniVenues: pniFile?.venues ?? [],
+    films,
+    ...buildFilmIndex(films),
+  };
 }
 
 /** 影片目录索引:`filmNodeKey` / `filmInfoOf` / `ratingOf` / AI 打包都在按片名线性扫目录

@@ -1,6 +1,15 @@
 import type {Screening} from './types';
 
 export function codeTip(code: string): string {
+  // P&I 场次没有官方编号(`PI-` 是本工具内部键)—— 不能套用下面那句
+  // 「官方日程表里的编号」,那会让用户拿着一个册子上找不到的号去对表。
+  if (code.startsWith("PI-")) {
+    return [
+      `P&I 场次 ${code}`,
+      "P&I(Press & Industry)记者 / 业界场 —— 不对外售票",
+      "官方对这两列不印场次编号,此号仅本工具内部使用",
+    ].join("\n");
+  }
   return [
     `放映 CODE ${code}`,
     "官方日程表里本场放映的场次编号",
@@ -20,6 +29,7 @@ const ABBR_LINES: [string, string][] = [
   ["Event", "联动活动场 — 官方 연계이벤트(2025 例:907 라이브 드로잉 现场作画)"],
   ["묶", "Batch Screening 连场放映"],
   ["联映", "Midnight Passion 联映块 — 一张票连看 2~3 部(2025 共 4 块 / 10 部);格子只印块名,成员片名见详情弹层;成员片的介绍页会把该块 CODE 列为自己的一场"],
+  ["P&I", "Press & Industry 记者 / 业界场 — 官方册子排期页的 BD(Indieplus)/ CGV 7 两列,不印场次编号、不对外售票;默认不显示,可在「设置 → 场次范围」打开"],
 ];
 
 export function abbrTooltip(): string {
@@ -121,6 +131,20 @@ export const BADGE_DEFS: BadgeDef[] = [
       "格子里只印块名(如 Midnight Passion 1),块内成员片名见详情弹层\n" +
       "注意:成员片的介绍页会把该块 CODE 列为自己的一场 —— 那一条就是这张块票",
     cls: "px-1 py-px text-on-brand bg-ev-teal-solid",
+  },
+  // ---- P&I(记者 / 业界场)----
+  // 由解析器在 tags 里直出 `pni`(见 tools/extract_schedule.py),只在设置勾选「显示 P&I 场次」
+  // 后才可能出现在页面上 —— 所以这一枚的首要作用是**提示它不是普通场次**(不对外售票)。
+  // 虚线描边 + 常规墨色:与 event 的虚线(青绿)错开色相,也不与 GV / 字幕的实心块抢眼。
+  {
+    key: "pni",
+    label: "P&I",
+    title:
+      "P&I · Press & Industry 记者 / 业界场\n" +
+      "官方册子排期页的 BD(Indieplus)/ CGV 7 两列 —— 官方不印场次编号,官网排期页也不列\n" +
+      "不对外售票:入场 / 购票规则与普通场次不同,以官方说明为准\n" +
+      "默认不显示,可在「设置 → 场次范围」关掉",
+    cls: "px-[3px] py-px text-ink bg-card border border-ink border-dashed",
   },
 ];
 

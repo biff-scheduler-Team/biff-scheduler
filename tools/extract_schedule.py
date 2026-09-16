@@ -74,6 +74,11 @@
    ⚠ 2025 版曾用 `X<页号2位><序号2位>`(如 `X0901`)给无编号场次兜底合成 code,
    结果 37 场 P&I 混进了公开排期。**别再那样做** —— 合成号会伪装成官方号,
    用户在册子上永远找不到它。现在跳过并计入 `stats['skipped_no_code']`。
+   **例外(用户需求,2026-09-16)**:`--pni-out <path>` 把这两列**单独收口**到另一个文件
+   (线上是 `apps/web/public/pni.json`,前端「设置 → 显示 P&I 场次」勾选后才显示),
+   公开产物(`schedule.json` / `venues.json`)**仍然不含它们** —— 上面那三个判据不变。
+   此时 code 取 `PI-<册页2位>-<页内序2位>`(如 `PI-09-01`):`PI-` 前缀一眼可辨非官方,
+   带页号保证全局唯一;仍然**禁止**回退成 `X<页><序>` 那种伪装官方号的形态。
 10. **场次特性 token 不止 GV**。实测 META 里出现:`GV`(347)、`Talk`(6)、
    `Commentary`(3)、`Event`(1)。`GV` 走 `is_gv`;其余按原义小写进
    `tags`(`talk` / `commentary` / `event`)。前端 `badges.ts` 只渲染已注册
@@ -235,6 +240,13 @@ TOKEN_MERGE_GAP = 6.5      # 拆开的同一数字间距 ≤5.2;正常 token 间
 HEADER_Y = (556.0, 580.0)  # 底部表头条(场馆代码所在 y 带)
 DAY_Y = (540.0, 585.0)     # 日标签 y 带
 BODY_Y_MAX = 535.0         # 排期正文的 y 上限(其下是表头)
+
+# P&I(Press & Industry)场次所在的两列 —— 册子排期页把 BD(Indieplus)/ C7(CGV 7)整列
+# 归在粉底标题 `P&I(Press & Industry) Screenings` 下。
+# ⚠ 「无编号」只是**必要条件**,判据是**列归属**:册子里另有一条无编号场次
+# (BAFA 2025 毕展,印刷页 p16),它不在这两列,且官网另有编号(线上记 `X01`)——
+# 若也按 P&I 收下来,勾选开关时会与公开排期里的同一条**重复**。
+PNI_VENUES = frozenset({"BD", "C7"})
 
 # META 里的「特性 token」→ tags 键(GV 单独走 is_gv,不在此表)
 META_FLAG_TAGS = {
@@ -443,15 +455,28 @@ def parse_page(page: pymupdf.Page, page_no: int, args, stats: Counter) -> list[d
         if not title_en:
             stats["no_title_en"] += 1
 
-        if not meta["code"]:
-            # 陷阱 9:不印编号 = 非公开场次(2026 版 = P&I 的 BD / C7 两列),跳过。
-            stats["skipped_no_code"] += 1
-            log("INFO", f"p{page_no} 无编号(非公开场次,跳过) @x={m['x0']:.0f}: "
-                        f"{title_en or title_kr} {meta['start_min']}")
-            continue
-        code = meta["code"]
-
         vcode = nearest_venue(venue_codes, m["x0"])
+
+        if not meta["code"]:
+            # 陷阱 9:不印编号 = 非公开场次。2026 册子里这类格子只有两种:
+            #   ① P&I 的 BD / C7 两列(记者 / 业界场,不对外售票);
+            #   ② BAFA 2025 毕展(p16 一条)—— 不在这两列,且公开排期里另有官网编号那条(`X01`)。
+            # 所以要按**列归属**(PNI_VENUES)判,而不是「有没有编号」。
+            # 默认整批跳过(公开产物不含 P&I);只有显式给了 `--pni-out` 才把 ① 收成单列一份。
+            if vcode not in PNI_VENUES or not args.pni_out:
+                stats["skipped_no_code"] += 1
+                log("INFO", f"p{page_no} 无编号(非 P&I 列 / 未给 --pni-out,跳过) @x={m['x0']:.0f}: "
+                            f"{title_en or title_kr} {meta['start_min']} {vcode}")
+                continue
+            no_code_seq += 1
+            code = f"PI-{page_no:02d}-{no_code_seq:02d}"
+            is_pni = True
+            stats["pni"] += 1
+            log("INFO", f"p{page_no} P&I 场次 {code} @x={m['x0']:.0f}: "
+                        f"{title_en or title_kr} {meta['start']} {vcode}")
+        else:
+            code = meta["code"]
+            is_pni = False
 
         # end_time:官方印的 end 一般 = start + 片长;GV 场次再补一段映后占用。
         # 陷阱 11:少数「特别场」(如 002 闭幕式+获奖作联映、BAFA 毕展)册子里
@@ -478,7 +503,11 @@ def parse_page(page: pymupdf.Page, page_no: int, args, stats: Counter) -> list[d
                 f"p{page_no} code={code} 跨午夜 {meta['start']}–"
                 f"{end_min // 60:02d}:{end_min % 60:02d}(24+ 时制)")
 
-        rows.append({
+        tags = tags_for(title_en, title_kr, notes, meta["flags"], TITLE_TAGS)
+        if is_pni:
+            # 前端徽章按 tags 直出(`apps/web/src/badges.ts` 的注册表);`pni` 另作逻辑判定字段。
+            tags.append("pni")
+        row = {
             "code": code,
             "title_en": title_en,
             "title_kr": title_kr,
@@ -491,7 +520,7 @@ def parse_page(page: pymupdf.Page, page_no: int, args, stats: Counter) -> list[d
             "venue_id": (vcode or "unknown").lower(),
             "venue_display": VENUE_NAME.get(vcode, ("", "", "", ""))[0] if vcode else "",
             "is_gv": meta["gv"],
-            "tags": tags_for(title_en, title_kr, notes, meta["flags"], TITLE_TAGS),
+            "tags": tags,
             "rating": meta["rating"],
             # 空数组落 null:与前端 `subs?: SubsKey[]` 的可选语义一致(不用 [] 表示未标注)
             "subs": meta["subs"] or None,
@@ -499,7 +528,12 @@ def parse_page(page: pymupdf.Page, page_no: int, args, stats: Counter) -> list[d
             "_page": page_no,
             "_wd": dl["wd"],
             "_extra": meta["extra"],
-        })
+        }
+        if is_pni:
+            # ⚠ 只在 P&I 场次上写这个键 —— 其余 800+ 行保持逐字节不变,
+            # 否则 public/schedule.json 会多出几百行 `"pni": false` 的纯噪声 diff。
+            row["pni"] = True
+        rows.append(row)
         if meta["extra"]:
             # 陷阱 12 修完后,2025 版这里应为 0(原 4 个 = KE KK 的第二值)。
             # 非 0 = META 里有解析器没认领的 token(新特性 / 新标识 / 版式变化)
@@ -541,6 +575,8 @@ def main() -> int:
     ap.add_argument("--schedule-pages", default=SCHEDULE_PAGES_DEFAULT)
     ap.add_argument("--out", default="schedule.json")
     ap.add_argument("--venues-out", default=None)
+    ap.add_argument("--pni-out", default=None,
+                    help="另写一份 P&I(BD / C7 两列)场次 + 其场馆;不给则整批跳过(默认,公开产物口径)")
     ap.add_argument("--gv-add-min", type=int, default=25)
     ap.add_argument("--dump-page", type=int, default=None, help="只打印该页解析结果,不写文件")
     ap.add_argument("--festival-name", default=None)
@@ -559,8 +595,12 @@ def main() -> int:
 
     log("INFO", f"{Path(args.pdf).name}: {doc.page_count} 页,扫描 p{pages[0]}-p{pages[-1]}")
     all_rows: list[dict] = []
+    pni_rows: list[dict] = []
     for pno in pages:
         rows = parse_page(doc[pno - 1], pno, args, stats)
+        # P&I 场次**不进公开产物** —— 在这里就分流,免得下游(merge_schedule.py)还要记得滤一遍。
+        pni_rows += [r for r in rows if r.get("pni")]
+        rows = [r for r in rows if not r.get("pni")]
         all_rows += rows
         days = sorted({r["_wd"] for r in rows})
         print(f"  p{pno}: {len(rows):3d} 场  days={days}", file=sys.stderr)
@@ -612,6 +652,30 @@ def main() -> int:
         write_json(args.venues_out, {"venues": venues})
         log("OK", f"写出 {args.venues_out}:{len(venues)} 场馆")
 
+    if args.pni_out:
+        # P&I(Press & Industry)单独一份:场次 + 它用到的两厅(BD / C7)。
+        # 线上是 apps/web/public/pni.json;前端「设置 → 显示 P&I 场次」勾选后才并进 catalog,
+        # 公开 schedule.json / venues.json **不含**它们(哨兵见 apps/web/tests/catalogue-data.test.ts)。
+        dup_pni = check_code_unique(pni_rows)
+        if dup_pni:
+            log("SANITY", f"⚠ P&I code 重复 {len(dup_pni)} 个: {dup_pni[:10]}")
+        pni_codes = {r["venue_id"].upper() for r in pni_rows if r["venue_id"] != "unknown"}
+        write_json(args.pni_out, {
+            "festival": {
+                **schedule["festival"],
+                "note": ("P&I(Press & Industry)记者 / 业界场 —— 册子排期页 BD(BCC Indieplus)/ "
+                         "C7(CGV Centrum City 7) 两列,不印场次编号、不对外售票,官网排期页不列。"
+                         "code 形如 `PI-<册页2位>-<页内序2位>`,是**非官方编号**,只作本工具内部键;"
+                         "前端「设置 → 显示 P&I 场次」勾选后才并进排期表。"),
+            },
+            "screenings": [
+                strip_internal(r)
+                for r in sorted(pni_rows, key=lambda r: (r["date"], r["start_time"], r["code"]))
+            ],
+            "venues": build_venues(pni_codes),
+        })
+        log("OK", f"写出 {args.pni_out}:{len(pni_rows)} 场 P&I / {len(pni_codes)} 厅 {sorted(pni_codes)}")
+
     per_day = Counter(r["date"] for r in all_rows)
     per_venue = Counter(r["venue_id"] for r in all_rows)
     log("SANITY", f"每日场次: {dict(sorted(per_day.items()))}")
@@ -637,6 +701,8 @@ def main() -> int:
                   f"  多值场次: {len(subs_multi)} {subs_multi}")
     log("SANITY", f"GV 场次: {sum(1 for r in all_rows if r['is_gv'])} / {len(all_rows)}")
     log("SANITY", f"tags 分布: {dict(Counter(t for r in all_rows for t in r['tags']))}")
+    log("SANITY", f"P&I 场次: {len(pni_rows)}(未给 --pni-out 时恒为 0)"
+                  f"  跳过无编号: {stats['skipped_no_code']}")
     log("SANITY", f"统计: {dict(stats)}")
     return 0
 

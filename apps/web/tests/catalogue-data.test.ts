@@ -242,3 +242,38 @@ describe("活动场次的中文名(人工活动译名表)", () => {
     expect(clash).toEqual([]);
   });
 });
+
+// P&I(Press & Industry)记者 / 业界场(2026-09-16 立,`PLAN-20260916182254`):
+// 册子排期页的 BD(BCC Indieplus)/ C7(CGV Centum City 7)两列,官方**不印场次编号**、
+// 不对外售票,官网排期页与影片介绍页也都不列它们 —— 所以**不进公开产物**,
+// 单独一份 `public/pni.json`,默认不显示(设置里勾选「显示 P&I 场次」才并进排期表)。
+//
+// 立此哨兵的原因:把 P&I 混回 `schedule.json` 是**静默失效型** —— 用户会在公开排片表里
+// 看到根本买不到票的场次,而没有任何报错;反过来 `pni.json` 整个消失也只是「开关点了没反应」。
+describe("P&I(记者 / 业界场)单独一份产物", () => {
+  const pni = JSON.parse(read("public/pni.json")) as {
+    screenings: (Screening & { pni?: boolean })[];
+    venues: Venue[];
+  };
+
+  it("公开 schedule.json / venues.json 一个字节都不含 P&I", () => {
+    expect(screenings.filter((s) => s.venue_id === "bd" || s.venue_id === "c7")).toEqual([]);
+    expect(screenings.filter((s) => s.code.startsWith("PI-"))).toEqual([]);
+    expect(venues.map((v) => v.id)).not.toContain("bd");
+    expect(venues.map((v) => v.id)).not.toContain("c7");
+  });
+
+  it("pni.json 有 37 场,只在 BD / C7 两列,编号形如 PI-<册页2位>-<序2位>", () => {
+    expect(pni.screenings).toHaveLength(37);
+    expect([...new Set(pni.screenings.map((s) => s.venue_id))].sort()).toEqual(["bd", "c7"]);
+    expect(pni.screenings.filter((s) => !/^PI-\d{2}-\d{2}$/.test(s.code))).toEqual([]);
+    // 编号是**非官方**的(册子上不印):绝不能撞上公开排期的任何 code
+    const publicCodes = new Set(screenings.map((s) => s.code));
+    expect(pni.screenings.filter((s) => publicCodes.has(s.code))).toEqual([]);
+  });
+
+  it("pni.json 自带它用到的两个厅,且场次都打 pni 标记(前端勾选后要能画出泳道)", () => {
+    expect(pni.venues.map((v) => v.id).sort()).toEqual(["bd", "c7"]);
+    expect(pni.screenings.every((s) => s.pni === true)).toBe(true);
+  });
+});

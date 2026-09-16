@@ -15,6 +15,9 @@ const catalog: Catalog = {
   dates: schedule.festival.dates,
   byCode: new Map(schedule.screenings.map((show) => [show.code, show])),
   venueById: new Map(venues.map((venue) => [venue.id, venue])),
+  // P&I(记者 / 业界场)留空 = 线上**未勾选**时的口径(它们单独存在 public/pni.json,不混进公开产物)
+  pniScreenings: [],
+  pniVenues: [],
   ...buildFilmIndex(films),
 };
 const nodes = new Map(buildFilms(catalog, new Map()).map((film) => [film.key, film]));

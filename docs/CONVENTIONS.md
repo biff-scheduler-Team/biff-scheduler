@@ -691,6 +691,21 @@
   (对比同页 MEGABOX 免费场**印了** 901–942)。`extract_schedule.py` 对无编号格子直接跳过
   (`stats['skipped_no_code']` = 39:37 P&I + Forum BIFF 论坛 + BAFA 毕展),**不再合成 `X<页><序>`** ——
   合成号会伪装成官方号,用户在册子上永远找不到它。哨兵见 `apps/web/tests/catalogue-data.test.ts`。
+- **★ P&I 场次:录入但不默认显示**(2026-09-16,`PLAN-20260916182254`):
+  `extract_schedule.py` 新增 `--pni-out <path>`(**不给路径时与上一条的跳过行为逐字节相同**),
+  把 BD / CGV 7 两列收口到独立产物 `apps/web/public/pni.json`(带 `venues`),
+  **公开 `schedule.json` / `venues.json` 仍不含它们**(上一条哨兵不变,另加「pni.json 自带两厅」三条)。
+  前端 `data.ts` 载入为 `Catalog.pniScreenings / pniVenues`,**默认不进** `screenings` / `byCode` / `venues`;
+  只有设置勾选 `showPni` 后才由 `pni.ts::withPni()`(纯函数)在 `app/store.tsx::derive()` **入口**合并 ——
+  合并点只此一处,冲突 / 网格 / 片单 / 行程 / 导出 / 抢票读的都是同一份 catalog,不必各判一次。
+  ⚠ **判据是列归属**(`PNI_VENUES = {BD, C7}`)而不是「有没有编号」:2026 届另有 2 条**无编号但不在 P&I 列**
+  的场次(Forum BIFF 论坛 @ BCM、BAFA 毕展 @ B2),它们在公开排期里**已有**(官网另有编号那条),
+  按「无编号」收就会与公开产物**重复**。
+  ⚠ 合成号形态改为 `PI-<册页2位>-<序2位>`:仍**不是官方编号**,但 `PI-` 前缀一眼可辨、带页号保证全局唯一
+  —— 依旧**禁止**退回 `X<页><序>`。
+  ⚠ 解析 2026 册子必须 `--year 2026 --month 10`(第 31 届档期 = 10/06–10/15,册子只印日号 6..15;传 9 会整批错位)。
+  ⚠ `merge_schedule.py` 在「合并结果与现有产物逐条相同」时**沿用原 `generated_at`** —— 幂等重放不刷版本号,
+  否则 `changelog.json` 的版本号与排期对不上(`catalogue-data.test.ts` 会红)。
   口径(逐条都有理由,不靠猜):**骨架 = 官网**(活数据:改时间 / 加场 / `title_zh`);
   册子只补「官网完全没有的场次」+ 册页号;共有 code 一律保留官网值,只有
   `CATALOGUE_WINS_DURATION` 里**显式登记**的例外取册子(002 / 731–735:官网无详情页 → 120′ 兜底,
