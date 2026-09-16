@@ -1,6 +1,7 @@
 // 「抢票」页 + 分享文案的顺位 / 开票批次选项(2026-09-15,PLAN-20260915234414)。
 // 断言全部走 DOM 计数 / 文本(DOM token),不看截图。
-// 覆盖:① 导航顺序(抢票夹在「我的行程」与「建议」之间);② 行程场次按开票批次分组;
+// 覆盖:① 导航顺序(抢票夹在「我的行程」与「建议」之间);② 行程场次按开票批次分组,
+//      且每场只是**一行清单**(CODE / 时间 / 日期 / 顺位,没有行程页那套场次卡 —— 2026-09-16,PLAN-20260916005951);
 //      ③ 空行程的空态;④ 导出弹层两个勾选框 → 文案出现批次节头 / 顺位 / 备选行。
 //
 // ⚠ 用真实排期数据里的**真实重叠对**:070(10/8 20:00–22:25 @bt 露天,第 1 批)
@@ -45,6 +46,17 @@ test("行程场次按开票批次分成两批,露天场落第 1 批", async ({ p
   await expect(second.locator("[data-screening]")).toHaveCount(1);
   await expect(second.locator('[data-screening="126"]')).toBeVisible();
   await expect(page.locator(".summary-strip")).toContainText("3 场待抢");
+
+  // 每场只有**一行清单**:CODE + 时间 + 日期 + 片名 + 影院,顺位沿用行程冲突组的口径
+  await expect(page.locator(".rush-row")).toHaveCount(3);
+  await expect(first.locator('[data-screening="070"]')).toContainText("070");
+  await expect(first.locator('[data-screening="070"]')).toContainText("OCT 8");
+  await expect(first.locator('[data-screening="070"]')).toContainText("20:00–22:25");
+  // 126(10/8 18:00)是这一冲突组的组内第 1 顺位 → 「主选」;070 是第 2 → 「备选②」
+  await expect(second.locator('[data-screening="126"]')).toContainText("主选");
+  await expect(first.locator('[data-screening="070"]')).toContainText("备选②");
+  // 行程页那套场次卡(海报 / 豆瓣 / 操作行)不再出现在抢票页 —— 这正是本轮要去掉的重复
+  await expect(first.locator(".screening-poster, .screening-card")).toHaveCount(0);
 });
 
 test("行程为空时给空态,不渲染批次卡", async ({ page }) => {

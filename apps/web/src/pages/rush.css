@@ -1,0 +1,73 @@
+/* 「抢票」页的紧凑清单样式(2026-09-16,PLAN-20260916005951)。
+ *
+ * ⚠ 刻意**独立成文件**而不是追加进 `style.css` / `agenda-parity.css`:那两个命中 TEST-MAP 的 allOn
+ *   (全局样式),改它们会触发三浏览器全量 E2E(5–9 min)。这里只复用既有 token,不新增视觉语言 ——
+ *   与 `components/screening-social.css` 同一处置口径。 */
+
+/* 批头第二行:倒计时 + 场次计数(与摘要条同款小字,横排自动折行) */
+.rush-batch-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 一栏一场:行与行之间只留一条细线,不用卡片(卡片是行程页的视觉语言) */
+.rush-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+
+.rush-row {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.rush-row:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.rush-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+
+.rush-main time {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.rush-title {
+  /* 片名吃掉剩余宽度,窄屏折到第二行(CODE / 时间 / 日期始终保持同一行) */
+  flex: 1 1 16ch;
+  min-width: 0;
+}
+
+.rush-date,
+.rush-venue,
+.rush-rank {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 顺位 1 = 该冲突组的首选,给它品牌色;备选保持 muted(语义强弱递减,与票务三态同一套读法) */
+.rush-rank[data-rank="1"] {
+  color: var(--brand);
+  font-weight: 650;
+}
+
+/* 每行都有票务三态,「票务」二字是重复噪声 —— 省略它(外层 role=group 已带 aria-label) */
+.rush-row .ticket-control {
+  margin-top: 6px;
+}
+
+.rush-row .ticket-control-label {
+  display: none;
+}
