@@ -2,11 +2,19 @@ import { REACTION_EMOJIS } from "@biff/contracts/reactions";
 import { discussionCategoryLabel } from "@biff/contracts/screening";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
+import { matchScreenings } from "../app/schedule-search";
 import { useCatalog } from "../app/store";
 import { ScreeningDiscussionDialog } from "../components/ScreeningDiscussionDialog";
 import { useScreeningCounts } from "../components/ScreeningTickets";
-import { ActionButton, DialogTrigger, ToastQueue } from "../components/spectrum";
+import {
+  ActionButton,
+  DialogContainer,
+  DialogTrigger,
+  SearchField,
+  ToastQueue,
+} from "../components/spectrum";
 import { effEndMin, talkOnOf } from "../gv";
+import { venueShort } from "../legend";
 import {
   fetchDiscussionBoard,
   formatDiscussionTime,
@@ -115,6 +123,12 @@ function DiscussionTile({
  *  ⚠ **定位条自带「发帖」入口**(2026-09-16,`PLAN-20260916102631`):行程卡上的「讨论」只做跳转,
  *    而方格墙的格子是**已存在的帖子** —— 某场一条帖子都没有时,没有这个入口就无法发首帖
  *    (会形成「回行程点『讨论』→ 又跳回来」的闭环)。发帖仍走 `ScreeningDiscussionDialog`(唯一实现)。
+ *
+ *  ⚠ **页头另有常驻的「发帖」入口**(2026-09-16,`PLAN-20260916154255`):上面两个入口都要求
+ *    **场次已知**(一个来自 focus / 一个来自已有帖子),所以无 focus 的 `/discussions` 上原本
+ *    根本发不了帖 —— 用户手上知道编号(如 0412)却得先绕去行程页。这里补的入口是「自己挑一场」:
+ *    内联展开场次检索(与「添加转票场次」共用 `app/schedule-search.ts`),选中后再开既有弹层。
+ *    ⚠ 选择区**刻意不是弹层** —— 两层 modal 交接(关选择器 + 开讨论层同帧)的焦点归还没有保证。
  */
 export function DiscussionsPage() {
   const { cat } = useCatalog();
@@ -128,6 +142,11 @@ export function DiscussionsPage() {
   // 定位条上的「发帖」:与格子上的「进入讨论」共用同一个弹层,只是入口不同(见文件头注释)。
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerSession, setComposerSession] = useState(0);
+  // 页头常驻的「发帖」:自己挑一场发,不依赖 focus / 已有帖子(见文件头注释)。
+  const [picking, setPicking] = useState(false);
+  const [keyword, setKeyword] = useState("");
+  const [pickedCode, setPickedCode] = useState<string | null>(null);
+  const [pickedSession, setPickedSession] = useState(0);
   const grid = useRef<HTMLUListElement>(null);
   const focus = new URLSearchParams(location.search).get("focus");
   const located = focus ? posts.filter((post) => post.code === focus) : [];
@@ -182,6 +201,24 @@ export function DiscussionsPage() {
   // 新帖按时间倒序排在最前 —— 与 `fetchDiscussionBoard` 的排序口径一致,不做二次比较。
   const prependPost = (post: DiscussionPost) => setPosts((prev) => [post, ...prev]);
 
+  // 候选只在选择区展开时算 —— 不展开就不该为整份排期做一次全表匹配。
+  const matches = picking ? matchScreenings(cat.schedule.screenings, keyword) : [];
+  // 自己挑的那一场:和定位条那条路径一样,发帖仍走 `ScreeningDiscussionDialog`(唯一实现)。
+  const pickedTarget = pickedCode ? cat.byCode.get(pickedCode) : undefined;
+
+  /** 选中候选:收起选择区,再开讨论弹层。 */
+  const pickScreening = (code: string) => {
+    setPicking(false);
+    setKeyword("");
+    setPickedSession((n) => n + 1);
+    setPickedCode(code);
+  };
+
+  const closePicker = () => {
+    setPicking(false);
+    setKeyword("");
+  };
+
   const focusScreening = focus ? cat.byCode.get(focus) : undefined;
   const focusTitle =
     focus && focusScreening
@@ -195,13 +232,68 @@ export function DiscussionsPage() {
           <p className="eyebrow">全场次的帖子都在这里</p>
           <h1>讨论区</h1>
         </div>
-        <span className="count" aria-live="polite">
-          {posts.length} 帖
-        </span>
+        <div className="discussions-head-actions">
+          <span className="count" aria-live="polite">
+            {posts.length} 帖
+          </span>
+          {/* 常驻发帖口(2026-09-16,`PLAN-20260916154255`):不依赖 focus,也不要求那一场已有帖子。 */}
+          <ActionButton
+            aria-label="发帖：按场次编号或片名选一场"
+            onPress={() => (picking ? closePicker() : setPicking(true))}
+          >
+            发帖
+          </ActionButton>
+        </div>
       </div>
       <p className="muted discussions-intro">
         无料交换、物品互换、临时约伴都发在这里，一条帖子对应一个场次。任何人都能读；登录后可发帖、反应。
       </p>
+
+      {picking && (
+        <section className="discussion-picker" aria-label="选择要发帖的场次">
+          <SearchField
+            label="场次编号或片名"
+            placeholder="如 419 / 峡湾 / Fjord"
+            value={keyword}
+            onChange={setKeyword}
+          />
+          <p className="muted discussion-picker-hint">
+            帖子必须挂在某一场上：先按编号或片名找到那一场，再写内容。
+          </p>
+          {keyword.trim() !== "" && matches.length === 0 && (
+            <p className="muted discussion-picker-hint">
+              没找到这一场。编号要写官方 3 位（如 001），片名中英文都可以。
+            </p>
+          )}
+          <ul className="discussion-picker-list">
+            {matches.map((s) => {
+              const venue = cat.venueById.get(s.venue_id);
+              return (
+                <li className="discussion-picker-row" key={s.code} data-compose-code={s.code}>
+                  <div className="discussion-picker-main">
+                    <strong>{displayTitle(s, store.mappings.get(s.code)?.title_cn)}</strong>
+                    <span>
+                      {s.code} · {dateInfo(s.date).label} {s.start_time.slice(0, 5)} ·{" "}
+                      {venue ? venueShort(venue) : s.venue_display}
+                    </span>
+                  </div>
+                  {/* aria-label 必须**含可见文案**(无障碍的 label-in-name):只写「在 004 发帖」
+                      会让按可见文字操作的语音用户点不到它。 */}
+                  <ActionButton
+                    aria-label={`发帖（场次 ${s.code}）`}
+                    onPress={() => pickScreening(s.code)}
+                  >
+                    发帖
+                  </ActionButton>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="discussion-picker-actions">
+            <ActionButton onPress={closePicker}>收起</ActionButton>
+          </div>
+        </section>
+      )}
 
       {focus && (
         <div className="discussion-locate-bar" role="status">
@@ -251,9 +343,9 @@ export function DiscussionsPage() {
       ) : posts.length === 0 ? (
         <div className="empty-state">
           <h2>还没有人发言</h2>
-          {/* ⚠ 别写回「点卡片上的『讨论』写下第一条」—— 那个按钮自 `PLAN-20260915233816` 起只做跳转
-              (跳到这里),发帖入口在定位条上(2026-09-16,`PLAN-20260916102631`)。 */}
-          <p>到「我的行程」里挑一场，点卡片上的「讨论」跳到这里，再点「发帖」写下第一条。</p>
+          {/* ⚠ 别写回「回行程页点『讨论』写下第一条」—— 那条路径自 `PLAN-20260915233816` 起就已失效
+              (卡片上的「讨论」只做跳转);页头现在有常驻发帖口(2026-09-16,`PLAN-20260916154255`)。 */}
+          <p>点上面的「发帖」挑一场，写下第一条。</p>
         </div>
       ) : (
         <ul className="discussion-grid" ref={grid}>
@@ -276,6 +368,18 @@ export function DiscussionsPage() {
           </ActionButton>
         </div>
       )}
+
+      {/* 自己挑一场发的弹层。⚠ 用 `DialogContainer`(与 FilmDialog / AccountHost 同一手法)而不是
+          `DialogTrigger`:触发时机是「选中候选」,页面上没有可长期挂着的 trigger 元素。 */}
+      <DialogContainer onDismiss={() => setPickedCode(null)}>
+        {pickedTarget && (
+          <ScreeningDiscussionDialog
+            key={pickedSession}
+            screening={pickedTarget}
+            onPosted={prependPost}
+          />
+        )}
+      </DialogContainer>
     </section>
   );
 }

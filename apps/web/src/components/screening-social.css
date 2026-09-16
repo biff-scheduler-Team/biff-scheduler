@@ -253,6 +253,48 @@
 }
 .discussion-tile-reactions { display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 12px; }
 
+/* ---------- 讨论区:页头常驻发帖口 + 内联场次选择区(2026-09-16,PLAN-20260916154255) ---------- */
+/* ⚠ 选择区**不是弹层** —— 两层 modal 交接的焦点归还不可靠(见 DiscussionsPage 文件头注释),
+   所以它就是方格墙上方的一块内联面板,可随时「收起」。 */
+.discussions-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.discussion-picker {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--raised);
+}
+.discussion-picker-hint { margin: 0; font-size: 12px; }
+/* 上限与 `.transfer-list` 同一考虑:候选最多 20 条,超出只在面板内滚动,不把方格墙推下去 */
+.discussion-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 40vh;
+  overflow: auto;
+}
+.discussion-picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.discussion-picker-main { display: grid; gap: 2px; min-width: 0; }
+.discussion-picker-main strong { font-size: 13px; }
+.discussion-picker-main span { color: var(--muted); font-size: 12px; }
+.discussion-picker-actions { display: flex; justify-content: flex-end; }
+
 /* ---------- 转票补入弹层 ---------- */
 .transfer-dialog { display: grid; gap: 10px; max-height: 60vh; overflow: auto; }
 .transfer-hint { margin: 0; color: var(--muted); font-size: 12px; }

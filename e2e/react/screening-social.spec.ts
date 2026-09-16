@@ -273,3 +273,97 @@ test("讨论区:定位到没有帖子的场次也能直接发帖,发完立刻出
   );
   await expect(page.locator(".discussion-locate-bar")).toContainText("共 1 帖");
 });
+
+/** 页头常驻的「发帖」入口(2026-09-16,PLAN-20260916154255)。
+ *
+ *  还原的缺口:无 `focus` 的 `/discussions` 上原本**没有**任何发帖口 —— 格子要求那一场已有帖子,
+ *  定位条要求 URL 带 `focus`;用户手上只知道场次编号时,只能先绕去行程页点卡片。 */
+test("讨论区:不进任何场次弹层,按场次编号挑一场直接发帖", async ({ page }) => {
+  const id = "user_00000000000000000000000001";
+  const account = {
+    user: { id, email: "viewer@example.com", emailVerified: true },
+    profile: {
+      userId: id,
+      displayName: "观众",
+      bio: "",
+      website: "",
+      avatarUrl: null,
+      updatedAt: "2026-09-13T00:00:00Z",
+      version: 1,
+    },
+  };
+  // 目标场次从真实排期里挑(与转票补入同一手法),避免把断言绑死在某个编号上
+  const target = catalog.schedule.screenings.find((s) => s.code !== "001")!;
+  await page.route("**/api/account/me", (route) => route.fulfill({ json: account }));
+  await page.route("**/api/account/sync/biff-2026", async (route) => {
+    if (route.request().method() === "PUT") await route.fulfill({ json: { revision: 1 } });
+    else
+      await route.fulfill({
+        json: { subject: id, revision: 0, records: {}, updatedAt: 0, importedAt: null },
+      });
+  });
+  await mockCounts(page, { attendance: {}, discussions: {} });
+  await page.route("**/api/discussions**", (route) =>
+    route.fulfill({ json: { posts: [], nextCursor: null } }),
+  );
+  await page.route("**/api/screenings/*/discussion**", async (route) => {
+    const request = route.request();
+    if (request.method() === "GET") {
+      await route.fulfill({ json: { posts: [], nextCursor: null } });
+      return;
+    }
+    const body = request.postDataJSON() as { category: string; body: string };
+    await route.fulfill({
+      status: 201,
+      json: {
+        id: "post_1",
+        code: target.code,
+        subject: id,
+        displayName: "观众",
+        category: body.category,
+        body: body.body,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        reactionCounts: {},
+        myReactions: [],
+      },
+    });
+  });
+
+  // 没有 focus:定位条不在场,发帖口仍然要在
+  await ready(page, "/discussions");
+  await expect(page.locator(".discussion-locate-bar")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "发帖：按场次编号或片名选一场", exact: true }).click();
+  const picker = page.locator(".discussion-picker");
+  await expect(picker).toBeVisible();
+  const search = picker.getByLabel("场次编号或片名", { exact: true });
+
+  // 没命中时给出可照做的提示(与「添加转票场次」同一文案口径)
+  await search.fill("zzz-no-such-screening");
+  await expect(picker).toContainText("没找到这一场");
+
+  await search.fill(target.code);
+  const row = picker.locator(`.discussion-picker-row[data-compose-code="${target.code}"]`);
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: /发帖/ }).click();
+
+  // 选择区收起,打开的是既有的场次讨论弹层(分类 / 登录门闸 / 社区提醒全在)
+  await expect(picker).toHaveCount(0);
+  const dialog = page.getByRole("dialog", { name: `${target.code} 场次讨论`, exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".discussion-notice")).toBeVisible();
+  await expect(dialog.locator(".discussion-category")).toHaveCount(4);
+
+  await dialog.locator("textarea").fill("散场后想找人聊两句。");
+  await dialog.getByRole("button", { name: "发布", exact: true }).click();
+  await expect(dialog.locator(".discussion-card")).toContainText("散场后想找人聊两句");
+  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+
+  // 关掉弹层后新帖已在方格墙首位
+  const grid = page.locator(".discussion-grid");
+  await expect(grid.locator(".discussion-tile")).toHaveCount(1);
+  await expect(
+    grid.locator(`.discussion-tile[data-discussion-code="${target.code}"]`),
+  ).toContainText("散场后想找人聊两句");
+});
