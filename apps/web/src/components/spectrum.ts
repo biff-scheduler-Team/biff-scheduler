@@ -23,5 +23,8 @@ export { SearchField } from "@react-spectrum/s2/SearchField";
 export { TextField } from "@react-spectrum/s2/TextField";
 export { TextArea } from "@react-spectrum/s2/TextArea";
 export { ToggleButton } from "@react-spectrum/s2/ToggleButton";
-export { ToastContainer, ToastQueue } from "@react-spectrum/s2/Toast";
+export { ToastContainer } from "@react-spectrum/s2/Toast";
+// ToastQueue 走本地包装,不直接 re-export S2 的那只 —— S2 不传 `timeout` 就永不自动关闭,
+// 提示会常驻屏幕底部(见 `components/toast.ts` 的说明与 `tests/toast-timeout.test.ts`)。
+export { ToastQueue } from "./toast";
 export { Tooltip, TooltipTrigger } from "@react-spectrum/s2/Tooltip";
