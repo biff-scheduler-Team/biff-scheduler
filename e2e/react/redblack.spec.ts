@@ -44,8 +44,11 @@ test("榜单铺出去重后的影片,同一部只出现一次,且能按场次 co
   const target = keyOf("008");
   const total = keys.length;
   await page.getByRole("searchbox").fill("008");
+  // ⚠ 搜索词是**延迟 200ms 合并提交**的(`QuerySearchField`,`PLAN-20260917112233`)。
+  //   `target` 卡在过滤前本来就在列表里 —— 先断 `toBeVisible` 会立刻通过、等不到过滤生效,
+  //   所以这里必须用会重试的 `expect.poll` 等数量真的降下来。
+  await expect.poll(() => cards.count()).toBeLessThan(total);
   await expect(page.locator(`.rb-card[data-film-key="${target}"]`)).toBeVisible();
-  expect(await cards.count()).toBeLessThan(total);
 });
 
 test("标记「看过」→ 贴一枚红:画布上立刻出现,并上报给服务端", async ({ page }) => {

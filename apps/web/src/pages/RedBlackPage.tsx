@@ -17,7 +17,8 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { SearchField, ToastQueue } from "../components/spectrum";
+import { ToastQueue } from "../components/spectrum";
+import { QuerySearchField } from "../components/QuerySearchField";
 import type { FilmNode } from "../app/model";
 import { searchFilm } from "../app/model";
 import { useQuery } from "../app/hooks";
@@ -326,11 +327,9 @@ export function RedBlackPage() {
       </header>
 
       <div className="rb-controls">
-        <SearchField
+        <QuerySearchField
           label="搜索影片或场次编号"
           placeholder="片名 / 场次 code，如 0412"
-          value={query}
-          onChange={(value) => update({ q: value || null }, true)}
         />
         <div className="rb-sort" role="group" aria-label="榜单排序">
           {SORTS.map(([value, label]) => (

@@ -3,13 +3,13 @@ import { Outlet, useLocation, useNavigate } from "react-router";
 import {
   ActionButton,
   Button,
-  SearchField,
   Picker,
   PickerItem,
   TextArea,
   ToastQueue,
 } from "../components/spectrum";
 import { FilterBar } from "../components/FilterBar";
+import { QuerySearchField } from "../components/QuerySearchField";
 import { ScreeningCard, useFilmNavigation } from "../components/ScreeningCard";
 import { useCatalog } from "../app/store";
 import { useFilters, useQuery } from "../app/hooks";
@@ -249,6 +249,11 @@ export function LibraryPage({ picked = false }: { picked?: boolean }) {
     const stop = onWantCountsChange(() => setWantCounts({ ...peekWantCounts() }));
     return () => { stop(); };
   }, []);
+  // 搜索词一变就把「显示更多」收回默认值。原来是写在搜索框的 onChange 里,现在搜索词由
+  // `QuerySearchField` **延迟合并提交**,跟着已提交的 query 走才不会在打字中途反复重置。
+  useEffect(() => {
+    setLimit(40);
+  }, [query]);
   const units = libraryUnits(cat.films);
   const candidates = films.filter(
     (f) =>
@@ -320,14 +325,11 @@ export function LibraryPage({ picked = false }: { picked?: boolean }) {
           </span>
         </div>
         <div className="library-controls">
-          {!picked && <SearchField
+          {/* 显示值由 `QuerySearchField` 自己持有(URL 只当持久化出口),否则中文输入法的
+              组合态会被 URL 那慢一拍的受控回写打断 —— 见 `app/query-search.ts`。 */}
+          {!picked && <QuerySearchField
             label="搜索影片"
             placeholder="片名、导演、嘉宾或场次编号"
-            value={params.get("q") ?? ""}
-            onChange={(q) => {
-              update({ q }, true);
-              setLimit(40);
-            }}
           />}
           <div className="inline-fields">
             {!picked && <Picker

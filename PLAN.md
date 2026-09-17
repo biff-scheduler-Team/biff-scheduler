@@ -5,7 +5,14 @@
 > API `biff-scheduler` + 静态资源 `biff-scheduler-web`)+ React / Router / Spectrum S2 + Vite + TS
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-17(**底部 Toast 补上默认自动收起** —— React 版直接 re-export 了 S2 的 `ToastQueue`,
+> 最后更新:2026-09-17(**搜索框打不出中文:显示值改由输入框自己持有** —— 影片库 / 吃喝 / 红黑榜
+> 三个搜索框把 `SearchField` 的 `value` 直接绑在 URL 上,`onChange` 里的 `setSearchParams` 是一次
+> **router 导航(异步)**,受控 input 的显示值必然慢一拍;而中文输入法的拼音串是**组合态**,
+> React 把 props.value 回写进 DOM 就把组合擦掉了 —— 所以**能打英文、打不了中文**。现收口到唯一实现
+> `components/QuerySearchField.tsx` + 纯逻辑 `app/query-search.ts`:输入框自己持有显示值,URL 只当
+> 持久化出口(延迟 200ms 合并提交 / 组合期间一律不写 / URL 回声不回写缓冲)。
+> 见 `PLAN-20260917112233`);
+> 上一轮 2026-09-17(**底部 Toast 补上默认自动收起** —— React 版直接 re-export 了 S2 的 `ToastQueue`,
 > 而 S2 只在**显式传了 `timeout`** 时才自动关闭(`addToast`:`options.timeout && !options.actionLabel …`),
 > 旧版是 3600ms 自动收(`legacy/src/toast.ts`)。于是全仓 30+ 处漏写 `timeout` 的调用(加入选片 /
 > 发布建议 / 删除留言…)触发一次就永久钉在屏幕底部。现收口到 `components/toast.ts` 一层包装兜底 5000ms
