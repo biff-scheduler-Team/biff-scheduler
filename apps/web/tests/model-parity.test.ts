@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { buildFilmIndex } from "../src/data";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildFilmIndex, loadDoubanMappings } from "../src/data";
 import { loadExtras } from "../src/extras";
 import { buildFilms, filmInUnit, libraryUnits, searchFilm, unitKey } from "../src/app/model";
-import type { Catalog, FilmsFile, ScheduleFile, VenuesFile } from "../src/types";
+import type { Catalog, FilmsFile, Mapping, ScheduleFile, VenuesFile } from "../src/types";
+import { filmInfoOf } from "../src/util";
 
 const films = (JSON.parse(readFileSync("public/films.json", "utf8")) as FilmsFile).films;
 const schedule = JSON.parse(readFileSync("public/schedule.json", "utf8")) as ScheduleFile;
@@ -86,5 +87,53 @@ describe("legacy library search and section parity", () => {
     expect(nodes.some((n) => searchFilm(n, "彼此的日夜"))).toBe(true);
     expect(nodes.some((n) => searchFilm(n, "范冰冰"))).toBe(false);
     expect(libraryUnits(films).some((u) => u.key.startsWith("act:"))).toBe(false);
+  });
+});
+
+/* ---------- 豆瓣映射取用口径对账(2026-09-17,`PLAN-20260917010426`) ----------
+ * 回落链收进 `util.ts::doubanMappingOf` 之后,这里拿**真实产物**对账 ——
+ * 产物换版导致「场次 code」与「目录片 id」两侧分叉时,这几条会先红。 */
+const pni = JSON.parse(readFileSync("public/pni.json", "utf8")) as ScheduleFile;
+let mappings: Map<string, Mapping>;
+
+beforeAll(async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => ({
+    ok: true,
+    json: async () => JSON.parse(readFileSync(`public${url}`, "utf8")),
+  })));
+  mappings = new Map((await loadDoubanMappings()).map((m) => [m.code, m] as const));
+});
+
+describe("douban mapping resolution", () => {
+  it("公开排期:场次 code 与所属目录片 id 两侧逐条同真同假", () => {
+    const mismatch = catalog.schedule.screenings
+      .filter((s) => {
+        const byCode = mappings.get(s.code);
+        const byFilm = mappings.get(filmInfoOf(catalog, s, byCode).cats[0]?.id ?? "");
+        return Boolean(byCode) !== Boolean(byFilm);
+      })
+      .map((s) => s.code);
+    expect(mismatch).toEqual([]);
+    // 产物本身要有量:万一将来 `douban.json` 被清空,上面那条断言会「假绿」
+    expect(catalog.schedule.screenings.filter((s) => mappings.get(s.code)).length).toBeGreaterThan(0);
+  });
+
+  it("P&I 场次的 code 不在产物里 —— 「退目录片 id」这条腿正是它们的出路", () => {
+    // 产物是按**公开排期 code** 生成的,`PI-xx-xx` 天然查不到(实测 37 条全部如此);
+    // 少了这条腿,这些场次的「豆瓣 ↗」只能落到搜索结果页。
+    const missed = pni.screenings.filter((s) => !mappings.get(s.code));
+    const rescued = pni.screenings.filter((s) =>
+      mappings.get(filmInfoOf(catalog, s).cats[0]?.id ?? ""),
+    );
+    expect(missed.length).toBeGreaterThan(0);
+    expect(rescued.length).toBeGreaterThan(0);
+  });
+
+  it("片节点的 map 走同一口径:有场次按 code,纯目录片按 f###", () => {
+    const withMappings = buildFilms(catalog, mappings);
+    const withShows = withMappings.find((n) => n.shows.length > 0 && mappings.get(n.shows[0].code))!;
+    expect(withShows.map).toBe(mappings.get(withShows.shows[0].code));
+    const noShows = withMappings.find((n) => n.shows.length === 0 && mappings.get(n.cats[0]?.id ?? ""))!;
+    expect(noShows.map).toBe(mappings.get(noShows.cats[0].id));
   });
 });

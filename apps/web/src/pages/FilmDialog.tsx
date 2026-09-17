@@ -18,7 +18,7 @@ import { introOf } from "../intros";
 import { indexFestival, relatedOf } from "../related";
 import { KIND_LABEL, programOf, formatKrw } from "../extras";
 import { store } from "../state";
-import { doubanScoreOf, filmNodeKey, fmtVoters } from "../util";
+import { doubanMappingOf, doubanScoreOf, filmNodeKey, fmtVoters } from "../util";
 import { loadWantCounts, onWantCountsChange, peekWantCounts } from "../want-counts";
 
 export function FilmDialog() {
@@ -78,9 +78,11 @@ export function FilmDialog() {
   const wantCount = wantCounts[filmKey] ?? 0;
   const film = filmByKey.get(filmKey);
   const anchor = filmDetailAnchor(film, new URLSearchParams(location.search).get(FILM_CODE_PARAM));
-  const mapping = anchor
-    ? store.mappings.get(anchor.code)
-    : film?.map ?? store.mappings.get(film?.cats[0]?.id ?? "");
+  // 有场次锚点 → 按该场次 code 查;没有 → 退目录片 id(片节点的 `map` 也是这条口径,见 `model.ts::buildFilms`)
+  const mapping = doubanMappingOf(store.mappings, {
+    code: anchor?.code,
+    filmId: film?.cats[0]?.id,
+  });
   const intro = introOf(mapping?.subject_id);
   const score = doubanScoreOf(film?.cats[0], mapping);
   const related = relatedOf(mapping?.subject_id, store.mappings);

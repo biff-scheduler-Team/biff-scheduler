@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FilmItem, Mapping } from "../src/types";
-import { doubanScoreOf, doubanUrlOf, fmtVoters } from "../src/util";
+import { doubanMappingOf, doubanScoreOf, doubanUrlOf, fmtVoters } from "../src/util";
 
 const film = (p: Partial<FilmItem>): FilmItem => ({
   id: "f001",
@@ -55,6 +55,35 @@ describe("doubanScoreOf", () => {
     expect(doubanScoreOf(film({ rating: 0, rating_count: 12 }))).toBeNull();
     expect(doubanScoreOf(undefined, map({ rating: null }))).toBeNull();
     expect(doubanScoreOf()).toBeNull();
+  });
+});
+
+describe("doubanMappingOf", () => {
+  const byCode = map({ code: "001", douban_url: "https://movie.douban.com/subject/1/" });
+  const byFilm = map({ code: "f042", douban_url: "https://movie.douban.com/subject/2/" });
+  const mappings = new Map([
+    [byCode.code, byCode],
+    [byFilm.code, byFilm],
+  ]);
+
+  it("有场次且 code 命中就用它(不看目录片 id)", () => {
+    expect(doubanMappingOf(mappings, { code: "001", filmId: "f042" })).toBe(byCode);
+  });
+
+  it("code 未命中 → 退目录片 id", () => {
+    // P&I 场次的 code 不在产物里(产物按公开排期 code 生成),这是这条腿在线上唯一真正生效的场景
+    expect(doubanMappingOf(mappings, { code: "PI-09-04", filmId: "f042" })).toBe(byFilm);
+  });
+
+  it("纯目录片(没有场次)只给 filmId", () => {
+    expect(doubanMappingOf(mappings, { filmId: "f042" })).toBe(byFilm);
+    expect(doubanMappingOf(mappings, { code: null, filmId: "f042" })).toBe(byFilm);
+  });
+
+  it("两侧都没有 → undefined(调用方交给 doubanUrlOf 退搜索)", () => {
+    expect(doubanMappingOf(mappings, { code: "999", filmId: "f999" })).toBeUndefined();
+    expect(doubanMappingOf(mappings, {})).toBeUndefined();
+    expect(doubanMappingOf(new Map(), { code: "001" })).toBeUndefined();
   });
 });
 
