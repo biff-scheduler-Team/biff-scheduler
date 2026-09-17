@@ -21,6 +21,9 @@ export { NumberField } from "@react-spectrum/s2/NumberField";
 export { Picker, PickerItem } from "@react-spectrum/s2/Picker";
 export { SearchField } from "@react-spectrum/s2/SearchField";
 export { TextField } from "@react-spectrum/s2/TextField";
+// ref 类型:搜索框要拿原生 input 挂组合态监听(`QuerySearchField`),而 S2 的 props 把
+// `GlobalDOMAttributes` 整个 Omit 掉了 —— 事件处理器传不进去,只能走 ref。
+export type { TextFieldRef } from "@react-spectrum/s2/TextField";
 export { TextArea } from "@react-spectrum/s2/TextArea";
 export { ToggleButton } from "@react-spectrum/s2/ToggleButton";
 export { ToastContainer } from "@react-spectrum/s2/Toast";

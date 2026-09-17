@@ -25,11 +25,11 @@ import {
   Heading,
   Picker,
   PickerItem,
-  SearchField,
   TextArea,
   TextField,
   ToastQueue,
 } from "../components/spectrum";
+import { QuerySearchField } from "../components/QuerySearchField";
 import { useQuery } from "../app/hooks";
 import {
   addSubmission,
@@ -381,11 +381,9 @@ export function EatsPage() {
       </div>
       {notice && <p className="eat-notice">{notice}</p>}
       <div className="eats-controls">
-        <SearchField
+        <QuerySearchField
           label="搜索店铺"
           placeholder="店名、菜名、地址（中 / 한 / en 都可以）"
-          value={params.get("q") ?? ""}
-          onChange={(value) => update({ q: value })}
         />
         <div className="inline-fields">
           <Picker

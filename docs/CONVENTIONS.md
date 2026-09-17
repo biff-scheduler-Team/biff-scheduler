@@ -674,6 +674,21 @@
   DOM 交互仍走既有无头验收流程。**改这些口径必须同步改对应测试**;
   发现实现与注释相左时,**断言写「当前实际行为」并在注释里记明分歧**(范例:`tests/conflict.test.ts`
   的 `transitFor` 死参数),不要为了让测试变绿去改实现。
+- **★ 搜索框的显示值归输入框自己(2026-09-17,`PLAN-20260917112233`)**:不要再把 `SearchField` 的
+  `value` 直接绑在 URL 上(`value={params.get("q") ?? ""}`)—— `onChange` 里的 `setSearchParams`
+  是一次 **router 导航(异步)**,受控 input 的显示值必然慢一拍,而中文输入法的拼音串是**组合态**,
+  React 把 props.value 回写进 DOM 就把组合擦掉了。症状是**能打英文、打不了中文**(英文逐字符即时提交,
+  回写值恰好等于刚敲的字符)。旁证:`react-aria-components` 自己在 `TokenField` 里就有
+  `CompositionRenderBlocker`(`Prevents React from re-rendering during composition events`),
+  普通 TextField / SearchField 没有这层防护 —— 只能由调用方兜。
+  · 一律用 `components/QuerySearchField.tsx`,别再在页面里手写「URL ↔ 输入框」的双向绑定:
+    输入框自己持有显示值(本地 state),URL 只当持久化出口 —— 输入**延迟 200ms 合并提交**、
+    **组合期间一律不写**(拼音串是中间态,不该落进 URL)、URL 反过来只在**不是自己刚提交出去的回声**
+    时才回写缓冲(否则提交后的回声会打断用户正在进行中的下一次输入,等于原 bug 换个地方复发)。
+  · 三条口径的纯逻辑实现在 `app/query-search.ts`(唯一来源,回归测试 `tests/query-search.test.ts`);
+    **过滤仍读已提交的 `params.get("q")`**,包装组件只管显示值。
+  · 搜索词写 URL 一律 `replace`:它是同一页面的状态,不是导航目的地。
+  · `DiscussionsPage` / `TransferAddDialog` 的搜索框走本地 `useState`,本来就免疫,不需要改。
 
 ## 五、基础设施 / 工具
 
