@@ -95,6 +95,76 @@ test.describe("schedule interaction parity", () => {
     expect(new URL(page.url()).searchParams.has("focus")).toBe(false);
   });
 
+  /** 定位闪烁只闪**描边**,不许动整格内容的透明度(2026-09-17,`PLAN-20260917095517`)。
+   *
+   *  回归的症状(用户原话):「CODE 197 一直在变透明又变不透明」—— 闪烁动的是整格 `opacity`,
+   *  而 CODE 徽章本来就是透明底 + 红框(`.film-badge[data-badge="code"]`),格子一淡徽章就跟着掉色,
+   *  读起来像徽章坏了,而不是「这一格被定位到了」。
+   *  断言分两半,缺一不可:① 内容全程不透明;② 期间**确实**有描边类动画在跑 ——
+   *  少了 ② 的话,把闪烁整个删掉也能变绿。 */
+  test("locating flashes the ring, never the cell content opacity", async ({
+    page,
+  }) => {
+    type AnimateCall = { code: string | null; keys: string[] };
+    const framesOf = () =>
+      page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __locateFrames: AnimateCall[];
+            }
+          ).__locateFrames,
+      );
+    // 先挂探针再点定位:断言对着「应用**调用**了什么动画」,不赌采样窗口一定盖住那 3 秒。
+    await seed(page, { "biff.picks.v2": picks(["008"]) });
+    await ready(page, "/agenda");
+    await page.evaluate(() => {
+      const state = window as unknown as { __locateFrames: AnimateCall[] };
+      state.__locateFrames = [];
+      const original = Element.prototype.animate;
+      Element.prototype.animate = function (
+        this: Element,
+        keyframes: Keyframe[] | PropertyIndexedKeyframes | null,
+        options?: number | KeyframeAnimationOptions,
+      ) {
+        state.__locateFrames.push({
+          code: this.closest("[data-grid-slot]")?.getAttribute("data-grid-slot") ?? null,
+          keys: (Array.isArray(keyframes) ? keyframes : []).flatMap((frame) =>
+            Object.keys(frame),
+          ),
+        });
+        return original.call(this, keyframes, options);
+      };
+    });
+    await page.getByRole("button", { name: "定位场次 008", exact: true }).click();
+    await expect(page.locator('[data-grid-code="008"]')).toBeVisible();
+
+    const seen = await page.evaluate(async () => {
+      const slot = document.querySelector('[data-grid-slot="008"]');
+      const badge = slot?.querySelector('.film-badge[data-badge="code"]');
+      if (!slot || !badge) return null;
+      let minSlot = 1;
+      let minBadge = 1;
+      const started = performance.now();
+      while (performance.now() - started < 2000) {
+        minSlot = Math.min(minSlot, Number(getComputedStyle(slot).opacity));
+        minBadge = Math.min(minBadge, Number(getComputedStyle(badge).opacity));
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      return { minSlot, minBadge };
+    });
+    expect(seen).not.toBeNull();
+    expect(seen!.minSlot).toBe(1);
+    expect(seen!.minBadge).toBe(1);
+
+    const calls = (await framesOf()).filter((call) => call.code === "008");
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      expect(call.keys).toContain("outlineColor");
+      expect(call.keys).not.toContain("opacity");
+    }
+  });
+
   test("card dragging pans without picking, while Ctrl and Meta wheel zoom the Gantt", async ({
     page,
   }) => {
