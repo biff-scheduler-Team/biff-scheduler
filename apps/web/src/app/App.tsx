@@ -29,6 +29,7 @@ import {
 } from "../components/InfoDialogs";
 import { DataUpdateButton } from "../components/ChangelogDialog";
 import { SchedulePage } from "../pages/SchedulePage";
+import { navSearch } from "./nav-query";
 import { CatalogProvider, hydrateStorage, useCatalog } from "./store";
 import { useMedia } from "./hooks";
 import { store } from "../state";
@@ -71,9 +72,13 @@ function Shell() {
   const viewingRoute = /^\/(picks|agenda)(\/|$)/.test(location.pathname);
   const panelOpen = viewingRoute && new URLSearchParams(location.search).get("quick") === "1";
   const fullPage = /^\/(library|feedback|discussions|rush|redblack|eats)(?:\/|$)/.test(location.pathname) || (viewingRoute && !panelOpen);
-  const pageParams = new URLSearchParams(location.search);
-  pageParams.delete("quick");
-  const pageSearch = pageParams.size ? `?${pageParams}` : "";
+  // 查询串**口径唯一来源** = `app/nav-query.ts`:同名 key 不跨页(`q` 在影片库 / 红黑榜 / 吃喝
+  // 各有一份语义),只有排片表的 `date` / `hour` 跟着走。原先这里只剔掉 `quick` 就整条搬过去,
+  // 于是「影片库搜 Midnight Passion」会出现在吃喝的搜索框里(见 `PLAN-20260917002528`)。
+  const searchFor = (path: string) => navSearch(location.search, location.pathname, path);
+  const scheduleSearch = searchFor("/schedule");
+  // 同页导航(浮动面板「打开完整页面」)沿用本页 search,语义与改动前一致
+  const pageSearch = searchFor(location.pathname);
   const floatButton = useRef<HTMLButtonElement>(null);
   const lastPanel = useRef("/agenda");
   if (panelOpen) lastPanel.current = location.pathname.startsWith("/picks") ? "/picks" : "/agenda";
@@ -105,13 +110,13 @@ function Shell() {
           '[role="dialog"], [role="alertdialog"], [role="listbox"]',
         )
       ) {
-        navigate(`/schedule${pageSearch}`);
+        navigate(`/schedule${scheduleSearch}`);
         floatButton.current?.focus();
       }
     };
     window.addEventListener("keydown", escape);
     return () => window.removeEventListener("keydown", escape);
-  }, [panelOpen, navigate, pageSearch]);
+  }, [panelOpen, navigate, scheduleSearch]);
   const [settingsSession, setSettingsSession] = useState(0);
   const [exportSession, setExportSession] = useState(0);
   const nav = [
@@ -159,7 +164,7 @@ function Shell() {
           </DialogTrigger>
           <DataUpdateButton />
           {conflictCount > 0 && (
-            <ActionButton onPress={() => navigate(`/agenda${location.search}`)}>
+            <ActionButton onPress={() => navigate(`/agenda${searchFor("/agenda")}`)}>
               重叠 {conflictCount}
             </ActionButton>
           )}
@@ -190,7 +195,7 @@ function Shell() {
           {nav.map(([path, text]) => (
             <NavLink
               key={path}
-              to={`${path}${pageSearch}`}
+              to={`${path}${searchFor(path)}`}
               className={({ isActive }) =>
                 (panelOpen ? path === "/schedule" : isActive) ? "nav-item active" : "nav-item"
               }
@@ -220,7 +225,7 @@ function Shell() {
                 </nav>
                 <RouterLink className="viewing-full-link" to={`${location.pathname.split("/films/")[0]}${pageSearch}`}>打开完整页面</RouterLink>
                 <ActionButton
-                  onPress={() => { navigate(`/schedule${pageSearch}`); floatButton.current?.focus(); }}
+                  onPress={() => { navigate(`/schedule${scheduleSearch}`); floatButton.current?.focus(); }}
                   aria-label="收起选片面板"
                 >
                   收起
@@ -246,9 +251,9 @@ function Shell() {
         aria-expanded={panelOpen}
         aria-controls="viewing-panel"
         onClick={() => {
-          if (panelOpen) navigate(`/schedule${pageSearch}`);
+          if (panelOpen) navigate(`/schedule${scheduleSearch}`);
           else {
-            const params = new URLSearchParams(pageSearch);
+            const params = new URLSearchParams(searchFor(lastPanel.current));
             params.set("quick", "1");
             navigate(`${lastPanel.current}?${params}`);
           }

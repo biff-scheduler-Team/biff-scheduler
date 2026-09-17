@@ -21,6 +21,7 @@ import { TransferAddEntry } from "../components/TransferAddDialog";
 import { ScreeningCard } from "../components/ScreeningCard";
 import { PlanShowsDialog } from "../components/PlanShowsDialog";
 import { useCatalog } from "../app/store";
+import { navSearch } from "../app/nav-query";
 import { useScheduleNavigation } from "../app/navigation";
 import {
   agendaItems,
@@ -432,7 +433,8 @@ export function AgendaPage() {
           <div className="empty-state">
             <h2>还没有安排场次</h2>
             <p>从排片表加入场次，或先到影片库挑选电影。</p>
-            <Button onPress={() => navigate(`/library${location.search}`)}>
+            {/* 跨页导航走 `nav-query` 口径:只带排片表的 `date` / `hour`,不搬本页 / 上一页的搜索词 */}
+            <Button onPress={() => navigate(`/library${navSearch(location.search, location.pathname, "/library")}`)}>
               浏览影片库
             </Button>
           </div>
