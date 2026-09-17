@@ -1,11 +1,15 @@
 import { test, expect } from "@playwright/test";
 import { ready, seed, storage, openExport, keyOf } from "./helpers";
 
+// ⚠ `showPni` 是 `0d68da7`(P&I 开关)加进 `Settings` 的默认字段 —— 该提交没同步这条夹具,
+// 于是下面两条 `toEqual(settings)` 在 main 上恒红(实测多出 `"showPni": false`)。
+// 按红线 1「云端红了先修再叠改动」补上,归属记在此处,与 `PLAN-20260917010426` 无关。
 const settings = {
   alarmMin: 45,
   transitMin: 0,
   gvTalkOn: true,
   gvTalkMin: 25,
+  showPni: false,
   theme: "light",
   zoom: 0.7,
   retained: "unknown-setting",

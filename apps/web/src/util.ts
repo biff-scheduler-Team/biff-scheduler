@@ -292,6 +292,27 @@ export function doubanScoreOf(film?: FilmItem | null, map?: Mapping | null): Dou
   return { rating, count };
 }
 
+/** 豆瓣映射取用口(**全站唯一**,2026-09-17,`PLAN-20260917010426`)。
+ *
+ *  取值链:① **有场次 → 按场次 code 查**(映射产物与场次 code 同键,最准);
+ *  ② 没有场次(纯目录片)/ code 未命中 → 按目录片 id(`f###`)查;
+ *  ③ 两侧都没有 → `undefined`,调用方交给 `doubanUrlOf` 退搜索。
+ *
+ *  ⚠ 四个入口(资料弹层 / 行程场次卡 / 影片库卡 / 影片资料弹层)必须共用它:
+ *    原先只有影片库卡与影片资料弹层写了「退 `f###`」这条腿,弹层与场次卡只查 code ——
+ *    同一部片「影片库能直达条目页、行程卡却掉进搜索结果页」,而分叉只会在产物缺某一类键时**静默**出现。
+ *  ⚠ 参数只收「场次 code + 目录片 id」两项:调用方手上有什么传什么。
+ *    别把整条 `Screening` / 整个 `Map` 传进来 —— 那会诱出第二份「命中哪部目录片」的规则。 */
+export function doubanMappingOf(
+  mappings: Map<string, Mapping>,
+  ref: { code?: string | null; filmId?: string | null },
+): Mapping | undefined {
+  return (
+    (ref.code ? mappings.get(ref.code) : undefined) ??
+    (ref.filmId ? mappings.get(ref.filmId) : undefined)
+  );
+}
+
 /** 豆瓣外链:映射有条目就用条目页,否则按片名搜索(中文名优先,退回英文名)。
  *  ⚠ 全站「打开豆瓣」的 href **一律走它** —— 不要再各写一份 `douban.com/search?q=` 兜底
  *    (2026-09-13,`PLAN-20260913184357`:场次卡 / 资料弹层两处原本各写了一份)。

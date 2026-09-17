@@ -3,6 +3,7 @@ import { extras, KIND_LABEL, programOf } from "../extras";
 import {
   bilingualTitle,
   catMetaLine,
+  doubanMappingOf,
   filmEnName,
   filmInfoOf,
   filmNodeKey,
@@ -40,7 +41,8 @@ export function buildFilms(
         key,
         ...info,
         shows: [],
-        map: mappings.get(s.code),
+        // 有场次:先按场次 code 查,未命中再退目录片 id(口径见 `util.ts::doubanMappingOf`)
+        map: doubanMappingOf(mappings, { code: s.code, filmId: info.cats[0]?.id }),
         poster: info.cats[0]?.poster,
       });
     }
@@ -65,7 +67,8 @@ export function buildFilms(
       cats: [f],
       shows: [],
       poster: f.poster,
-      map: mappings.get(f.id),
+      // 纯目录片(无排期):没有场次 code 可查,只剩目录片 id 这一条腿
+      map: doubanMappingOf(mappings, { filmId: f.id }),
       block: f.block_code ? cat.byCode.get(f.block_code) : undefined,
     });
   }

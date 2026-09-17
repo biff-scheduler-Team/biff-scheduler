@@ -22,6 +22,7 @@ import {
   filmNodeKey,
   filmInfoOf,
   fmtEndClock,
+  doubanMappingOf,
   doubanScoreOf,
   doubanUrlOf,
   hmsToMin,
@@ -221,7 +222,10 @@ export function ScreeningCard({
   const openFilm = useFilmNavigation();
   const picked = Boolean(slotOf(s.code));
   const info = filmInfoOf(cat, s, store.mappings.get(s.code));
-  const score = doubanScoreOf(info.cats[0], store.mappings.get(s.code));
+  // 豆瓣映射取一次给三处用(评分 / 外跳 href / tooltip):有场次按 code、未命中退目录片 id ——
+  // 与影片库卡、资料弹层同一口径(2026-09-17,`PLAN-20260917010426`)。
+  const mapping = doubanMappingOf(store.mappings, { code: s.code, filmId: info.cats[0]?.id });
+  const score = doubanScoreOf(info.cats[0], mapping);
   const conflict = conflicts.get(s.date)?.codeSet.has(s.code);
   const venue = cat.venueById.get(s.venue_id);
   const place = venuePlace(venue?.group);
@@ -296,11 +300,11 @@ export function ScreeningCard({
                 「片名 豆瓣 ↗」,让 `getByRole("heading", { name, exact: true })` 一类断言漂移。 */}
             <a
               className="douban-jump"
-              href={doubanUrlOf(info, store.mappings.get(s.code))}
+              href={doubanUrlOf(info, mapping)}
               target="_blank"
               rel="noopener noreferrer"
               title={
-                store.mappings.get(s.code)?.douban_url
+                mapping?.douban_url
                   ? "在豆瓣打开这部片的条目页"
                   : "未匹配豆瓣条目，将按片名搜索"
               }

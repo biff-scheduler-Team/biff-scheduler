@@ -15,6 +15,7 @@ import { useCatalog } from "../app/store";
 import { useFilters, useQuery } from "../app/hooks";
 import { filmInUnit, libraryUnits, searchFilm, type FilmNode } from "../app/model";
 import { setFilmExpanded, useLibraryExpansion } from "../app/library-state";
+import { navSearch } from "../app/nav-query";
 import { hasActiveFilter, LS_FILTERS_LIB, matchesFilters } from "../filters";
 import { addPickFilm, removePick, setPickNote, soleShowCode, store } from "../state";
 import { dateInfo, doubanScoreOf, doubanUrlOf, unitLabel } from "../util";
@@ -45,9 +46,9 @@ function FilmCard({
   const soleCode = soleShowCode(film.key);
   const addLabel = soleCode ? "加入行程" : "加入我的选片";
   const score = doubanScoreOf(film.cats[0], film.map);
-  // 豆瓣映射:优先这个片节点的映射(排期片 = 场次 code,目录片 = `f###`),
-  // 再退回目录条目 id —— 与改版前影片卡操作行里那条外链的取值链逐字一致。
-  const map = film.map ?? store.mappings.get(film.cats[0]?.id ?? "");
+  // 豆瓣映射:取值链(有场次按 code、无场次按 `f###`)已由 `model.ts::buildFilms` 用
+  // `util.ts::doubanMappingOf` 统一算进片节点 —— 这里不再各写一份回落(2026-09-17,`PLAN-20260917010426`)。
+  const map = film.map;
   const gone = entry?.picks.filter((p) => !film.shows.some((s) => s.code === p.code)).length ?? 0;
   // 「另属」单元(2026 只有午夜联映块)—— 不显示的话,按午夜单元筛出来的片里
   // 会有 4 部卡片副标题写着别的单元,看着像筛错了(见 `model.ts::unitsOfFilm`)。
@@ -137,9 +138,12 @@ function FilmCard({
         ) : !pickedView && film.shows.length > 0 && entry ? (
           <ActionButton
             onPress={() => {
-              const p = new URLSearchParams(location.search);
+              // 跨页去「我的选片」:查询串走 `nav-query` 口径 —— 本页的 `q` / `unit` 不跟过去,
+              // 排片表的 `date` / `hour` 保留,最后再挂上要展开的那张卡。
+              const p = new URLSearchParams(
+                navSearch(location.search, location.pathname, "/picks"),
+              );
               p.set("expand", film.key);
-              p.delete("pickDate");
               setFilmExpanded("picks", film.key, true);
               navigate(`/picks?${p}`);
             }}

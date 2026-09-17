@@ -5,7 +5,7 @@ import {useMedia} from '../app/hooks';
 import {useCatalog} from '../app/store';
 import {useFilmNavigation} from '../app/film-navigation';
 import {Badges} from './ScreeningCard';
-import {doubanUrlOf, filmInfoOf, filmNodeKey, fmtEndClock} from '../util';
+import {doubanMappingOf, doubanUrlOf, filmInfoOf, filmNodeKey, fmtEndClock} from '../util';
 import {effEndMin, talkOnOf} from '../gv';
 import {introOf} from '../intros';
 import {mapsUrl, regionLabel, venuePlace} from '../legend';
@@ -45,7 +45,9 @@ export function ScreeningInfoPopover({screening: s}: {screening: Screening}) {
   const venue = cat.venueById.get(s.venue_id);
   const place = venuePlace(venue?.group);
   const info = filmInfoOf(cat,s,store.mappings.get(s.code));
-  const mapping = store.mappings.get(s.code);
+  // 与场次卡 / 影片库卡 / 影片资料弹层同一口径:有场次按 code,未命中退目录片 id
+  // (2026-09-17,`PLAN-20260917010426`)。这里只管「取哪条映射」,href 仍走 `doubanUrlOf`。
+  const mapping = doubanMappingOf(store.mappings, {code: s.code, filmId: info.cats[0]?.id});
   const intro = introOf(mapping?.subject_id);
   const related = relatedOf(mapping?.subject_id, store.mappings);
   const festival = indexFestival(store.mappings);
