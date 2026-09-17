@@ -61,6 +61,36 @@ test("清单来自 eats.json,每张卡三个地图入口且模板正确", async 
   await expect(page.locator(".eat-curated")).toHaveCount(5);
 });
 
+// 回归 `PLAN-20260917002528`:同名 key `q` 在影片库 / 红黑榜 / 吃喝三页各有一份语义,
+// 主导航原先把整条 search 原样搬过去 —— 用户在影片库搜「Midnight Passion」,切到吃喝时
+// 搜索框里躺着那句话,列表被同一根 needle 过滤成「没有匹配的店」。
+test("影片库的搜索词不会跟着导航进吃喝(搜索词不跨页)", async ({ page }) => {
+  await lookupOff(page);
+  await ready(page, "/library");
+  await page.getByRole("searchbox", { name: "搜索影片" }).fill("Midnight Passion");
+  await expect.poll(() => new URL(page.url()).searchParams.get("q")).toBe("Midnight Passion");
+
+  await page.getByRole("navigation", { name: "主要导航" }).getByRole("link", { name: "吃喝", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "吃喝", exact: true })).toBeVisible();
+
+  await expect(page.getByRole("searchbox", { name: "搜索店铺" })).toHaveValue("");
+  expect(new URL(page.url()).searchParams.has("q")).toBe(false);
+  // 阴性对照:清单是全量,不是「因为过滤成空所以才没搜索词」
+  await expect(page.locator(".eat-card")).not.toHaveCount(0);
+});
+
+// 阳性对照:排片表的浏览上下文(`date` / `hour`)是**刻意**跨页保留的 ——
+// 修搜索词串台时不能顺手把它一起丢掉。
+test("排片表的日期跨页保留:切到吃喝再切回来仍是同一天", async ({ page }) => {
+  await lookupOff(page);
+  await ready(page, "/schedule?date=2026-10-07");
+  const nav = page.getByRole("navigation", { name: "主要导航" });
+  await nav.getByRole("link", { name: "吃喝", exact: true }).click();
+  expect(new URL(page.url()).searchParams.get("date")).toBe("2026-10-07");
+  await nav.getByRole("link", { name: "排片表", exact: true }).click();
+  await expect(page.getByRole("button", { name: "选择日期 2026-10-07" })).toHaveAttribute("aria-pressed", "true");
+});
+
 test("搜索与分区筛选", async ({ page }) => {
   await lookupOff(page);
   await ready(page, "/eats");

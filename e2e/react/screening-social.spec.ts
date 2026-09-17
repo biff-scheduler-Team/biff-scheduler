@@ -125,8 +125,9 @@ test("讨论区:集合成方格墙、行程里的讨论跳过去定位;发帖门
   await ready(page, "/agenda");
 
   // 导航里新增「讨论区」模块,且排在「我的行程」「建议」之后
-  // ⚠ 末尾的「红黑榜」不属于本 PLAN —— 它由并行需求 `PLAN-20260916102339` 加到导航末尾,
-  //   本断言是「导航整体顺序」的快照,故一并列出(2026-09-16)。
+  // ⚠ 末尾两项不属于本 PLAN —— 「红黑榜」由 `PLAN-20260916102339`、「吃喝」由
+  //   `PLAN-20260916232230` 加到导航末尾;本断言是「导航整体顺序」的快照,故一并列出
+  //   (2026-09-17 补上「吃喝」:它上线时漏改这里,快照在 main 上就已经红了)。
   const nav = page.getByRole("navigation", { name: "主要导航" });
   const labels = (await nav.locator("a.nav-item").allTextContents()).map((text) => text.trim());
   expect(labels).toEqual([
@@ -138,6 +139,7 @@ test("讨论区:集合成方格墙、行程里的讨论跳过去定位;发帖门
     "建议",
     "讨论区",
     "红黑榜",
+    "吃喝",
   ]);
 
   const entry = page.locator('.screening-card[data-screening="001"] .card-actions button', {
