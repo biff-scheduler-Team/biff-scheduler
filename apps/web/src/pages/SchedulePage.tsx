@@ -69,9 +69,24 @@ function flashScreenings(root: HTMLElement, codes: string[]) {
     if (!node) continue;
     locateAnimations.get(node)?.cancel();
     node.classList.add("schedule-located");
+    // ⚠ 只闪**描边**,绝不动整格的 opacity(2026-09-17,`PLAN-20260917095517`)。
+    //   动 opacity 会把整格内容一起抹淡 —— 红框 CODE 徽章本来就是透明底 + 红框
+    //   (`style.css` 的 `.film-badge[data-badge="code"]`),格子一淡,用户读到的就是
+    //   「CODE 197 一直在变透明又变不透明」,而不是「这一格被定位到了」。
+    //   legacy 的 `biff-flash` 当年就用描边闪烁避开同一个坑(见 `legacy/src/style.css`)。
+    // ⚠ 颜色必须取**计算后的 outline-color**:WAAPI 关键帧不收 `var()`,而 `.schedule-located`
+    //   已经把 `outline: 3px solid var(--brand)` 解析成具体颜色 —— 亮/暗主题各取各的,
+    //   这里再写一份品牌色就会在暗色下写死。
+    const ring = getComputedStyle(node).outlineColor;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const animation = node.animate(
-      reduced ? [{ opacity: 1 }, { opacity: 1 }] : [{ opacity: 0.55 }, { opacity: 1 }],
+      reduced
+        ? [{ outlineColor: ring }, { outlineColor: ring }]
+        : [
+            { outlineColor: "transparent" },
+            { outlineColor: ring },
+            { outlineColor: "transparent" },
+          ],
       { duration: 1000, iterations: 3 },
     );
     locateAnimations.set(node, animation);
