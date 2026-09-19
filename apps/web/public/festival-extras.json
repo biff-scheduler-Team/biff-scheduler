@@ -1,6 +1,6 @@
 {
   "source": "https://www.biff.kr/eng/",
-  "generated_at": "2026-09-14T19:11:12+0800",
+  "generated_at": "2026-09-19T23:18:35+0800",
   "ticketing": {
     "batches": [
       {
@@ -234,7 +234,7 @@
       "title": "Mother Mary : Producer KIM Tae-ho Expands the TEO Universe from Hit Variety Shows to Film Distribution",
       "guest": "",
       "guestZh": null,
-      "dateText": "October 7 (Wed) After the 19:00 Screening",
+      "dateText": "Oct 7 (Wed) After the 19:00 Screening",
       "priceKrw": null,
       "language": "English, Korean",
       "venue": "Busan Cinema Center Cinematheque",
@@ -286,10 +286,36 @@
       "title": "Behold This Actor: AHN Sung-ki, Another History of Korean Cinema (JUNG Sung-il, Film Critic)",
       "guest": "",
       "guestZh": null,
-      "dateText": "October 12 (Mon) After the 15:40 Screening",
+      "dateText": "Oct 12 (Mon) After the 15:40 Screening",
       "priceKrw": null,
       "language": "Korean",
       "venue": "CGV Centum City 2",
+      "moderator": "",
+      "bio": ""
+    },
+    {
+      "code": "742",
+      "kind": "special_talk",
+      "title": "",
+      "guest": "",
+      "guestZh": null,
+      "dateText": "Oct 8 (Thu) After the 14:50 Screening",
+      "priceKrw": null,
+      "language": "English, Korean",
+      "venue": "Busan Cinema Center Cinema 1",
+      "moderator": "",
+      "bio": ""
+    },
+    {
+      "code": "743",
+      "kind": "special_talk",
+      "title": "Gravity & Beyond : A Conversation with Alfonso and Jonás CUARÓN",
+      "guest": "",
+      "guestZh": null,
+      "dateText": "Oct 7 (Wed) After the 20:20 Screening",
+      "priceKrw": null,
+      "language": "English, Korean",
+      "venue": "CGV Centum City IMAX",
       "moderator": "",
       "bio": ""
     },
@@ -424,6 +450,19 @@
       "bio": "Bertrand Mandico is a director who dissolves the line between reality and fantasy, conjuring grotesque, sensuous visuals into myths upon the screen. Having shattered the taboos of genre and gender with celluloid's texture and an imagination unbound by convention, he now shares, in his own words, the secrets behind his singular art — moderated by film critic Lee Yong-cheol."
     },
     {
+      "code": "815",
+      "kind": "master_class",
+      "title": "Master Class : The Cinematic Visions of Alfonso CUARÓN",
+      "guest": "Alfonso CUARÓN",
+      "guestZh": null,
+      "dateText": "Oct 8 (Thu) 12:30 - 14:00",
+      "priceKrw": 15000,
+      "language": "English, Korean",
+      "venue": "Busan Cinema Center Cinema 1",
+      "moderator": "",
+      "bio": "Multiple Academy Award winner Alfonso Cuarón has continually redefined the medium of cinema with his revolutionary visual language and profound emotional depth. Joined by guest moderator Yeon Sang-ho, this master class presents an exceptional occasion to explore Cuarón’s iconic career and dive deep into his creative process."
+    },
+    {
       "code": "821",
       "kind": "cine_class",
       "title": "ZHANG Lu: Embracing the Unfamiliar World of The Other",
@@ -500,6 +539,19 @@
       "venue": "Book Cafe Lounge, 4F, DSU-KIT Centum Campus",
       "moderator": "",
       "bio": "Shim Eun-kyung shares what she has learned and achieved while pursuing a unique career path that takes her back and forth between South Korea and Japan."
+    },
+    {
+      "code": "827",
+      "kind": "cine_class",
+      "title": "Charlotte GAINSBOURG: The Muse of French Chic",
+      "guest": "Charlotte GAINSBOURG",
+      "guestZh": null,
+      "dateText": "Oct 8 (Thu) 13:30 – 14:30",
+      "priceKrw": 10000,
+      "language": "English, Korean",
+      "venue": "",
+      "moderator": "",
+      "bio": "Timeless, unfading, effortlessly elegant — she is the very embodiment of French chic. Actress, musician, eternal muse to auteurs like Lars von Trier, Charlotte Gainsbourg has spent decades forging her own path across screen and song. In Busan, she opens up — quietly, deeply — about the years behind her, and the art of acting itself."
     },
     {
       "code": "831",

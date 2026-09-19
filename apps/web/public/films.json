@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-09-14T19:36:00+08:00",
+ "generated_at": "2026-09-19T23:17:29+08:00",
  "source": "biff.kr 官网片目(prog_view.asp) ∪ 2026第31届釜山国际电影节影片信息.xlsx(富化) ∪ 2026 官方 Ticket Catalogue PDF 影片介绍页",
  "films": [
   {
@@ -7826,6 +7826,24 @@
     "synopsis_ko": "이별 직전의 연인 성은과 민형이 서로 다르게 기억하는 하루가 발랄한 음악에 실려 3막으로 펼쳐진다. 헤어지기 전 마지막으로 파스타를 해 먹기로 한 날, 토마토와 금붕어가 뒤섞이고 둘의 기억이 엇갈린다. 성은과 민형, 토마토의 시점으로 펼쳐지는 유니크하고 엉뚱한 이별 이야기. (강소원) A day remembered differently by Seong-eun and Min-hyung, a couple on the verge of breaking up, unfold in three acts to bright, lively music. One day, they decide to make pasta together one last time before breaking up, and as tomatoes get mixed together with goldfish, Seong-eun and Min-hyeong’s memories begin to diverge. A unique and offbeat breakup story, told from the points of view of Seong-eun, Min-hyung, and a tomato. (KANG Sowon)",
     "synopsis_en": null
    }
+  },
+  {
+   "id": "f247",
+   "title_en": "Gravity",
+   "title_kr": "그래비티",
+   "title_zh": "地心引力",
+   "title_orig": "",
+   "unit": "特别放映",
+   "remark": "",
+   "year": 2013,
+   "rating": null,
+   "rating_count": null,
+   "country": "United Kingdom/United States",
+   "director": "Alfonso CUARÓN",
+   "duration_min": 91,
+   "screening_codes": [
+    "743"
+   ]
   }
  ]
 }
