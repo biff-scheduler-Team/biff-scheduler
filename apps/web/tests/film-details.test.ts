@@ -34,7 +34,8 @@ describe("screening-specific film details", () => {
     const talk = filmDetailAnchor(film, "021")!;
     expect(ordinary.date).toBe("2026-10-09");
     expect(programOf(ordinary.code)).toBeUndefined();
-    expect(programOf(talk.code)?.dateText).toBe("October 7 (Wed) After the 19:00 Screening");
+    // 官网 2026-09-19 起把 Special Talk 的日期写法从 "October" 收成 "Oct"(同日重抓产物)
+    expect(programOf(talk.code)?.dateText).toBe("Oct 7 (Wed) After the 19:00 Screening");
   });
 
   it("uses the first show for a library card even when a later show has an activity", () => {

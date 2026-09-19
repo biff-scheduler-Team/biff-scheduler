@@ -32,8 +32,10 @@ describe("legacy library search and section parity", () => {
     expect(nodes.filter((n) => searchFilm(n, "范冰冰")).map((n) => n.key)).toEqual(["cat:f072"]);
     expect(nodes.filter((n) => searchFilm(n, "李敏镐")).map((n) => n.shows[0].code)).toEqual(["801"]);
     expect(nodes.filter((n) => searchFilm(n, "演员之家"))).toHaveLength(6);
-    expect(nodes.filter((n) => searchFilm(n, "大师班"))).toHaveLength(4);
-    expect(nodes.filter((n) => searchFilm(n, "电影课"))).toHaveLength(6);
+    // 5 = 811–815;815(Alfonso CUARÓN)是 2026-09-19 官网新增的第 5 场大师班
+    expect(nodes.filter((n) => searchFilm(n, "大师班"))).toHaveLength(5);
+    // 7 = 821–827;827(Charlotte GAINSBOURG)是同日官网新增的第 7 场电影课
+    expect(nodes.filter((n) => searchFilm(n, "电影课"))).toHaveLength(7);
   });
 
   it("keeps the old contiguous, per-field matching rather than inventing cross-field tokens", () => {

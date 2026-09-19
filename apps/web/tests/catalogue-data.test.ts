@@ -216,8 +216,8 @@ describe("票务补充字段", () => {
 describe("活动场次的中文名(人工活动译名表)", () => {
   const ACTIVITY_CODES = [
     "801", "802", "803", "804", "805", "806", // Actors' House
-    "811", "812", "813", "814", // Master Class
-    "821", "822", "823", "824", "825", "826", // Cine Class
+    "811", "812", "813", "814", "815", // Master Class(815 = 2026-09-19 官网新增的 Alfonso CUARÓN)
+    "821", "822", "823", "824", "825", "826", "827", // Cine Class(827 = 同上新增的 Charlotte GAINSBOURG)
     "831", // Special Talk
   ];
   const eventTitles = JSON.parse(read("../../data/event-titles-2026.json")) as {
@@ -225,7 +225,7 @@ describe("活动场次的中文名(人工活动译名表)", () => {
   };
   const zhOf = (code: string): string => (byCode.get(code)?.title_zh ?? "").trim();
 
-  it("17 场活动场次都有中文名(全空 = 本轮需求原先的症状)", () => {
+  it("19 场活动场次都有中文名(全空 = 本轮需求原先的症状)", () => {
     const missing = ACTIVITY_CODES.filter((c) => !zhOf(c));
     expect(missing.map((c) => `${c} ${byCode.get(c)?.title_en ?? "?"}`)).toEqual([]);
   });
