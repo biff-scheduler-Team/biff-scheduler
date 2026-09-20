@@ -38,6 +38,7 @@ import {
 import { RATING_DEFS, SUBS_DEFS, mapsUrl, subsKeys, venuePlace, venueShort, venueTip } from "../legend";
 import { BADGE_DEFS, screeningBadgeKeys, codeTip } from "../badges";
 import { SameScreeningCount, ScreeningTicketControl } from "./ScreeningTickets";
+import { SCHEDULE_LABEL, UNSCHEDULE_LABEL, scheduleAria } from "../actions-copy";
 import { useScreeningPicker } from "./screening-actions";
 import { DiscussionEntry } from "./ScreeningDiscussionDialog";
 import type { Screening } from "../types";
@@ -252,6 +253,9 @@ export function ScreeningCard({
     <article
       className={`screening-card ${picked ? "selected" : ""} ${conflict ? "conflict" : ""} ${inSelectedHour === true ? "slot-hit" : inSelectedHour === false ? "hour-dim" : ""}`}
       data-screening={s.code}
+      // 事件采集锚点（2026-09-20，第 3 轮）：整卡一刀，卡内任何点击都算「用了场次这一入口」。
+      // 只埋一类事件、不带场次 code —— 计数型的价值在「入口热不热」，细到场次会把表撑成 800 行长尾。
+      data-track="screening"
       data-hour-match={inSelectedHour ?? undefined}
       title={slotHint}
       aria-description={slotHint}
@@ -366,10 +370,10 @@ export function ScreeningCard({
         <div className="inline-actions card-actions">
           {pickable && (
             <ActionButton
-              aria-label={`${picked ? "移出" : "加入"}场次 ${s.code}`}
+              aria-label={scheduleAria(picked, s.code)}
               onPress={() => pickScreening(s)}
             >
-              {picked ? "移出行程" : "加入行程"}
+              {picked ? UNSCHEDULE_LABEL : SCHEDULE_LABEL}
             </ActionButton>
           )}
           <ActionButton

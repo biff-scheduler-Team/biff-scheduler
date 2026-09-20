@@ -1,32 +1,53 @@
-// 「抢票分析」页端到端验收（2026-09-20,PLAN-20260920161837）。
+// 「抢票分析」页端到端验收（2026-09-20 精简版：只剩两组 + ECharts）。
 // 断言全部走 DOM 计数 / 属性 / 文本，不看截图。
 //
-// ⚠ E2E 的 webServer 只起 `vite preview`（**没有 API**），所以四份聚合计数一律是空表 ——
-//   本 spec 覆盖的是「全空数据下页面仍然成立」这条路径（也正是最容易出 NaN / 除零的那条）。
-//   非零需求 / 抢到率的计算由 `apps/web/tests/rush-analysis.test.ts` 的单测覆盖。
+// ⚠ E2E 的 webServer 只起 `vite preview`（**没有 API**），所以三份聚合计数一律是空表 ——
+//   本 spec 覆盖「全空数据下页面仍然成立」这条路径（也正是最容易出 NaN / 除零的那条）。
+//   非零数据的计算由 `apps/web/tests/rush-*.test.ts` 的单测覆盖。
 //
-// 覆盖点：① 导航顺序；② 难度榜行数 = 真实场次数；③ 已收录容量的厅印真实数字、
-//        未收录的厅印「未收录」而**不是**数字；④ 搜索能定位到具体场次；
-//        ⑤ 结果面无样本时给「还没有人标记」而不是编一个 0%；⑥ 全页不出现 NaN / Infinity。
+// 覆盖点：① 导航顺序；② 两组都在且是**只有两组**（用户明确「只留下」这两组）；
+//        ③ 群体面板的三个筛选真的会收窄清单；④ 画像空行程整组不渲染、有行程按场次数出现；
+//        ⑤ 影片分析数的是片目数；⑥ 全页不出现 NaN / Infinity。
 
 import { readFileSync } from "node:fs";
 import { test, expect, type Page } from "@playwright/test";
-import { ready } from "./helpers";
-import type { ScheduleFile, VenuesFile } from "../../apps/web/src/types";
+import { buildFilms } from "../../apps/web/src/app/model";
+import { catalog, keyOf, ready, seed } from "./helpers";
+import type { ScheduleFile } from "../../apps/web/src/types";
 
 const schedule = JSON.parse(
   readFileSync("apps/web/public/schedule.json", "utf8"),
 ) as ScheduleFile;
-const venues = (
-  JSON.parse(readFileSync("apps/web/public/venues.json", "utf8")) as VenuesFile
-).venues;
 
-/** 找一个真实归属于某厅的场次编号（不硬编码具体 code，换版后仍然成立） */
-const codeAt = (venueId: string) =>
-  schedule.screenings.find((s) => s.venue_id === venueId)!.code;
-
-const boardRow = (page: Page, code: string) =>
-  page.locator(`.ra-row[data-code="${code}"]`);
+/** 喂一份确定的数据（本 spec 的 webServer 没有 API，不拦就全是空表）。 */
+async function seedCounts(page: Page) {
+  const codes = schedule.screenings.slice(0, 12).map((s) => s.code);
+  await page.route("**/api/stats/want-counts*", (route) =>
+    route.fulfill({
+      json: {
+        counts: Object.fromEntries(codes.slice(0, 6).map((code, index) => [keyOf(code), 30 - index * 4])),
+      },
+    }),
+  );
+  await page.route("**/api/stats/film-votes*", (route) =>
+    route.fulfill({
+      json: {
+        votes: Object.fromEntries(
+          codes.slice(0, 4).map((code, index) => [keyOf(code), { red: 8 - index, black: index + 1 }]),
+        ),
+      },
+    }),
+  );
+  await page.route("**/api/stats/screening-counts*", (route) =>
+    route.fulfill({
+      json: {
+        attendance: Object.fromEntries(codes.map((code, index) => [code, 40 - index * 3])),
+        discussions: { [codes[0]]: 7, [codes[1]]: 2 },
+      },
+    }),
+  );
+  return codes;
+}
 
 test("导航里「抢票分析」紧接「抢票」之后", async ({ page }) => {
   await ready(page, "/rush-analysis");
@@ -37,64 +58,112 @@ test("导航里「抢票分析」紧接「抢票」之后", async ({ page }) => 
   await expect(page.getByRole("heading", { name: "抢票分析", exact: true })).toBeVisible();
 });
 
-test("难度榜列出全部场次，行数 = 排期场次数", async ({ page }) => {
+test("这一页只有两组：群体行为与口碑、我的观影画像 + 影片分析", async ({ page }) => {
   await ready(page, "/rush-analysis");
-  const total = schedule.screenings.length;
-  await expect(page.locator(".ra-row[data-code]")).toHaveCount(total);
-  await expect(page.locator(".count[data-board-total]")).toHaveAttribute(
-    "data-board-total",
-    String(total),
+  const sections = await page
+    .locator(".ra-block")
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label")));
+  // ⚠ 用户 2026-09-20 明确「只留下」这两组 —— 这条断言就是那个决定的守门人。
+  //   「我的观影画像」是第二组的主体，但它**空行程时不渲染**，故这里用「子集 + 必含」，
+  //   而不是写死数组（否则断言会依赖「恰好没有行程」这个前提）。
+  const allowed = ["群体行为与口碑", "我的观影画像", "影片分析"];
+  expect(sections.filter((label) => !allowed.includes(label ?? ""))).toEqual([]);
+  expect(sections).toContain("群体行为与口碑");
+  expect(sections).toContain("影片分析");
+});
+
+test("群体面板：三个筛选都会收窄清单", async ({ page }) => {
+  const codes = await seedCounts(page);
+  await ready(page, "/rush-analysis");
+
+  const section = page.locator('section[aria-label="群体行为与口碑"]');
+  const rows = section.locator("tbody tr");
+  // ⚠ 三份计数是**异步**拉的：直接读属性会在全量并发下拿到空态（total=0，本轮实测踩到）。
+  //   先用带重试的断言等它到位，再读数字。
+  await expect(section).toHaveAttribute("data-crowd-films", /^[1-9]/);
+  const total = Number(await section.getAttribute("data-crowd-films"));
+  expect(total).toBeGreaterThan(1);
+  // 明细表只列 **TOP 10**（用户 2026-09-20 明确要求），故行数是 min(10, 符合筛选的影片数)
+  const LIST_ROWS = 10;
+  await expect(rows).toHaveCount(Math.min(LIST_ROWS, total));
+
+  // ① 按影片筛选：只剩那部片
+  const filmOption = section.locator("select[data-filter='film'] option").nth(1);
+  const filmLabel = (await filmOption.textContent()) ?? "";
+  await section.locator("select[data-filter='film']").selectOption({ index: 1 });
+  await expect(rows).toHaveCount(1);
+  expect(filmLabel.length).toBeGreaterThan(0);
+  await expect(section).toHaveAttribute("data-crowd-films", "1");
+
+  // ② 选影片后，场次下拉只列这部片的场次（不再出现「全部场次」以外的无关场次）
+  const showOptions = await section.locator("select[data-filter='screening'] option").count();
+  expect(showOptions).toBeGreaterThan(1);
+
+  // ③ 关键词：与选中影片不匹配时整组清空（并给空态提示）
+  await section.locator("input[data-filter='keyword']").fill("绝对不存在的片名");
+  await expect(rows).toHaveCount(0);
+
+  // 清掉筛选后回来（表仍只列 TOP 10）
+  await section.locator("input[data-filter='keyword']").fill("");
+  await section.locator("select[data-filter='film']").selectOption("");
+  await expect(rows).toHaveCount(Math.min(LIST_ROWS, total));
+
+  // ④ 按场次筛选：清单收窄到含该场次的影片，并出现「本场同场 N 人」一行
+  await section.locator("select[data-filter='screening']").selectOption(codes[0]);
+  await expect(section).toContainText("本场同场");
+  expect(Number(await section.getAttribute("data-crowd-films"))).toBeLessThan(total);
+});
+
+test("群体面板：喂入计数后两张图都画得出来", async ({ page }) => {
+  await seedCounts(page);
+  await ready(page, "/rush-analysis");
+  await expect(page.locator('[data-chart="crowd-want"]')).toHaveAttribute("data-points", /^[1-9]/);
+  await expect(page.locator('[data-chart="crowd-votes"]')).toHaveAttribute("data-points", /^[1-9]/);
+  // ECharts 真的画了东西（SVG 渲染器 → 容器里必须有 path）
+  expect(await page.locator('[data-chart="crowd-want"] svg path').count()).toBeGreaterThan(0);
+});
+
+test("我的观影画像：没有行程时整组不渲染，有行程时按我的场次数出现", async ({ page }) => {
+  await ready(page, "/rush-analysis");
+  await expect(page.locator("[data-my-shows]")).toHaveCount(0);
+
+  await seed(page, {
+    "biff.picks.v2": JSON.stringify(
+      ["001", "008", "022"].map((code) => ({ key: keyOf(code), picks: [{ code }], note: "" })),
+    ),
+  });
+  await ready(page, "/rush-analysis");
+  await expect(page.locator("[data-my-shows]")).toHaveAttribute("data-my-shows", "3");
+  await expect(page.locator('[data-chart="portrait-country"]')).toBeVisible();
+  await expect(page.locator('[data-chart="portrait-unit"]')).toBeVisible();
+  // 票面总额写明不含折扣（否则会被当成实付预算）
+  await expect(page.getByText(/不含折扣/).first()).toBeVisible();
+});
+
+test("影片分析：数的是本届片目，五张图都在", async ({ page }) => {
+  await ready(page, "/rush-analysis");
+  // ⚠ 基准必须与页面**同源**：页面用的是 `buildFilms(cat, mappings)`（除了排期里的片，
+  //   还会补上「只在合集块里出现」与「目录里有但本届没排期」的条目），
+  //   它比「排期里去重的 filmNodeKey 数」多——实测 299 vs 327，拿后者当基准是错的。
+  const expectedFilms = buildFilms(catalog, new Map()).length;
+  await expect(page.locator("[data-facet-films]")).toHaveAttribute(
+    "data-facet-films",
+    String(expectedFilms),
   );
-});
-
-test("已收录座位数的厅印真实数字，未收录的厅印「未收录」而不是数字", async ({ page }) => {
-  await ready(page, "/rush-analysis");
-
-  // b1（电影殿堂中剧场）= 413 席，来自 tools/build_venue_capacity.py 的人工查证表
-  const known = boardRow(page, codeAt("b1"));
-  await expect(known).toHaveAttribute("data-capacity", "413");
-  await expect(known).toContainText("容量 413");
-  await expect(known).toHaveAttribute("data-level", /extreme|high|medium|low/);
-
-  // 未收录容量的厅（多数 CGV / LOTTE 厅都还没查到）必须降级，且逐字出现「未收录」
-  const unknown = boardRow(page, codeAt("c1"));
-  await expect(unknown).toHaveAttribute("data-capacity", "");
-  await expect(unknown).toContainText("未收录");
-  await expect(unknown).toHaveAttribute("data-level", "unknown");
-
-  // 露天场（bt）容量收录了，且口径说明写明座位可变 —— 不与固定小厅直接横比倍率
-  const outdoor = codeAt("bt");
-  await expect(boardRow(page, outdoor)).toHaveAttribute("data-capacity", "4000");
-  expect(venues.find((v) => v.id === "bt")?.capacityNote).toContain("露天");
-});
-
-test("搜索场次编号只留下匹配的那一行", async ({ page }) => {
-  const code = "070";
-  await ready(page, `/rush-analysis?q=${code}`);
-  await expect(page.locator(".ra-row[data-code]")).toHaveCount(1);
-  await expect(page.locator(".ra-row[data-code]").first()).toHaveAttribute("data-code", code);
-  await expect(page.locator(".ra-list[data-shown]")).toHaveAttribute("data-shown", "1");
-});
-
-test("空数据下逐块降级：结果面给「还没有人标记」而不是 0%，需求面给空态", async ({ page }) => {
-  await ready(page, "/rush-analysis");
-
-  // 结果面：接口 404 → 没有样本 → 不给率值（`data-samples` 整块不出现）
-  await expect(page.locator("[data-samples]")).toHaveCount(0);
-  await expect(page.getByText("还没有人标记抢票结果")).toBeVisible();
-
-  // 需求面：没有人把场次排进行程 → 集中度 / 时间分布都给空态文案
-  await expect(page.getByText("还没有任何场次被排进行程")).toHaveCount(2);
-
-  // 难度榜仍然照常渲染（需求为 0 也是事实，不是缺数据）
-  await expect(page.locator(".ra-row[data-demand]").first()).toHaveAttribute("data-demand", "0");
+  for (const chart of ["facet-country", "facet-unit", "facet-rating", "facet-year", "facet-duration"]) {
+    const figure = page.locator(`[data-chart="${chart}"]`);
+    await expect(figure).toBeVisible();
+    expect(Number(await figure.getAttribute("data-points"))).toBeGreaterThan(0);
+  }
+  // 「类型暂缺」必须写在页面上（产物里没有 genre 这一列）
+  await expect(page.locator('section[aria-label="影片分析"]')).toContainText("类型");
 });
 
 test("全页不出现 NaN / Infinity / undefined", async ({ page }) => {
+  await seedCounts(page);
   await ready(page, "/rush-analysis");
   const text = await page.evaluate(() => document.body.innerText);
   expect(text).not.toContain("NaN");
   expect(text).not.toContain("Infinity");
   expect(text).not.toContain("undefined");
-  expect(text).not.toContain("—%");
 });

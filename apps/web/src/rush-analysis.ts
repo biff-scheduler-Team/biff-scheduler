@@ -21,7 +21,8 @@
  *   `pni.json` 是 09–22，故「次日」档是防御性分支（换版 / 补录可能出现），单测用合成样本覆盖。
  */
 
-import { difficultyOf, percentileOf, type DifficultyLevel } from "./capacity";
+import { capacityOf, difficultyOf, percentileOf, type DifficultyLevel } from "./capacity";
+import type { Catalog, Screening } from "./types";
 import type { TicketCounts } from "./ticket-stats";
 
 /** 抢到率的分母下限：低于它就不给率值（见文件头）。 */
@@ -54,6 +55,10 @@ export interface ShowDemandRow {
   demand: number;
   /** 该厅座位数；未收录 → `null` */
   capacity: number | null;
+  /** 影厅 id。
+   *  ⚠ **可选**：第 1 轮的行只有上面五个字段，供给分组（第 2 轮）才需要它。
+   *    设成必填会把既有的 35 条单测全部改红 —— 而「既有测试一条不改」正是「口径没被动过」的证据。 */
+  venueId?: string;
 }
 
 /** `"29:35"` → `29`（**不取模**，见文件头）。非法输入 → `null`。
@@ -63,6 +68,40 @@ export function startHourOf(startTime: string): number | null {
   if (!matched) return null;
   const hour = Number(matched[1]);
   return Number.isInteger(hour) && hour >= 0 ? hour : null;
+}
+
+/** 排期 + 同场人数 → 需求侧的原始行（**全站唯一的装配口径**，2026-09-20 第 2 轮抽出）。
+ *
+ *  ★ 为什么抽出来：第 1 轮时这段装配写在 `RushAnalysisPage` 里，第 2 轮的四组维度（供给 /
+ *    画像 / 群体 / 建议）全都要吃同一份行；再复制一份到各分组里，「时段怎么算」就有两处实现 ——
+ *    这正是红线 5 要防的形态。
+ *  ⚠ `start_time` 解析不出来（空串 / 脏数据）的场次**整行丢弃**：它连横轴坐标都没有，
+ *    留着只会让「有需求的场次」与「总场次」两个数字对不上。
+ */
+export function buildShowRows(
+  cat: Pick<Catalog, "schedule" | "venueById">,
+  attendance: Record<string, number>,
+): ShowDemandRow[] {
+  const rows: ShowDemandRow[] = [];
+  for (const screening of cat.schedule.screenings) {
+    const hour = startHourOf(screening.start_time);
+    if (hour === null) continue;
+    rows.push({
+      code: screening.code,
+      date: screening.date,
+      startHour: hour,
+      demand: attendance[screening.code] ?? 0,
+      capacity: capacityOf(cat.venueById.get(screening.venue_id)),
+      venueId: screening.venue_id,
+    });
+  }
+  return rows;
+}
+
+/** 场次 → 该场的原始 `Screening`（找不到 → `undefined`）。
+ *  分组模块（供给 / 建议）都要反查排期，各自写一遍 `cat.byCode.get(...)` 是没必要的重复。 */
+export function screeningOf(cat: Pick<Catalog, "byCode">, code: string): Screening | undefined {
+  return cat.byCode.get(code);
 }
 
 /* ---------------- 一、抢票难度榜 ---------------- */
@@ -104,12 +143,17 @@ export interface Concentration {
   halfCount: number;
 }
 
+/** 需求降序的正数序列（0 / 负 / NaN 一律剔除）。
+ *  **集中度与帕累托图共用这一份排序口径** —— 两处各写一次迟早会漂（一处剔 0、一处不剔）。 */
+function sortedPositiveDemands(demands: Iterable<number>): number[] {
+  return [...demands].filter((n) => Number.isFinite(n) && n > 0).sort((a, b) => b - a);
+}
+
 /** 集中度：只回答「多少场吃掉了多少需求」。总需求为 0 → `null`（页面整块不渲染）。 */
 export function demandConcentration(demands: Iterable<number>): Concentration | null {
-  const list = [...demands].filter((n) => Number.isFinite(n) && n > 0);
-  const total = list.reduce((sum, n) => sum + n, 0);
+  const sorted = sortedPositiveDemands(demands);
+  const total = sorted.reduce((sum, n) => sum + n, 0);
   if (total <= 0) return null;
-  const sorted = [...list].sort((a, b) => b - a);
   const half = total / 2;
   let running = 0;
   let halfCount = 0;
@@ -125,11 +169,43 @@ export function demandConcentration(demands: Iterable<number>): Concentration | 
   };
   return {
     total,
-    shows: list.length,
+    shows: sorted.length,
     top10: share(TOP_N[0]),
     top20: share(TOP_N[1]),
     halfCount,
   };
+}
+
+/** 帕累托图的一个点。 */
+export interface ParetoPoint {
+  /** 横轴标签：场次序号（`1` / `2` …）或末尾的 `其余` */
+  label: string;
+  /** 这一档自身的需求 */
+  demand: number;
+  /** **累计**占比（0–1）—— 折线画的就是它 */
+  cumulative: number;
+}
+
+/** 帕累托数据：需求降序，前 `limit` 档单列、其余合并成一档（默认 24 档）。
+ *  总需求为 0 → `null`（页面整块不渲染，不画空图）。 */
+export function demandPareto(demands: Iterable<number>, limit = 24): ParetoPoint[] | null {
+  const sorted = sortedPositiveDemands(demands);
+  const total = sorted.reduce((sum, n) => sum + n, 0);
+  if (total <= 0) return null;
+  const head = limit > 0 ? sorted.slice(0, limit) : [];
+  const rest = limit > 0 ? sorted.slice(limit) : sorted;
+  const out: ParetoPoint[] = [];
+  let running = 0;
+  head.forEach((demand, index) => {
+    running += demand;
+    out.push({ label: String(index + 1), demand, cumulative: running / total });
+  });
+  if (rest.length > 0) {
+    const demand = rest.reduce((sum, n) => sum + n, 0);
+    running += demand;
+    out.push({ label: "其余", demand, cumulative: running / total });
+  }
+  return out;
 }
 
 /* ---------------- 三、需求时间分布 ---------------- */
@@ -170,7 +246,7 @@ export function demandByHour(rows: ShowDemandRow[]): HourBucket[] {
   for (const row of rows) {
     if (row.demand <= 0) continue;
     if (!Number.isFinite(row.startHour) || row.startHour < 0) continue;
-    const hour = row.startHour >= NEXT_DAY_HOUR ? NEXT_DAY_HOUR : row.startHour;
+    const hour = bucketHourOf(row.startHour);
     const bucket = buckets.get(hour) ?? { hour, label: hourLabel(hour), demand: 0, shows: 0 };
     bucket.demand += row.demand;
     bucket.shows += 1;
@@ -179,7 +255,13 @@ export function demandByHour(rows: ShowDemandRow[]): HourBucket[] {
   return [...buckets.values()].sort((a, b) => a.hour - b.hour);
 }
 
-function hourLabel(hour: number): string {
+/** 「原始小时 → 分桶小时」的唯一映射：`>= 24` 一律并入次日档（**不取模**）。
+ *  供给分组（第 2 轮）按场次时段计数时也走它，避免那里自己写一次 `>= 24 ? ... : ...`。 */
+export function bucketHourOf(startHour: number): number {
+  return startHour >= NEXT_DAY_HOUR ? NEXT_DAY_HOUR : startHour;
+}
+
+export function hourLabel(hour: number): string {
   if (hour >= NEXT_DAY_HOUR) return "次日（跨午夜场）";
   return `${String(hour).padStart(2, "0")}:00`;
 }
@@ -276,6 +358,8 @@ export const HEAT_VERDICT_LABELS: Record<HeatVerdict, string> = {
 
 export interface FilmHeatRow extends FilmSignals {
   votes: number;
+  /** 口碑纵轴：红票占比（0–1）。**一票没有 → `null`**（不画点，而不是画在 0）。 */
+  redRatio: number | null;
   verdict: HeatVerdict;
 }
 
@@ -287,13 +371,24 @@ export interface FilmHeatRow extends FilmSignals {
  *  ★ 「口碑」= 红票 ≥ 黑票 → 好，否则差；**总票数 < MIN_VOTES_FOR_VERDICT 一律 `unknown`**
  *    （不下结论），见文件头。
  */
+/** 热度基准 = 有需求的片的需求中位数。
+ *  **图上的竖线画的就是它** —— 两处各算一次会让参考线跑到判定标准之外（口径单一来源）。 */
+export function heatMedian(rows: Iterable<FilmSignals>): number | null {
+  return medianOf([...rows].filter((row) => row.demand > 0).map((row) => row.demand));
+}
+
 export function hotVsVotes(rows: FilmSignals[]): FilmHeatRow[] {
-  const withDemand = rows.filter((row) => row.demand > 0).map((row) => row.demand);
-  const median = medianOf(withDemand);
+  const median = heatMedian(rows);
   return rows
     .map((row) => {
       const votes = Math.max(0, row.red) + Math.max(0, row.black);
-      return { ...row, votes, verdict: verdictOf(row, votes, median) };
+      return {
+        ...row,
+        votes,
+        // 口碑纵轴放在这里算（不在 JSX 里算）：`red/(red+black)` 是**口径**，只该有一份实现
+        redRatio: votes > 0 ? Math.max(0, row.red) / votes : null,
+        verdict: verdictOf(row, votes, median),
+      };
     })
     .sort((a, b) => b.demand - a.demand || a.title.localeCompare(b.title));
 }
@@ -306,7 +401,9 @@ function verdictOf(row: FilmSignals, votes: number, median: number | null): Heat
   return loved ? "quiet-loved" : "quiet-hated";
 }
 
-function medianOf(values: number[]): number | null {
+/** 中位数（偶数个取中间两个的平均）。**导出**供 C 组复用 —— 排序取中这件事
+ *  在三个分组里都要用，各写一份迟早出现「一处取平均、一处取下侧」的分歧。 */
+export function medianOf(values: number[]): number | null {
   if (!values.length) return null;
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);

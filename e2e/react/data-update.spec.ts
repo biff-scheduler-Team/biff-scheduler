@@ -79,7 +79,7 @@ test("数据更新提示:顶栏入口 → 弹层三块 → 知道了后消失", 
   await expect(page.getByRole("button", { name: /数据更新/ })).toHaveCount(0);
 });
 
-test("加入行程:新增场次可直接落进行程,按钮变「已加入」", async ({ page }) => {
+test("排进行程:新增场次可直接落进行程,按钮变「已排进行程」", async ({ page }) => {
   await page.route("**/changelog.json", (route) => route.fulfill({ json: CHANGELOG }));
   await seed(page, {
     "biff.picks.v2": JSON.stringify([
@@ -89,8 +89,8 @@ test("加入行程:新增场次可直接落进行程,按钮变「已加入」", 
   await ready(page, "/schedule");
   await page.getByRole("button", { name: /数据更新/ }).click();
   const dialog = page.getByRole("dialog", { name: "排期数据更新" });
-  await dialog.getByRole("button", { name: "加入行程" }).click();
-  await expect(dialog).toContainText("已加入行程");
+  await dialog.getByRole("button", { name: "排进行程" }).click();
+  await expect(dialog).toContainText("已排进行程");
   const picks = await page.evaluate(() => localStorage.getItem("biff.picks.v2") ?? "");
   expect(picks).toContain("9901");
 });

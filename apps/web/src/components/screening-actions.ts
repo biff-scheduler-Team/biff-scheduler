@@ -11,6 +11,7 @@
 import { useCallback } from "react";
 import { useCatalog } from "../app/store";
 import { slotOf, soleShowCode, store, toggleScreening } from "../state";
+import { UNSCHEDULE_LABEL } from "../actions-copy";
 import { filmInfoOf, filmNodeKey } from "../util";
 import { ToastQueue } from "./spectrum";
 import type { Screening } from "../types";
@@ -26,13 +27,13 @@ export function useScreeningPicker(): (s: Screening) => void {
         // window.confirm 而非弹层:与「移除影片」同一套确认方式(见 `LibraryPage`)
         if (
           !window.confirm(
-            `《${title}》只有这一场，移出行程会同时把它从「我的选片」移除。`,
+            `《${title}》只有这一场，${UNSCHEDULE_LABEL}会同时把它从「我的选片」移除。`,
           )
         ) {
           return;
         }
         toggleScreening(key, s.code);
-        ToastQueue.positive("已移出行程，并从「我的选片」移除。");
+        ToastQueue.positive(`已${UNSCHEDULE_LABEL}，并从「我的选片」移除。`);
         return;
       }
       toggleScreening(key, s.code);

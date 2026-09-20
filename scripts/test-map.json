@@ -56,9 +56,10 @@
     },
     {
       "id": "library",
-      "note": "我的选片 / 影片库",
+      "note": "我的选片 / 影片库（动作文案的唯一来源 actions-copy.ts 也归这里：改措辞必须同时跑 parity-library / want-counts）",
       "paths": [
-        "apps/web/src/pages/LibraryPage.tsx"
+        "apps/web/src/pages/LibraryPage.tsx",
+        "apps/web/src/actions-copy.ts"
       ],
       "specs": [
         "parity-library",
@@ -81,11 +82,13 @@
     },
     {
       "id": "screening-card",
-      "note": "场次卡 / 场次信息弹层 / 同场成员(两个视图共用)",
+      "note": "场次卡 / 场次信息弹层 / 同场成员(两个视图共用；卡上的场次级按钮文案来自 actions-copy.ts)",
       "paths": [
         "apps/web/src/components/ScreeningCard.tsx",
         "apps/web/src/components/ScreeningInfoPopover.tsx",
-        "apps/web/src/components/ScreeningMemberList.tsx"
+        "apps/web/src/components/ScreeningMemberList.tsx",
+        "apps/web/src/actions-copy.ts",
+        "apps/web/src/components/screening-actions.ts"
       ],
       "specs": [
         "parity-agenda",
@@ -138,10 +141,11 @@
     },
     {
       "id": "shell",
-      "note": "路由 / 布局 / 顶栏 / 浮动面板",
+      "note": "路由 / 布局 / 顶栏 / 浮动面板（telemetry.ts 由 App.tsx 挂载，改它要一起跑）",
       "paths": [
         "apps/web/src/app/",
-        "apps/web/src/main.tsx"
+        "apps/web/src/main.tsx",
+        "apps/web/src/telemetry.ts"
       ],
       "specs": [
         "persistent-header",
@@ -152,12 +156,13 @@
     },
     {
       "id": "state-export",
-      "note": "状态迁移 / 备份导入导出 / .ics",
+      "note": "状态迁移 / 备份导入导出 / .ics（workflows 与 compatibility 按名点按钮，故动作文案来源也算它的输入）",
       "paths": [
         "apps/web/src/state.ts",
         "apps/web/src/backup.ts",
         "apps/web/src/ics.ts",
-        "apps/web/src/share.ts"
+        "apps/web/src/share.ts",
+        "apps/web/src/actions-copy.ts"
       ],
       "specs": [
         "review-state-export",
@@ -281,12 +286,13 @@
     },
     {
       "id": "data-update",
-      "note": "排期数据更新提示（顶栏入口 / changelog 产物 / 与我选片的相关性 / 加入行程）",
+      "note": "排期数据更新提示（顶栏入口 / changelog 产物 / 与我选片的相关性 / 排进行程）",
       "paths": [
         "apps/web/src/components/ChangelogDialog.tsx",
         "apps/web/src/changelog.ts",
         "apps/web/src/app/store.tsx",
         "apps/web/public/changelog.json",
+        "apps/web/src/actions-copy.ts",
         "tools/build_changelog.py"
       ],
       "specs": [
@@ -295,18 +301,37 @@
     },
     {
       "id": "rush-analysis",
-      "note": "抢票分析页（需求 / 难度 / 结果 / 口碑四个面 + 影厅容量录入 + 抢票结果上云）；state.ts 是票务结果的唯一上报出口，改它两边都要跑",
+      "note": "抢票分析页（2026-09-20 精简为两组：群体行为与口碑〔可按影片/场次筛选想看人数〕+ 我的观影画像/影片分析；图表层从 recharts 换成 ECharts —— 换库关在 components/charts/ 一层里，`data-chart`/`data-points` 契约未变；vite.config.ts 决定图表独立 chunk，main.tsx 决定本页是否懒加载，改它们都要跑）",
       "paths": [
         "apps/web/src/pages/RushAnalysisPage.tsx",
         "apps/web/src/pages/rush-analysis.css",
         "apps/web/src/rush-analysis.ts",
         "apps/web/src/capacity.ts",
         "apps/web/src/ticket-stats.ts",
+        "apps/web/src/telemetry.ts",
+        "apps/web/src/chart-theme.ts",
+        "apps/web/src/screening-counts.ts",
+        "apps/web/src/want-counts.ts",
+        "apps/web/src/film-votes.ts",
+        "apps/web/src/components/charts/",
+        "apps/web/src/actions-copy.ts",
         "apps/web/src/state.ts",
+        "apps/web/src/app/App.tsx",
+        "apps/web/src/main.tsx",
+        "packages/contracts/src/telemetry.ts",
+        "apps/api/src/telemetry-stats.ts",
+        "apps/api/src/telemetry-store.ts",
+        "apps/api/migrations/0008_telemetry.sql",
         "apps/api/src/ticket-stats.ts",
         "apps/api/src/ticket-stats-store.ts",
         "apps/api/migrations/0007_screening_ticket.sql",
-        "tools/build_venue_capacity.py"
+        "tools/build_venue_capacity.py",
+        "apps/web/src/rush-portrait.ts",
+        "apps/web/src/rush-crowd.ts",
+        "apps/web/src/components/RushCrowdPanel.tsx",
+        "apps/web/src/components/RushPortraitPanel.tsx",
+        "apps/web/vite.config.ts",
+        "apps/web/package.json"
       ],
       "specs": [
         "rush-analysis"

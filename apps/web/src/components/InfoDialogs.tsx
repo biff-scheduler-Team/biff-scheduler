@@ -29,6 +29,7 @@ import {
   venueShort,
 } from "../legend";
 import { BADGE_DEFS } from "../badges";
+import { SCHEDULED_STATE, SCHEDULE_LABEL, WANT_LABEL } from "../actions-copy";
 import type { Venue } from "../types";
 
 // Keep the legacy Chinese summaries, matching the source wording rather than its order.
@@ -338,7 +339,7 @@ export function GuideDialog() {
               <section>
                 <h2>选片与排场</h2>
                 <p>
-                  在影片库将想看的电影加入选片，在场次卡片中加入行程。相互重叠的场次可以保留为抢票备选，在「我的行程」调整顺位，再保存方案。
+                  在影片库点「{WANT_LABEL}」把片子收进选片，再在场次卡上点「{SCHEDULE_LABEL}」排进当天行程。相互重叠的场次可以保留为抢票备选，在「我的行程」调整顺位，再保存方案。
                 </p>
               </section>
               <section>
@@ -346,7 +347,7 @@ export function GuideDialog() {
                 <dl className="definition-list">
                   <div>
                     <dt>已选</dt>
-                    <dd>绿色表示已加入行程。</dd>
+                    <dd>绿色表示{SCHEDULED_STATE}。</dd>
                   </div>
                   <div>
                     <dt>时间紧张</dt>

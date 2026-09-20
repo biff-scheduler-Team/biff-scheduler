@@ -9,6 +9,7 @@ import {
   seenVersion,
 } from "../changelog";
 import { allCodes, store, toggleScreening } from "../state";
+import { SCHEDULED_STATE, SCHEDULE_LABEL } from "../actions-copy";
 import { filmNodeKey } from "../util";
 import type { Catalog, ChangelogAdded } from "../types";
 
@@ -114,9 +115,9 @@ function ChangelogDialog({
                         　{s.date} {s.start_time} · {s.venue_display}
                       </span>{" "}
                       {added.has(s.code) || store.slotIndex.has(s.code) ? (
-                        <span className="muted">已加入行程</span>
+                        <span className="muted">{SCHEDULED_STATE}</span>
                       ) : (
-                        <ActionButton onPress={() => addToAgenda(s)}>加入行程</ActionButton>
+                        <ActionButton onPress={() => addToAgenda(s)}>{SCHEDULE_LABEL}</ActionButton>
                       )}
                     </li>
                   ))}

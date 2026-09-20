@@ -1486,7 +1486,10 @@ img {
 .ticket-countdown-label { font-size: 12px; color: var(--muted); }
 .ticket-countdown-digits { display: inline-flex; align-items: baseline; gap: 8px; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: .025em; }
 .ticket-countdown-digits small { margin-left: 4px; font-size: 11px; font-weight: 400; }
-.full-page-workspace > .library-page, .full-page-workspace > .agenda-page, .full-page-workspace > .feedback-page { width: 100%; min-width: 0; }
+/* ⚠ `.workspace` 是 `display:flex`，页面元素是它的 flex 子项：**不显式给宽度就会被内容挤窄**
+ *   （`flex-basis:auto` 取内容宽度）。2026-09-20 抢票分析页实测只铺开约 620px，右侧整片空 ——
+ *   修法与既有三个整页完全一致，故这里只是把 `.ra-page` 加进同一份名单，不新写一套。 */
+.full-page-workspace > .library-page, .full-page-workspace > .agenda-page, .full-page-workspace > .feedback-page, .full-page-workspace > .ra-page { width: 100%; min-width: 0; }
 .viewing-full-link { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .viewing-panel-heading { gap: 12px; flex-wrap: wrap; }
 .viewing-fab[hidden] { display: none; }

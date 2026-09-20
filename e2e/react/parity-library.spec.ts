@@ -24,7 +24,7 @@ test("removing a scheduled film can be cancelled and confirms before deleting it
   const entry = pick("cat:f001", ["001", "156"], "保留这条备注");
   await seed(page, { "biff.picks.v2": JSON.stringify([entry]) });
   await ready(page, "/picks");
-  const remove = page.getByRole("button", { name: "移除影片 彼此的日夜", exact: true });
+  const remove = page.getByRole("button", { name: "取消想看 彼此的日夜", exact: true });
   page.once("dialog", async (dialog) => {
     expect(dialog.type()).toBe("confirm");
     expect(dialog.message()).toContain("已排 2 场");
@@ -45,13 +45,13 @@ test("removing the only screening keeps the film in my picks, marked unscheduled
   await ready(page, "/picks?expand=cat%3Af001");
   const picks = page.getByRole("region", { name: "我的选片", exact: true });
   const film = picks.locator('[data-film-key="cat:f001"]');
-  await film.getByRole("button", { name: "移出场次 001", exact: true }).click();
+  await film.getByRole("button", { name: "移出行程 场次 001", exact: true }).click();
   // 片还在,状态行明说「未排场」,场次行可再次加入
   await expect(film).toBeVisible();
   await expect(film).toContainText("未排场");
   await expect(film.locator("[data-screening]")).toHaveCount(4);
   await expect(
-    film.getByRole("button", { name: "加入场次 001", exact: true }),
+    film.getByRole("button", { name: "排进行程 场次 001", exact: true }),
   ).toBeVisible();
   expect(JSON.parse((await storage(page))["biff.picks.v2"])).toEqual([
     { key: "cat:f001", picks: [], note: "" },
@@ -77,7 +77,7 @@ test("multiple selected dates filter picks only and disappear when no picked fil
   // 是 hidden 的 —— 旧用例照 legacy 的抽屉假设写,自 945bd06 起就点不到。回选片走顶栏导航。
   // (2026-09-13 随 PLAN-20260913180837 修正;与本需求无关,只是这两条用例一直是红的。)
   await page.getByRole("link", { name: /^我的选片/ }).click();
-  await page.getByRole("button", { name: "移除影片 彼此的日夜", exact: true }).click();
+  await page.getByRole("button", { name: "取消想看 彼此的日夜", exact: true }).click();
   await expect(page.locator('[data-film-key="cat:f002"]')).toBeVisible();
   await expect(page).not.toHaveURL(/pickDate=/);
 });
@@ -116,14 +116,14 @@ test("only my picks offers screening selection and stale codes are explained", a
   await seed(page, { "biff.picks.v2": JSON.stringify([pick("cat:f001", ["001", "old-code"])]) });
   await ready(page, "/library?q=彼此的日夜");
   const film = page.locator('[data-film-key="cat:f001"]');
-  await expect(film.getByRole("button", { name: /^(加入|移出)场次 / })).toHaveCount(0);
+  await expect(film.getByRole("button", { name: /^(排进行程|移出行程) 场次 / })).toHaveCount(0);
   await expect(film.getByRole("button", { name: "定位场次 001", exact: true })).toBeVisible();
   await film.getByRole("button", { name: "已在选片，去排场次", exact: true }).click();
   await expect(film).toContainText("另有 1 场已排场次不在当前排期里");
-  await expect(film.getByRole("button", { name: "移出场次 001", exact: true })).toBeVisible();
+  await expect(film.getByRole("button", { name: "移出行程 场次 001", exact: true })).toBeVisible();
   await film.getByRole("button", { name: "彼此的日夜 影片资料", exact: true }).click();
   const detail = page.getByRole("dialog", { name: "彼此的日夜", exact: true });
-  await expect(detail.getByRole("button", { name: /^(加入|移出)场次 / })).toHaveCount(0);
+  await expect(detail.getByRole("button", { name: /^(排进行程|移出行程) 场次 / })).toHaveCount(0);
   await expect(detail.locator("[data-screening]")).toHaveCount(0);
 });
 
@@ -136,7 +136,7 @@ test("catalog-only details retain remarks, bilingual search and collection conte
   });
   await ready(page, "/library?q=Beneath the Barren");
   const film = page.locator('[data-film-key="cat:f219"]');
-  await expect(film.getByRole("button", { name: /^加入我的选片/ })).toHaveCount(0);
+  await expect(film.getByRole("button", { name: /^想看/ })).toHaveCount(0);
   await expect(film).toContainText("收录于合集");
   await film.getByRole("button", { name: "Beneath 影片资料", exact: true }).click();
   const detail = page.getByRole("dialog", { name: "Beneath", exact: true });

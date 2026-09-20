@@ -19,6 +19,7 @@ import { indexFestival, relatedOf } from "../related";
 import { KIND_LABEL, programOf, formatKrw } from "../extras";
 import { store } from "../state";
 import { doubanMappingOf, doubanScoreOf, filmNodeKey, fmtVoters } from "../util";
+import { WANT_COUNT_SUFFIX } from "../actions-copy";
 import { loadWantCounts, onWantCountsChange, peekWantCounts } from "../want-counts";
 
 export function FilmDialog() {
@@ -117,7 +118,7 @@ export function FilmDialog() {
                     )}
                     {wantCount > 0 && (
                       <p className="want-count" data-want-count={wantCount}>
-                        想看 <strong>{wantCount}</strong> 人
+                        <strong>{wantCount}</strong> {WANT_COUNT_SUFFIX}
                       </p>
                     )}
                     <div className="inline-actions">

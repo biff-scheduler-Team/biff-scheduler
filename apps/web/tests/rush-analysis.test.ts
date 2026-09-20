@@ -17,6 +17,7 @@ import {
   demandByDate,
   demandByHour,
   demandConcentration,
+  demandPareto,
   difficultyBoard,
   HEAT_VERDICT_LABELS,
   hotVsVotes,
@@ -166,6 +167,38 @@ describe("demandConcentration", () => {
   });
 });
 
+describe("demandPareto：帕累托数据", () => {
+  it("需求降序 + 累计占比，末尾合并「其余」", () => {
+    // 30 场各 1 人 → limit 24 时前 24 档单列，剩 6 档并成「其余」
+    const points = demandPareto(Array.from({ length: 30 }, () => 1), 24)!;
+    expect(points).toHaveLength(25);
+    expect(points[0]).toEqual({ label: "1", demand: 1, cumulative: 1 / 30 });
+    expect(points[23].cumulative).toBeCloseTo(24 / 30, 6);
+    expect(points[24]).toEqual({ label: "其余", demand: 6, cumulative: 1 });
+  });
+
+  it("降序 —— 第一档必须是需求最大的那一场", () => {
+    const points = demandPareto([3, 10, 7], 24)!;
+    expect(points.map((p) => p.demand)).toEqual([10, 7, 3]);
+    expect(points[2].cumulative).toBe(1);
+  });
+
+  it("总需求为 0 / 全是脏值 → null（不画空图）", () => {
+    expect(demandPareto([])).toBeNull();
+    expect(demandPareto([0, 0])).toBeNull();
+    expect(demandPareto([Number.NaN, -3])).toBeNull();
+  });
+
+  it("与 demandConcentration 同源：Top N 的累计占比必须等于集中度里的那份", () => {
+    const demands = [9, 8, 7, 6, 5, 4, 3, 2, 1];
+    const concentration = demandConcentration(demands)!;
+    const points = demandPareto(demands, 24)!;
+    // 两处都从「降序正数」出发，第 10 档（= 全部）与 Top N 的口径必须对得上
+    expect(points[points.length - 1].cumulative).toBe(1);
+    expect(concentration.top10.share).toBe(1);
+  });
+});
+
 describe("时段分桶：24+ 时制不取模", () => {
   it("startHourOf 读原始小时，不做任何取模", () => {
     expect(startHourOf("08:00")).toBe(8);
@@ -312,6 +345,16 @@ describe("hotVsVotes", () => {
     const a = rows.find((r) => r.key === "a")!;
     expect(a.votes).toBe(6);
     expect(a.verdict).toBe("quiet-loved");
+  });
+
+  it("redRatio 是口碑纵轴，一票没有时为 null（不画点，而不是画在 0）", () => {
+    const rows = hotVsVotes([
+      film({ key: "a", demand: 2, red: 3, black: 1 }),
+      film({ key: "b", demand: 1, red: 0, black: 0 }),
+    ]);
+    const byKey = new Map(rows.map((r) => [r.key, r]));
+    expect(byKey.get("a")!.redRatio).toBeCloseTo(0.75, 6);
+    expect(byKey.get("b")!.redRatio).toBeNull();
   });
 
   it("一条样本也没有 → 全 unknown，不抛", () => {

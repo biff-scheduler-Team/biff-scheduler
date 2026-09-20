@@ -18,6 +18,19 @@ import { setFilmExpanded, useLibraryExpansion } from "../app/library-state";
 import { navSearch } from "../app/nav-query";
 import { hasActiveFilter, LS_FILTERS_LIB, matchesFilters } from "../filters";
 import { addPickFilm, removePick, setPickNote, soleShowCode, store } from "../state";
+import {
+  GO_SCHEDULE_LABEL,
+  GO_VIEW_LABEL,
+  SOLE_SHOW_HINT,
+  UNWANT_LABEL,
+  WANT_LABEL,
+  WANT_TOAST,
+  soleShowToast,
+  unwantAria,
+  unwantConfirm,
+  wantAria,
+  wantCountLabel,
+} from "../actions-copy";
 import { dateInfo, doubanScoreOf, doubanUrlOf, unitLabel } from "../util";
 import { loadWantCounts, onWantCountsChange, peekWantCounts } from "../want-counts";
 
@@ -43,8 +56,9 @@ function FilmCard({
   const entry = store.picks.get(film.key);
   // 只有一场的影片没有「挑场次」这一步:点一下就**直接落进行程**(2026-09-16,`PLAN-20260916004024`)。
   // 判据走 state 注入的 `soleShowCode()` —— 与移除口径同一份实现(注入点在 `store.tsx::hydrateStorage`)。
+  // ⚠ 动作文案**不再按单场片分叉**(2026-09-20):两者都是「想看」这一个动作,
+  //   副作用交给 `SOLE_SHOW_HINT` 悬停说明 + 成功提示解释,不靠换措辞暗示(见 `actions-copy.ts`)。
   const soleCode = soleShowCode(film.key);
-  const addLabel = soleCode ? "加入行程" : "加入我的选片";
   const score = doubanScoreOf(film.cats[0], film.map);
   // 豆瓣映射:取值链(有场次按 code、无场次按 `f###`)已由 `model.ts::buildFilms` 用
   // `util.ts::doubanMappingOf` 统一算进片节点 —— 这里不再各写一份回落(2026-09-17,`PLAN-20260917010426`)。
@@ -54,7 +68,13 @@ function FilmCard({
   // 会有 4 部卡片副标题写着别的单元,看着像筛错了(见 `model.ts::unitsOfFilm`)。
   const alsoUnits = film.cats[0]?.also_units ?? [];
   return (
-    <article className="film-card" data-film-key={film.key} tabIndex={-1}>
+    <article
+      className="film-card"
+      data-film-key={film.key}
+      // 事件采集锚点（2026-09-20，第 3 轮）：与场次卡同一条理由 —— 只记「用了影片这一入口」
+      data-track="film"
+      tabIndex={-1}
+    >
       <div className="film-heading">
         {film.poster && (
           <img
@@ -80,7 +100,9 @@ function FilmCard({
               <span className="score">豆瓣 {score.rating.toFixed(1)}</span>
             )}
             {typeof wantCount === "number" && wantCount > 0 && (
-              <span className="want-count" data-want-count={wantCount}>想看 <strong>{wantCount}</strong></span>
+              <span className="want-count" data-want-count={wantCount}>
+                {wantCountLabel(wantCount)}
+              </span>
             )}
           </div>
           <div className="title-row">
@@ -109,9 +131,12 @@ function FilmCard({
           <p className="muted">
             {film.block
               ? "收录于合集"
-              : film.shows.length
-                ? `共 ${film.shows.length} 场`
-                : "暂无排期"}
+              : // 单场片没有「挑场次」这一步 —— 把副作用写在片信息行里(手机没有悬停，见 `actions-copy.ts`)
+                soleCode && !entry
+                ? SOLE_SHOW_HINT
+                : film.shows.length
+                  ? `共 ${film.shows.length} 场`
+                  : "暂无排期"}
             {/* 0 场写「未排场」而不是「已排 0 场」:移出行程后片仍在选片里(2026-09-13,
                 PLAN-20260913180837),这行是用户唯一能看出「片没丢、只是没排场」的地方,
                 说法与帮助弹层里的「标注『未排场』」逐字对齐。 */}
@@ -125,15 +150,15 @@ function FilmCard({
             variant="primary"
             onPress={() => {
               if (addPickFilm(film.key, soleCode ?? undefined)) {
-                ToastQueue.positive(`《${film.zh}》只有一场，已直接加入行程。`);
+                ToastQueue.positive(soleShowToast(film.zh));
                 return;
               }
               setFilmExpanded("picks", film.key, true);
-              ToastQueue.positive("已加入我的选片，可以在那里挑选场次。");
+              ToastQueue.positive(WANT_TOAST);
             }}
-            aria-label={`${addLabel} ${film.zh}`}
+            aria-label={wantAria(film.zh)}
           >
-            {addLabel}
+            {WANT_LABEL}
           </Button>
         ) : !pickedView && film.shows.length > 0 && entry ? (
           <ActionButton
@@ -149,18 +174,18 @@ function FilmCard({
             }}
           >
             {/* 单场片加入即已排好场次 —— 再写「去排场次」会让人以为还差一步(2026-09-16) */}
-            {soleCode && entry.picks.length > 0 ? "已在行程，去查看" : "已在选片，去排场次"}
+            {soleCode && entry.picks.length > 0 ? GO_VIEW_LABEL : GO_SCHEDULE_LABEL}
           </ActionButton>
         ) : pickedView ? (
           <ActionButton
-            aria-label={`移除影片 ${film.zh}`}
+            aria-label={unwantAria(film.zh)}
             onPress={() => {
               const count = entry?.picks.length ?? 0;
-              if (count && !window.confirm(`《${film.title}》已排 ${count} 场，确定整片移除（含这些场次）？`)) return;
+              if (!window.confirm(unwantConfirm(film.title, count))) return;
               removePick(film.key);
             }}
           >
-            移除影片
+            {UNWANT_LABEL}
           </ActionButton>
         ) : null}
         <ActionButton
@@ -393,7 +418,8 @@ export function LibraryPage({ picked = false }: { picked?: boolean }) {
             </h2>
             <p>
               {picked && !store.picks.size
-                ? "在影片库加入想看的电影，再挑选适合的场次。"
+                // 直接点名按钮 —— 用户在这一页看到的第一个动作就是「想看」，别再让他猜是哪个入口
+                ? `在影片库点「${WANT_LABEL}」把片子收进来，再挑选适合的场次。`
                 : "试试其他片名，或清除筛选。"}
             </p>
             {picked && !store.picks.size && (
