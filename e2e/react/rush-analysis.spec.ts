@@ -187,6 +187,39 @@ test("影片分析：数的是本届片目，五张图都在", async ({ page }) 
   await expect(unitNote.locator(".ra-note-body")).toContainText("类型");
 });
 
+test("hover 柱子时高亮块压在柱子下面、且是半透明（不再遮住柱子）", async ({ page }) => {
+  await ready(page, "/rush-analysis");
+  const figure = page.locator('[data-chart="facet-year"]');
+  await expect(figure).toBeVisible();
+
+  // 浅色主题下柱子用品牌色（spec 未指定 colorScheme，Playwright 默认浅色）
+  const bar = figure.locator('svg path[fill="#ce1e36"]').first();
+  const box = await bar.boundingBox();
+  if (!box) throw new Error("量不到柱子的位置");
+  const countBefore = await figure.locator("svg path").count();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  // hover 会多画一个高亮块（axisPointer 的 shadow）
+  await expect(figure.locator("svg path")).toHaveCount(countBefore + 1);
+
+  const hit = await figure.locator("svg").evaluate((svg) => {
+    const paths = [...svg.querySelectorAll("path")];
+    // ECharts 把带 alpha 的填充拆成 `fill` + `fill-opacity`，所以只有高亮块带这个属性
+    const shadowIndex = paths.findIndex((el) => el.getAttribute("fill-opacity") !== null);
+    const barIndex = paths.findIndex((el) => el.getAttribute("fill") === "#ce1e36");
+    return { shadowIndex, barIndex, fillOpacity: paths[shadowIndex]?.getAttribute("fill-opacity") ?? "" };
+  });
+
+  expect(hit.shadowIndex, "hover 高亮块没画出来").toBeGreaterThanOrEqual(0);
+  // ① 层序：SVG 按 DOM 顺序绘制 —— 高亮块排在柱子**之前**才叫「压在下面」。
+  //    ⚠ 这条就是本 bug 的守门人：ECharts 6 的 axisPointer 默认 z=50，而 bar series 的 z 是 2，
+  //      不显式压下去的话高亮块会盖住柱子（2026-09-20 实测：柱子直接看不见）。
+  expect(hit.shadowIndex, "高亮块又跑到柱子上面了").toBeLessThan(hit.barIndex);
+  // ② 半透明：原来用的是不透明的 `--raised`，整条类目带被一块实色盖死
+  const alpha = Number(hit.fillOpacity);
+  expect(alpha).toBeGreaterThan(0);
+  expect(alpha).toBeLessThan(1);
+});
+
 test("图的说明默认收在右上角的 ⓘ 里，点开才显示", async ({ page }) => {
   await ready(page, "/rush-analysis");
   const figure = page.locator('[data-chart="facet-rating"]');
