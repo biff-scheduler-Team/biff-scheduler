@@ -301,7 +301,7 @@
     },
     {
       "id": "rush-analysis",
-      "note": "抢票分析页（2026-09-20 精简为两组：群体行为与口碑〔可按影片/场次筛选想看人数〕+ 我的观影画像/影片分析；图表层从 recharts 换成 ECharts —— 换库关在 components/charts/ 一层里，`data-chart`/`data-points` 契约未变；vite.config.ts 决定图表独立 chunk，main.tsx 决定本页是否懒加载，改它们都要跑）",
+      "note": "数据分析页（2026-09-20 精简为两组：群体行为与口碑〔可按影片/场次筛选想看人数〕+ 我的观影画像/影片分析；图表层从 recharts 换成 ECharts —— 换库关在 components/charts/ 一层里，`data-chart`/`data-points` 契约未变；vite.config.ts 决定图表独立 chunk，main.tsx 决定本页是否懒加载，改它们都要跑）",
       "paths": [
         "apps/web/src/pages/RushAnalysisPage.tsx",
         "apps/web/src/pages/rush-analysis.css",

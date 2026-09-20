@@ -1,4 +1,9 @@
-// 「抢票分析」页（2026-09-20 精简版）。
+// 「数据分析」页（2026-09-20 精简版）。
+//
+// ★ 名字是「数据分析」而不是「抢票分析」（2026-09-20，PLAN-20260920193032，用户要求）：
+//   这一页读的不只是抢票 —— 还有想看 / 红黑票 / 我的观影画像 / 影片构成，旧名字把它说窄了。
+//   ⚠ 路由 `/rush-analysis` 与模块文件名保持不变（书签 / PWA 缓存 / TEST-MAP 的契约），
+//   改名只落在显示层：导航项、h1、区域 aria-label。
 //
 // ★ 这一页现在**只有两组**：
 //   ① 群体行为与口碑 —— 想看人数 / 红黑票，可按**影片**与**场次**筛选；
@@ -62,7 +67,7 @@ export function RushAnalysisPage() {
 
   if (cat.schedule.screenings.length === 0) {
     return (
-      <section className="ra-page" aria-label="抢票分析">
+      <section className="ra-page" aria-label="数据分析">
         <div className="empty-state">
           <h2>还没有排期数据</h2>
           <p>排期载入后，这里会给出「群体想看 / 口碑」与「我的观影画像 / 影片分析」。</p>
@@ -72,11 +77,11 @@ export function RushAnalysisPage() {
   }
 
   return (
-    <section className="ra-page" aria-label="抢票分析">
+    <section className="ra-page" aria-label="数据分析">
       <div className="panel-heading">
         <div>
           <p className="eyebrow">群体口碑 · 我的画像 · 影片分析</p>
-          <h1>抢票分析</h1>
+          <h1>数据分析</h1>
         </div>
         <span className="count" aria-live="polite">
           {cat.schedule.screenings.length} 场

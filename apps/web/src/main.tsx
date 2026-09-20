@@ -37,7 +37,8 @@ const router = createBrowserRouter([
       { path: "agenda", element: <AgendaPage />, children: filmRoute() },
       { path: "redblack", element: <RedBlackPage />, children: filmRoute() },
       { path: "rush", element: <RushPage />, children: filmRoute() },
-      // 抢票分析(2026-09-20,PLAN-20260920161837):与 /rush 并列的第二张票务视图。
+      // 数据分析(2026-09-20,PLAN-20260920161837;同日由「抢票分析」更名见 PLAN-20260920193032):
+      // 与 /rush 并列的第二张票务视图。
       //
       // ⚠ **本页刻意走路由级动态 import**(仓库里唯一一处):它带了 ECharts(原为 recharts),
       //   实测 gzip 193.9 KB —— 比整个主包(82.5 KB)还大一倍多。
