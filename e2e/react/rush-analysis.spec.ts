@@ -76,7 +76,7 @@ test("这一页只有两组：群体行为与口碑、我的观影画像 + 影�
   expect(sections).toContain("影片分析");
 });
 
-test("群体面板：三个筛选都会收窄清单", async ({ page }) => {
+test("群体面板：两个搜索框都会收窄清单", async ({ page }) => {
   const codes = await seedCounts(page);
   await ready(page, "/rush-analysis");
 
@@ -91,31 +91,51 @@ test("群体面板：三个筛选都会收窄清单", async ({ page }) => {
   const LIST_ROWS = 10;
   await expect(rows).toHaveCount(Math.min(LIST_ROWS, total));
 
-  // ① 按影片筛选：只剩那部片
-  const filmOption = section.locator("select[data-filter='film'] option").nth(1);
-  const filmLabel = (await filmOption.textContent()) ?? "";
-  await section.locator("select[data-filter='film']").selectOption({ index: 1 });
-  await expect(rows).toHaveCount(1);
-  expect(filmLabel.length).toBeGreaterThan(0);
-  await expect(section).toHaveAttribute("data-crowd-films", "1");
+  // ① 电影搜索框：输入清单第一行的片名 → 收窄到那部片（2026-09-20 起「电影 / 场次」是搜索框，
+  //   不再是下拉；片名按子串匹配，故这里断言「收窄 + 第一行仍是它」而不写死行数）
+  const title = ((await rows.first().locator("td").first().textContent()) ?? "").trim();
+  expect(title.length).toBeGreaterThan(0);
+  await section.locator("input[data-filter='film']").fill(title);
+  await expect(rows.first()).toContainText(title);
+  expect(Number(await section.getAttribute("data-crowd-films"))).toBeLessThan(total);
 
-  // ② 选影片后，场次下拉只列这部片的场次（不再出现「全部场次」以外的无关场次）
-  const showOptions = await section.locator("select[data-filter='screening'] option").count();
-  expect(showOptions).toBeGreaterThan(1);
-
-  // ③ 关键词：与选中影片不匹配时整组清空（并给空态提示）
-  await section.locator("input[data-filter='keyword']").fill("绝对不存在的片名");
+  // ② 搜不到 → 整组清空（并给空态提示）
+  await section.locator("input[data-filter='film']").fill("绝对不存在的片名");
   await expect(rows).toHaveCount(0);
 
   // 清掉筛选后回来（表仍只列 TOP 10）
-  await section.locator("input[data-filter='keyword']").fill("");
-  await section.locator("select[data-filter='film']").selectOption("");
+  await section.locator("input[data-filter='film']").fill("");
   await expect(rows).toHaveCount(Math.min(LIST_ROWS, total));
 
-  // ④ 按场次筛选：清单收窄到含该场次的影片，并出现「本场同场 N 人」一行
-  await section.locator("select[data-filter='screening']").selectOption(codes[0]);
+  // ③ 场次搜索框：输入场次号 → 清单收窄到含该场次的影片，并出现「本场同场 N 人」一行
+  //   （这一行只在**唯一命中一场**时出现 —— 也就是「选中语义由搜索框承担」的那条规则）
+  await section.locator("input[data-filter='screening']").fill(codes[0]);
   await expect(section).toContainText("本场同场");
   expect(Number(await section.getAttribute("data-crowd-films"))).toBeLessThan(total);
+});
+
+test("影片明细可切到「按场次看」：出现影厅列，且首行就是人最多的那一场", async ({ page }) => {
+  await seedCounts(page);
+  await ready(page, "/rush-analysis");
+  const section = page.locator('section[aria-label="群体行为与口碑"]');
+  // 计数是异步拉的，先等它到位
+  await expect(section).toHaveAttribute("data-crowd-films", /^[1-9]/);
+  const table = section.locator("table.ra-table");
+  // 默认是影片视角：没有「影厅」这一列（页面与改动前一致）
+  await expect(table).toHaveAttribute("data-crowd-mode", "film");
+  await expect(table.locator("thead")).not.toContainText("影厅");
+
+  await section.locator("input[data-toggle='by-show']").check();
+  await expect(table).toHaveAttribute("data-crowd-mode", "show");
+  await expect(table.locator("thead")).toContainText("影厅");
+
+  // 勾上后按**单场人数降序** —— 第一行就是「人最多的那一场」
+  const nums = (await table.locator("tbody tr td:last-child").allTextContents()).map(Number);
+  expect(nums.length).toBeGreaterThan(0);
+  expect(nums.length).toBeLessThanOrEqual(10);
+  expect(nums).toEqual([...nums].sort((a, b) => b - a));
+  // 每行都能说出「哪一场、什么时候、在哪个厅、多少人」
+  await expect(table.locator("tbody tr").first().locator("td")).toHaveCount(5);
 });
 
 test("群体面板：喂入计数后两张图都画得出来", async ({ page }) => {
@@ -159,8 +179,24 @@ test("影片分析：数的是本届片目，五张图都在", async ({ page }) 
     await expect(figure).toBeVisible();
     expect(Number(await figure.getAttribute("data-points"))).toBeGreaterThan(0);
   }
-  // 「类型暂缺」必须写在页面上（产物里没有 genre 这一列）
-  await expect(page.locator('section[aria-label="影片分析"]')).toContainText("类型");
+  // 「类型暂缺」必须写出来（产物里没有 genre 这一列）——
+  // 2026-09-20 起它收在图的右上角 ⓘ 里（PLAN-20260920193412），故先点开再断言
+  const unitNote = page.locator('[data-chart-note="facet-unit"]');
+  await expect(unitNote.locator(".ra-note-body")).toBeHidden();
+  await unitNote.locator(".ra-note-btn").click();
+  await expect(unitNote.locator(".ra-note-body")).toContainText("类型");
+});
+
+test("图的说明默认收在右上角的 ⓘ 里，点开才显示", async ({ page }) => {
+  await ready(page, "/rush-analysis");
+  const figure = page.locator('[data-chart="facet-rating"]');
+  const note = figure.locator(".ra-note-body");
+  // 默认不占版面 —— 这正是用户 2026-09-20 提的那件事
+  await expect(note).toBeHidden();
+  await figure.locator(".ra-note-btn").click();
+  await expect(note).toBeVisible();
+  // 用户举例的那一句话必须还在，只是换了位置
+  await expect(note).toContainText("不是 0 分");
 });
 
 test("全页不出现 NaN / Infinity / undefined", async ({ page }) => {

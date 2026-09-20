@@ -1,4 +1,4 @@
-/* 「抢票分析」页样式（2026-09-20；同日修订 4 精简为两组并换 ECharts）。
+/* 「数据分析」页样式（2026-09-20；同日修订 4 精简为两组并换 ECharts；页面名同日改为「数据分析」）。
  *
  * ⚠ 刻意**独立成文件**而不是追加进 `style.css`：后者命中 TEST-MAP 的 allOn（全局样式），
  *   改它会触发三浏览器全量 E2E。这里只复用既有 token，不新增视觉语言。
@@ -95,6 +95,26 @@
   text-align: left;
 }
 
+/* 明细表的视角开关（勾上 = 场次视角，带影厅）：贴在 caption 尾部，不另起一行占版面 */
+.ra-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.ra-toggle input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  /* 复选框的勾选色也走品牌 token，不在业务文件写死颜色 */
+  accent-color: var(--brand);
+}
+
 .ra-table th {
   text-align: left;
   font-weight: 600;
@@ -157,6 +177,8 @@
 }
 
 .ra-chart-canvas {
+  /* ⓘ 的定位锚（`.ra-note` 是绝对定位） */
+  position: relative;
   width: 100%;
 }
 
@@ -165,11 +187,79 @@
   height: 100%;
 }
 
-.ra-chart-note {
-  margin-top: 6px;
+/* ---------------- 图的说明：右上角 ⓘ ----------------
+ * ★ 2026-09-20（PLAN-20260920193412，用户：「太多解释性文案了 全部放到图的右上角的 tooltip 里面」）：
+ *   图注不再是画布下方那行小字，而是右上角一个 ⓘ，点开才浮出说明。
+ * ⚠ 用 `<details>`（点击切换）而不是纯 `:hover`：这一页的主要读者在现场用手机，没有 hover。
+ * ⚠ 常态只是「淡圈」——它不该抢图本身的注意力；展开时才提对比。
+ */
+.ra-note {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 3;
+}
+
+.ra-note-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  /* 去掉 <summary> 的默认三角：现代浏览器认 list-style，
+   * WebKit 还要单独关掉 `::-webkit-details-marker`，两个都写才全覆盖 */
+  list-style: none;
   color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+  font-style: italic;
+  cursor: pointer;
+}
+
+.ra-note-btn::-webkit-details-marker {
+  display: none;
+}
+
+.ra-note-btn:hover,
+.ra-note[open] .ra-note-btn {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.ra-note-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+
+.ra-note-body {
+  position: absolute;
+  right: 0;
+  top: 24px;
+  width: 236px;
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 14%);
   font-size: 12px;
   line-height: 1.6;
+}
+
+/* 空态：没有数据时给一句**可见**的话，而不是画一张空图再把原因藏进 ⓘ */
+.ra-chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 140px;
+  padding: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
 }
 
 /* 图例：颜色点 + 人话标签（图例不写明颜色含义的话，读者只能猜） */
