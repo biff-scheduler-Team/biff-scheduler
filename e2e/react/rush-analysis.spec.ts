@@ -1,4 +1,4 @@
-// 「抢票分析」页端到端验收（2026-09-20 精简版：只剩两组 + ECharts）。
+// 「数据分析」页端到端验收（2026-09-20 精简版：只剩两组 + ECharts；同日由「抢票分析」更名，PLAN-20260920193032）。
 // 断言全部走 DOM 计数 / 属性 / 文本，不看截图。
 //
 // ⚠ E2E 的 webServer 只起 `vite preview`（**没有 API**），所以三份聚合计数一律是空表 ——
@@ -49,13 +49,17 @@ async function seedCounts(page: Page) {
   return codes;
 }
 
-test("导航里「抢票分析」紧接「抢票」之后", async ({ page }) => {
+test("导航里「数据分析」紧接「抢票」之后，且与页面标题同名", async ({ page }) => {
   await ready(page, "/rush-analysis");
   const labels = (
     await page.getByRole("navigation", { name: "主要导航" }).getByRole("link").allTextContents()
   ).map((text) => text.trim());
-  expect(labels.indexOf("抢票分析")).toBe(labels.indexOf("抢票") + 1);
-  await expect(page.getByRole("heading", { name: "抢票分析", exact: true })).toBeVisible();
+  expect(labels.indexOf("数据分析")).toBe(labels.indexOf("抢票") + 1);
+  await expect(page.getByRole("heading", { name: "数据分析", exact: true })).toBeVisible();
+  // ⚠ 导航名与页面标题是**两处各写一遍**的字面量（App.tsx / RushAnalysisPage.tsx）。
+  //   这里断言它们逐字相同 —— 以后只改一处（2026-09-20 就是「抢票分析 → 数据分析」这种改名）
+  //   会在这里立刻红，而不是等到用户看见导航和标题不一致。
+  expect(await page.locator(".ra-page h1").first().textContent()).toBe("数据分析");
 });
 
 test("这一页只有两组：群体行为与口碑、我的观影画像 + 影片分析", async ({ page }) => {
