@@ -84,10 +84,33 @@
 /* 表格：等宽数字对齐，右列不抖。数字列用**百分比宽度**，宽屏下四列数字均匀铺开 */
 .ra-table {
   width: 100%;
-  margin-top: 14px;
   border-collapse: collapse;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
+}
+
+/* 表格标题 + 视角开关：刻意放在滚动区**外面** ——
+ * 滚到第 20 行时仍要能切换视角，也仍要知道这张表是什么（2026-09-20 起表格有 30 行、可滚动）。 */
+.ra-table-title {
+  margin: 14px 0 6px;
+}
+
+/* 明细表的滚动区：最多 30 行，但一次只看得见 10 行
+ * （用户 2026-09-20：「改成 TOP 30 然后只显示 10 个 剩余的用滚动条实现展示」）。
+ * ⚠ 354 = 表头 23.5 + 10 行 × 33（2026-09-20 实测值），与 `RushCrowdPanel` 的 `VISIBLE_ROWS` 对应 ——
+ *    改字号 / padding / 行高时要一起调这里（差 1px 就会把第 11 行露出半截，或让第 10 行显示不全）。
+ * ⚠ 滚动区里**只有表头与数据行**（标题与开关在它外面，故这里不必再加标题的高度）。 */
+.ra-table-scroll {
+  max-height: 354px;
+  overflow-y: auto;
+}
+
+/* 滚下去时表头留在顶部 —— 否则看到第 20 行就不知道哪列是哪列了（能滚动反而成了退步） */
+.ra-table-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
 }
 
 .ra-table caption {

@@ -87,8 +87,8 @@ test("群体面板：两个搜索框都会收窄清单", async ({ page }) => {
   await expect(section).toHaveAttribute("data-crowd-films", /^[1-9]/);
   const total = Number(await section.getAttribute("data-crowd-films"));
   expect(total).toBeGreaterThan(1);
-  // 明细表只列 **TOP 10**（用户 2026-09-20 明确要求），故行数是 min(10, 符合筛选的影片数)
-  const LIST_ROWS = 10;
+  // 明细表最多列 30 行（2026-09-20 由 TOP 10 扩到 TOP 30；一次仍只看 10 行，见另一条测试）
+  const LIST_ROWS = 30;
   await expect(rows).toHaveCount(Math.min(LIST_ROWS, total));
 
   // ① 电影搜索框：输入清单第一行的片名 → 收窄到那部片（2026-09-20 起「电影 / 场次」是搜索框，
@@ -114,6 +114,57 @@ test("群体面板：两个搜索框都会收窄清单", async ({ page }) => {
   expect(Number(await section.getAttribute("data-crowd-films"))).toBeLessThan(total);
 });
 
+test("影片明细最多 30 行、一次看得见 10 行（其余滚动）", async ({ page }) => {
+  // 喂 300 场的「想看」，让清单超过 30 部 —— 否则根本谈不上滚动
+  await page.route("**/api/stats/want-counts*", (route) =>
+    route.fulfill({
+      json: {
+        counts: Object.fromEntries(
+          schedule.screenings
+            .slice(0, 300)
+            .map((screening, index) => [keyOf(screening.code), 300 - index]),
+        ),
+      },
+    }),
+  );
+  await ready(page, "/rush-analysis");
+  const section = page.locator('section[aria-label="群体行为与口碑"]');
+  await expect(section).toHaveAttribute("data-crowd-films", /^[1-9]/);
+  const total = Number(await section.getAttribute("data-crowd-films"));
+  expect(total).toBeGreaterThan(30);
+
+  // ① 只取前 30 行（用户 2026-09-20：「TOP 10 改成 TOP 30」）
+  const rows = section.locator("tbody tr");
+  await expect(rows).toHaveCount(30);
+
+  // ② 一次看得见 10 行：第 10 行完整落在可视区内、第 11 行在容器外
+  const scroll = section.locator(".ra-table-scroll");
+  const box = await scroll.boundingBox();
+  const tenth = await rows.nth(9).boundingBox();
+  const eleventh = await rows.nth(10).boundingBox();
+  if (!box || !tenth || !eleventh) throw new Error("量不到滚动区 / 行的位置");
+  expect(tenth.y + tenth.height).toBeLessThanOrEqual(box.y + box.height + 1);
+  expect(eleventh.y + eleventh.height).toBeGreaterThan(box.y + box.height);
+
+  // ③ 真的能滚到底（「剩余的用滚动条实现展示」）——
+  //   ⚠ 判据是「第 30 行落进**滚动容器**」而不是 `toBeInViewport()`：后者看的是浏览器视口，
+  //     而这张表本身位于一整页长页面里，滚进容器 ≠ 滚进视口（本轮实测踩到）。
+  const metrics = await scroll.evaluate((el) => ({ client: el.clientHeight, scroll: el.scrollHeight }));
+  expect(metrics.scroll).toBeGreaterThan(metrics.client);
+  await scroll.evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+  const last = await rows.nth(29).boundingBox();
+  if (!last) throw new Error("量不到第 30 行");
+  expect(last.y).toBeGreaterThanOrEqual(box.y - 1);
+  expect(last.y + last.height).toBeLessThanOrEqual(box.y + box.height + 1);
+
+  // ④ 滚下去时表头留在容器顶部（sticky）—— 否则看到第 20 行就不知道哪列是哪列
+  const head = await section.locator("thead th").first().boundingBox();
+  if (!head) throw new Error("量不到表头");
+  expect(Math.abs(head.y - box.y)).toBeLessThan(6);
+});
+
 test("影片明细可切到「按场次看」：出现影厅列，且首行就是人最多的那一场", async ({ page }) => {
   await seedCounts(page);
   await ready(page, "/rush-analysis");
@@ -132,7 +183,7 @@ test("影片明细可切到「按场次看」：出现影厅列，且首行就�
   // 勾上后按**单场人数降序** —— 第一行就是「人最多的那一场」
   const nums = (await table.locator("tbody tr td:last-child").allTextContents()).map(Number);
   expect(nums.length).toBeGreaterThan(0);
-  expect(nums.length).toBeLessThanOrEqual(10);
+  expect(nums.length).toBeLessThanOrEqual(30);
   expect(nums).toEqual([...nums].sort((a, b) => b - a));
   // 每行都能说出「哪一场、什么时候、在哪个厅、多少人」
   await expect(table.locator("tbody tr").first().locator("td")).toHaveCount(5);

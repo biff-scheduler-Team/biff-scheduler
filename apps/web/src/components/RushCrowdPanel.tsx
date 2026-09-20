@@ -10,7 +10,7 @@
 //   · 选场次 → 看这一场属于哪部片，并把它与本场「同场 N 人」摆在一起对照
 //     （前者是「多少人想看这部片」，后者是「多少人真把这场排进了行程」，不是一回事）。
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { ChartTokens } from "../chart-theme";
 import { useCatalog } from "../app/store";
 import { peekWantCounts } from "../want-counts";
@@ -25,9 +25,13 @@ import { DonutChart, RankBarChart, StackedBarChart } from "./charts/bars";
 
 /** 两个榜最多列多少行 —— 这是「扫一眼」的面板，不是让人翻页的报表。 */
 const TOP = 10;
-/** 明细表只列 **前 10 部**（用户 2026-09-20 明确「影片明细（只需要 TOP10）」）。
- *  ⚠ 它已经是「按想看降序」的第 11~N 名，不是抽样 —— 图看形态，这 10 行是查具体数字用的。 */
-const LIST_ROWS = 10;
+/** 明细表最多取多少行（用户 2026-09-20：「改成 TOP 30」）。
+ *  ⚠ 被截断的是「按想看降序」的第 31 名之后，**不是抽样** —— 图看形态，这些行是查具体数字用的。 */
+const LIST_ROWS = 30;
+/** 一次看得见几行（用户 2026-09-20：「只显示 10 个，剩余的用滚动条实现展示」）。
+ *  ⚠ 真正的裁剪在 CSS `.ra-table-scroll` 的 `max-height` 上（那个值按行高推导）；
+ *    这里只用于 caption 文案与 E2E 断言 —— 改「一次看得见几行」要 CSS 与这里一起改。 */
+const VISIBLE_ROWS = 10;
 
 /** 影厅缺记录时的占位（`venueShort` 只读 name / group）。 */
 const NO_VENUE = { id: "", name: "", name_kr: "", group: "" };
@@ -58,6 +62,8 @@ export function RushCrowdPanel({ tokens }: { tokens: ChartTokens }) {
   // 明细表的视角开关：勾上后同一张表从「影片」切成「场次」（含影厅）
   // （2026-09-20，PLAN-20260920193834 —— 用户「需要勾选一个选项 能够区分影厅 知道哪一个场次最多人」）
   const [byShow, setByShow] = useState(false);
+  // 表格标题与 `<table>` 的关联 id：标题在滚动区外面，用 `aria-labelledby` 保住「这是哪张表」的语义
+  const captionId = useId();
 
   // 影片行：只保留有想看或已有票的片（其余片子在这组里没有任何信号，列出来只是噪声）
   const filmRows = useMemo(
@@ -283,68 +289,73 @@ export function RushCrowdPanel({ tokens }: { tokens: ChartTokens }) {
         )}
       </div>
 
-      <table
-        className="ra-table"
-        data-crowd-table={filtered.length}
-        data-crowd-mode={byShow ? "show" : "film"}
-        data-crowd-shows={showRows.length}
-      >
-        <caption className="ra-hint">
-          {byShow
-            ? `场次明细 · 抢票人数 TOP ${showRows.length}（按单场人数降序）`
-            : `影片明细 · 想看 TOP ${Math.min(LIST_ROWS, filtered.length)}（按想看人数降序）`}
-          {/* 视角开关：默认「影片」（谁想看的人多），勾上换「场次」（哪一场 / 哪个厅人最多） */}
-          <label className="ra-toggle">
-            <input
-              type="checkbox"
-              checked={byShow}
-              data-toggle="by-show"
-              onChange={(event) => setByShow(event.target.checked)}
-            />
-            按场次看（区分影厅）
-          </label>
-        </caption>
-        <thead>
-          {byShow ? (
-            <tr>
-              <th scope="col">影片</th>
-              <th scope="col">场次</th>
-              <th scope="col">时间</th>
-              <th scope="col">影厅</th>
-              <th scope="col">抢票人数</th>
-            </tr>
-          ) : (
-            <tr>
-              <th scope="col">影片</th>
-              <th scope="col">想看</th>
-              <th scope="col">抢票人数</th>
-              <th scope="col">红</th>
-              <th scope="col">黑</th>
-            </tr>
-          )}
-        </thead>
-        <tbody>
-          {byShow
-            ? showRows.map((row) => (
-                <tr key={row.code} data-show={row.code}>
-                  <td>{row.title}</td>
-                  <td>{row.code}</td>
-                  <td>{row.when}</td>
-                  <td>{row.venue}</td>
-                  <td>{row.demand}</td>
-                </tr>
-              ))
-            : filtered.slice(0, LIST_ROWS).map((row) => (
-                <tr key={row.key} data-film={row.key}>
-                  <td>{row.title}</td>
-                  <td>{row.want}</td>
-                  <td>{row.demand}</td>
-                  <td>{row.red}</td>
-                  <td>{row.black}</td>
-                </tr>
-              ))}
-        </tbody>
-      </table>
+      {/* 标题与视角开关刻意放在滚动区**外面**：滚到第 20 行时仍要能切视角、也仍要知道这张表是什么。
+       *  表格最多 30 行、一次看得见 10 行（由 `.ra-table-scroll` 的 max-height 决定，见该处注释）。 */}
+      <p className="ra-hint ra-table-title" id={captionId}>
+        {byShow
+          ? `场次明细 · 抢票人数 TOP ${showRows.length}（按单场人数降序；前 ${VISIBLE_ROWS} 行可见，其余滚动）`
+          : `影片明细 · 想看 TOP ${Math.min(LIST_ROWS, filtered.length)}（按想看人数降序；前 ${VISIBLE_ROWS} 行可见，其余滚动）`}
+        {/* 视角开关：默认「影片」（谁想看的人多），勾上换「场次」（哪一场 / 哪个厅人最多） */}
+        <label className="ra-toggle">
+          <input
+            type="checkbox"
+            checked={byShow}
+            data-toggle="by-show"
+            onChange={(event) => setByShow(event.target.checked)}
+          />
+          按场次看（区分影厅）
+        </label>
+      </p>
+      <div className="ra-table-scroll">
+        <table
+          className="ra-table"
+          aria-labelledby={captionId}
+          data-crowd-table={filtered.length}
+          data-crowd-mode={byShow ? "show" : "film"}
+          data-crowd-shows={showRows.length}
+        >
+          <thead>
+            {byShow ? (
+              <tr>
+                <th scope="col">影片</th>
+                <th scope="col">场次</th>
+                <th scope="col">时间</th>
+                <th scope="col">影厅</th>
+                <th scope="col">抢票人数</th>
+              </tr>
+            ) : (
+              <tr>
+                <th scope="col">影片</th>
+                <th scope="col">想看</th>
+                <th scope="col">抢票人数</th>
+                <th scope="col">红</th>
+                <th scope="col">黑</th>
+              </tr>
+            )}
+          </thead>
+          <tbody>
+            {byShow
+              ? showRows.map((row) => (
+                  <tr key={row.code} data-show={row.code}>
+                    <td>{row.title}</td>
+                    <td>{row.code}</td>
+                    <td>{row.when}</td>
+                    <td>{row.venue}</td>
+                    <td>{row.demand}</td>
+                  </tr>
+                ))
+              : filtered.slice(0, LIST_ROWS).map((row) => (
+                  <tr key={row.key} data-film={row.key}>
+                    <td>{row.title}</td>
+                    <td>{row.want}</td>
+                    <td>{row.demand}</td>
+                    <td>{row.red}</td>
+                    <td>{row.black}</td>
+                  </tr>
+                ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
