@@ -8,6 +8,15 @@
  * ⚠ 画布高度**必须显式给定**：容器高 0 时绘图库什么都不画（ECharts 与 recharts 同病）。
  * ⚠ 图例走 `legend` prop 渲染在画布**之外** —— 塞进固定高度的画布里会压住图形
  *   （第 1 轮在真实浏览器里实测到过）。
+ *
+ * ★ `footnote` 从「画布下方那行小字」改成「**画布右上角的 ⓘ**」（2026-09-20，
+ *   PLAN-20260920193412，用户：「太多解释性文案了，全部放到图的右上角的 tooltip 里面」）：
+ *   每张图下面都挂一行口径说明，整页读起来就是「图 + 小字 + 图 + 小字」—— 图自己能说话，
+ *   解释应当是**按需再取**的东西。
+ *   ⚠ 用原生 `<details>` 而不是纯 CSS `:hover`：这一页的主要读者在**现场用手机**，
+ *     点击是手机上唯一可靠的打开方式；`<details>` 同时白送键盘可达与 toggle 语义，
+ *     不必自造弹层与「点外面关闭」的收尾逻辑。
+ *   ⚠ 内容仍留在 DOM 里（未展开只是不可见），所以「说明写没写」这件事仍可被断言。
  */
 
 import type { ReactNode } from "react";
@@ -42,9 +51,17 @@ export function ChartFrame({
     <figure className="ra-chart" data-chart={chart} data-points={points} aria-label={label}>
       <div className="ra-chart-canvas" style={{ height }}>
         {children}
+        {/* 右上角的 ⓘ：点开才显示口径说明（见文件头「为什么用 details」） */}
+        {footnote && (
+          <details className="ra-note" data-chart-note={chart}>
+            <summary className="ra-note-btn" aria-label={`${label}：口径说明`}>
+              i
+            </summary>
+            <p className="ra-note-body">{footnote}</p>
+          </details>
+        )}
       </div>
       {legend}
-      {footnote && <figcaption className="ra-chart-note">{footnote}</figcaption>}
     </figure>
   );
 }

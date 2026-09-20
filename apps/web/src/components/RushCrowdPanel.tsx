@@ -18,6 +18,7 @@ import { peekFilmVotes } from "../film-votes";
 import { peekScreeningCounts } from "../screening-counts";
 import { MIN_VOTES_FOR_VERDICT } from "../rush-analysis";
 import { wantCountLabel, WANT_LABEL } from "../actions-copy";
+import type { Catalog, Screening } from "../types";
 import { dateInfo, normText } from "../util";
 import { venueShort } from "../legend";
 import { DonutChart, RankBarChart, StackedBarChart } from "./charts/bars";
@@ -28,15 +29,35 @@ const TOP = 10;
  *  ⚠ 它已经是「按想看降序」的第 11~N 名，不是抽样 —— 图看形态，这 10 行是查具体数字用的。 */
 const LIST_ROWS = 10;
 
+/** 影厅缺记录时的占位（`venueShort` 只读 name / group）。 */
+const NO_VENUE = { id: "", name: "", name_kr: "", group: "" };
+
+/** 场次的可搜索文本：场次号 / 日期 / 开场时间 / 影院。
+ *  ⚠ **刻意不含片名** —— 片名归「电影」那个搜索框；两个框都能搜片名就是同一件事有两个入口。 */
+function showSearchText(screening: Screening, venueLabel: string): string {
+  return normText(
+    `${screening.code} ${dateInfo(screening.date).label} ${screening.start_time} ${venueLabel}`,
+  );
+}
+
+/** 影厅短名（缺记录时退到空串）。 */
+function venueLabelOf(cat: Catalog, venueId: string): string {
+  return venueShort(cat.venueById.get(venueId) ?? NO_VENUE);
+}
+
 export function RushCrowdPanel({ tokens }: { tokens: ChartTokens }) {
   const { cat, films } = useCatalog();
   const wantCounts = peekWantCounts();
   const votes = peekFilmVotes();
   const { attendance, discussions } = peekScreeningCounts();
 
-  const [filmKey, setFilmKey] = useState("");
-  const [code, setCode] = useState("");
-  const [keyword, setKeyword] = useState("");
+  // 两个搜索框（2026-09-20，PLAN-20260920193638 —— 用户「场次电影全部采用搜索框」）：
+  // 输入即筛。原来的「关键词」框已删 —— 它与「电影」框都是按片名模糊筛，留两个等于同一件事两个入口。
+  const [filmQuery, setFilmQuery] = useState("");
+  const [codeQuery, setCodeQuery] = useState("");
+  // 明细表的视角开关：勾上后同一张表从「影片」切成「场次」（含影厅）
+  // （2026-09-20，PLAN-20260920193834 —— 用户「需要勾选一个选项 能够区分影厅 知道哪一个场次最多人」）
+  const [byShow, setByShow] = useState(false);
 
   // 影片行：只保留有想看或已有票的片（其余片子在这组里没有任何信号，列出来只是噪声）
   const filmRows = useMemo(
@@ -60,18 +81,55 @@ export function RushCrowdPanel({ tokens }: { tokens: ChartTokens }) {
     [films, wantCounts, votes, attendance],
   );
 
-  const selectedFilm = filmRows.find((row) => row.key === filmKey);
-  const selectedShow = code ? cat.byCode.get(code) : undefined;
-
   const filtered = useMemo(() => {
-    const word = normText(keyword);
+    const filmWord = normText(filmQuery);
+    const showWord = normText(codeQuery);
     return filmRows.filter((row) => {
-      if (filmKey && row.key !== filmKey) return false;
-      if (code && !row.shows.some((screening) => screening.code === code)) return false;
-      if (word && !normText(row.title).includes(word)) return false;
+      if (filmWord && !normText(row.title).includes(filmWord)) return false;
+      if (showWord) {
+        const hit = row.shows.some((screening) =>
+          showSearchText(screening, venueLabelOf(cat, screening.venue_id)).includes(showWord),
+        );
+        if (!hit) return false;
+      }
       return true;
     });
-  }, [filmRows, filmKey, code, keyword]);
+  }, [filmRows, filmQuery, codeQuery, cat]);
+
+  // 场次框搜到的场次（只在**当前筛出的影片**里找，与清单口径一致）
+  const matchedShows = useMemo(() => {
+    const word = normText(codeQuery);
+    if (!word) return [];
+    return filtered
+      .flatMap((row) => row.shows)
+      .filter((screening) => showSearchText(screening, venueLabelOf(cat, screening.venue_id)).includes(word));
+  }, [filtered, codeQuery, cat]);
+
+  // ★ 场次视角（勾选后启用）：把当前筛选下的场次摊平，按**抢票人数降序**取前 10 ——
+  //   第一行就是「人最多的那一场」，影厅单独一列以便区分。
+  //   ⚠ 影片视角的「抢票人数」是该片各场次数**之和**（见 `filmRows`），这里必须是**单场**人数 ——
+  //     两个数不是一回事，故各算一份、互不顶替。
+  const showRows = useMemo(
+    () =>
+      filtered
+        .flatMap((film) =>
+          film.shows.map((screening) => ({
+            code: screening.code,
+            title: film.title,
+            when: `${dateInfo(screening.date).label} ${screening.start_time.slice(0, 5)}`,
+            venue: venueLabelOf(cat, screening.venue_id),
+            demand: attendance[screening.code] ?? 0,
+          })),
+        )
+        .sort((a, b) => b.demand - a.demand)
+        .slice(0, LIST_ROWS),
+    [filtered, cat, attendance],
+  );
+
+  // ★ 选中语义改由搜索框承担（2026-09-20）：筛到**唯一**一部片 / 唯一一场就算选中 ——
+  //   于是「口碑构成环」与「本场同场 N 人」照常出现，用户不必再点一次。
+  const selectedFilm = filtered.length === 1 ? filtered[0] : undefined;
+  const selectedShow = matchedShows.length === 1 ? matchedShows[0] : undefined;
 
   const wantTotal = filtered.reduce((sum, row) => sum + row.want, 0);
   const redTotal = filtered.reduce((sum, row) => sum + row.red, 0);
@@ -122,46 +180,28 @@ export function RushCrowdPanel({ tokens }: { tokens: ChartTokens }) {
     >
       <h2>群体行为与口碑</h2>
 
-      {/* 筛选条：影片 / 场次 / 关键词。默认「全部」，选影片后场次下拉只列该片的场次 */}
+      {/* 筛选条：两个搜索框（2026-09-20，PLAN-20260920193638 —— 用户「场次电影全部采用搜索框」）。
+       *  ⚠ 原来这里是「电影 / 场次」两个下拉 + 一个「关键词」框：下拉在手机上是滚轮，
+       *    几百项根本滚不动；而「关键词」与「电影」又都是按片名模糊筛 —— 于是合并成两个搜索框。 */}
       <div className="ra-filters">
         <label>
           <span>电影</span>
-          <select
-            value={filmKey}
+          <input
+            type="search"
+            value={filmQuery}
             data-filter="film"
-            onChange={(event) => {
-              setFilmKey(event.target.value);
-              setCode("");
-            }}
-          >
-            <option value="">全部影片（{filmRows.length}）</option>
-            {filmRows.map((row) => (
-              <option key={row.key} value={row.key}>
-                {row.title}（{wantCountLabel(row.want)}）
-              </option>
-            ))}
-          </select>
+            placeholder="输片名搜索"
+            onChange={(event) => setFilmQuery(event.target.value)}
+          />
         </label>
         <label>
           <span>场次</span>
-          <select value={code} data-filter="screening" onChange={(event) => setCode(event.target.value)}>
-            <option value="">全部场次</option>
-            {(selectedFilm?.shows ?? cat.schedule.screenings).slice(0, 400).map((screening) => (
-              <option key={screening.code} value={screening.code}>
-                {screening.code} · {dateInfo(screening.date).label} {screening.start_time.slice(0, 5)} ·{" "}
-                {venueShort(cat.venueById.get(screening.venue_id) ?? { id: "", name: "", name_kr: "", group: "" })}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>关键词</span>
           <input
             type="search"
-            value={keyword}
-            data-filter="keyword"
-            placeholder="片名"
-            onChange={(event) => setKeyword(event.target.value)}
+            value={codeQuery}
+            data-filter="screening"
+            placeholder="场次号 / 日期 / 影院"
+            onChange={(event) => setCodeQuery(event.target.value)}
           />
         </label>
       </div>
@@ -227,13 +267,9 @@ export function RushCrowdPanel({ tokens }: { tokens: ChartTokens }) {
             footnote={`总票数前 ${voteTop.length} 部；红黑都有票且都 ≥ ${MIN_VOTES_FOR_VERDICT} 才算「有争议」。`}
           />
         ) : (
-          <DonutChart
-            chart="crowd-votes-empty"
-            label="红黑票分布"
-            data={[]}
-            tokens={tokens}
-            footnote="还没有人贴过红黑榜。"
-          />
+          // ⚠ 空态**不画空图**：一张空环 + 藏进 ⓘ 的原因只会让人以为图坏了。
+          //   「XX 还没有人做」是状态、不是口径解释，必须可见（2026-09-20，PLAN-20260920193412）。
+          <p className="ra-chart-empty">还没有人贴过红黑榜 —— 贴票之后这里会出现分布。</p>
         )}
         {voteSplit.length > 0 && (
           <DonutChart
@@ -247,29 +283,66 @@ export function RushCrowdPanel({ tokens }: { tokens: ChartTokens }) {
         )}
       </div>
 
-      <table className="ra-table" data-crowd-table={filtered.length}>
+      <table
+        className="ra-table"
+        data-crowd-table={filtered.length}
+        data-crowd-mode={byShow ? "show" : "film"}
+        data-crowd-shows={showRows.length}
+      >
         <caption className="ra-hint">
-          影片明细 · 想看 TOP {Math.min(LIST_ROWS, filtered.length)}（按想看人数降序）
+          {byShow
+            ? `场次明细 · 抢票人数 TOP ${showRows.length}（按单场人数降序）`
+            : `影片明细 · 想看 TOP ${Math.min(LIST_ROWS, filtered.length)}（按想看人数降序）`}
+          {/* 视角开关：默认「影片」（谁想看的人多），勾上换「场次」（哪一场 / 哪个厅人最多） */}
+          <label className="ra-toggle">
+            <input
+              type="checkbox"
+              checked={byShow}
+              data-toggle="by-show"
+              onChange={(event) => setByShow(event.target.checked)}
+            />
+            按场次看（区分影厅）
+          </label>
         </caption>
         <thead>
-          <tr>
-            <th scope="col">影片</th>
-            <th scope="col">想看</th>
-            <th scope="col">抢票人数</th>
-            <th scope="col">红</th>
-            <th scope="col">黑</th>
-          </tr>
+          {byShow ? (
+            <tr>
+              <th scope="col">影片</th>
+              <th scope="col">场次</th>
+              <th scope="col">时间</th>
+              <th scope="col">影厅</th>
+              <th scope="col">抢票人数</th>
+            </tr>
+          ) : (
+            <tr>
+              <th scope="col">影片</th>
+              <th scope="col">想看</th>
+              <th scope="col">抢票人数</th>
+              <th scope="col">红</th>
+              <th scope="col">黑</th>
+            </tr>
+          )}
         </thead>
         <tbody>
-          {filtered.slice(0, LIST_ROWS).map((row) => (
-            <tr key={row.key} data-film={row.key}>
-              <td>{row.title}</td>
-              <td>{row.want}</td>
-              <td>{row.demand}</td>
-              <td>{row.red}</td>
-              <td>{row.black}</td>
-            </tr>
-          ))}
+          {byShow
+            ? showRows.map((row) => (
+                <tr key={row.code} data-show={row.code}>
+                  <td>{row.title}</td>
+                  <td>{row.code}</td>
+                  <td>{row.when}</td>
+                  <td>{row.venue}</td>
+                  <td>{row.demand}</td>
+                </tr>
+              ))
+            : filtered.slice(0, LIST_ROWS).map((row) => (
+                <tr key={row.key} data-film={row.key}>
+                  <td>{row.title}</td>
+                  <td>{row.want}</td>
+                  <td>{row.demand}</td>
+                  <td>{row.red}</td>
+                  <td>{row.black}</td>
+                </tr>
+              ))}
         </tbody>
       </table>
     </section>
