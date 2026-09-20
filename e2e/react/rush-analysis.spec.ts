@@ -189,6 +189,54 @@ test("影片明细可切到「按场次看」：出现影厅列，且首行就�
   await expect(table.locator("tbody tr").first().locator("td")).toHaveCount(5);
 });
 
+test("类目名太长时：轴上会截断，hover 轴标签能看到完整名字", async ({ page }) => {
+  // 喂少量「想看」让「想看人数榜」（横排图，类目 = 片名）画出来
+  await page.route("**/api/stats/want-counts*", (route) =>
+    route.fulfill({
+      json: {
+        counts: Object.fromEntries(
+          schedule.screenings
+            .slice(0, 12)
+            .map((screening, index) => [keyOf(screening.code), 30 - index * 2]),
+        ),
+      },
+    }),
+  );
+  await ready(page, "/rush-analysis");
+  const figure = page.locator('[data-chart="crowd-want"]');
+  await expect(figure).toHaveAttribute("data-points", /^[1-9]/);
+
+  // 先找到一个**真被截断**的轴标签（ECharts 的 truncate 会在末尾追加 "..."）——
+  // 没有它这条测试就什么都没测到，故直接断言必须存在
+  const truncated = await figure.locator("svg text").evaluateAll((els) =>
+    els
+      .map((el) => ({ text: el.textContent ?? "", box: el.getBoundingClientRect().toJSON() }))
+      .filter((item) => item.text.endsWith("...")),
+  );
+  expect(truncated.length, "榜单里没有长到被截断的片名").toBeGreaterThan(0);
+  const target = truncated[0];
+  const prefix = target.text.replace(/\.\.\.$/, "");
+
+  await page.mouse.move(target.box.x + target.box.width / 2, target.box.y + target.box.height / 2);
+
+  // ⚠ 不能用 `page.locator("body > div").filter({ hasText })` 找 tooltip ——
+  //   app 根 div 的文本里也含这段片名（SVG 的 `<text>` 同样算 textContent），会先匹配到整页
+  //   （本轮实测踩到）。ECharts 的 tooltip 是 body 下**内联 `position: absolute`** 的 div
+  //   （`appendTo: "body"`，见 `sharedTooltip`）。
+  const readTooltip = () =>
+    page.evaluate((want) => {
+      const nodes = [...document.body.querySelectorAll("div")].filter(
+        (el) => el.style.position === "absolute" && (el.textContent ?? "").includes(want),
+      );
+      return nodes.length > 0 ? (nodes[nodes.length - 1].textContent ?? "") : null;
+    }, prefix);
+
+  await expect.poll(readTooltip).toContain(prefix);
+  const shown = (await readTooltip()) ?? "";
+  expect(shown, "tooltip 里应该是不带省略号的完整名字").not.toContain("...");
+  expect(shown.length).toBeGreaterThan(prefix.length);
+});
+
 test("群体面板：喂入计数后两张图都画得出来", async ({ page }) => {
   await seedCounts(page);
   await ready(page, "/rush-analysis");

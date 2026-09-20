@@ -287,6 +287,10 @@ export function RankBarChart({
       type: "category",
       data: ordered.map((row) => row.label),
       ...axisCommon(tokens),
+      // ★ hover 轴标签弹出**完整**名字（2026-09-20，用户：「Y 轴名字太长会被遮挡 然后能不能 hover 展示全名」）。
+      //   标签按 `width` 截断是**故意的**（面板只有 ~460px，标签每宽 50px 柱子就少 50px），
+      //   但必须留一个「看全名」的出口 —— ECharts 的 axis tooltip 就是这个出口（让标签可 hover）。
+      tooltip: { show: true },
       axisLabel: { color: tokens.muted, fontSize: 11, width: 130, overflow: "truncate" },
     },
     series: [
@@ -339,7 +343,14 @@ export function StackedBarChart({
 }) {
   const ordered = horizontal ? [...data].reverse() : data;
   const labels = ordered.map((row) => row.label);
-  const category = { type: "category" as const, data: labels, ...axisCommon(tokens) };
+  // 类目轴：`tooltip.show` 让轴标签可 hover、弹出**完整**名字
+  // （长片名会被 `width` 截断，理由与 `RankBarChart` 同一处说明）
+  const category = {
+    type: "category" as const,
+    data: labels,
+    ...axisCommon(tokens),
+    tooltip: { show: true },
+  };
   const value = { type: "value" as const, minInterval: 1, ...axisCommon(tokens), splitLine: splitLine(tokens) };
   const option: EChartsCoreOption = {
     animation: false,
