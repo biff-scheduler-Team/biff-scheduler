@@ -1,0 +1,194 @@
+/* 「抢票分析」页样式（2026-09-20，PLAN-20260920161837）。
+ *
+ * ⚠ 刻意**独立成文件**而不是追加进 `style.css`：后者命中 TEST-MAP 的 allOn（全局样式），
+ *   改它会触发三浏览器全量 E2E（5–9 min）。这里只复用既有 token，不新增视觉语言 ——
+ *   与 `pages/rush.css` / `components/screening-social.css` 同一处置口径。
+ * ⚠ 暗色主题**只覆盖 token**（`--conflict` / `--tight` / `--selected` / `--raised` 在 `style.css`
+ *   里已有暗色值），故本文件里不出现任何写死的颜色。
+ */
+
+.ra-page {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.ra-block h2 {
+  margin-bottom: 4px;
+}
+
+.ra-hint {
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.ra-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+/* 表格：日期 / 时段两张分布表共用（等宽数字对齐，右列不抖） */
+.ra-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ra-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 0 0 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ra-table td {
+  padding: 5px 0;
+  border-top: 1px solid var(--line);
+}
+
+.ra-table td:last-child,
+.ra-table th:last-child {
+  text-align: right;
+}
+
+/* 清单行：与抢票页同款「细线清单」语言，不做卡片 */
+.ra-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ra-row {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  /* ⚠ 长清单（本届约 800 场）每行都要参与布局太浪费：`content-visibility` 让屏外行跳过渲染。
+   *   给 `contain-intrinsic-size` 是为了让滚动条长度稳定（否则滚到哪长度变到哪）。 */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 64px;
+}
+
+.ra-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.ra-row-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+
+.ra-row-main time,
+.ra-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.ra-code {
+  font-weight: 650;
+}
+
+.ra-title {
+  /* 片名吃掉剩余宽度，窄屏折到第二行 */
+  flex: 1 1 16ch;
+  min-width: 0;
+}
+
+.ra-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 难度分级章：只复用既有语义色对（红 = 抢不到，黄 = 紧，绿 = 有余量），不新增 token */
+.ra-level {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.ra-level[data-level="extreme"] {
+  background: var(--conflict);
+  border-color: var(--conflict-line);
+  color: var(--conflict-line);
+}
+
+.ra-level[data-level="high"] {
+  background: var(--tight);
+  border-color: var(--tight-line);
+  color: var(--tight-line);
+}
+
+.ra-level[data-level="medium"] {
+  background: var(--selected);
+  border-color: var(--selected-line);
+  color: var(--selected-line);
+}
+
+.ra-level[data-level="low"],
+.ra-level[data-level="unknown"] {
+  background: var(--raised);
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+/* 未收录容量的那种「虚线 + 斜体」是刻意的：一眼能看出这不是一个测出来的数字 */
+.ra-level[data-level="unknown"] {
+  border-style: dashed;
+}
+
+.ra-reason {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 占比条（集中度 / 时间分布共用）：纯 CSS，不引图表库 */
+.ra-bar {
+  position: relative;
+  height: 4px;
+  margin-top: 2px;
+  background: var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ra-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--brand);
+}
+
+.ra-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 26px;
+  margin-bottom: 10px;
+}
+
+.ra-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ra-metric b {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.4px;
+}
+
+.ra-metric span {
+  color: var(--muted);
+  font-size: 12px;
+}

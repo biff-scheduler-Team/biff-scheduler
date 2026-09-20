@@ -89,6 +89,17 @@ export interface Venue {
   lng?: number;
   /** 官方日程表影院代码(如 B1 / C1 / L2)—— 与官方 Catalogue 对表用 */
   code?: string;
+  /**
+   * 该厅座位数(「抢票分析」页算竞争倍率的**分母**,2026-09-20)。
+   *
+   * ⚠ **可选** —— 缺省 = **未收录**,UI 必须降级(只给相对排名并显式标注),**绝不估数**:
+   *   编一个容量进去会让「难度」看着精确、实则错得无法察觉。
+   * ⚠ 数据是**人工查证**的(见 `tools/scrape_biff_web.py::VENUE_CAPACITY`),不是官网抓来的 ——
+   *   重跑抓取不会覆盖它,但需要人工维护。
+   */
+  capacity?: number;
+  /** 容量口径说明(如「露天,座位数可变」「含站立区」)—— 避免与固定座位的厅直接横比倍率时被误读。 */
+  capacityNote?: string;
 }
 
 export interface VenuesFile {

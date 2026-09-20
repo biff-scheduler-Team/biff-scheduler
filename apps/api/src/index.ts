@@ -15,7 +15,13 @@ import {
   normalizeFeedbackBody,
   writeAuthError,
 } from "./feedback";
-import { MAX_SCREENING_CODES_PER_PING } from "./screening-stats";
+import { MAX_SCREENING_CODES_PER_PING, SCREENING_CODE_MAX_LENGTH } from "./screening-stats";
+import {
+  MAX_TICKET_ENTRIES_PER_PING,
+  TICKET_STATES,
+  normalizeTicketEntries,
+} from "./ticket-stats";
+import { readTicketCounts, replaceContributorTickets } from "./ticket-stats-store";
 import {
   clearAnonContributions,
   readScreeningCounts,
@@ -604,6 +610,79 @@ app.post("/api/stats/screening-attendance-ping", async (c) => {
   }
   await replaceContributorScreenings(db, edition, contributor, weight, codes);
   return c.json({ ok: true, weight, count: codes.length });
+});
+
+/* ---------------- 抢票结果(2026-09-20,PLAN-20260920161837) ----------------
+ * 「抢票分析」页的结果面:把用户自述的三态(已抢到 / 没抢到 / 放弃)与「转票补入」聚合起来,
+ * 让「这场整体多难抢」有一个实测答案(需求人数只回答「多少人想抢」)。
+ *
+ * 口径与 want / screening **完全一致**:权重 登录 1.0 / 匿名 0.75,身份走同一枚匿名 cookie,
+ * 登录时调同一个 `clearAnonContributions` 去重;读公开(聚合数字本来就是给大家看的)、
+ * 只回计数不回名单 —— 隐私边界与 want-ping 同一条。
+ *
+ * ⚠ 请求体只有 `{edition, entries:[{code, state, via?}]}`,**绝不含备注 / 片单 / 身份**。 */
+
+const ticketPingSchema = z
+  .object({
+    edition: z.string().min(1).max(64).optional().default(DEFAULT_WANT_EDITION),
+    entries: z
+      .array(
+        z
+          .object({
+            code: z.string().min(1).max(SCREENING_CODE_MAX_LENGTH),
+            state: z.enum(TICKET_STATES),
+            via: z.enum(["self", "transfer"]).optional(),
+          })
+          .strict(),
+      )
+      .max(MAX_TICKET_ENTRIES_PER_PING),
+  })
+  .strict();
+
+app.get("/api/stats/ticket-counts", async (c) => {
+  const edition = c.req.query("edition") || DEFAULT_WANT_EDITION;
+  if (edition.length > 64) return c.json({ error: "INVALID_EDITION" }, 422);
+  const tickets = await readTicketCounts(database(c.env.DB), edition);
+  return c.json({ edition, tickets });
+});
+
+app.post("/api/stats/ticket-results-ping", async (c) => {
+  const parsed = ticketPingSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "INVALID_TICKET_PING" }, 422);
+  const { edition, entries } = parsed.data;
+  const config = configuration(c.env);
+  const db = database(c.env.DB);
+  const { session } = await sessionFor(
+    c.env,
+    getCookie(c, sessionCookieName(config)),
+    c.req.header("cf-connecting-ip"),
+  );
+  let contributor: string;
+  let weight: number;
+  if (session) {
+    contributor = session.row.subject;
+    weight = wantWeightFor(true);
+    const anon = getCookie(c, wantAnonCookie(config));
+    if (anon) {
+      // 与 want / screening / film-votes 同一条:不清匿名行的话,同一人会以「匿名 + 登录」被算两次
+      // (注释详见 screening-stats-store.ts::clearAnonContributions)
+      await clearAnonContributions(db, edition, `anon:${await hash(anon)}`);
+      deleteCookie(c, wantAnonCookie(config), cookieOptions(config, 0));
+    }
+  } else {
+    weight = wantWeightFor(false);
+    let anon = getCookie(c, wantAnonCookie(config));
+    if (!anon) {
+      anon = randomToken();
+      setCookie(c, wantAnonCookie(config), anon, cookieOptions(config, 180 * 86400));
+    }
+    contributor = `anon:${await hash(anon)}`;
+  }
+  // 归一化兜一层:zod 挡结构,这里挡「同一场发了两条」这类语义重复(以最后一条为准),
+  // 并把 got+transfer 摘成独立的 transfer(见 ticket-stats.ts)
+  const normalized = normalizeTicketEntries(entries);
+  await replaceContributorTickets(db, edition, contributor, weight, normalized);
+  return c.json({ ok: true, weight, count: normalized.size });
 });
 
 /* ---------------- 场次讨论(2026-09-14,PLAN-20260914164050) ----------------

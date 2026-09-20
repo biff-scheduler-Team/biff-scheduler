@@ -294,6 +294,25 @@
       ]
     },
     {
+      "id": "rush-analysis",
+      "note": "抢票分析页（需求 / 难度 / 结果 / 口碑四个面 + 影厅容量录入 + 抢票结果上云）；state.ts 是票务结果的唯一上报出口，改它两边都要跑",
+      "paths": [
+        "apps/web/src/pages/RushAnalysisPage.tsx",
+        "apps/web/src/pages/rush-analysis.css",
+        "apps/web/src/rush-analysis.ts",
+        "apps/web/src/capacity.ts",
+        "apps/web/src/ticket-stats.ts",
+        "apps/web/src/state.ts",
+        "apps/api/src/ticket-stats.ts",
+        "apps/api/src/ticket-stats-store.ts",
+        "apps/api/migrations/0007_screening_ticket.sql",
+        "tools/build_venue_capacity.py"
+      ],
+      "specs": [
+        "rush-analysis"
+      ]
+    },
+    {
       "id": "pni",
       "note": "P&I(Press & Industry)记者 / 业界场:册子 BD/CGV 7 两列的录入产物 + 「设置 → 显示 P&I 场次」开关(默认不显示,勾选后才并进 catalog)",
       "paths": [

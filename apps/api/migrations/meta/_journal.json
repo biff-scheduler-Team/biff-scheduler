@@ -43,6 +43,13 @@
       "when": 1789529085412,
       "tag": "0006_ordinary_silvermane",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1789892397654,
+      "tag": "0007_screening_ticket",
+      "breakpoints": true
     }
   ]
 }
