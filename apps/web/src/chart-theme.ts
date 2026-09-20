@@ -130,6 +130,37 @@ function usable(value: string | undefined | null): value is string {
   return trimmed.length > 0 && trimmed !== "undefined" && trimmed !== "null";
 }
 
+/**
+ * 给**既有 token** 加一层透明度（SVG / ECharts 吃的是具体色值，没法直接写 `var(--line) / 50%`）。
+ *
+ * ★ 为什么需要它：hover 高亮块要半透明，而站点 token 是不透明的十六进制 ——
+ *   把 token 原样塞进去就会把柱子整块盖住（2026-09-20 实测踩到，见 `bars.tsx::hoverPointer`）。
+ *   这里**只派生不新增**：色相仍来自同一个 token，不是第二份色源。
+ *
+ * ⚠ 只认 `#rgb` / `#rrggbb`；读不到或形式不认识时**原值返回** ——
+ *   宁可高亮偏实，也不要返回 `undefined` 让 SVG 画出一块透明的东西（那种错不报错、只是看不见）。
+ *
+ * @param color 十六进制色值（通常是某个 token 读出来的值）
+ * @param alpha 0~1 的透明度
+ */
+export function withAlpha(color: string, alpha: number): string {
+  const match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim());
+  if (!match) return color;
+  const digits =
+    match[1].length === 3
+      ? match[1]
+          .split("")
+          .map((digit) => digit + digit)
+          .join("")
+      : match[1];
+  const value = Number.parseInt(digits, 16);
+  const red = (value >> 16) & 0xff;
+  const green = (value >> 8) & 0xff;
+  const blue = value & 0xff;
+  // 用老式 rgba() 而不用 `rgb(r g b / a)`：后者在旧 Safari 的 SVG 属性里不认
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
 /** 由「变量名 → 值」的读取器构造色板。缺失 / 空值 / 非法值一律回退到 {@link CHART_TOKEN_FALLBACK}。
  *  纯函数，测试里塞一个假读取器即可覆盖全部降级分支。
  *

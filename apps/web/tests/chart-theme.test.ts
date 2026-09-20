@@ -11,6 +11,7 @@ import {
   CHART_TOKEN_FALLBACK,
   CHART_TOKEN_NAMES,
   resolveChartTokens,
+  withAlpha,
 } from "../src/chart-theme";
 
 /** 走 CSS 变量的那些字段（`palette` **不在此列** —— 它按主题取表，见 chart-theme.ts）。 */
@@ -22,6 +23,31 @@ const reader =
   (values: Partial<Record<string, string>>) =>
   (name: string): string | undefined =>
     values[name];
+
+describe("withAlpha —— 给既有 token 加透明度（不新增色源）", () => {
+  it("六位十六进制 → rgba()", () => {
+    expect(withAlpha("#ce1e36", 0.5)).toBe("rgba(206, 30, 54, 0.5)");
+  });
+
+  it("三位简写按位翻倍展开（#abc 就是 #aabbcc）", () => {
+    expect(withAlpha("#fff", 0.2)).toBe("rgba(255, 255, 255, 0.2)");
+  });
+
+  it("大小写都认", () => {
+    expect(withAlpha("#ABCDEF", 0.5)).toBe("rgba(171, 205, 239, 0.5)");
+  });
+
+  it("不是十六进制就**原值返回** —— 宁可高亮偏实，也别画出看不见的透明块", () => {
+    expect(withAlpha("rgb(1, 2, 3)", 0.5)).toBe("rgb(1, 2, 3)");
+    expect(withAlpha("var(--line)", 0.5)).toBe("var(--line)");
+    expect(withAlpha("", 0.5)).toBe("");
+  });
+
+  it("alpha 原样落进结果（0 与 1 都不特判）", () => {
+    expect(withAlpha("#000000", 0)).toBe("rgba(0, 0, 0, 0)");
+    expect(withAlpha("#000000", 1)).toBe("rgba(0, 0, 0, 1)");
+  });
+});
 
 describe("token 名映射", () => {
   it("每个字段都指向一个 CSS 变量；除已声明的别名外不重复指向同一个变量", () => {

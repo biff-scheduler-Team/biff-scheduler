@@ -28,7 +28,7 @@ import {
 } from "echarts/components";
 import { SVGRenderer } from "echarts/renderers";
 import type { EChartsCoreOption, ECharts } from "echarts/core";
-import type { ChartTokens } from "../../chart-theme";
+import { withAlpha, type ChartTokens } from "../../chart-theme";
 import { ChartFrame } from "./frame";
 
 // 按需注册（只引这三类图 + 三个组件 + SVG 渲染器）：全量 `import "echarts"` 会把
@@ -76,6 +76,24 @@ function sharedTooltip(tokens: ChartTokens, overrides: Record<string, unknown> =
     appendTo: "body",
     confine: false,
     ...overrides,
+  };
+}
+
+/** hover 高亮块（`axisPointer` 的 shadow）：**半透明 + 压在柱子下面**。
+ *
+ * ★ 2026-09-20 修的是两个叠加的毛病（用户：「hover 柱子的时候柱子直接被遮挡」）：
+ *   ① ECharts 6 的 `axisPointer` 默认 `z: 50`，而 bar series 的 `z` 默认是 2 ——
+ *      高亮块本来画在**柱子之上**（实测：hover 后新增的 shadow path 排在所有柱子 path 之后）；
+ *   ② 我们原来把 `shadowStyle.color` 写成不透明的 `--raised`，于是整个类目带被一块实色盖住。
+ *   现在 `z: 1` 落在网格线与柱子**之间**、颜色从 `--line` 派生半透明 ——
+ *   高亮还在（hover 的那一行 / 列仍有淡色带），但柱子完整可见。
+ *   ⚠ 用 `--line` 而不是 `--raised`：`--raised` 是「拉开一层的底」（面板底色）的语义，
+ *     而高亮块要的是「比背景深一点的辅助色」，网格与坐标轴色正是这个含义。 */
+function hoverPointer(tokens: ChartTokens) {
+  return {
+    type: "shadow" as const,
+    z: 1,
+    shadowStyle: { color: withAlpha(tokens.line, 0.5) },
   };
 }
 
@@ -189,7 +207,7 @@ export function CountBarChart({
     grid: { left: 4, right: 8, top: 16, bottom: 4, containLabel: true },
     tooltip: sharedTooltip(tokens, {
       trigger: "axis",
-      axisPointer: { type: "shadow", shadowStyle: { color: tokens.raised } },
+      axisPointer: hoverPointer(tokens),
       valueFormatter: (value: number) => `${value}`,
     }),
     xAxis: {
@@ -262,7 +280,7 @@ export function RankBarChart({
     grid: { left: 4, right: 28, top: 8, bottom: 4, containLabel: true },
     tooltip: sharedTooltip(tokens, {
       trigger: "axis",
-      axisPointer: { type: "shadow", shadowStyle: { color: tokens.raised } },
+      axisPointer: hoverPointer(tokens),
     }),
     xAxis: { type: "value", minInterval: 1, ...axisCommon(tokens), splitLine: splitLine(tokens) },
     yAxis: {
@@ -328,7 +346,7 @@ export function StackedBarChart({
     grid: { left: 4, right: horizontal ? 16 : 8, top: 16, bottom: 4, containLabel: true },
     tooltip: sharedTooltip(tokens, {
       trigger: "axis",
-      axisPointer: { type: "shadow", shadowStyle: { color: tokens.raised } },
+      axisPointer: hoverPointer(tokens),
     }),
     xAxis: horizontal
       ? value
