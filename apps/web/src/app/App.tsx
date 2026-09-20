@@ -32,6 +32,9 @@ import { SchedulePage } from "../pages/SchedulePage";
 import { navSearch } from "./nav-query";
 import { CatalogProvider, hydrateStorage, useCatalog } from "./store";
 import { useMedia } from "./hooks";
+// 全站事件采集（2026-09-20，第 3 轮，PLAN-20260920203010 修订 2）：
+// 挂在这里是因为**本组件是唯一同时拿到路由位置与全站点击的壳**。
+import { useTelemetryTracking } from "../telemetry";
 import { store } from "../state";
 import type { Catalog } from "../types";
 
@@ -123,6 +126,8 @@ function Shell() {
   }, [panelOpen, navigate, scheduleSearch]);
   const [settingsSession, setSettingsSession] = useState(0);
   const [exportSession, setExportSession] = useState(0);
+  // 页面浏览 + 点击采集（无 consent UI：用户 2026-09-20 明确「直接上报，不需要提示」）
+  useTelemetryTracking();
   const nav = [
     ["/schedule", "排片表"],
     ["/library", "影片库"],
@@ -180,7 +185,9 @@ function Shell() {
               if (open) setExportSession((n) => n + 1);
             }}
           >
-            <ActionButton>导出与分享</ActionButton>
+            <ActionButton>
+              <span data-track="export">导出与分享</span>
+            </ActionButton>
             <ExportDialog key={exportSession} />
           </DialogTrigger>
           <DialogTrigger>

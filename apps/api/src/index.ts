@@ -23,6 +23,14 @@ import {
 } from "./ticket-stats";
 import { readTicketCounts, replaceContributorTickets } from "./ticket-stats-store";
 import {
+  MAX_HITS_PER_TARGET,
+  MAX_TELEMETRY_ENTRIES_PER_PING,
+  TELEMETRY_KINDS,
+  TELEMETRY_TARGET_MAX_LENGTH,
+  normalizeTelemetryEntries,
+} from "./telemetry-stats";
+import { applyContributorTelemetry, readTelemetryCounts } from "./telemetry-store";
+import {
   clearAnonContributions,
   readScreeningCounts,
   replaceContributorScreenings,
@@ -683,6 +691,79 @@ app.post("/api/stats/ticket-results-ping", async (c) => {
   const normalized = normalizeTicketEntries(entries);
   await replaceContributorTickets(db, edition, contributor, weight, normalized);
   return c.json({ ok: true, weight, count: normalized.size });
+});
+
+/* ---------------- 事件流水(2026-09-20,PLAN-20260920203010 修订 2) ----------------
+ * 「哪些页面 / 哪些入口真的被用了」。第 3 轮的一个分析分组吃它。
+ *
+ * ★ 与其它 ping 的三处不同，都要知情：
+ *   ① **增量语义**：请求体是 `hits`（这一批看到了几次），服务端累加。状态式的
+ *      「重发覆盖」在这里是错的 —— 次数无法从任何状态里恢复。
+ *   ② **只有 page / click 两类**，**没有 search**：用户明确「搜索完全不进统计」。
+ *      `target` 必须匹配 `^[a-z0-9\-/:]+$`（见 telemetry-stats.ts）——
+ *      这道形状校验就是「搜索词 / 人名这类自由文本灌不进来」的实现。
+ *   ③ 用户明确**默认直接上报、不加提示、不加不追踪开关**，所以这里没有 consent 字段；
+ *      也正因如此，上面那条服务端形状收口不能省。
+ *
+ * 身份与权重与其它 ping **完全一致**（匿名 0.75 / 登录 1.0，登录时清匿名行）。 */
+
+const telemetryPingSchema = z
+  .object({
+    edition: z.string().min(1).max(64).optional().default(DEFAULT_WANT_EDITION),
+    events: z
+      .array(
+        z
+          .object({
+            kind: z.enum(TELEMETRY_KINDS),
+            target: z.string().min(1).max(TELEMETRY_TARGET_MAX_LENGTH),
+            hits: z.number().int().positive().max(MAX_HITS_PER_TARGET),
+          })
+          .strict(),
+      )
+      .max(MAX_TELEMETRY_ENTRIES_PER_PING),
+  })
+  .strict();
+
+app.get("/api/stats/telemetry-counts", async (c) => {
+  const edition = c.req.query("edition") || DEFAULT_WANT_EDITION;
+  if (edition.length > 64) return c.json({ error: "INVALID_EDITION" }, 422);
+  const counts = await readTelemetryCounts(database(c.env.DB), edition);
+  return c.json({ edition, counts });
+});
+
+app.post("/api/stats/telemetry-ping", async (c) => {
+  const parsed = telemetryPingSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "INVALID_TELEMETRY_PING" }, 422);
+  const { edition, events } = parsed.data;
+  const config = configuration(c.env);
+  const db = database(c.env.DB);
+  const { session } = await sessionFor(
+    c.env,
+    getCookie(c, sessionCookieName(config)),
+    c.req.header("cf-connecting-ip"),
+  );
+  let contributor: string;
+  let weight: number;
+  if (session) {
+    contributor = session.row.subject;
+    weight = wantWeightFor(true);
+    const anon = getCookie(c, wantAnonCookie(config));
+    if (anon) {
+      await clearAnonContributions(db, edition, `anon:${await hash(anon)}`);
+      deleteCookie(c, wantAnonCookie(config), cookieOptions(config, 0));
+    }
+  } else {
+    weight = wantWeightFor(false);
+    let anon = getCookie(c, wantAnonCookie(config));
+    if (!anon) {
+      anon = randomToken();
+      setCookie(c, wantAnonCookie(config), anon, cookieOptions(config, 180 * 86400));
+    }
+    contributor = `anon:${await hash(anon)}`;
+  }
+  const deltas = normalizeTelemetryEntries(events);
+  await applyContributorTelemetry(db, edition, contributor, weight, deltas);
+  return c.json({ ok: true, weight, count: deltas.size });
 });
 
 /* ---------------- 场次讨论(2026-09-14,PLAN-20260914164050) ----------------
