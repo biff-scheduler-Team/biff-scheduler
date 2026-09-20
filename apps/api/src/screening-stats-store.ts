@@ -13,6 +13,7 @@ import { diffFilmKeys } from "./want-stats";
 import { clearContributorWants } from "./want-store";
 import { clearContributorVotes } from "./film-vote-store";
 import { clearContributorTickets } from "./ticket-stats-store";
+import { clearContributorTelemetry } from "./telemetry-store";
 
 type Db = ReturnType<typeof database>;
 
@@ -171,4 +172,8 @@ export async function clearAnonContributions(db: Db, edition: string, contributo
   await clearContributorVotes(db, edition, contributor);
   // 抢票结果(2026-09-20,PLAN-20260920161837):同上
   await clearContributorTickets(db, edition, contributor);
+  // 事件流水(2026-09-20,PLAN-20260920203010 修订 2):同上。
+  // ⚠ 这张是**计数型**表,所以它不只是「删掉我的行」——必须把我贡献的加权次数减回去
+  //   (见 telemetry-store.ts::clearContributorTelemetry),否则匿名期与登录期会被加总。
+  await clearContributorTelemetry(db, edition, contributor);
 }

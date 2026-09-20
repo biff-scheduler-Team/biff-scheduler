@@ -50,6 +50,13 @@
       "when": 1789892397654,
       "tag": "0007_screening_ticket",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1789898296524,
+      "tag": "0008_telemetry",
+      "breakpoints": true
     }
   ]
 }

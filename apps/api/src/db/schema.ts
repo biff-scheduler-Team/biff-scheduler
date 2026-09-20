@@ -190,3 +190,41 @@ export const screeningTicketStat = sqliteTable("screening_ticket_stat", {
 }, (table) => [
   primaryKey({ columns: [table.edition, table.code] }),
 ]);
+
+/** 事件流水（2026-09-20，第 3 轮，PLAN-20260920203010 修订 2）——「哪些页面 / 哪些入口真的被用了」。
+ *
+ *  ⚠ 与前面四张贡献表**语义不同**：那四张是「状态」（谁选了哪部片），同一人重复标记只算一次；
+ *    这张是「计数」（谁看了几次），所以要存 `hits` 而不是存在与否 —— 状态式建模会把
+ *    「看了 100 次」和「看了 1 次」压成同一条记录，重复访问这一维度就永久丢失了。
+ *  ⚠ `target` 是**受白名单约束的短标记**（路由键 / 入口 slug），校验收口在 `telemetry-stats.ts`：
+ *    服务端只接受形如 `^[a-z0-9\-/:]+$` 的串 —— 这样即使客户端被改坏，也灌不进
+ *    搜索词 / 人名 / 备注这类自由文本（本轮明确「搜索完全不进统计」）。
+ *  ⚠ 保留期**永久**（用户 2026-09-20 明确要求），故没有 TTL 列。 */
+export const telemetryContribution = sqliteTable("telemetry_contribution", {
+  edition: text().notNull(),
+  kind: text().notNull(), // "page" | "click"；白名单收口在 telemetry-stats.ts
+  target: text().notNull(),
+  contributor: text().notNull(),
+  hits: integer().notNull().default(0),
+  weight: text().notNull(), // 同 film_want_contribution：文本存 "1" / "0.75"
+  updated_at: integer().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.edition, table.kind, table.target, table.contributor] }),
+  index("telemetry_contribution_contributor").on(table.edition, table.contributor),
+]);
+
+/** 每个 (kind, target) 两个加权和。
+ *  ★ **两个**和缺一不可，它们回答不同问题：
+ *    `viewer_weight_sum` = 「多少人用过它」（去重），`hits_weight_sum` = 「总共用了多少次」。
+ *    热度榜要按后者排（被反复用的是真入口），而「多少人看过」是前者的语义 —— 只留一个
+ *    就得在展示层编一个假的另一个。 */
+export const telemetryStat = sqliteTable("telemetry_stat", {
+  edition: text().notNull(),
+  kind: text().notNull(),
+  target: text().notNull(),
+  viewer_weight_sum: text().notNull().default("0"),
+  hits_weight_sum: text().notNull().default("0"),
+  updated_at: integer().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.edition, table.kind, table.target] }),
+]);

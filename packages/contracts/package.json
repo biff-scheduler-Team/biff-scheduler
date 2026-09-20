@@ -8,7 +8,8 @@
     "./canonical": "./src/canonical.ts",
     "./import": "./src/import.ts",
     "./reactions": "./src/reactions.ts",
-    "./screening": "./src/screening.ts"
+    "./screening": "./src/screening.ts",
+    "./telemetry": "./src/telemetry.ts"
   },
   "dependencies": {
     "zod": "4.6.2"
