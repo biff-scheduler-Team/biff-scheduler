@@ -47,3 +47,7 @@ playwright-report/
 test-results/
 
 .planning/
+
+# BIFF 账号凭证 —— 绝不入库
+**/biff-credentials.json
+**/.biff-credentials.json

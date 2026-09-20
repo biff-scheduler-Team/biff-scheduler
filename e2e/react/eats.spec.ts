@@ -109,9 +109,12 @@ test("搜索与分区筛选", async ({ page }) => {
   await page.getByRole("button", { name: /分区/ }).click();
   await page.getByRole("option", { name: "东区", exact: true }).click();
   const shuffled = page.locator(".eat-card");
+  // ⚠ 点选后 URL **同步**变成 `?district=donggu`,但 React 的重渲染要再等一拍才提交 DOM ——
+  //   `await locator.count()` 是一次性取数、不重试,抢在前面读到的还是过滤前的全量(CI 上 4 轮全挂这条)。
+  //   所以必须用会重试的 `expect.poll` 等数量真的降下来;断了 filter 照样红,牙没拔。
+  await expect.poll(() => shuffled.count()).toBeLessThan(total);
   const east = await shuffled.count();
   expect(east).toBeGreaterThan(0);
-  expect(east).toBeLessThan(total);
   await expect(page.locator('[data-eat-id="halmae-gukbab"]')).toBeVisible();
   await expect(page.locator(".eat-chip").first()).toHaveText("东区");
 
