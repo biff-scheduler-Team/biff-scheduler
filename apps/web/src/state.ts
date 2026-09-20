@@ -1,6 +1,7 @@
 import {writeWorkspaceItem, removeWorkspaceItem} from "./workspace-storage";
 import {scheduleWantPing} from "./want-counts";
 import {scheduleScreeningPing} from "./screening-counts";
+import {scheduleTicketPing} from "./ticket-stats";
 import {normalizeTicketRecord, staleTicketCodes} from "./tickets";
 // 应用状态:选片记录 / 抢票顺位 / 豆瓣映射 / 设置。
 //
@@ -140,8 +141,26 @@ export function ticketOf(code: string): TicketRecord | undefined {
   return tickets.get(code);
 }
 
+/* ---------- 抢票结果上云(2026-09-20,PLAN-20260920161837) ----------
+ * 全站「抢到率 / 落榜率」需要每个人自述的结果,但**只有用户真的动过手之后**才允许上报。
+ *
+ * ⚠ 启动期守卫(与 `RedBlackPage.tsx::actedRef` 同一个教训):`loadTickets()` 之后若顺手把本地
+ *   整份状态报上去,换设备 / 刚清过缓存时本地本来就是**空**的 —— 那不是「我撤销了全部结果」,
+ *   只是「这台机器还没数据」,直接上报会把服务端上属于我的记录整个误清掉。
+ *   故 `loadTickets()` 的启动路径**不上报**。
+ * ⚠ 上报本身**不落盘**(没有任何新的 localStorage 键),只发场次 code + 结果。 */
+let ticketsTouched = false;
+
+function pingTickets(): void {
+  scheduleTicketPing(
+    [...tickets].map(([code, record]) => ({ code, state: record.state, via: record.via })),
+  );
+}
+
 /** 设置票务状态;`state` 传 null 等价于「清回未标记」。
- *  `via` 省略时**保留原来源** —— 把「已抢到」改成「放弃」不该顺手弄丢「转票」标记。 */
+ *  `via` 省略时**保留原来源** —— 把「已抢到」改成「放弃」不该顺手弄丢「转票」标记。
+ *  ⚠ 服务端据此判定 outcome(见 api 侧 `ticket-stats.ts::outcomeOf`):只有 `got + transfer`
+ *    算转票获得;`dropped + transfer` 仍是一条放弃。 */
 export function setTicket(code: string, state: TicketState | null, via?: TicketVia): void {
   if (!state) {
     clearTicket(code);
@@ -153,12 +172,16 @@ export function setTicket(code: string, state: TicketState | null, via?: TicketV
   if (prev && prev.state === next.state && prev.via === next.via) return;
   tickets.set(code, next);
   saveTickets();
+  ticketsTouched = true;
+  pingTickets();
   scheduleNotify("picks");
 }
 
 export function clearTicket(code: string): void {
   if (!tickets.delete(code)) return;
   saveTickets();
+  ticketsTouched = true;
+  pingTickets();
   scheduleNotify("picks");
 }
 
@@ -357,6 +380,9 @@ function rebuildIndex(): void {
   const staleTickets = staleTicketCodes(tickets, (code) => store.slotIndex.has(code));
   for (const code of staleTickets) tickets.delete(code);
   if (staleTickets.length) saveTickets();
+  // 被 prune 掉的结果同样要回传服务端(否则那边留着「我的」脏状态)—— 但仍要过启动期守卫:
+  // 载入时的那次 prune 不是用户动作(见 `ticketsTouched` 的说明),不能把服务端记录误清。
+  if (staleTickets.length && ticketsTouched) pingTickets();
 
   // ⚠ 同场观影人数上报只能放这里:`store.allIndex` 刚重建完,是唯一的新鲜点
   //   (`saveLocal()` 跑在 rebuildIndex 之前,那一刻 allIndex 还是上一轮的快照)。

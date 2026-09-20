@@ -12,6 +12,7 @@ import { formatAttendanceCounts, SCREENING_CODE_MAX_LENGTH } from "./screening-s
 import { diffFilmKeys } from "./want-stats";
 import { clearContributorWants } from "./want-store";
 import { clearContributorVotes } from "./film-vote-store";
+import { clearContributorTickets } from "./ticket-stats-store";
 
 type Db = ReturnType<typeof database>;
 
@@ -158,13 +159,16 @@ export async function readScreeningCounts(db: Db, edition: string) {
 /**
  * 登录后把「同一浏览器匿名身份」在**所有**贡献表里的行都清掉。
  *
- * ⚠ 每一个 ping(want / screening / film-votes)都必须调它:先跑的那条会顺手删掉匿名 cookie,
+ * ⚠ 每一个 ping(want / screening / film-votes / ticket-results)都必须调它:先跑的那条会顺手删掉匿名 cookie,
  *   后跑的那条就再也算不出自己的匿名 contributor —— 只清一张表的话,
  *   同一人会以「匿名 + 登录」被算两次(展示成 2 人 / 2 票)。
+ * ★ 新增任何一个 ping 都要在这里登记一行,否则就是「同一人被算两次」这个 bug 换个入口复发。
  */
 export async function clearAnonContributions(db: Db, edition: string, contributor: string) {
   await clearContributorWants(db, edition, contributor);
   await clearContributorScreenings(db, edition, contributor);
   // 红黑榜投票(2026-09-16,PLAN-20260916102339):同一份「同一人只算一次」的要求
   await clearContributorVotes(db, edition, contributor);
+  // 抢票结果(2026-09-20,PLAN-20260920161837):同上
+  await clearContributorTickets(db, edition, contributor);
 }

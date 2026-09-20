@@ -9,7 +9,8 @@
       "region": "centum",
       "code": "B1",
       "lat": null,
-      "lng": null
+      "lng": null,
+      "capacity": 413
     },
     {
       "id": "b2",
@@ -20,7 +21,8 @@
       "region": "centum",
       "code": "B2",
       "lat": null,
-      "lng": null
+      "lng": null,
+      "capacity": 212
     },
     {
       "id": "b3",
@@ -31,7 +33,8 @@
       "region": "centum",
       "code": "B3",
       "lat": null,
-      "lng": null
+      "lng": null,
+      "capacity": 212
     },
     {
       "id": "bh",
@@ -42,7 +45,8 @@
       "region": "centum",
       "code": "BH",
       "lat": null,
-      "lng": null
+      "lng": null,
+      "capacity": 841
     },
     {
       "id": "bt",
@@ -53,7 +57,9 @@
       "region": "centum",
       "code": "BT",
       "lat": null,
-      "lng": null
+      "lng": null,
+      "capacity": 4000,
+      "capacityNote": "露天放映，本届官方口径 4,000 席；馆方设施页记固定座 2,486 + 可变 500~1,500，随场次布置变化"
     },
     {
       "id": "c1",
@@ -130,7 +136,9 @@
       "region": "centum",
       "code": "CX",
       "lat": null,
-      "lng": null
+      "lng": null,
+      "capacity": 422,
+      "capacityNote": "第三方影院资料，待复核"
     },
     {
       "id": "l2",

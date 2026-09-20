@@ -71,7 +71,11 @@ function Shell() {
   const dark = theme === "dark" || (theme === "system" && systemDark);
   const viewingRoute = /^\/(picks|agenda)(\/|$)/.test(location.pathname);
   const panelOpen = viewingRoute && new URLSearchParams(location.search).get("quick") === "1";
-  const fullPage = /^\/(library|feedback|discussions|rush|redblack|eats)(?:\/|$)/.test(location.pathname) || (viewingRoute && !panelOpen);
+  // ⚠ 白名单必须逐个列出:`rush` 后面跟的是 `(?:\/|$)`,所以 `/rush-analysis` **不会**被它匹配到 ——
+  //   漏加会让分析页被渲染进浮动面板布局(而不是整页)。
+  const fullPage =
+    /^\/(library|feedback|discussions|rush-analysis|rush|redblack|eats)(?:\/|$)/.test(location.pathname) ||
+    (viewingRoute && !panelOpen);
   // 查询串**口径唯一来源** = `app/nav-query.ts`:同名 key 不跨页(`q` 在影片库 / 红黑榜 / 吃喝
   // 各有一份语义),只有排片表的 `date` / `hour` 跟着走。原先这里只剔掉 `quick` 就整条搬过去,
   // 于是「影片库搜 Midnight Passion」会出现在吃喝的搜索框里(见 `PLAN-20260917002528`)。
@@ -127,6 +131,9 @@ function Shell() {
     // 「抢票」刻意排在「我的行程」之后、「建议」之前(2026-09-15 用户指定):
     // 它读的是行程里的场次,按开票批次重新分组 —— 是行程的「开票期」视图,不是另一份数据。
     ["/rush", "抢票"],
+    // 「抢票分析」紧跟「抢票」之后(2026-09-20,PLAN-20260920161837):同一票务主题的第三站 ——
+    // 行程(选片期)→ 抢票(开票当天)→ 抢票分析(预判 / 复盘);读的是同一份数据,故不拆到导航别处。
+    ["/rush-analysis", "抢票分析"],
     ["/feedback", "建议"],
     ["/discussions", "讨论区"],
     // 「红黑榜」排在末尾(2026-09-16,PLAN-20260916102339):它是**观影之后**的动作,

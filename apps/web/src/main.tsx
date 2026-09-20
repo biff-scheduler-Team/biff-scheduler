@@ -9,6 +9,7 @@ import { DiscussionsPage } from "./pages/DiscussionsPage";
 import { AgendaPage } from "./pages/AgendaPage";
 import { RedBlackPage } from "./pages/RedBlackPage";
 import { RushPage } from "./pages/RushPage";
+import { RushAnalysisPage } from "./pages/RushAnalysisPage";
 import { EatsPage } from "./pages/EatsPage";
 import { FilmDialog } from "./pages/FilmDialog";
 import "./style.css";
@@ -37,6 +38,9 @@ const router = createBrowserRouter([
       { path: "agenda", element: <AgendaPage />, children: filmRoute() },
       { path: "redblack", element: <RedBlackPage />, children: filmRoute() },
       { path: "rush", element: <RushPage />, children: filmRoute() },
+      // 抢票分析(2026-09-20,PLAN-20260920161837):与 /rush 并列的第二张票务视图,
+      // 保留 `films/:filmKey` 子路由,便于从榜单点进影片资料
+      { path: "rush-analysis", element: <RushAnalysisPage />, children: filmRoute() },
       { path: "eats", element: <EatsPage /> },
       { path: "feedback", element: <FeedbackPage /> },
       { path: "discussions", element: <DiscussionsPage /> },

@@ -160,3 +160,33 @@ export const filmVoteStat = sqliteTable("film_vote_stat", {
 }, (table) => [
   primaryKey({ columns: [table.edition, table.film_key] }),
 ]);
+
+/** 抢票结果：每位贡献者「每场最终怎样了」。形状与 `screening_attendance_contribution` 同构
+ *  （2026-09-20，抢票分析模块）—— 那边记「谁把这场排进行程」，这边记「谁最后抢到没有」。
+ *  ⚠ `outcome` 是四值而不是三值：`got` + `via=transfer`（票是别人转的）被归一成独立的
+ *    `transfer`，这样「转票不进抢到率」这条业务规则在服务端只有一份实现（见 ticket-stats.ts）。 */
+export const screeningTicketContribution = sqliteTable("screening_ticket_contribution", {
+  edition: text().notNull(),
+  code: text().notNull(),
+  contributor: text().notNull(),
+  outcome: text().notNull(), // "got" | "transfer" | "missed" | "dropped"；白名单收口在 ticket-stats.ts
+  weight: text().notNull(), // 同 film_want_contribution：以文本存 "1" / "0.75"，避免 SQLite 浮点漂移
+  updated_at: integer().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.edition, table.code, table.contributor] }),
+  index("screening_ticket_contribution_contributor").on(table.edition, table.contributor),
+]);
+
+/** 每场次四项权重和（展示时 Math.round）。**刻意不设冗余的 `weight_sum`**：四项互斥、求和即总量，
+ *  多一个冗余列只会迟早与四项之一漂移（`screening_attendance_stat` 只有一项求和，故它才需要）。 */
+export const screeningTicketStat = sqliteTable("screening_ticket_stat", {
+  edition: text().notNull(),
+  code: text().notNull(),
+  got_sum: text().notNull().default("0"),
+  transfer_sum: text().notNull().default("0"),
+  missed_sum: text().notNull().default("0"),
+  dropped_sum: text().notNull().default("0"),
+  updated_at: integer().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.edition, table.code] }),
+]);

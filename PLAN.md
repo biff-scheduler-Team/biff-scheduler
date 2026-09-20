@@ -5,7 +5,11 @@
 > API `biff-scheduler` + 静态资源 `biff-scheduler-web`)+ React / Router / Spectrum S2 + Vite + TS
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-17(**搜索框打不出中文:显示值改由输入框自己持有** —— 影片库 / 吃喝 / 红黑榜
+> 最后更新:2026-09-20(**新增「抢票分析」页** —— 需求 / 难度 / 结果 / 口碑四个面量化全站票务:
+> 抢票人数复用「同场 N 人」、难度 = 人数 ÷ 影厅座位数(容量由 `tools/build_venue_capacity.py`
+> 人工维护并入 `venues.json`)、并新增票务结果上云(D1 两张表 + `/api/stats/ticket-results-ping`,
+> 抢到率**不含转票**)。见 `PLAN-20260920161837`);
+> 前次更新:2026-09-17(**搜索框打不出中文:显示值改由输入框自己持有** —— 影片库 / 吃喝 / 红黑榜
 > 三个搜索框把 `SearchField` 的 `value` 直接绑在 URL 上,`onChange` 里的 `setSearchParams` 是一次
 > **router 导航(异步)**,受控 input 的显示值必然慢一拍;而中文输入法的拼音串是**组合态**,
 > React 把 props.value 回写进 DOM 就把组合擦掉了 —— 所以**能打英文、打不了中文**。现收口到唯一实现
