@@ -18,7 +18,10 @@ test("screening detail links retain the exact show through refresh", async ({ pa
   await library.getByRole("button", { name: "场次 021 影片资料", exact: true }).click();
   await expect(page).toHaveURL(/filmCode=021/);
   await expect(detail).toContainText("Special Talk");
-  await expect(detail).toContainText("October 7 (Wed) After the 19:00 Screening");
+  // 日期写法跟着**官网重抓产物**走:2026-09-19 起官方把 `October` 收成了 `Oct`
+  // (见 `apps/web/tests/film-details.test.ts:38` 同一口径)。重抓换代时这两处要一起改 ——
+  // 数据是对的,E2E 字面量别把它当成 bug 去改实现(2026-09-20,`PLAN-20260920204603`)。
+  await expect(detail).toContainText("Oct 7 (Wed) After the 19:00 Screening");
 });
 
 test("library details use their first show and preserve original and Korean titles", async ({ page }) => {
