@@ -56,6 +56,14 @@ export default defineConfig({
           if (!id.includes("/node_modules/")) return;
           if (/\/(react|react-dom|scheduler|react-router)\//.test(id))
             return "react";
+          // 图表库(2026-09-20,PLAN-20260920203010;**同日修订 4 换成 ECharts**):
+          // 分析页的图从 recharts 换成 ECharts(视觉做法照 ma-agent-harness 的
+          // workspace/analytics,见 `components/charts/bars.tsx` 文件头)。
+          // 它比 recharts 更大 —— 必须独占一个 chunk,否则会被并进 spectrum / main,
+          // 把首屏一起拖胖。分析页走路由级动态 import(见 `src/main.tsx`),
+          // 该 chunk 因此**不进首屏**。
+          // ⚠ `zrender` 是 ECharts 的渲染底座,不加进来它会落到 spectrum 里。
+          if (/\/(echarts|zrender)\//.test(id)) return "charts";
           return "spectrum";
         },
       },

@@ -10,7 +10,7 @@ test("search, select a film, add a screening, edit notes, refresh and remove", a
   const film = page.locator('[data-film-key="cat:f001"]');
   await expect(page.locator("[data-film-key]")).toHaveCount(1);
   await film
-    .getByRole("button", { name: "加入我的选片 彼此的日夜", exact: true })
+    .getByRole("button", { name: "想看 彼此的日夜", exact: true })
     .click();
   expect(JSON.parse((await storage(page))["biff.picks.v2"])).toEqual([
     { key: "cat:f001", picks: [], note: "" },
@@ -19,7 +19,7 @@ test("search, select a film, add a screening, edit notes, refresh and remove", a
     .getByRole("button", { name: "已在选片，去排场次", exact: true })
     .click();
   await expect(page).toHaveURL(/\/picks\?/);
-  await page.getByRole("button", { name: "加入场次 001", exact: true }).click();
+  await page.getByRole("button", { name: "排进行程 场次 001", exact: true }).click();
   await page
     .getByRole("textbox", { name: "彼此的日夜 备注", exact: true })
     .fill("与朋友一起");
@@ -33,7 +33,7 @@ test("search, select a film, add a screening, edit notes, refresh and remove", a
       .getByRole("region", { name: "我的行程", exact: true })
       .locator('[data-screening="001"]'),
   ).toBeVisible();
-  await page.getByRole("button", { name: "移出场次 001", exact: true }).click();
+  await page.getByRole("button", { name: "移出行程 场次 001", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "还没有安排场次", exact: true }),
   ).toBeVisible();
@@ -42,16 +42,20 @@ test("search, select a film, add a screening, edit notes, refresh and remove", a
   ]);
 });
 
-// 只有一场的影片:「加入我的选片」直接落进行程(2026-09-16,PLAN-20260916004024)。
+// 只有一场的影片:点「想看」直接落进行程(2026-09-16,PLAN-20260916004024)。
 // 回归点 = **少掉的那一步** —— 改前这里会写出 `picks: []` 的空记录,用户还得再跳去
-// 「我的选片」点一次「加入行程」;改后存储里应立刻带上那唯一一场,且按钮不再引导去排场次。
+// 「我的选片」再排一次场次;改后存储里应立刻带上那唯一一场,且按钮不再引导去排场次。
+// ⚠ 动作文案已于 2026-09-20 统一成「想看」(PLAN-20260920203010)——
+//   单场片与多场片**不再各叫一个名字**,副作用改由片信息行的说明文字承担。
 test("a single-screening film goes straight into the agenda", async ({ page }) => {
   await ready(page, "/library");
   await page.getByRole("searchbox", { name: "搜索影片" }).fill("蓦然回首");
   const film = page.locator('[data-film-key="cat:f002"]');
   await expect(film).toBeVisible();
+  // 副作用必须在点之前就能看见(手机没有悬停,所以写在片信息行里而不是 title)
+  await expect(film).toContainText("只有这一场");
   await film
-    .getByRole("button", { name: "加入行程 蓦然回首", exact: true })
+    .getByRole("button", { name: "想看 蓦然回首", exact: true })
     .click();
   expect(JSON.parse((await storage(page))["biff.picks.v2"])).toEqual([
     { key: "cat:f002", picks: [{ code: "003" }], note: "" },
@@ -88,7 +92,7 @@ test("a single-screening pick is filled on load, and unpicking it asks first", a
     { key: "cat:f002", picks: [{ code: "003" }], note: "等朋友" },
   ]);
   await expect(
-    film.getByRole("button", { name: "移出场次 003", exact: true }),
+    film.getByRole("button", { name: "移出行程 场次 003", exact: true }),
   ).toBeVisible();
   // ② 先取消 → 什么都不发生
   page.once("dialog", async (dialog) => {
@@ -96,7 +100,7 @@ test("a single-screening pick is filled on load, and unpicking it asks first", a
     expect(dialog.message()).toContain("只有这一场");
     await dialog.dismiss();
   });
-  await film.getByRole("button", { name: "移出场次 003", exact: true }).click();
+  await film.getByRole("button", { name: "移出行程 场次 003", exact: true }).click();
   expect(JSON.parse((await storage(page))["biff.picks.v2"])).toEqual([
     { key: "cat:f002", picks: [{ code: "003" }], note: "等朋友" },
   ]);
@@ -104,7 +108,7 @@ test("a single-screening pick is filled on load, and unpicking it asks first", a
   page.once("dialog", async (dialog) => {
     await dialog.accept();
   });
-  await film.getByRole("button", { name: "移出场次 003", exact: true }).click();
+  await film.getByRole("button", { name: "移出行程 场次 003", exact: true }).click();
   expect(JSON.parse((await storage(page))["biff.picks.v2"])).toEqual([]);
   await page.reload();
   expect(JSON.parse((await storage(page))["biff.picks.v2"])).toEqual([]);

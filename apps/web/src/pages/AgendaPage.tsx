@@ -53,6 +53,7 @@ import { effEndMin, gvTalkMin, talkOnOf } from "../gv";
 import { scorePlanRows } from "../score";
 import { formatKrw, priceOf } from "../extras";
 import type { Screening } from "../types";
+import { SCHEDULE_LABEL } from "../actions-copy";
 import "./agenda-parity.css";
 
 export function saveCodes(codes: string[]) {
@@ -62,7 +63,7 @@ export function saveCodes(codes: string[]) {
   else
     ToastQueue.neutral(
       result.reason === "empty"
-        ? "先加入场次，再保存方案。"
+        ? `先${SCHEDULE_LABEL}，再保存方案。`
         : "这个方案已经保存。",
       { timeout: 5000 },
     );
@@ -432,7 +433,7 @@ export function AgendaPage() {
         {codes.length === 0 ? (
           <div className="empty-state">
             <h2>还没有安排场次</h2>
-            <p>从排片表加入场次，或先到影片库挑选电影。</p>
+            <p>从排片表把场次{SCHEDULE_LABEL}，或先到影片库挑选电影。</p>
             {/* 跨页导航走 `nav-query` 口径:只带排片表的 `date` / `hour`,不搬本页 / 上一页的搜索词 */}
             <Button onPress={() => navigate(`/library${navSearch(location.search, location.pathname, "/library")}`)}>
               浏览影片库

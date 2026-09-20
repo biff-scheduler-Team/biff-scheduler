@@ -92,7 +92,7 @@ test("new UI writes remain readable by the original implementation", async ({
   await legacyRead(page, true);
   await page.reload();
   await expect(
-    page.getByRole("button", { name: "加入场次 033", exact: true }),
+    page.getByRole("button", { name: "排进行程 场次 033", exact: true }),
   ).toHaveCount(0);
   await expect(
     page
@@ -230,7 +230,7 @@ test("new tab changes synchronize without discarding the existing data contract"
   const other = await context.newPage();
   await ready(other, "/agenda");
   await other
-    .getByRole("button", { name: "移出场次 001", exact: true })
+    .getByRole("button", { name: "移出行程 场次 001", exact: true })
     .click();
   await expect(
     page

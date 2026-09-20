@@ -23,7 +23,9 @@ export function ScreeningTicketControl({ code }: { code: string }) {
   useStore();
   const record = ticketOf(code);
   return (
-    <div className="ticket-control" role="group" aria-label={`场次 ${code} 票务结果`}>
+    // 比外层场次卡更近的埋点锚点：`closest()` 会先命中最内层，于是「标记票务结果」
+    // 被单独记成 `ticket`，而不会混进 `screening` —— 这两件事的意图完全不同。
+    <div className="ticket-control" role="group" aria-label={`场次 ${code} 票务结果`} data-track="ticket">
       <span className="ticket-control-label">票务</span>
       {TICKET_STATES.map((state) => {
         const active = record?.state === state;

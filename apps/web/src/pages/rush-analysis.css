@@ -1,41 +1,98 @@
-/* 「抢票分析」页样式（2026-09-20，PLAN-20260920161837）。
+/* 「抢票分析」页样式（2026-09-20；同日修订 4 精简为两组并换 ECharts）。
  *
  * ⚠ 刻意**独立成文件**而不是追加进 `style.css`：后者命中 TEST-MAP 的 allOn（全局样式），
- *   改它会触发三浏览器全量 E2E（5–9 min）。这里只复用既有 token，不新增视觉语言 ——
- *   与 `pages/rush.css` / `components/screening-social.css` 同一处置口径。
- * ⚠ 暗色主题**只覆盖 token**（`--conflict` / `--tight` / `--selected` / `--raised` 在 `style.css`
- *   里已有暗色值），故本文件里不出现任何写死的颜色。
+ *   改它会触发三浏览器全量 E2E。这里只复用既有 token，不新增视觉语言。
+ * ⚠ 暗色主题**只覆盖 token**（`--raised` / `--conflict*` 等已有暗色值），本文件不出现写死的颜色。
  */
 
 .ra-page {
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 18px;
+}
+
+/* 分组 = 一张卡片：浅底 + 细边 + 圆角。上一版是一堆无边界的分区，密而杂。 */
+.ra-block {
+  padding: 18px 20px 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
 }
 
 .ra-block h2 {
   margin-bottom: 4px;
+  font-size: 17px;
+  font-weight: 650;
 }
 
 .ra-hint {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.6;
 }
 
+/* 筛选条：三个带标签的控件。**用 grid 等分**而不是 flex —— flex 会在宽屏把三个控件
+ *  挤在左边、右边留一大片空（这正是用户截图里「卡片不填满」的同类问题）。
+ *  ⚠ 上限 860px：让三个下拉各约 280px 就够读了，铺到 1500px 反而是三个巨型控件。 */
+.ra-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px 14px;
+  max-width: 860px;
+  margin-bottom: 16px;
+}
+
+.ra-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ra-filters label > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ra-filters select,
+.ra-filters input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 10px;
+  color: var(--text);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.ra-filters select:focus-visible,
+.ra-filters input:focus-visible {
+  border-color: var(--brand);
+  outline: none;
+}
+
+/* 图表网格：`auto-fit`（不是 auto-fill）—— 空轨道会被折叠，两张图在宽屏各占一半，
+ *  而不是并排缩在左侧。 */
 .ra-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 18px;
 }
 
-/* 表格：日期 / 时段两张分布表共用（等宽数字对齐，右列不抖） */
+/* 表格：等宽数字对齐，右列不抖。数字列用**百分比宽度**，宽屏下四列数字均匀铺开 */
 .ra-table {
   width: 100%;
+  margin-top: 14px;
   border-collapse: collapse;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
+}
+
+.ra-table caption {
+  margin-bottom: 6px;
+  text-align: left;
 }
 
 .ra-table th {
@@ -48,142 +105,37 @@
 }
 
 .ra-table td {
-  padding: 5px 0;
+  padding: 7px 0;
   border-top: 1px solid var(--line);
 }
 
-.ra-table td:last-child,
-.ra-table th:last-child {
+.ra-table th:not(:first-child),
+.ra-table td:not(:first-child) {
   text-align: right;
+  width: 14%;
 }
 
-/* 清单行：与抢票页同款「细线清单」语言，不做卡片 */
-.ra-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.ra-row {
-  padding: 8px 0;
-  border-top: 1px solid var(--line);
-  /* ⚠ 长清单（本届约 800 场）每行都要参与布局太浪费：`content-visibility` 让屏外行跳过渲染。
-   *   给 `contain-intrinsic-size` 是为了让滚动条长度稳定（否则滚到哪长度变到哪）。 */
-  content-visibility: auto;
-  contain-intrinsic-size: auto 64px;
-}
-
-.ra-row:first-child {
-  border-top: 0;
-  padding-top: 0;
-}
-
-.ra-row-main {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 10px;
-}
-
-.ra-row-main time,
-.ra-num {
-  font-variant-numeric: tabular-nums;
-}
-
-.ra-code {
-  font-weight: 650;
-}
-
-.ra-title {
-  /* 片名吃掉剩余宽度，窄屏折到第二行 */
-  flex: 1 1 16ch;
-  min-width: 0;
-}
-
-.ra-meta {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-/* 难度分级章：只复用既有语义色对（红 = 抢不到，黄 = 紧，绿 = 有余量），不新增 token */
-.ra-level {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 6px;
-  border: 1px solid transparent;
-  border-radius: 3px;
-  font-size: 11px;
-  font-weight: 650;
-  white-space: nowrap;
-}
-
-.ra-level[data-level="extreme"] {
-  background: var(--conflict);
-  border-color: var(--conflict-line);
-  color: var(--conflict-line);
-}
-
-.ra-level[data-level="high"] {
-  background: var(--tight);
-  border-color: var(--tight-line);
-  color: var(--tight-line);
-}
-
-.ra-level[data-level="medium"] {
-  background: var(--selected);
-  border-color: var(--selected-line);
-  color: var(--selected-line);
-}
-
-.ra-level[data-level="low"],
-.ra-level[data-level="unknown"] {
-  background: var(--raised);
-  border-color: var(--line);
-  color: var(--muted);
-}
-
-/* 未收录容量的那种「虚线 + 斜体」是刻意的：一眼能看出这不是一个测出来的数字 */
-.ra-level[data-level="unknown"] {
-  border-style: dashed;
-}
-
-.ra-reason {
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-/* 占比条（集中度 / 时间分布共用）：纯 CSS，不引图表库 */
-.ra-bar {
-  position: relative;
-  height: 4px;
-  margin-top: 2px;
-  background: var(--line);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.ra-bar > span {
-  display: block;
-  height: 100%;
-  background: var(--brand);
-}
-
+/* 数字条：**等分铺满**（grid 而不是 flex）+ 每个数字一张浅底卡 ——
+ *  既解决「右半边空着」，也让五六个数字看起来是一组而不是一串。 */
 .ra-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 26px;
-  margin-bottom: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
 }
 
 .ra-metric {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  padding: 9px 12px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }
 
 .ra-metric b {
-  font-size: 20px;
+  font-size: 19px;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.4px;
 }
@@ -191,4 +143,56 @@
 .ra-metric span {
   color: var(--muted);
   font-size: 12px;
+  line-height: 1.35;
+}
+
+/* ---------------- 图表（ECharts / SVG） ----------------
+ * ⚠ 只在这里写尺寸与排版；**颜色一律由 `chart-theme.ts` 从 token 读**。
+ * ⚠ 画布高度由 `ChartFrame` 的 `height` 内联给出；ECharts 在容器宽为 0 时初始化
+ *   会得到一张空图，故 `.ra-echart` 必须有确定的高宽。
+ */
+
+.ra-chart {
+  margin: 0;
+}
+
+.ra-chart-canvas {
+  width: 100%;
+}
+
+.ra-echart {
+  width: 100%;
+  height: 100%;
+}
+
+.ra-chart-note {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* 图例：颜色点 + 人话标签（图例不写明颜色含义的话，读者只能猜） */
+.ra-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ra-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ra-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
 }

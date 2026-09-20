@@ -29,6 +29,7 @@ import {
   slotOf,
   store,
 } from "../state";
+import { scheduleAria } from "../actions-copy";
 import { useScreeningPicker } from "../components/screening-actions";
 import {
   dateInfo,
@@ -457,7 +458,7 @@ function Gantt({
                           type="button"
                           className="gantt-film"
                           data-grid-code={s.code}
-                          aria-label={`${isSelected ? "移出" : "加入"}场次 ${s.code} ${info.title}`}
+                          aria-label={scheduleAria(isSelected, s.code, info.title)}
                           aria-pressed={isSelected}
                           onClick={() => toggle(s)}
                           style={{
