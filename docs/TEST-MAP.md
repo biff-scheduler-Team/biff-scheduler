@@ -26,8 +26,8 @@ npx playwright test -c playwright.react.config.ts \
 <!-- BEGIN GENERATED:test-map -->
 | 改动路径(前缀) | 必跑 spec |
 |---|---|
-| `apps/web/src/pages/SchedulePage.tsx`<br>`apps/web/src/pages/schedule-parity.css`<br>`apps/web/src/grid.ts` | `parity-schedule` · `vertical-schedule` · `time-axis` · `night-axis` · `schedule-size` · `schedule-toolbar` · `combined-screenings` · `badge-tooltip` |
-| `apps/web/src/pages/AgendaPage.tsx`<br>`apps/web/src/pages/agenda-parity.css`<br>`apps/web/src/plans.ts`<br>`apps/web/src/timeline.ts` | `parity-agenda` · `review-schedule` · `combined-screenings` |
+| `apps/web/src/pages/SchedulePage.tsx`<br>`apps/web/src/pages/schedule-parity.css`<br>`apps/web/src/components/ScheduleGantt.tsx`<br>`apps/web/src/app/vertical-schedule.ts`<br>`apps/web/src/grid.ts` | `parity-schedule` · `vertical-schedule` · `time-axis` · `night-axis` · `schedule-size` · `schedule-toolbar` · `combined-screenings` · `badge-tooltip` · ⚠ `agenda-gantt`(不存在) |
+| `apps/web/src/pages/AgendaPage.tsx`<br>`apps/web/src/pages/agenda-parity.css`<br>`apps/web/src/plans.ts`<br>`apps/web/src/timeline.ts` | `parity-agenda` · ⚠ `agenda-gantt`(不存在) · `review-schedule` · `combined-screenings` |
 | `apps/web/src/pages/LibraryPage.tsx`<br>`apps/web/src/actions-copy.ts` | `parity-library` · `review-library` · `screening-popover` · `want-counts` |
 | `apps/web/src/pages/FilmDialog.tsx` | `parity-dialogs` · `screening-popover` · `want-counts` |
 | `apps/web/src/components/ScreeningCard.tsx`<br>`apps/web/src/components/ScreeningInfoPopover.tsx`<br>`apps/web/src/components/ScreeningMemberList.tsx`<br>`apps/web/src/actions-copy.ts`<br>`apps/web/src/components/screening-actions.ts` | `parity-agenda` · `parity-library` · `screening-popover` · `gv-popover` · `combined-screenings` |

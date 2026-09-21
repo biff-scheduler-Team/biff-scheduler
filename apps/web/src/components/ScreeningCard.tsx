@@ -40,7 +40,6 @@ import { BADGE_DEFS, screeningBadgeKeys, codeTip } from "../badges";
 import { SameScreeningCount, ScreeningTicketControl } from "./ScreeningTickets";
 import { SCHEDULE_LABEL, UNSCHEDULE_LABEL, scheduleAria } from "../actions-copy";
 import { useScreeningPicker } from "./screening-actions";
-import { DiscussionEntry } from "./ScreeningDiscussionDialog";
 import type { Screening } from "../types";
 
 export function FilmBadge({ kind, label, title }: { kind: string; label: string; title?: string }) {
@@ -211,8 +210,10 @@ export function ScreeningCard({
    *  「我的行程」出门时要照着找地方,故只在那里开;影片库里的场次行保持紧凑。 */
   venueInfo?: boolean;
   slotFilter?: ScheduleSelection;
-  /** 行程页专用:票务三态 / 转票来源 / 同场人数 / 讨论入口(2026-09-14,PLAN-20260914164050)。
-   *  刻意**不在影片库 / 排片网格上开** —— 那是「挑片」视图;票务结果与场次讨论只对已排进行程的场次有意义。 */
+  /** 行程页专用:票务三态 / 转票来源 / 同场人数(2026-09-14,PLAN-20260914164050)。
+   *  刻意**不在影片库 / 排片网格上开** —— 那是「挑片」视图;票务结果只对已排进行程的场次有意义。
+   *  ⚠ 「讨论 N」入口已于 2026-09-21 摘掉(用户要求,`PLAN-20260921223658` 修订 1):
+   *    讨论只从 `/discussions` 自己进,场次卡不再挂出入口。 */
   social?: boolean;
 }) {
   const { cat, conflicts } = useCatalog();
@@ -390,7 +391,6 @@ export function ScreeningCard({
               定位
             </ActionButton>
           )}
-          {social && <DiscussionEntry screening={s} />}
         </div>
         {controls && s.is_gv && <GvControls screening={s} />}
       </div>

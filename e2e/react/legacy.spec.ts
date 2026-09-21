@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { legacyData, openViewingPanel, ready, seed, storage, keyOf } from "./helpers";
+import { agendaCards, legacyData, openViewingPanel, ready, seed, storage, keyOf } from "./helpers";
 
 test("legacy entry is an independent old app and reads the same localStorage", async ({
   page,
@@ -56,6 +56,8 @@ test("the bare legacy URL redirects to the original app and legacy picks appear 
   ).toBeVisible();
   await openViewingPanel(page);
   await page.locator("#viewing-panel").getByRole("link", { name: /^我的行程/ }).click();
+  // 场次卡只在卡片视图(2026-09-21 起「我的行程」默认日程表,见 PLAN-20260921223658)
+  await agendaCards(page);
   await expect(
     page
       .getByRole("region", { name: "我的行程", exact: true })

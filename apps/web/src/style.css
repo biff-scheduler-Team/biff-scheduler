@@ -601,7 +601,8 @@ img {
   position: relative;
   flex: 1;
 }
-.ruler-track button {
+.ruler-track button,
+.ruler-track .ruler-tick {
   position: absolute;
   top: 0;
   height: 43px;
@@ -613,6 +614,13 @@ img {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+/* 「我的行程 → 日程表」的整点刻度:这一页没有整点筛选,刻度只是刻度(不是按钮)。
+   ⚠ 样式必须与按钮**逐条一致**(除交互态)—— 两档共用一套时间轴,刻度长得不一样就是两种口径。 */
+.ruler-track .ruler-tick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .ruler-track button[aria-pressed="true"] {
   background: var(--brand-soft);
@@ -1499,7 +1507,9 @@ img {
 .workspace { padding: 20px var(--page-gutter) 12px; }
 .workspace .schedule-page { display: flex; flex-direction: column; gap: 16px; padding: 0; }
 .workspace .schedule-page > .panel-heading { padding: 0; }
-.workspace .schedule-page > .calendar-strip { padding-bottom: 0; }
+.workspace .schedule-page > .calendar-strip,
+/* 「我的行程 → 日程表」的日期条与排片表同口径:贴着画布,不留 20px 底距 */
+.workspace .agenda-page > .calendar-strip { padding-bottom: 0; }
 .full-page-workspace > .library-page > .panel-heading,
 .full-page-workspace > .library-page > .library-controls,
 .full-page-workspace > .library-page > .film-list,

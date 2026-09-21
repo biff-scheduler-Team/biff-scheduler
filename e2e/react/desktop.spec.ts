@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { hourTickPx, keyOf, ready, seed, storage } from "./helpers";
+import { agendaCards, hourTickPx, keyOf, ready, seed, storage } from "./helpers";
 
 test("hover links a conflict group across the agenda and grid; dragging persists its order", async ({
   page,
@@ -14,18 +14,21 @@ test("hover links a conflict group across the agenda and grid; dragging persists
     ),
   });
   await ready(page, "/agenda?date=2026-10-07&quick=1");
+  // 场次卡只在卡片视图(2026-09-21 起「我的行程」默认日程表,见 PLAN-20260921223658)
+  await agendaCards(page);
   const first = page
     .getByRole("region", { name: "我的行程", exact: true })
     .locator('[data-screening="008"]');
   await first.hover();
+  // ⚠ 花括号必须收在「排片表那一列」:面板模式下它和行程页同屏,而行程页现在也有 `.gantt-slot`
   await expect(
     page
-      .locator(".gantt-slot")
+      .locator(".schedule-column .gantt-slot")
       .filter({ has: page.locator('[data-grid-code="008"]') }),
   ).toHaveAttribute("data-highlighted", "true");
   await expect(
     page
-      .locator(".gantt-slot")
+      .locator(".schedule-column .gantt-slot")
       .filter({ has: page.locator('[data-grid-code="033"]') }),
   ).toHaveAttribute("data-highlighted", "true");
   // ⚠ 这里刻意用 `dragTo` 而不是手动鼠标手势：它在拖拽中途会把目标行滚进视口，

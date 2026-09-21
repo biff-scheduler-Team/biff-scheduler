@@ -122,6 +122,13 @@ export async function ready(page: Page, path = "/schedule") {
 export function scheduleHeading(page: Page) {
   return page.getByRole("heading", { name: /^排片表/ });
 }
+/** 把「我的行程」切到**卡片**视图。
+ *  ⚠ 2026-09-21 起默认是「日程表」视图（`PLAN-20260921223658`）——断言场次卡 / 顺位卡 /
+ *  按日折叠的 spec 必须先显式切回卡片，否则那些元素根本不在 DOM 里（不是「找不到卡片」的 bug）。 */
+export async function agendaCards(page: Page) {
+  const cards = page.getByRole("button", { name: "卡片", exact: true });
+  if ((await cards.getAttribute("aria-pressed")) !== "true") await cards.click();
+}
 /** 记录画布上**画过的文字** —— 海报是 canvas 手绘,没有 DOM 可断言,只能挂 `fillText`。
  *  装上后每次 `fillText` 都把文本追加进 `window.__paintedTexts`。
  *  ⚠ 必须在首次 `goto` 之前调用;数组**跨多次出图累加** —— 要断言「这一张图上有什么」,

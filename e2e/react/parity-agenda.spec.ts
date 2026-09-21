@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-import { catalog, keyOf, ready, seed, storage } from "./helpers";
+import { agendaCards, catalog, keyOf, ready, seed, storage } from "./helpers";
 
 function picks(codes: string[]) {
   const entries = new Map<
@@ -100,6 +100,7 @@ test("a following screening has no misleading gap from one member of a conflict 
     "biff.settings.v1": JSON.stringify({ transitMin: 45 }),
   });
   await ready(page, "/agenda");
+  await agendaCards(page);
   await expect(
     page.locator('.agenda-page [data-screening="034"]'),
   ).toBeVisible();
@@ -151,6 +152,7 @@ test("folded days retain daily prices, overlap counts, and their legacy time spa
 }) => {
   await seed(page, { "biff.picks.v2": picks(["008", "033"]) });
   await ready(page, "/agenda");
+  await agendaCards(page);
   await page
     .getByRole("button", { name: "收起行程 2026-10-07", exact: true })
     .click();
@@ -159,6 +161,9 @@ test("folded days retain daily prices, overlap counts, and their legacy time spa
   await expect(day).toContainText("1 处时间重叠");
   await expect(day).toContainText("08:40–10:53");
   await page.reload();
+  // ⚠ 视图选择只在**会话内**记着(模块级变量),刷新回落默认「日程表」——
+  //   折叠状态(`biff.agendafold.v1`)才是落盘的,这里断言的是它没丢。
+  await agendaCards(page);
   await expect(day).toContainText("08:40–10:53");
   await expect(day.locator("[data-rank-code]")).toHaveCount(0);
 });
@@ -309,6 +314,7 @@ test("agenda cards carry the venue code, place details and a Google Maps entry",
 }) => {
   await seed(page, { "biff.picks.v2": picks(["008", "033"]) });
   await ready(page, "/agenda");
+  await agendaCards(page);
   const card = page.locator('[data-screening="008"]');
   const venue = card.locator(".screening-venue");
   await expect(venue).toHaveCount(1);
@@ -333,6 +339,7 @@ test("the Google Maps entry hugs the place name instead of being pushed to the r
 }) => {
   await seed(page, { "biff.picks.v2": picks(["008"]) });
   await ready(page, "/agenda");
+  await agendaCards(page);
   const head = page.locator('[data-screening="008"] .screening-venue-head');
   await expect(head).toHaveCount(1);
   // 回归(PLAN-20260913192048):入口原本带 `margin-left: auto`,被顶到行右端,
@@ -352,21 +359,24 @@ test("the Google Maps entry hugs the place name instead of being pushed to the r
   expect(metrics.gap).toBeLessThanOrEqual(16);
 });
 
-test("the day-level locate says 定位当日 while the card-level one stays 定位", async ({
+test("行程卡片不再挂「定位」，整日定位只留在日期行", async ({
   page,
 }) => {
   await seed(page, { "biff.picks.v2": picks(["008", "033"]) });
   await ready(page, "/agenda");
+  await agendaCards(page);
   const day = page.locator(".agenda-day").first();
-  // 两者功能不同(整日 vs 单场),可见文案必须能区分,否则用户无从判断按哪个
-  await expect(
-    day.getByRole("button", { name: "定位当日 2026-10-07", exact: true }),
-  ).toHaveText("定位当日");
+  // 2026-09-21(`PLAN-20260921223658` 修订 1):行程页默认就是日程表,单场「定位」跳去排片表
+  // 已无意义 —— 跨页定位改从「我的选片」的场次卡进(见 parity-schedule / edge-cases)。
   await expect(
     day
       .locator('[data-screening="008"]')
       .getByRole("button", { name: "定位场次 008", exact: true }),
-  ).toHaveText("定位");
+  ).toHaveCount(0);
+  // 整日定位仍在,可见文案保持不变(与「定位场次」区分开)
+  await expect(
+    day.getByRole("button", { name: "定位当日 2026-10-07", exact: true }),
+  ).toHaveText("定位当日");
 });
 
 test("the agenda film name carries a douban jump link, and film cards no longer do", async ({
@@ -389,6 +399,7 @@ test("the agenda film name carries a douban jump link, and film cards no longer 
   );
   await seed(page, { "biff.picks.v2": picks(["001"]) });
   await ready(page, "/agenda");
+  await agendaCards(page);
   const card = page.locator('[data-screening="001"]');
   const link = card.locator(".title-row .douban-jump");
   await expect(link).toHaveText("豆瓣 ↗");

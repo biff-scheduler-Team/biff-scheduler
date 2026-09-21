@@ -96,7 +96,9 @@ test("screening location reveals the correct day and target", async ({
       { key: keyOf("008"), picks: [{ code: "008" }], note: "" },
     ]),
   });
-  await ready(page, "/agenda");
+  // 「定位场次」入口现在只挂在「我的选片」的场次卡上(行程卡片已于 2026-09-21 摘掉,
+  // 见 PLAN-20260921223658 修订 1)——场次卡要先展开那部片才渲染
+  await ready(page, `/picks?expand=${encodeURIComponent(keyOf("008"))}`);
   await page.getByRole("button", { name: "定位场次 008", exact: true }).click();
   await expect(page).toHaveURL(
     /\/schedule\?.*date=2026-10-07.*focus=008/,
