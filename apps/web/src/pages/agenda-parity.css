@@ -1,6 +1,41 @@
 .agenda-page .agenda-date {
   flex-wrap: wrap;
 }
+
+/* ---------- 日程表视图(2026-09-21,`PLAN-20260921223658`) ----------
+   画布本身与排片表共用 `components/ScheduleGantt.tsx`(连同 `.vertical-schedule` 那套样式),
+   这里只补这一页特有的三块:视图切换、日期条与画布的排布、画布下方的顺位卡。 */
+.view-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  /* 靠右收尾 —— 与「仅看实际行程」拉开距离,免得两个开关看起来是一组 */
+  margin-left: auto;
+}
+.agenda-gantt {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0 20px 4px;
+}
+.agenda-gantt-empty {
+  margin: 0;
+}
+/* 顺位卡跟着画布当天走:画布上方画连线,这里排抢票顺序(顺位是 `/rush` 的唯一来源) */
+.agenda-gantt-ranks {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.agenda-gantt-ranks > h2,
+.agenda-gantt-ranks > p {
+  margin: 0;
+}
+@media (max-width: 768px) {
+  .agenda-gantt {
+    padding: 0 14px 4px;
+  }
+}
 .agenda-day-count,
 .agenda-day-summary {
   color: var(--muted);

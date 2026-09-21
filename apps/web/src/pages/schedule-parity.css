@@ -98,7 +98,8 @@
   border-right: 1px solid var(--line);
   border-bottom: 0;
 }
-.vertical-schedule .ruler-track button {
+.vertical-schedule .ruler-track button,
+.vertical-schedule .ruler-track .ruler-tick {
   left: 0;
   width: 100%;
   height: 36px;
@@ -136,14 +137,18 @@
 
 .grid-gv-duration { position: absolute; right: 4px; z-index: 3; }
 
-.schedule-page .calendar-strip {
+/* ⚠ 用 `.date-strip.calendar-strip`(两个类)而不是页面作用域 `.schedule-page .calendar-strip`:
+ *   「我的行程 → 日程表」也要用同一条日期条(2026-09-21,`PLAN-20260921223658`),页面作用域会把它
+ *   挡在门外;而只写 `.calendar-strip` 又会与 `style.css` 的 `.date-strip` 打平特异度、
+ *   落到「谁先被 import」上 —— 叠一个类既跨页共用,又不依赖样式表顺序。 */
+.date-strip.calendar-strip {
   display: flex;
   flex-wrap: nowrap;
   gap: 8px;
   overflow-x: auto;
   padding-bottom: 20px;
 }
-.schedule-page .calendar-strip > button {
+.date-strip.calendar-strip > button {
   display: block;
   flex: 0 0 76px;
   height: 94px;
@@ -154,7 +159,7 @@
   background: var(--surface);
   color: var(--text);
 }
-.schedule-page .calendar-strip > button[aria-pressed="true"] {
+.date-strip.calendar-strip > button[aria-pressed="true"] {
   background: var(--surface);
   color: var(--text);
   border-color: var(--text);
@@ -163,7 +168,7 @@
 .calendar-weekday { display: flex; align-items: center; justify-content: center; min-height: 31px; background: var(--raised); color: var(--muted); font-size: 12px; font-weight: 600; }
 .calendar-number { display: flex; flex: 1; align-items: center; justify-content: center; font-size: 26px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
 @media (hover: hover) {
-  .schedule-page .calendar-strip > button[aria-pressed="false"]:hover { border-color: var(--muted); }
+  .date-strip.calendar-strip > button[aria-pressed="false"]:hover { border-color: var(--muted); }
 }
 
 .calendar-count { min-height: 20px; padding-bottom: 6px; font-size: 11px; line-height: 14px; font-weight: 400; color: var(--muted); }

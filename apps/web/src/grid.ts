@@ -91,6 +91,28 @@ export function axisStartFor(cat: Catalog, date: string): number {
   return axisRangeFor(cat, date).start;
 }
 
+/** 轴范围按**给定场次集合**算(纯函数)。
+ *  ⚠ 「我的行程」的日程表画布只有自己的场次,轴范围要跟着收紧 —— 若在调用点另算一遍
+ *  「首场前 30 分钟取整 / 末场取「官方槽位末」与「GV 含映后结束」的较大者」,
+ *  就成了同一口径的第二份实现(见 `axisRangeFor` 与 `docs/vertical-schedule.md`)。
+ *  这里抽出按场次集合算的那一半,`axisRangeFor(cat, date)` 只是「先按日期筛一遍」的薄壳。 */
+export function axisRangeOf(shows: readonly Screening[]): { start: number; end: number } {
+  let first = Infinity;
+  let last = -Infinity;
+  for (const s of shows) {
+    const st = hmsToMin(s.start_time);
+    // 轴末取「官方槽位末」与「GV 含映后结束」的较大者 —— 映后时长可配置(gv.ts::gvTalkMin),
+    // 调大后谈块会画到官方槽位之外,轴末不跟着外扩就会被右缘裁掉。
+    const en = Math.max(hmsToMin(s.end_time), filmEndMin(s) + gvTalkMin(s));
+    if (st < first) first = st;
+    if (en > last) last = en;
+  }
+  if (!Number.isFinite(first)) return { ...AXIS_FALLBACK };
+  const start = Math.max(0, Math.floor((first - AXIS_LEAD_MIN) / 60) * 60);
+  const end = Math.max(Math.ceil(last / 60) * 60, start + 2 * 60);
+  return { start, end };
+}
+
 export interface GridCtx {
   cat: Catalog;
   /** 横向刻度(px/min)= PX_PER_MIN × 缩放倍率。由 main 侧算好传入 —— 缩放是视图偏好,grid 只负责画 */
@@ -114,21 +136,7 @@ export interface GridCtx {
 }
 
 function axisRangeFor(cat: Catalog, date: string): { start: number; end: number } {
-  let first = Infinity;
-  let last = -Infinity;
-  for (const s of cat.schedule.screenings) {
-    if (s.date !== date) continue;
-    const st = hmsToMin(s.start_time);
-    // 轴末取「官方槽位末」与「GV 含映后结束」的较大者 —— 映后时长可配置(gv.ts::gvTalkMin),
-    // 调大后谈块会画到官方槽位之外,轴末不跟着外扩就会被右缘裁掉。
-    const en = Math.max(hmsToMin(s.end_time), filmEndMin(s) + gvTalkMin(s));
-    if (st < first) first = st;
-    if (en > last) last = en;
-  }
-  if (!Number.isFinite(first)) return { ...AXIS_FALLBACK };
-  const start = Math.max(0, Math.floor((first - AXIS_LEAD_MIN) / 60) * 60);
-  const end = Math.max(Math.ceil(last / 60) * 60, start + 2 * 60);
-  return { start, end };
+  return axisRangeOf(cat.schedule.screenings.filter((s) => s.date === date));
 }
 
 function talkTimeRange(s: Screening): string {

@@ -22,10 +22,12 @@
   "rules": [
     {
       "id": "schedule-grid",
-      "note": "排片表二维网格(甘特)/ 时间轴 / 影厅列 / 缩放 / 小时筛选",
+      "note": "排片表二维网格(甘特)/ 时间轴 / 影厅列 / 缩放 / 小时筛选；`ScheduleGantt` / `vertical-schedule` 是排片表与「我的行程 → 日程表」共用的那一份甘特，故行程侧 spec 也挂在这里",
       "paths": [
         "apps/web/src/pages/SchedulePage.tsx",
         "apps/web/src/pages/schedule-parity.css",
+        "apps/web/src/components/ScheduleGantt.tsx",
+        "apps/web/src/app/vertical-schedule.ts",
         "apps/web/src/grid.ts"
       ],
       "specs": [
@@ -36,12 +38,13 @@
         "schedule-size",
         "schedule-toolbar",
         "combined-screenings",
-        "badge-tooltip"
+        "badge-tooltip",
+        "agenda-gantt"
       ]
     },
     {
       "id": "agenda",
-      "note": "我的行程(顺位 / 冲突组 / 方案对比 / 场次卡)",
+      "note": "我的行程(日程表 / 卡片两档视图、顺位 / 冲突组 / 方案对比 / 场次卡)",
       "paths": [
         "apps/web/src/pages/AgendaPage.tsx",
         "apps/web/src/pages/agenda-parity.css",
@@ -50,6 +53,7 @@
       ],
       "specs": [
         "parity-agenda",
+        "agenda-gantt",
         "review-schedule",
         "combined-screenings"
       ]

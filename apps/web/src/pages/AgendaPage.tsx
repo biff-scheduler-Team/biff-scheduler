@@ -20,6 +20,9 @@ import {
 import { TransferAddEntry } from "../components/TransferAddDialog";
 import { ScreeningCard } from "../components/ScreeningCard";
 import { PlanShowsDialog } from "../components/PlanShowsDialog";
+// 日程表视图与排片表共用同一个甘特组件(2026-09-21,PLAN-20260921223658):
+// `scope="agenda"` 换掉图例 / 刻度 / 边界文案,`shows` 把画布收成「我的场次」。
+import { ScheduleGantt } from "../components/ScheduleGantt";
 import { useCatalog } from "../app/store";
 import { navSearch } from "../app/nav-query";
 import { useScheduleNavigation } from "../app/navigation";
@@ -48,6 +51,7 @@ import {
   groupByDate,
   hmsToMin,
   slackBetween,
+  todayIsoLocal,
 } from "../util";
 import { effEndMin, gvTalkMin, talkOnOf } from "../gv";
 import { scorePlanRows } from "../score";
@@ -219,9 +223,10 @@ function RankGroup({ codes }: { codes: string[] }) {
                 下移
               </ActionButton>
             </div>
+            {/* ⚠ 不再传 `locate`(2026-09-21,`PLAN-20260921223658` 修订 1):行程页默认就是日程表,
+                单场「定位」跳去排片表没有意义;要跨页定位从「我的选片」的场次卡进。 */}
             <ScreeningCard
               screening={cat.byCode.get(code)!}
-              locate
               controls
               venueInfo
               slotFilter={slotFilter}
@@ -374,6 +379,19 @@ function Gap({ before, after }: { before: Screening; after: Screening }) {
   );
 }
 
+/** 「我的行程」的两种呈现(2026-09-21,`PLAN-20260921223658`)。
+ *  - `gantt`(默认)= 单日**日程表**:与排片表同一套纵向甘特,但画布只有我的场次、
+ *    X 轴只有我有影片的影厅、冲突画成连线(见 `components/ScheduleGantt.tsx` 的 `scope`)
+ *  - `cards` = 原来的按天卡片列表(顺位卡 / 间隔提示 / 按日折叠),完整保留为回退路径 */
+type AgendaView = "gantt" | "cards";
+
+/** 视图选择的**会话内记忆**(模块级变量,卸载不丢)。
+ *  为什么不是散在组件里的 `useState`:「我的行程 → 定位场次 → 排片表 → 切回来」会整页卸载重挂,
+ *  没有它用户每来回一次就得重切一遍。
+ *  ⚠ 故意**不落 localStorage**、刷新即回默认「日程表」:见 `PLAN-20260921223658` 方案取舍 D1 ——
+ *   `biff.*` 的读写会被 E2E 的字节级存储快照断言看见,为「记住一次切换」打红一批无关 spec 不划算。 */
+let agendaViewMemory: AgendaView = "gantt";
+
 export function AgendaPage() {
   const slotFilter = useScheduleSelection();
   const { cat, codes, plans, conflicts, keyOf } = useCatalog();
@@ -383,6 +401,12 @@ export function AgendaPage() {
   // 「仅看实际行程」(2026-09-14,PLAN-20260914164050):只显示票务状态标了「已抢到」的场次。
   // 纯视图筛选 —— 数据仍在同一份行程里,票务状态存在独立键 `biff.tickets.v1`。
   const [actualOnly, setActualOnly] = useState(false);
+  const [view, setView] = useState<AgendaView>(() => agendaViewMemory);
+  // 换视图要同时写回会话记忆(见 `agendaViewMemory` 的注释)
+  const changeView = (next: AgendaView) => {
+    agendaViewMemory = next;
+    setView(next);
+  };
   const actual = actualCodeSet(tickets);
   const selected = codes
     .filter((code) => !actualOnly || actual.has(code))
@@ -399,6 +423,208 @@ export function AgendaPage() {
     (s) => effEndMin(s, talkOnOf(s.code)),
   );
   const firstLayerClash = plans.rankClashes.some((clash) => clash.layer === 1);
+  // 日程表是**单日**视图,日期条只列「我有行程的日期」(排片表那条列全届日期)。
+  const days = groupByDate(selected, (s) => s.date);
+  // 「选中的日子」不额外存状态,由「当前行程 + 上次点的那天」派生 —— 移出行程 / 切「仅看实际行程」
+  // 之后不会留在一个已经不存在的日期上(否则画布会空着且日期条上没有对应项)。
+  // 默认落哪天:**今天**有我的场次就落今天;今天没有就落最近的未来场次;整段都在过去则落最后一天。
+  // ⚠ 别退回「直接取 days[0]」——电影节期间用户每次进来看到的都是已经过完的第一天。
+  const [pickedDate, setPickedDate] = useState<string | null>(null);
+  const dateKeys = days.map(([date]) => date);
+  const today = todayIsoLocal();
+  const fallbackDate = today && dateKeys.includes(today)
+    ? today
+    : (dateKeys.find((date) => date > today) ?? dateKeys[dateKeys.length - 1] ?? null);
+  const activeDate = dateKeys.includes(pickedDate ?? "")
+    ? pickedDate
+    : fallbackDate;
+  const dayRows = days.find(([date]) => date === activeDate)?.[1] ?? [];
+  // 「仅看实际行程」时不摆顺位卡:票都抢完了,再显示「顺位 1 / 备选」只会误导
+  const activeGroups = actualOnly
+    ? []
+    : plans.groups.filter(
+        (group) => cat.byCode.get(group[0])?.date === activeDate,
+      );
+  // 视图无关的页级区块(顺位撞车提示 / 保存当前方案 / 已保存方案)—— 抽成一份,两个视图共用,
+  // 免得「切到日程表就看不到已保存方案」。排布顺序按视图给(卡片视图与改动前逐字一致)。
+  const panels = (
+    <>
+      {/* ⚠ 行程为空时**只**保留「已保存方案」:顺位撞车 / 保存当前方案在旧版就没有(它们读的是当前行程),
+          少一个 `codes.length > 0` 就会在空状态多出一个按不动的「保存当前方案」。 */}
+      {!actualOnly && codes.length > 0 && (
+        <>
+          <RankClashes />
+          <div className="agenda-save">
+            <Button
+              onPress={() => saveCodes(topPlanCodes(plans))}
+              isDisabled={firstLayerClash}
+            >
+              保存当前方案
+            </Button>
+            <p className="muted">
+              {firstLayerClash
+                ? "第一顺位有撞车，请先让路再保存。"
+                : "保存每个冲突组的第一顺位场次与共同场次。"}
+            </p>
+          </div>
+        </>
+      )}
+      <section className="saved-plans" aria-label="已保存方案">
+        <h2>已保存方案，{savedPlans.length} 套</h2>
+        {savedPlans.length === 0 && (
+          <p className="muted">
+            还没有保存方案。在上方保存当前第一顺位方案，导出与分享时按方案选择。
+          </p>
+        )}
+        {savedPlans.map((plan) => {
+          const summary = describeSavedPlan(cat, plan);
+          return (
+            <div className="saved-plan" key={plan.id}>
+              <div>
+                <strong>{plan.name}</strong>
+                <p className="muted" title={summary.details}>
+                  {summary.outline}
+                </p>
+                {/* 弹层内容与分享图片同源(见 PlanShowsDialog 文件头),不再是内联的「时间 · CODE」纯文本 */}
+                <PlanShowsDialog plan={plan} />
+              </div>
+              <ActionButton
+                aria-label={`删除${plan.name}`}
+                onPress={() => deletePlan(plan.id)}
+              >
+                删除
+              </ActionButton>
+            </div>
+          );
+        })}
+      </section>
+    </>
+  );
+  const agendaDays = (
+    <div className="agenda-days">
+      {days.map(([date, rows]) => {
+        const groups = actualOnly
+          ? []
+          : plans.groups.filter((group) => cat.byCode.get(group[0])?.date === date);
+        const folded = isAgendaFolded(date);
+        const last = rows[rows.length - 1];
+        const overlapCount = conflicts.get(date)?.pairs.length ?? 0;
+        return (
+          <section className="agenda-day" key={date}>
+            <div className="agenda-date">
+              <ActionButton
+                aria-label={`${folded ? "展开" : "收起"}行程 ${date}`}
+                aria-expanded={!folded}
+                onPress={() => toggleAgendaFold(date)}
+              >
+                {folded ? "展开" : "收起"}
+              </ActionButton>
+              <h2>
+                {dateInfo(date).label} {dateInfo(date).weekday}
+              </h2>
+              <span className="agenda-day-count">{rows.length} 场</span>
+              {/* 与场次卡里的「定位」（定位单场）区分：这里定位的是整日排片,故文案写明「当日」 */}
+              <ActionButton
+                aria-label={`定位当日 ${date}`}
+                onPress={() => locateDate(date)}
+              >
+                定位当日
+              </ActionButton>
+              <div className="agenda-day-summary">
+                {overlapCount > 0 && (
+                  <span className="agenda-overlap-count">
+                    {overlapCount} 处时间重叠
+                  </span>
+                )}
+                <span>
+                  当日 {formatKrw(rows.reduce((n, s) => n + priceOf(s), 0))}
+                </span>
+                {folded && (
+                  <span>
+                    {rows[0].start_time.slice(0, 5)}–
+                    {fmtEndClock(effEndMin(last, talkOnOf(last.code)))}
+                  </span>
+                )}
+              </div>
+            </div>
+            {!folded && (
+              <div className="day-screenings">
+                {agendaItems(rows, groups).map((item) =>
+                  item.kind === "group" ? (
+                    <RankGroup
+                      key={[...item.codes].sort().join(",")}
+                      codes={item.codes}
+                    />
+                  ) : (
+                    <div key={item.screening.code}>
+                      {item.before && (
+                        <Gap before={item.before} after={item.screening} />
+                      )}
+                      {/* 同上:行程卡片不再挂「定位」 */}
+                      <ScreeningCard
+                        screening={item.screening}
+                        controls
+                        venueInfo
+                        slotFilter={slotFilter}
+                        social
+                      />
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+  const agendaGantt = (
+    <div className="agenda-gantt">
+      {days.length === 0 ? (
+        <p className="muted agenda-gantt-empty">
+          这些场次都还没标「已抢到」，日程表里没有可排的场次。
+        </p>
+      ) : (
+        <>
+          <div className="date-strip calendar-strip" aria-label="行程日期">
+            {days.map(([date, rows]) => (
+              <ToggleButton
+                key={date}
+                isSelected={date === activeDate}
+                onChange={() => setPickedDate(date)}
+                aria-label={`选择日期 ${date}`}
+              >
+                <span className="calendar-day">
+                  <span className="calendar-weekday">{dateInfo(date).weekday}</span>
+                  <span className="calendar-number">{Number(date.slice(-2))}</span>
+                  <span className="calendar-count">{rows.length} 场</span>
+                </span>
+              </ToggleButton>
+            ))}
+          </div>
+          {activeDate && (
+            <ScheduleGantt
+              scope="agenda"
+              date={activeDate}
+              hour={null}
+              shows={dayRows}
+            />
+          )}
+          {activeGroups.length > 0 && (
+            <section className="agenda-gantt-ranks" aria-label="当天冲突组顺位">
+              <h2>冲突组顺位</h2>
+              <p className="muted">
+                画布上的连线就是这 {activeGroups.length} 组时间重叠；拖动把手排抢票顺位，顺位 1 为首选。
+              </p>
+              {activeGroups.map((group) => (
+                <RankGroup key={[...group].sort().join(",")} codes={group} />
+              ))}
+            </section>
+          )}
+        </>
+      )}
+    </div>
+  );
   return (
     <>
       <section className="agenda-page" aria-label="我的行程">
@@ -413,7 +639,7 @@ export function AgendaPage() {
         </div>
         <div className="summary-strip">
           <span>{new Set(selected.map((s) => keyOf(s.code))).size} 部电影</span>
-          <span>{groupByDate(selected, (s) => s.date).length} 天</span>
+          <span>{days.length} 天</span>
           <span title="票务状态标为「已抢到」的场次（含转票补入）">
             实际 {actual.size} 场
           </span>
@@ -429,142 +655,39 @@ export function AgendaPage() {
           <ToggleButton isSelected={actualOnly} onChange={setActualOnly}>
             仅看实际行程（{actual.size}）
           </ToggleButton>
+          <div className="view-switch" role="group" aria-label="行程视图">
+            <ToggleButton isSelected={view === "gantt"} onChange={() => changeView("gantt")}>
+              日程表
+            </ToggleButton>
+            <ToggleButton isSelected={view === "cards"} onChange={() => changeView("cards")}>
+              卡片
+            </ToggleButton>
+          </div>
         </div>
         {codes.length === 0 ? (
-          <div className="empty-state">
-            <h2>还没有安排场次</h2>
-            <p>从排片表把场次{SCHEDULE_LABEL}，或先到影片库挑选电影。</p>
-            {/* 跨页导航走 `nav-query` 口径:只带排片表的 `date` / `hour`,不搬本页 / 上一页的搜索词 */}
-            <Button onPress={() => navigate(`/library${navSearch(location.search, location.pathname, "/library")}`)}>
-              浏览影片库
-            </Button>
-          </div>
+          <>
+            <div className="empty-state">
+              <h2>还没有安排场次</h2>
+              <p>从排片表把场次{SCHEDULE_LABEL}，或先到影片库挑选电影。</p>
+              {/* 跨页导航走 `nav-query` 口径:只带排片表的 `date` / `hour`,不搬本页 / 上一页的搜索词 */}
+              <Button onPress={() => navigate(`/library${navSearch(location.search, location.pathname, "/library")}`)}>
+                浏览影片库
+              </Button>
+            </div>
+            {/* 行程为空也要能管理「已保存方案」——旧版就在这里,别把它关进行程非空的分支 */}
+            {panels}
+          </>
+        ) : view === "gantt" ? (
+          <>
+            {agendaGantt}
+            {panels}
+          </>
         ) : (
-          !actualOnly && (
-            <>
-              <RankClashes />
-              <div className="agenda-save">
-                <Button
-                  onPress={() => saveCodes(topPlanCodes(plans))}
-                  isDisabled={firstLayerClash}
-                >
-                  保存当前方案
-                </Button>
-                <p className="muted">
-                  {firstLayerClash
-                    ? "第一顺位有撞车，请先让路再保存。"
-                    : "保存每个冲突组的第一顺位场次与共同场次。"}
-                </p>
-              </div>
-            </>
-          )
+          <>
+            {panels}
+            {agendaDays}
+          </>
         )}
-        <section className="saved-plans" aria-label="已保存方案">
-          <h2>已保存方案，{savedPlans.length} 套</h2>
-          {savedPlans.length === 0 && (
-            <p className="muted">
-              还没有保存方案。在上方保存当前第一顺位方案，导出与分享时按方案选择。
-            </p>
-          )}
-          {savedPlans.map((plan) => {
-            const summary = describeSavedPlan(cat, plan);
-            return (
-              <div className="saved-plan" key={plan.id}>
-                <div>
-                  <strong>{plan.name}</strong>
-                  <p className="muted" title={summary.details}>
-                    {summary.outline}
-                  </p>
-                  {/* 弹层内容与分享图片同源(见 PlanShowsDialog 文件头),不再是内联的「时间 · CODE」纯文本 */}
-                  <PlanShowsDialog plan={plan} />
-                </div>
-                <ActionButton
-                  aria-label={`删除${plan.name}`}
-                  onPress={() => deletePlan(plan.id)}
-                >
-                  删除
-                </ActionButton>
-              </div>
-            );
-          })}
-        </section>
-        <div className="agenda-days">
-          {groupByDate(selected, (s) => s.date).map(([date, rows]) => {
-            // 「仅看实际行程」时不摆顺位卡:票都抢完了,再显示「顺位 1 / 备选」只会误导
-            const groups = actualOnly
-              ? []
-              : plans.groups.filter((group) => cat.byCode.get(group[0])?.date === date);
-            const folded = isAgendaFolded(date);
-            const last = rows[rows.length - 1];
-            const overlapCount = conflicts.get(date)?.pairs.length ?? 0;
-            return (
-              <section className="agenda-day" key={date}>
-                <div className="agenda-date">
-                  <ActionButton
-                    aria-label={`${folded ? "展开" : "收起"}行程 ${date}`}
-                    aria-expanded={!folded}
-                    onPress={() => toggleAgendaFold(date)}
-                  >
-                    {folded ? "展开" : "收起"}
-                  </ActionButton>
-                  <h2>
-                    {dateInfo(date).label} {dateInfo(date).weekday}
-                  </h2>
-                  <span className="agenda-day-count">{rows.length} 场</span>
-                  {/* 与场次卡里的「定位」（定位单场）区分：这里定位的是整日排片,故文案写明「当日」 */}
-                  <ActionButton
-                    aria-label={`定位当日 ${date}`}
-                    onPress={() => locateDate(date)}
-                  >
-                    定位当日
-                  </ActionButton>
-                  <div className="agenda-day-summary">
-                    {overlapCount > 0 && (
-                      <span className="agenda-overlap-count">
-                        {overlapCount} 处时间重叠
-                      </span>
-                    )}
-                    <span>
-                      当日 {formatKrw(rows.reduce((n, s) => n + priceOf(s), 0))}
-                    </span>
-                    {folded && (
-                      <span>
-                        {rows[0].start_time.slice(0, 5)}–
-                        {fmtEndClock(effEndMin(last, talkOnOf(last.code)))}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                {!folded && (
-                  <div className="day-screenings">
-                    {agendaItems(rows, groups).map((item) =>
-                      item.kind === "group" ? (
-                        <RankGroup
-                          key={[...item.codes].sort().join(",")}
-                          codes={item.codes}
-                        />
-                      ) : (
-                        <div key={item.screening.code}>
-                          {item.before && (
-                            <Gap before={item.before} after={item.screening} />
-                          )}
-                          <ScreeningCard
-                            screening={item.screening}
-                            locate
-                            controls
-                            venueInfo
-                            slotFilter={slotFilter}
-                            social
-                          />
-                        </div>
-                      ),
-                    )}
-                  </div>
-                )}
-              </section>
-            );
-          })}
-        </div>
       </section>
       <Outlet />
     </>

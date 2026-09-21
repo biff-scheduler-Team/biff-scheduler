@@ -1,5 +1,5 @@
 import type { Catalog, Screening } from "../types";
-import { ganttGeometry, clampZoom } from "../grid";
+import { axisRangeOf, clampZoom } from "../grid";
 import { hmsToMin } from "../util";
 import { filmEndMin, gvTalkMin } from "../gv";
 
@@ -14,10 +14,19 @@ export const VERTICAL_PX_PER_MIN = 4;
 export const GRID_TOP_PAD = 18;
 export const VENUE_HEADER_HEIGHT = 64;
 
-export function verticalGeometry(cat: Catalog, date: string, zoom: number, venueCount: number, viewportWidth: number) {
-  const shows = cat.schedule.screenings.filter(s => s.date === date);
+export function verticalGeometry(
+  cat: Catalog,
+  date: string,
+  zoom: number,
+  venueCount: number,
+  viewportWidth: number,
+  /** 画布**只画这些场次**(缺省 = 当日全部排片)。
+   *  「我的行程」的日程表传自己的场次进来:轴范围随首场 / 末场收紧,
+   *  影厅列数由调用点按同一份场次算(见 `ScheduleGantt` 的 `shows` 入参)。 */
+  shows: readonly Screening[] = cat.schedule.screenings.filter(s => s.date === date),
+) {
   const start = shows.length ? Math.max(0, Math.floor(Math.min(...shows.map(s => hmsToMin(s.start_time))) / 60) * 60) : 8 * 60;
-  const end = ganttGeometry(cat, date, 1).end;
+  const end = axisRangeOf(shows).end;
   const ppm = VERTICAL_PX_PER_MIN * zoom;
   const stretch = venueCount ? (viewportWidth - TIME_RAIL_WIDTH) / venueCount : 0;
   const columnWidth = Math.max(

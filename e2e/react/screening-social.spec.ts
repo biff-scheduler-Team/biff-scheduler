@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { catalog, keyOf, ready, seed, storage } from "./helpers";
+import { agendaCards, catalog, keyOf, ready, seed, storage } from "./helpers";
 
 // 同场观影 & 场次讨论(2026-09-14,PLAN-20260914164050)。
 // API 一律用 page.route 打桩(feedback.spec.ts 同一手法),不打真实后端。
@@ -48,6 +48,8 @@ test("票务三态 / 同场人数 / 仅看实际行程 / 转票补入", async ({
   await seed(page, { "biff.picks.v2": picks });
 
   await ready(page, "/agenda");
+  // 场次卡只在「卡片」视图(2026-09-21 起「我的行程」默认是日程表,见 PLAN-20260921223658)
+  await agendaCards(page);
   await expect(page.locator(".screening-card")).toHaveCount(4);
   // 008/033/037 时间重叠 → 行程里出现冲突组顺位卡
   await expect(page.locator(".rank-group")).toHaveCount(1);
@@ -92,7 +94,7 @@ test("票务三态 / 同场人数 / 仅看实际行程 / 转票补入", async ({
   await expect(targetCard.locator(".ticket-transfer")).toHaveText("转票");
 });
 
-test("讨论区:集合成方格墙、行程里的讨论跳过去定位;发帖门闸与社区提醒只留一条", async ({ page }) => {
+test("讨论区:集合成方格墙、按场次定位;发帖门闸与社区提醒只留一条", async ({ page }) => {
   await guest(page);
   await mockCounts(page, { attendance: { "001": 1 }, discussions: { "001": 1 } });
 
@@ -123,6 +125,8 @@ test("讨论区:集合成方格墙、行程里的讨论跳过去定位;发帖门
   await seed(page, { "biff.picks.v2": picks });
 
   await ready(page, "/agenda");
+  // 场次卡上的「讨论」入口只在卡片视图(日程表视图没有场次卡)
+  await agendaCards(page);
 
   // 导航里新增「讨论区」模块,且排在「我的行程」「建议」之后
   // ⚠ 末尾几项不属于本 PLAN —— 「红黑榜」由 `PLAN-20260916102339`、「吃喝」由
@@ -145,14 +149,16 @@ test("讨论区:集合成方格墙、行程里的讨论跳过去定位;发帖门
     "吃喝",
   ]);
 
-  const entry = page.locator('.screening-card[data-screening="001"] .card-actions button', {
-    hasText: "讨论",
-  });
-  await expect(entry).toHaveText(/讨论 1/);
-  await entry.click();
+  // 场次卡上的「讨论 N」入口已于 2026-09-21 摘掉(`PLAN-20260921223658` 修订 1):
+  // 讨论只从 `/discussions` 自己进 —— 这里锁住「卡片上不再长出第二个入口」
+  await expect(
+    page.locator('.screening-card[data-screening="001"] .card-actions button', {
+      hasText: "讨论",
+    }),
+  ).toHaveCount(0);
 
-  // 不再就地弹层:跳到讨论区并**定位**到这场(高亮 + 定位条)
-  await expect(page).toHaveURL(/\/discussions\?focus=001$/);
+  // 直接进讨论区并**定位**到这场(高亮 + 定位条);URL 契约不变:`focus=<场次 code>`
+  await ready(page, "/discussions?focus=001");
   await expect(page.getByRole("heading", { name: "讨论区", exact: true })).toBeVisible();
   const grid = page.locator(".discussion-grid");
   await expect(grid.locator(".discussion-tile")).toHaveCount(1);

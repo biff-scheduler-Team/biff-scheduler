@@ -6,7 +6,6 @@ import {
   type DiscussionCategory,
 } from "@biff/contracts/screening";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
 import { openAccountPanel } from "../account";
 import { ApiFailure, accountState, onAccountChange } from "../account-sync";
 import { effEndMin, talkOnOf } from "../gv";
@@ -52,27 +51,6 @@ function markPrivacySeen(): void {
   } catch {
     /* ignore */
   }
-}
-
-/** 场次卡操作行里的「讨论 N」入口(0 条时只写「讨论」)。
- *
- *  2026-09-15(`PLAN-20260915233816`):这里**不再就地弹层**,而是跳到讨论区并定位到该场次
- *  —— 讨论的集合已统一到 `/discussions`,发帖 / 反应 / 删除都从那边的格子上进。
- *  ⚠ 定位参数用 `focus=<场次 code>`(不是 post id):卡片上只有「讨论 N」这个场次级信息。 */
-export function DiscussionEntry({ screening }: { screening: Screening }) {
-  const counts = useScreeningCounts();
-  const navigate = useNavigate();
-  const total = counts.discussions[screening.code] ?? 0;
-  return (
-    <ActionButton
-      aria-label={`在讨论区查看场次 ${screening.code} 的讨论`}
-      onPress={() =>
-        navigate(`/discussions?focus=${encodeURIComponent(screening.code)}`)
-      }
-    >
-      {total > 0 ? `讨论 ${total}` : "讨论"}
-    </ActionButton>
-  );
 }
 
 /** 场次讨论弹层 —— 发帖 / 反应 / 删除 / 社区提醒的**唯一实现**。

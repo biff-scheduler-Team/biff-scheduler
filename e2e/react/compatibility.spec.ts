@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import {
+  agendaCards,
   keyOf,
   legacyData,
   legacyRead,
@@ -23,6 +24,8 @@ test("all legacy storage keys survive initial load, navigation, and reload byte 
   await expect(
     page.getByRole("heading", { name: "我的行程", exact: true }),
   ).toBeVisible();
+  // 按日折叠 / 顺位卡只在卡片视图(2026-09-21 起默认日程表,见 PLAN-20260921223658)
+  await agendaCards(page);
   await expect(page.getByText("方案 7", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "展开行程 2026-10-07", exact: true }),
@@ -66,6 +69,7 @@ test("new UI writes remain readable by the original implementation", async ({
   await note.fill("React 改过的备注\n兼容旧版本");
   // /picks 整页时 FAB 隐藏：用主导航进行程，不依赖浮层
   await page.getByRole("navigation", { name: "主要导航" }).getByRole("link", { name: "我的行程", exact: true }).click();
+  await agendaCards(page);
   await page
     .getByRole("button", { name: "提高 008 顺位", exact: true })
     .click();
@@ -91,6 +95,8 @@ test("new UI writes remain readable by the original implementation", async ({
   );
   await legacyRead(page, true);
   await page.reload();
+  // 刷新后视图回默认「日程表」→ 切回卡片,好让下面那条「033 已不在行程」是真在卡片上断言的
+  await agendaCards(page);
   await expect(
     page.getByRole("button", { name: "排进行程 场次 033", exact: true }),
   ).toHaveCount(0);
@@ -227,8 +233,10 @@ test("new tab changes synchronize without discarding the existing data contract"
       '[{"key":"cat:f001","picks":[{"code":"001"}],"note":"original"}]',
   });
   await ready(page, "/agenda");
+  await agendaCards(page);
   const other = await context.newPage();
   await ready(other, "/agenda");
+  await agendaCards(other);
   await other
     .getByRole("button", { name: "移出行程 场次 001", exact: true })
     .click();

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { keyOf, ready, seed, storage } from "./helpers";
+import { agendaCards, keyOf, ready, seed, storage } from "./helpers";
 
 const picks = (codes: string[]) =>
   JSON.stringify(
@@ -47,23 +47,29 @@ test.describe("schedule interaction parity", () => {
         gv: null,
       }),
     });
-    await ready(page, "/agenda?date=2026-10-06&hour=18");
-    await expect(page.locator('[data-grid-code="001"]')).toHaveCount(0);
+    // 先确认那个影厅确实被筛掉了、时段也还挂着 —— 否则「恢复 / 清掉」两句话都没有前提
+    await ready(page, "/schedule?date=2026-10-06&hour=18");
+    await expect(page.locator('.schedule-column [data-grid-code="001"]')).toHaveCount(0);
+    // ⚠ 「定位场次」入口自 2026-09-21 起只在「我的选片」的场次卡上(行程卡片已摘掉,见
+    //   PLAN-20260921223658 修订 1);场次卡要展开那部片才渲染。
+    await ready(page, `/picks?expand=${encodeURIComponent(keyOf("001"))}`);
     const locate = page.getByRole("button", {
       name: "定位场次 001",
       exact: true,
     });
     await locate.click();
-    await expect(page.locator('[data-grid-code="001"]')).toBeVisible();
+    await expect(page.locator('.schedule-column [data-grid-code="001"]')).toBeVisible();
     await expect(page.locator(".side-panel")).toHaveCount(0);
     expect(new URL(page.url()).pathname).toBe("/schedule");
+    // 定位 URL 只带排片表自己的参数:不带 hour,也不把来源页的搜索词搬过去
     expect(new URL(page.url()).searchParams.has("hour")).toBe(false);
     expect(JSON.parse((await storage(page))["biff.filters.v1"]).venues).toEqual(
       [],
     );
     const token = new URL(page.url()).searchParams.get("locate");
-    await page.getByRole("button", {name: "打开我的观影", exact: true}).click();
-    await locate.click();
+    // 再定位一次要换 token 并重新闪 —— 从「我的选片」再进一次
+    await ready(page, `/picks?expand=${encodeURIComponent(keyOf("001"))}`);
+    await page.getByRole("button", { name: "定位场次 001", exact: true }).click();
     await expect
       .poll(() => new URL(page.url()).searchParams.get("locate"))
       .not.toBe(token);
@@ -77,7 +83,9 @@ test.describe("schedule interaction parity", () => {
   }) => {
     await seed(page, { "biff.picks.v2": picks(["008", "009"]) });
     await ready(page, "/agenda?date=2026-10-07");
-    const grid = page.locator(".gantt-scroll");
+    await agendaCards(page);
+    // 同上:行程页自己也有 `.gantt-scroll`
+    const grid = page.locator(".schedule-column .gantt-scroll");
     await grid.evaluate((el) => {
       el.scrollTop = 600;
     });
@@ -117,7 +125,8 @@ test.describe("schedule interaction parity", () => {
       );
     // 先挂探针再点定位:断言对着「应用**调用**了什么动画」,不赌采样窗口一定盖住那 3 秒。
     await seed(page, { "biff.picks.v2": picks(["008"]) });
-    await ready(page, "/agenda");
+    // 定位入口在「我的选片」的场次卡上(行程卡片 2026-09-21 摘掉),先展开那部片
+    await ready(page, `/picks?expand=${encodeURIComponent(keyOf("008"))}`);
     await page.evaluate(() => {
       const state = window as unknown as { __locateFrames: AnimateCall[] };
       state.__locateFrames = [];
@@ -286,11 +295,11 @@ test.describe("schedule interaction parity", () => {
   }) => {
     await seed(page, { "biff.picks.v2": picks(["008", "033"]) });
     await ready(page, "/agenda?date=2026-10-07");
-    await expect(page.locator('[data-grid-code="008"]')).toHaveAttribute(
+    await expect(page.locator('.schedule-column [data-grid-code="008"]')).toHaveAttribute(
       "title",
       /033《.+》09:00–10:53 · C5/,
     );
-    await expect(page.locator('[data-grid-code="008"]')).toHaveAttribute(
+    await expect(page.locator('.schedule-column [data-grid-code="008"]')).toHaveAttribute(
       "aria-description",
       /033/,
     );

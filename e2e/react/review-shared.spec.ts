@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { keyOf, ready, seed, storage } from "./helpers";
+import { agendaCards, keyOf, ready, seed, storage } from "./helpers";
 const picks = (codes: string[]) =>
   JSON.stringify(
     codes.map((code) => ({ key: keyOf(code), picks: [{ code }], note: "" })),
@@ -14,6 +14,8 @@ test("hour selection highlights only same-day agenda cards using the official sl
     "biff.gvtalk.v1": '{"008":false}',
   });
   await ready(page, "/agenda?date=2026-10-07&quick=1");
+  // 整点筛选的高亮落在**场次卡**上,所以这条必须在卡片视图断言(日程表是默认视图)
+  await agendaCards(page);
   await page
     .getByRole("button", { name: "筛选 11:00 时段", exact: true })
     .click();
@@ -50,6 +52,8 @@ test("a non-GV preceding screening is never labeled as skipping a talk", async (
     "biff.settings.v1": '{"gvTalkOn":false}',
   });
   await ready(page, "/agenda");
+  // 「间隔 N 分钟」是场次卡之间的提示,只在卡片视图
+  await agendaCards(page);
   const gaps = page
     .getByRole("region", { name: "我的行程", exact: true })
     .locator(".gap-label");

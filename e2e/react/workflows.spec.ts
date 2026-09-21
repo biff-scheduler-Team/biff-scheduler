@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-import { keyOf, legacyData, openExport, openViewingPanel, ready, seed, storage } from "./helpers";
+import { agendaCards, keyOf, legacyData, openExport, openViewingPanel, ready, seed, storage } from "./helpers";
 
 test("search, select a film, add a screening, edit notes, refresh and remove", async ({
   page,
@@ -28,6 +28,8 @@ test("search, select a film, add a screening, edit notes, refresh and remove", a
     page.getByRole("textbox", { name: "彼此的日夜 备注", exact: true }),
   ).toHaveValue("与朋友一起");
   await page.getByRole("navigation", { name: "主要导航" }).getByRole("link", { name: "我的行程", exact: true }).click();
+  // 场次卡只在「卡片」视图(2026-09-21 起「我的行程」默认日程表,见 PLAN-20260921223658)
+  await agendaCards(page);
   await expect(
     page
       .getByRole("region", { name: "我的行程", exact: true })
@@ -67,6 +69,7 @@ test("a single-screening film goes straight into the agenda", async ({ page }) =
     .getByRole("navigation", { name: "主要导航" })
     .getByRole("link", { name: "我的行程", exact: true })
     .click();
+  await agendaCards(page);
   await expect(
     page
       .getByRole("region", { name: "我的行程", exact: true })
@@ -189,6 +192,7 @@ test("GV overrides update effective end time and calendar output", async ({
     ]),
   });
   await ready(page, "/agenda");
+  await agendaCards(page);
   const card = page
     .getByRole("region", { name: "我的行程", exact: true })
     .locator('[data-screening="001"]');
@@ -254,6 +258,8 @@ test("conflict ranks determine the saved plan and survive reload", async ({
     ),
   });
   await ready(page, "/agenda?date=2026-10-07");
+  // 「收起行程 N」/ 顺位卡都只在卡片视图(日程表视图把顺位卡收在当天画布下方,没有按日折叠)
+  await agendaCards(page);
   await expect(page.getByRole("region", { name: /冲突组/ })).toBeVisible();
   await expect(
     page.getByRole("region", { name: "方案对比", exact: true }),
@@ -266,6 +272,8 @@ test("conflict ranks determine the saved plan and survive reload", async ({
   expect(JSON.parse(data["biff.ranks.v1"])).toEqual({ "033": 1, "008": 2 });
   expect(JSON.parse(data["biff.savedplans.v1"])[0].codes).toEqual(["033"]);
   await page.reload();
+  // 刷新后视图回默认「日程表」(视图选择只在会话内记着),再切回卡片继续断言
+  await agendaCards(page);
   await expect(page.locator("[data-rank-code]").first()).toHaveAttribute(
     "data-rank-code",
     "033",
@@ -275,6 +283,7 @@ test("conflict ranks determine the saved plan and survive reload", async ({
     .getByRole("button", { name: "收起行程 2026-10-07", exact: true })
     .click();
   await page.reload();
+  await agendaCards(page);
   await expect(
     page.getByRole("button", { name: "展开行程 2026-10-07", exact: true }),
   ).toBeVisible();
@@ -284,6 +293,7 @@ test("imports ICS by file, previews invalid data, and merges without duplicates"
   page,
 }) => {
   await ready(page, "/agenda");
+  await agendaCards(page);
   const dialog = await openExport(page);
   await dialog
     .getByRole("textbox", { name: "或粘贴备份内容", exact: true })

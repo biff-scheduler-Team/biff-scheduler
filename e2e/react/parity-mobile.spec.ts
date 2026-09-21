@@ -9,7 +9,9 @@ test("single-pane locating returns to the vertical grid and supports card select
   page,
 }) => {
   await seed(page, { "biff.picks.v2": picks(["001"]) });
-  await ready(page, "/agenda");
+  // 定位入口在「我的选片」的场次卡上(行程卡片 2026-09-21 摘掉,见 PLAN-20260921223658 修订 1);
+  // 场次卡要展开那部片才渲染
+  await ready(page, `/picks?expand=${encodeURIComponent(keyOf("001"))}`);
   await page.getByRole("button", { name: "定位场次 001", exact: true }).click();
   await expect(page.locator('[data-grid-code="001"]')).toBeVisible();
   expect(new URL(page.url()).pathname).toBe("/schedule");

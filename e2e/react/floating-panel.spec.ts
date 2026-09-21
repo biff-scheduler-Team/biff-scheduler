@@ -5,7 +5,9 @@ test('desktop split squeezes the schedule to about 1:3 when viewing opens', asyn
   test.skip(isMobile, '1:3 挤压分栏只在桌面 ≥1100；窄屏仍是浮层，宽度不应被挤');
 
   await ready(page, '/schedule?date=2026-10-07');
-  const grid = page.locator('.gantt-scroll');
+  // ⚠ 收在「排片表那一列」:面板打开后「我的行程」自己也有一张甘特(`PLAN-20260921223658`),
+  //   不加作用域会同时命中两边
+  const grid = page.locator('.schedule-column .gantt-scroll');
   const before = (await grid.boundingBox())!.width;
   await page.locator('[data-grid-code="008"]').click();
   await expect(page.locator('[data-grid-code="008"]')).toHaveAttribute('aria-pressed','true');
@@ -29,7 +31,9 @@ test('desktop split squeezes the schedule to about 1:3 when viewing opens', asyn
   expect(panel.x + panel.width).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
   await page.locator("#viewing-panel").getByRole('link',{name:/^我的选片/}).click();
   await expect(page.getByRole('region',{name:'我的选片',exact:true})).toBeVisible();
-  await page.locator("#viewing-panel").getByRole('link',{name:/^我的行程/}).click();
+  // 「定位场次」现在挂在「我的选片」的场次卡上(行程卡片 2026-09-21 摘掉,见 PLAN-20260921223658
+  // 修订 1);面板里那部片默认收着,先「查看场次」把它展开才露出场次卡
+  await page.locator('#viewing-panel').getByRole('button',{name:/^展开 .+ 场次$/}).first().click();
   await page.getByRole('button',{name:'定位场次 008',exact:true}).click();
   await expect(page.locator('#viewing-panel')).toHaveCount(0);
   await expect(page.locator('[data-grid-slot="008"]')).toHaveClass(/schedule-located/);
