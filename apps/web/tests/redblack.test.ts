@@ -15,6 +15,7 @@ import {
   boardFilms,
   clampSpot,
   countsOf,
+  countsSignature,
   crowdOf,
   crowdSignature,
   crowdStickers,
@@ -344,6 +345,23 @@ describe("crowdSignature:票数是不是真的变了", () => {
 
   it("空表 → 空签名(榜上还没人贴时提示不亮)", () => {
     expect(crowdSignature(new Map())).toBe("");
+  });
+});
+
+// 单部票数的签名 —— 画布的重绘守护拿它当判据(PLAN-20260922145815)。
+// 与上面同一个坑:`counts` 每次 render 都是新对象,按引用比会让每次 re-render 都白重画一遍。
+describe("countsSignature:一部片的票数签名", () => {
+  it("按值:两个内容相同的新对象签名相同", () => {
+    const before = { total: 3, red: 2, black: 1 };
+    const after = { total: 3, red: 2, black: 1 };
+    expect(after).not.toBe(before);
+    expect(countsSignature(after)).toBe(countsSignature(before));
+  });
+
+  it("总数变 / 红黑互换 → 签名都变(画布与红黑榜都得重画)", () => {
+    const base = { total: 3, red: 2, black: 1 };
+    expect(countsSignature({ total: 4, red: 3, black: 1 })).not.toBe(countsSignature(base));
+    expect(countsSignature({ total: 3, red: 1, black: 2 })).not.toBe(countsSignature(base));
   });
 });
 
