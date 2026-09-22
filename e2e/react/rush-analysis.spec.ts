@@ -41,8 +41,8 @@ async function seedCounts(page: Page) {
   await page.route("**/api/stats/screening-counts*", (route) =>
     route.fulfill({
       json: {
+        // 接口仍会回 `discussions`,但前端自 2026-09-22 起不再消费(`PLAN-20260922101227`)
         attendance: Object.fromEntries(codes.map((code, index) => [code, 40 - index * 3])),
-        discussions: { [codes[0]]: 7, [codes[1]]: 2 },
       },
     }),
   );

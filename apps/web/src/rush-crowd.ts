@@ -3,15 +3,19 @@
  *
  * ★ 与 A/B 两组的分工：
  *   · A 组看**供给**（有多少场可抢）、B 组看**我自己**（我排了什么）；
- *   · C 组看**别人**：想看人数（意愿）、红黑票（口碑）、场次讨论（话题），
+ *   · C 组看**别人**：想看人数（意愿）、红黑票（口碑），
  *     外加一条**把我和别人对照起来**的指标 —— 我挑的片在群体里算不算热门。
  *
  * ★ 为什么「我与群体的重合度」放在这一组而不是画像里：
  *   它需要两边的数据（我的片单 + 全站想看），放画像里就得让画像 import 全站计数，
  *   「我的画像」就再也不「只有我自己」了。
  *
- * ★ 三个子面的**不可比性**必须说清：想看人数按**影片**、讨论数按**场次**、
- *   红黑票按**影片** —— 它们的分母不同，三个榜单不能横向比大小，只能各自看排序。
+ * ★ 两个子面的**不可比性**必须说清：想看人数按**影片**、红黑票按**影片** ——
+ *   它们的分母不同，两个榜单不能横向比大小，只能各自看排序。
+ *
+ * ⚠ 第三个子面「场次讨论（话题）」已于 2026-09-22 随讨论区一并删除
+ *   （`PLAN-20260922101227`，用户「『场次讨论 N』指标也一并去掉，读数链路一起清」）：
+ *   它的上游计数（`/api/stats/screening-counts` 的 `discussions`）后端仍在返回，但前端不再消费。
  *
  * ⚠ 阈值复用 `rush-analysis.ts::MIN_VOTES_FOR_VERDICT`（本轮**不新增**阈值）：
  *   口径只该有一份，否则「几张票才敢下结论」就会出现两个答案。
@@ -115,39 +119,6 @@ export function voteBoard(rows: VoteRow[]): CrowdVotes | null {
     divided: scored
       .filter((row) => row.red >= MIN_VOTES_FOR_VERDICT && row.black >= MIN_VOTES_FOR_VERDICT)
       .sort((a, b) => b.red + b.black - (a.red + a.black)),
-  };
-}
-
-/* ---------------- 场次讨论（话题） ---------------- */
-
-export interface TalkRow {
-  code: string;
-  title: string;
-  count: number;
-}
-
-export interface CrowdTalk {
-  /** 有讨论的场次数 */
-  shows: number;
-  total: number;
-  top: TalkRow[];
-}
-
-/** 场次讨论榜。一条讨论都没有 → `null`。 */
-export function talkBoard(rows: TalkRow[]): CrowdTalk | null {
-  const scored: TalkRow[] = [];
-  let total = 0;
-  for (const row of rows) {
-    const count = whole(row.count);
-    if (count <= 0) continue;
-    total += count;
-    scored.push({ ...row, count });
-  }
-  if (total <= 0) return null;
-  return {
-    shows: scored.length,
-    total,
-    top: scored.sort((a, b) => b.count - a.count || a.code.localeCompare(b.code)),
   };
 }
 

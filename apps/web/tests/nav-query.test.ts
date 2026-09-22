@@ -30,9 +30,11 @@ describe("navSearch:同名 key 不跨页", () => {
     expect(navSearch(search, "/schedule", "/library")).toBe("?date=2026-10-07&hour=9");
   });
 
-  it("排片表与讨论区都有 focus,但两者语义不同,互不串台", () => {
-    expect(navSearch("?focus=008", "/schedule", "/discussions")).toBe("");
-    expect(navSearch("?focus=abc", "/discussions", "/schedule")).toBe("");
+  it("排片表的 focus 不外流到别的页,同页导航才保留", () => {
+    // ⚠ 原用例拿「讨论区」当对照页(`/discussions` 与排片表各有一份 `focus` 语义);
+    //   讨论区已于 2026-09-22 下线(`PLAN-20260922101227`),改用仍存在的两页做同一断言。
+    expect(navSearch("?focus=008", "/schedule", "/library")).toBe("");
+    expect(navSearch("?q=abc", "/library", "/schedule")).toBe("");
     expect(navSearch("?focus=008", "/schedule", "/schedule")).toBe("?focus=008");
   });
 });

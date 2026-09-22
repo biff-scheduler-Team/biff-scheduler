@@ -141,6 +141,45 @@ img {
   white-space: nowrap;
   font-size: 12px;
 }
+/* 发版提示条(2026-09-22,PLAN-20260922100704)。
+   用 sticky 而不是 fixed:fixed 会盖住 .app-header 的品牌位,而 sticky 会随页面滚上去之后
+   一直留在顶边(头图从它下面滑过),和别处那种「客户端有新版本」条一致。
+   z-index 取 30:高于页内 sticky(≤6)与 viewing-fab(21),低于弹层 / popover(40 起)。 */
+.update-banner {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 8px 16px;
+  background: var(--brand-soft);
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.update-banner-text {
+  font-weight: 600;
+}
+.update-banner-refresh,
+.update-banner-dismiss {
+  font: inherit;
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.update-banner-refresh {
+  border: 1px solid var(--brand);
+  background: var(--brand);
+  color: #fff;
+  font-weight: 600;
+}
+.update-banner-dismiss {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+}
 .skip-link {
   position: fixed;
   top: -100px;

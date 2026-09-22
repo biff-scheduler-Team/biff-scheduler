@@ -27,6 +27,7 @@ import {
   TicketDialog,
   TicketLabel,
 } from "../components/InfoDialogs";
+import { UpdateBanner } from "../components/UpdateBanner";
 import { DataUpdateButton } from "../components/ChangelogDialog";
 import { SchedulePage } from "../pages/SchedulePage";
 import { navSearch } from "./nav-query";
@@ -77,7 +78,7 @@ function Shell() {
   // ⚠ 白名单必须逐个列出:`rush` 后面跟的是 `(?:\/|$)`,所以 `/rush-analysis` **不会**被它匹配到 ——
   //   漏加会让分析页被渲染进浮动面板布局(而不是整页)。
   const fullPage =
-    /^\/(library|feedback|discussions|rush-analysis|rush|redblack|eats)(?:\/|$)/.test(location.pathname) ||
+    /^\/(library|feedback|rush-analysis|rush|redblack|eats)(?:\/|$)/.test(location.pathname) ||
     (viewingRoute && !panelOpen);
   // 查询串**口径唯一来源** = `app/nav-query.ts`:同名 key 不跨页(`q` 在影片库 / 红黑榜 / 吃喝
   // 各有一份语义),只有排片表的 `date` / `hour` 跟着走。原先这里只剔掉 `quick` 就整条搬过去,
@@ -143,7 +144,6 @@ function Shell() {
     //   路由 `/rush-analysis` 不动:它是书签 / PWA 缓存 / TEST-MAP 的契约,改名只落在显示层。
     ["/rush-analysis", "数据分析"],
     ["/feedback", "建议"],
-    ["/discussions", "讨论区"],
     // 「红黑榜」排在末尾(2026-09-16,PLAN-20260916102339):它是**观影之后**的动作,
     // 与「抢票」那种行程期视图不同序 —— 不动 2026-09-15 用户指定的抢票位置。
     ["/redblack", "红黑榜"],
@@ -158,6 +158,9 @@ function Shell() {
       background="base"
       router={{ navigate, useHref: useAppHref }}
     >
+      {/* 贴在整页最顶部(在 .app-header 之上):它是「这次打开看到的可能不是最新版」的提示,
+          放在页脚或右下角都会错过。可见性由 CSS 的 sticky 负责。 */}
+      <UpdateBanner />
       <a className="skip-link" href="#workspace">
         跳到主要内容
       </a>

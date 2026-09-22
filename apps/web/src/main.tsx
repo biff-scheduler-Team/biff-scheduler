@@ -5,13 +5,18 @@ import { bootstrap } from "./app/store";
 import { IndexRedirect, Loading, Root, RouteError } from "./app/App";
 import { LibraryPage } from "./pages/LibraryPage";
 import { FeedbackPage } from "./pages/FeedbackPage";
-import { DiscussionsPage } from "./pages/DiscussionsPage";
 import { AgendaPage } from "./pages/AgendaPage";
 import { RedBlackPage } from "./pages/RedBlackPage";
 import { RushPage } from "./pages/RushPage";
 import { EatsPage } from "./pages/EatsPage";
 import { FilmDialog } from "./pages/FilmDialog";
+import { installUpdateWatch } from "./pwa-update";
 import "./style.css";
+
+// 挂在**顶层**,不是组件 effect:注入的 `registerSW.js` 在 `window.load` 就注册 SW,
+// 而模块脚本执行早于 `window.load` —— 只有这里够早,才能保证「新版接管」的那次
+// `controllerchange` 不被漏掉(2026-09-22,PLAN-20260922100704;理由见 pwa-update.ts)。
+installUpdateWatch();
 
 const filmRoute = () => [{ path: "films/:filmKey", element: <FilmDialog /> }];
 const router = createBrowserRouter([
@@ -55,7 +60,6 @@ const router = createBrowserRouter([
       },
       { path: "eats", element: <EatsPage /> },
       { path: "feedback", element: <FeedbackPage /> },
-      { path: "discussions", element: <DiscussionsPage /> },
       {
         path: "*",
         element: (

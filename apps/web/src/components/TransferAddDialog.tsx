@@ -32,7 +32,7 @@ export function TransferAddEntry() {
       }}
     >
       <ActionButton>添加转票场次</ActionButton>
-      {/* 同 DiscussionEntry:DialogTrigger 无条件渲染 children,只在打开时挂载 */}
+      {/* DialogTrigger 无条件渲染 children,故只在打开时挂载(与 GvDurationButton 同一手法) */}
       {open && <TransferAddDialog key={session} />}
     </DialogTrigger>
   );

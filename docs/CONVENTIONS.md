@@ -374,8 +374,8 @@
     ① 行程页默认视图是**日程表**(与排片表共用 `components/ScheduleGantt.tsx`),它的场次卡**不挂「定位」**
     —— 跨页定位改从「我的选片 / 影片库」的场次卡进(`ScreeningCard` 的 `locate` 入参保留,`locateScreening` 口径不变);
     ② 整日「定位当日」**保留**(它是 `locateDate` 的唯一入口,删了就断掉这条路径);
-    ③ 场次级的**「讨论 N」入口已摘掉**(`ScreeningDiscussionDialog.tsx::DiscussionEntry` 已删):
-    讨论只从 `/discussions` 自己进 —— **页面与导航项都还在**,不是下线功能。
+    ③ 场次级的「讨论 N」入口先是摘掉(`DiscussionEntry` 已删),随后**整个讨论功能于 2026-09-22 下线**
+    (`PLAN-20260922101227`):`/discussions` 页面、导航项、弹层都删了 —— 详见下面的「场次讨论 / 讨论区」条。
   · **★ 分享图片吃的是同一份 `ShareOptions`**(2026-09-16,`PLAN-20260915234414` 修订 2):
     导出弹层那两个勾选框**同时驱动文案与图片**(各建一份必然出现「文案带顺位、图上没有」这种对不上的成品);
     改选项会作废已出的图(`setImage(null)`),否则弹层里留着按旧选项画好的图,看着「没生效」。
@@ -502,7 +502,7 @@
   `Record<场次 code, {state: "got" | "missed" | "dropped", via?: "self" | "transfer"}>`,
   与 `biff.ranks.v1` 同形(独立键、场次级、`rebuildIndex()` 就地 prune)。
   · **正面推翻 2026-09-11 的删除决策**:当时的理由是「抢票在票务系统里完成,本地追踪是多余的中间态」;
-    现在它不再是孤岛 —— 「同场观影人数」与「场次讨论」都建立在这份状态上。
+    现在它不再是孤岛 —— 「同场观影人数」建立在这份状态上(原先还支撑「场次讨论」,该功能已于 2026-09-22 下线)。
     **仍然不复活「售罄」**这类票务系统内部状态,三态全是用户自述结果。
   · 「实际行程」**只是视图筛选**(`tickets.ts::actualCodeSet`,`state === "got"`),**不是第二份场次清单** ——
     数据仍在 `biff.picks.v2` 那一份行程里。该视图下**不摆顺位卡**:票都抢完了,再显示「顺位 1 / 备选」只会误导。
@@ -511,7 +511,7 @@
   权重与「想看人数」**同一套**(登录 1.0 / 匿名 0.75,`want-stats.ts`),展示 `Math.round`。
   · **只回聚合数字,不回名单** —— 直接呼应需求里的「提醒用户保护个人隐私」。
   · 上报 `POST /api/stats/screening-attendance-ping` 只发**场次 code 列表**(1200ms 防抖),与 want-ping 同一条隐私边界;
-    读取 `GET /api/stats/screening-counts` 一次拿「人数 + 讨论数」。
+    读取 `GET /api/stats/screening-counts` 拿人数 —— ⚠ 接口仍会回 `discussions`,但前端自 2026-09-22 起不再消费它。
   · ⚠ **登录时要同时清掉两张贡献表里的匿名行**(`screening-stats-store.ts::clearAnonContributions`)——
     两个 ping 都会删匿名 cookie,只清一张的话同一人会以「匿名 0.75 + 登录 1.0」被算两次。
   · ⚠ 上报挂在 `state.ts::rebuildIndex()` **末尾**(`store.allIndex` 唯一的新鲜点),不能放 `saveLocal()` ——
@@ -526,23 +526,24 @@
   · ⚠ 服务端票数**已含我自己那一票**(上报成功后),所以前端**不能**再与本地贴纸相加 —— 会重复计。
     顺序:贴完 → 画布上我那枚**立刻**可见 → 约 1.2s 后数字更新(与 want-counts 同节奏)。
   · 前端 `film-votes.ts` 读失败(接口未部署 / 断网 / 半截响应)一律退化成空表,页面照常可贴 —— 本地贴纸不依赖它。
-- **★ 场次讨论 = 公开读 / 登录写(2026-09-14)**:D1 新表 `screening_post` + `screening_reaction`,
-  **不复用 `festival_document`**(见 `PLAN.md` §4 硬约束:那是「单人整份文档 + revision 乐观锁」)。
-  分类白名单与正文长度在 `@biff/contracts/screening`(前后端同一 import);反应 emoji 白名单在
-  `@biff/contracts/reactions`,服务端判定在 `apps/api/src/reactions.ts` —— **建议反馈与场次讨论共用一份**
-  (此前 `FeedbackPage.tsx` 手抄了一份 emoji 名单,已改为 import)。
-  · 游标分页口径 `${created_at}_${id}` 与反馈同源(`apps/api/src/pagination.ts`)。
-  · **弹层必须「打开时才挂载」**(`isOpen` 受控 + 条件渲染):`DialogTrigger` 会**无条件渲染 children**,
-    而弹层挂载即拉列表 —— 实测踩过「行程页每张卡都发一次请求 + N 条失败 toast」,还会**打断顺位拖拽手势**。
-- **★ 社区提醒(2026-09-14,`PLAN-20260914164050` 修订 3)**:讨论弹层里**只有一条**、**可关闭**的提醒(`.discussion-notice`,
-  已读标记 `biff.discussionprivacy.v1`,纯视图偏好,不混进片单契约);**不再有常驻的第二份**(原 `.discussion-privacy`
-  「发布前请阅读」已删除 —— 两份文案重复,且读起来像硬性规定)。**刻意不做自动检测 / 拦截** —— 误伤正常表述的代价高于收益。
-- **★ 提醒的语气 = 建议,不是规定(2026-09-14,同上修订)**:四条按「劝阻 / 提示」写 ——
-  ① 这里主要聊电影(不是「不许聊别的」);② 手机号 / 微信号 / 二维码 / 住址这类个人信息**建议**别直接发在帖子里
-  (不是「禁止发布」),想留联系方式先想清楚会被谁看到;③ 本站只是**信息发布平台**、不介入你们之间的沟通,
-  无论站内联系还是转到私下,**风险请自己判断**(保留免责实质,但不写成冷冰冰的法律条款);④ 看到不合适的内容,
-  点帖子上的「👎」就好。**文案只此一处**,改它要同步 E2E 断言(`screening-social.spec.ts` 的 `.discussion-notice-list`
-  与 `.discussion-privacy` 计数为 0)。
+- **★ 场次讨论 / 讨论区 —— 前端已整体下线(2026-09-22,`PLAN-20260922101227`,用户「去掉讨论区入口 相关组件也去掉」)**:
+  导航项、`/discussions` 路由、`pages/DiscussionsPage.tsx`、`components/ScreeningDiscussionDialog.tsx`
+  (以及它的 `DiscussionEntry`)、`screening-discussion.ts`、`screening-social.css` 里整批 `discussion*` 选择器、
+  三个 E2E 用例全部删除;「数据分析 / 抢票」里的「场次讨论 N」指标及其读数链路
+  (`/api/stats/screening-counts` 的 `discussions` → `screening-counts.ts` → `rush-crowd.ts::talkBoard`)也一并清掉
+  —— 用户明确「指标也删掉,读数链路一起清」。
+  · **刻意保留(本轮只动前端)**:后端 5 条路由(`GET /api/discussions`、`GET/POST/DELETE
+    /api/screenings/:code/discussion[/:id]`、`POST …/reactions`)、`apps/api/src/screening-discussion{,-store}.ts`、
+    D1 表 `screening_post` / `screening_reaction`(迁移 `0005`)、契约 `@biff/contracts/screening` 的 `DISCUSSION_*`
+    (后端仍在 import)、以及 `screening-counts` 接口的 `discussions` 字段。
+    **前端不再消费它** —— `screening-counts.ts` 只解析 `attendance`。
+  · ⚠ **别把上面「保留」读成「还该用」**:前端已无任何入口能读写讨论。要重启这个功能,先读
+    `PLAN-20260915233816` / `PLAN-20260916102631` / `PLAN-20260916154255` 与 `PLAN-20260922101227`,
+    别照抄旧口径。
+  · 历史口径(游标分页 `${created_at}_${id}`、弹层「打开时才挂载」、按场次定位、`onPosted` 回插方格墙、
+    社区提醒 `.discussion-notice` 与它的四条建议语气文案、`.discussion-privacy` 已删的事实)已随代码删除,
+    只在 git 历史里,不再作为现行约定。
+  · `biff.discussionprivacy.v1` **不做迁移、不写删除**:数据契约只增不改,留着是废键,无害。
 - **★ 负反馈只做「点踩」(2026-09-14,`PLAN-20260914164050` 修订 2)**:`👎` 就是白名单里的第六个 emoji
   (`@biff/contracts/reactions`),走与其它反应**完全相同**的 toggle 路径,没有独立的表 / 路由 / 计数口径。
   · ⚠ **不做举报,也不做管理员后台**(2026-09-14 用户决定):此前实现的 `screening_report` 表、
@@ -550,33 +551,7 @@
     (迁移 `0006` 一并删除)。理由:维护一套「记录 → 后台 → 人工裁决」的成本高于收益,
     而点踩已经足够表达「这条不好」;要做审核时用作者账号删帖即可。
   · 这条与「同一口径只允许一处实现」同向:**别为了「更正式」再引入第二套负反馈机制**。
-- **★ 讨论区 = 全站聚合读(2026-09-15,`PLAN-20260915233816`)**:顶层模块 `/discussions` 把**所有场次**的帖子摆成方格墙
-  (`GET /api/discussions`,`edition` 收窄 + 游标分页,公开读、登录时回自己的 `myReactions`)。
-  与单场讨论**共用 `screening-discussion-store.ts::listPosts(code: string | null)` 一份实现** ——
-  游标口径(`${created_at}_${id}`)与反应聚合不允许出现第二份。
-  · **行程里的「讨论 N」不再是就地弹层**,而是跳到 `/discussions?focus=<场次 code>`:讨论区把该场次的格子高亮 +
-  滚动到第一条,顶部给可清除的定位条。定位粒度是**场次** —— 卡片上只有场次级信息(没有 post id;
-  要按单帖定位得另做 id 索引,不划算)。
-  · 发帖 / 反应 / 删除**仍只在 `ScreeningDiscussionDialog`**:帖子必须挂在某个场次上(接口契约如此),
-  讨论区只负责「摆出来 + 定位」,格子上的「进入讨论」打开该场次弹层(仍守「打开时才挂载」这条)。
-  · 格子正文**截断预览**(6 行),全文在弹层里 —— 与小红书「卡片 → 详情」同一手法。
-  · 帖子时间的展示口径 = `screening-discussion.ts::formatDiscussionTime()`,讨论区与弹层共用
-  (别在别处再写一份 `toLocaleString`)。
-  · **定位条自带「发帖」入口**(2026-09-16,`PLAN-20260916102631`):行程卡上的「讨论」只做跳转,而方格墙的
-  格子是**已存在的帖子** —— 某场**一条帖子都没有**时讨论区里没有任何可点的发帖口(用户被空态文案指回行程、
-  点「讨论」又跳回来,成闭环)。故 `focus` 对应排期里真实存在的场次时,定位条给一个「发帖」按钮,打开**同一个**
-  `ScreeningDiscussionDialog` —— 发帖 / 反应 / 删除 / 社区提醒仍是**一份实现**,这里只多一个入口。
-  · `ScreeningDiscussionDialog.onPosted`(可选)是「新帖还要落到另一份状态」时的回调:讨论区用它把新帖插到
-  方格墙首位(弹层自己那份列表照旧),**不做**「关掉弹层后重拉第一页」—— 那会丢翻页进度、把用户拽回顶部。
-  · **页头另有常驻「发帖」入口**(2026-09-16,`PLAN-20260916154255`):上面两个入口都要求**场次已知**
-  (一个来自 `focus`、一个要求那一场已有帖子),所以无 `focus` 的 `/discussions` 上原本根本发不了帖 ——
-  用户手上知道编号也不是入口。页头「发帖」按钮**内联展开**场次检索(搜索框 + 候选行 + 「收起」),
-  选中一行再开**同一个** `ScreeningDiscussionDialog`(发帖 / 反应 / 删除 / 社区提醒仍是一份实现)。
-  · ⚠ 选择区**刻意不是弹层**:两层 modal 交接(关选择器 + 开讨论层同帧发生)的焦点归还不可靠,
-  代价只是一行版面。讨论弹层用 `DialogContainer` 承载(与 `FilmDialog` / `AccountHost` 同手法)——
-  触发时机是「选中候选」,页面上没有可长期挂着的 trigger 元素。
-  · ⚠ 场次检索口径 = `app/schedule-search.ts::matchScreenings()`(按官方编号 / 英文名 / 韩文名 / 中文名,
-  按日期 + 开场时间排序,上限 20),与「我的行程 → 添加转票场次」**共用一份** —— 别再抄第二份。
+  · ⚠ 原语境是场次讨论弹层(该弹层已于 2026-09-22 下线,见上面那条);这条决策对「建议反馈」同样成立。
 
 ## 四、渲染 / 样式
 

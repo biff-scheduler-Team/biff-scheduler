@@ -11,8 +11,6 @@ import { EDITION } from "./edition";
 export interface ScreeningCounts {
   /** 该场出现在多少人的行程里 */
   attendance: Record<string, number>;
-  /** 该场已发布多少条讨论 */
-  discussions: Record<string, number>;
 }
 
 let cache: ScreeningCounts | null = null;
@@ -22,7 +20,7 @@ let pingTimer: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<() => void>();
 
 function emptyCounts(): ScreeningCounts {
-  return { attendance: Object.create(null), discussions: Object.create(null) };
+  return { attendance: Object.create(null) };
 }
 
 function emit() {
@@ -52,14 +50,12 @@ export async function loadScreeningCounts(force = false): Promise<ScreeningCount
       });
       if (!response.ok) return cache ?? emptyCounts();
       const body = (await response.json()) as Partial<ScreeningCounts>;
+      // ⚠ 接口仍会回 `discussions`(后端本轮刻意不动,见 `PLAN-20260922101227`)——
+      //   前端不再消费它,故这里**只认 attendance**:多解析一个没人读的字段就是多余的状态。
       cache = {
         attendance:
           body.attendance && typeof body.attendance === "object"
             ? body.attendance
-            : Object.create(null),
-        discussions:
-          body.discussions && typeof body.discussions === "object"
-            ? body.discussions
             : Object.create(null),
       };
       emit();
