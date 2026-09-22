@@ -538,6 +538,25 @@
   · ⚠ 服务端票数**已含我自己那一票**(上报成功后),所以前端**不能**再与本地贴纸相加 —— 会重复计。
     顺序:贴完 → 画布上我那枚**立刻**可见 → 约 1.2s 后数字更新(与 want-counts 同节奏)。
   · 前端 `film-votes.ts` 读失败(接口未部署 / 断网 / 半截响应)一律退化成空表,页面照常可贴 —— 本地贴纸不依赖它。
+- **★ 分享图(2026-09-22,PLAN-20260922164728)**:应用有**两张**对外出图的分享图 ——
+  「看片计划海报」(`poster.ts` + `components/PosterPreview.tsx`)与「红黑榜分享图」
+  (`redblack-poster.ts` + `components/RedBlackShareDialog.tsx`)。
+  · ⚠ **笔刷与配色只有一份**:`poster-brush.ts`(宽度 / 超采样 / 退档阈值 / 内距 / 品牌红条 / 页脚高 /
+    `COLORS` / `posterFont` / `roundRectPath` / `fitText` / `drawAccentBars` / `drawRule` / `posterBlob`)。
+    新加分享图**一律复用它**,不要另抄一套 —— 同一个应用出的两张图必须像一家人。
+    ⚠ 海报**恒为深底、不跟随应用主题**(分享图是对外成品,同一份内容在不同人手里得长一个样),
+    所以页面的 CSS token **不能**直接搬进 canvas:`--rb-black` 是给浅底画布配的,
+    深底海报上要用 `COLORS.stickerBlack` + 亮边。
+  · ⚠ **贴纸形状三处表达**:CSS `border-radius`(`.rb-dot`)/ `sticker-sprite.ts` 的离屏 sprite /
+    `redblack-poster.ts` 的小圆片。后两处共用 `sticker-shape.ts::blobPath()`,改形状要三处同步。
+  · **红黑榜分享图的内容口径**:总数榜 / 红榜 / 黑榜**各取 `TOP_N = 10`**(逐字复用页面三档的
+    `sortByCounts`,**该榜指标为 0 的片不进该榜**,某榜为空则整节不出现)+ **我贴过的全部(不限条数,
+    按全站总数降序)** + 底部署名(`biff.lcandy.co` / `by @gaaiyeoi 和 by @citron`,与页面页脚逐字一致)。
+    出图是**快照**(弹层打开那一刻的数据)。
+  · ⚠ **复制 / 下载只有一个出口**:`components/share-image.ts::copyImageOrDownload()` ——
+    先试复制图片、失败退化下载并如实提示(不提示的话用户只会以为「点了没反应」)。
+  · 分享图模型层 import 期不碰 DOM、日期**注入**(`today`),所以能被 node 单测覆盖;
+    绘制结果靠 E2E 的 `helpers.ts::trackPaintedTexts`(给 `fillText` 打补丁)断言「画出来的字」。
 - **★ 红黑榜榜单排序口径(2026-09-22,PLAN-20260922161710)**:三档都走 `redblack.ts::sortByCounts()`
   —— 判据是**服务端聚合的全量票数**(红 + 黑,**含我自己那一票**),降序;并列时按目录序**稳定**排
   (`|| a.index - b.index`)。「只看我贴过」是**筛选**(独立参数 `only=mine`),与 `sort` **正交**,
