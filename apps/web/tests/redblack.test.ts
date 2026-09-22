@@ -15,7 +15,11 @@ import {
   boardFilms,
   clampSpot,
   countsOf,
+  CROWD_CAP,
   crowdOf,
+  crowdOverflow,
+  crowdSignature,
+  crowdStickers,
   loadStickers,
   loadWatched,
   makeSticker,
@@ -243,6 +247,104 @@ describe("对接服务端票数", () => {
       { key: "a", vote: "red" },
       { key: "b", vote: "black" },
     ]);
+  });
+});
+
+// 画布上「别人的贴纸」怎么画(2026-09-22,PLAN-20260922142903)。
+// 为什么单测它:画布画的是**别人的票数**,画错只会表现为「数字和画面看着不一样」,
+// 没有异常、没有报错 —— 只能靠断言守住:
+// ① 四舍五入把**少数派**抹掉 → 卡片写着「红 1」而画布上没有一个红点;
+// ② 画不下的票数不交代 → 用户把 `CROWD_CAP` 当成真实票数。
+describe("别人的贴纸:红黑比例与溢出", () => {
+  it("少数派不会被四舍五入抹掉(1 红 / 100 黑)", () => {
+    const dots = crowdStickers("a", { total: 101, red: 1, black: 100 });
+    expect(dots).toHaveLength(CROWD_CAP);
+    expect(dots.filter((d) => d.type === "red")).toHaveLength(1);
+    expect(dots.filter((d) => d.type === "black")).toHaveLength(CROWD_CAP - 1);
+  });
+
+  it("反向同理(100 红 / 1 黑)", () => {
+    const dots = crowdStickers("a", { total: 101, red: 100, black: 1 });
+    expect(dots.filter((d) => d.type === "black")).toHaveLength(1);
+    expect(dots.filter((d) => d.type === "red")).toHaveLength(CROWD_CAP - 1);
+  });
+
+  it("纯色不夹取:全黑时不能凭空多出一枚红", () => {
+    const dots = crowdStickers("a", { total: 40, red: 0, black: 40 });
+    expect(dots.filter((d) => d.type === "red")).toHaveLength(0);
+    expect(dots).toHaveLength(CROWD_CAP);
+  });
+
+  it("票数没过上限时一枚不落地全画(3 红 / 2 黑 → 3 红 2 黑)", () => {
+    const dots = crowdStickers("a", { total: 5, red: 3, black: 2 });
+    expect(dots).toHaveLength(5);
+    expect(dots.filter((d) => d.type === "red")).toHaveLength(3);
+  });
+
+  it("没票 / 未收录 → 一枚不画", () => {
+    expect(crowdStickers("a", undefined)).toEqual([]);
+    expect(crowdStickers("a", { total: 0, red: 0, black: 0 })).toEqual([]);
+  });
+
+  it("位置稳定:同一份计数两次调用落点完全一致(否则重排时点会乱跳)", () => {
+    const input = { total: 9, red: 5, black: 4 };
+    expect(crowdStickers("a", input)).toEqual(crowdStickers("a", input));
+  });
+
+  it("crowdOverflow:只报画不下的部分,画得下就是 0", () => {
+    expect(crowdOverflow({ total: 100, red: 60, black: 40 })).toBe(100 - CROWD_CAP);
+    expect(crowdOverflow({ total: CROWD_CAP, red: 8, black: 8 })).toBe(0);
+    expect(crowdOverflow({ total: 3, red: 1, black: 2 })).toBe(0);
+    expect(crowdOverflow(undefined)).toBe(0);
+  });
+});
+
+// 「有新贴纸 · 重新排序」的判据(2026-09-22,PLAN-20260922142903)。
+// 为什么单测它:重拉一次票数就会得到**新对象**,拿引用比会让提示在「数量没变」时也白亮一次
+// —— 表现只是「提示莫名出现」,没有报错,只能靠断言守住「只有数量变了才算」。
+describe("crowdSignature:票数是不是真的变了", () => {
+  it("内容相同 → 签名相同(重拉票数不该算「有新贴纸」)", () => {
+    const before: CrowdCounts = new Map([["a", { total: 3, red: 2, black: 1 }]]);
+    const after: CrowdCounts = new Map([["a", { total: 3, red: 2, black: 1 }]]);
+    expect(after).not.toBe(before);
+    expect(crowdSignature(after)).toBe(crowdSignature(before));
+  });
+
+  it("总数变了 → 签名变了(该提示重排)", () => {
+    const before: CrowdCounts = new Map([["a", { total: 3, red: 2, black: 1 }]]);
+    const after: CrowdCounts = new Map([["a", { total: 4, red: 3, black: 1 }]]);
+    expect(crowdSignature(after)).not.toBe(crowdSignature(before));
+  });
+
+  it("总数不变但红黑互换 → 签名也变(红榜 / 黑榜各有各的判据)", () => {
+    const before: CrowdCounts = new Map([["a", { total: 3, red: 2, black: 1 }]]);
+    const after: CrowdCounts = new Map([["a", { total: 3, red: 1, black: 2 }]]);
+    expect(crowdSignature(after)).not.toBe(crowdSignature(before));
+  });
+
+  it("多了 / 少了一部片 → 签名变了", () => {
+    const before: CrowdCounts = new Map([["a", { total: 1, red: 1, black: 0 }]]);
+    const after: CrowdCounts = new Map([
+      ["a", { total: 1, red: 1, black: 0 }],
+      ["b", { total: 2, red: 0, black: 2 }],
+    ]);
+    expect(crowdSignature(after)).not.toBe(crowdSignature(before));
+  });
+
+  it("条目顺序变了 → 签名不变(只看内容,服务端换序不算变)", () => {
+    const a: CrowdCounts = new Map([
+      ["a", { total: 1, red: 1, black: 0 }],
+      ["b", { total: 2, red: 0, black: 2 }],
+    ]);
+    const b: CrowdCounts = new Map([
+      ["b", { total: 2, red: 0, black: 2 }],
+      ["a", { total: 1, red: 1, black: 0 }],
+    ]);
+    expect(crowdSignature(b)).toBe(crowdSignature(a));
+  });
+
+  it("空表 → 空签名(榜上还没人贴时提示不亮)", () => {
+    expect(crowdSignature(new Map())).toBe("");
   });
 });
 

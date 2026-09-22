@@ -26,7 +26,10 @@ import { useCatalog } from "../app/store";
 import {
   boardFilms,
   countsOf,
+  CROWD_CAP,
   crowdOf,
+  crowdOverflow,
+  crowdSignature,
   crowdStickers,
   makeSticker,
   moveSticker,
@@ -77,6 +80,9 @@ export function RedBlackPage() {
   const { params, update } = useQuery();
   const query = params.get("q") ?? "";
   const mode = (params.get("sort") as SortMode | null) ?? "total";
+  // 「只看我贴过」——**独立参数**(与 `sort` 正交:排序是给全站排名次,筛选是换一个视野)。
+  // 塞进 `sort` 会与「顺序冻结 / 重新排序」那套机制纠缠,得不偿失。
+  const onlyMine = params.get("only") === "mine";
 
   // 榜单**从空榜开始**:贴纸只来自用户自己(用户 2026-09-16:「正式环境不应该是空的让用户自己贴的吗」)。
   // ⚠ 早先版本会在这里自动铺一份示例,那段逻辑已删;`purgeDemoLeavings` 负责把**已经铺出去**
@@ -113,13 +119,24 @@ export function RedBlackPage() {
   //   所以顺序只在「搜索词 / 排序档位」变化、或点「重新排序」时刷新;
   //   卡片里的数字 / 颜色仍然即时更新(那是内容,不影响排布)。
   const [sortTick, setSortTick] = useState(0);
-  const orderRef = useRef(votes);
+  // 快照存**票数内容**(签名)而不是 `votes` 的对象引用:
+  // ⚠ 每次重拉票数都会得到新对象,数字一模一样也会被当成「有新贴纸」而白亮一次
+  //   (用户 2026-09-22:只在**数量变化**时才需要提示重排)。
+  const orderKey = useMemo(() => crowdSignature(crowd), [crowd]);
+  const orderRef = useRef(orderKey);
   const sorted = useMemo(() => {
-    orderRef.current = votes;
+    orderRef.current = orderKey;
     return sortByCounts(candidates, crowd, mode);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 故意不依赖 crowd,见上面的注释
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 故意不依赖 crowd / orderKey,见上面的注释
   }, [candidates, mode, sortTick]);
-  const orderStale = orderRef.current !== votes;
+  const orderStale = orderRef.current !== orderKey;
+  // 「只看我贴过」**只在渲染时过滤**,不并进 `candidates`:
+  // ⚠ 并进去会让 `sorted` 跟着 `board` 重算,而重算会顺手把 `orderRef` 刷成最新票数 ——
+  //   「有新贴纸 · 重新排序」的提醒就永远亮不起来(顺序冻结机制见上面那段)。
+  const visible = useMemo(
+    () => (onlyMine ? sorted.filter((film) => (board.get(film.key)?.length ?? 0) > 0) : sorted),
+    [sorted, onlyMine, board],
+  );
   // 我自己那一份 —— 只用来控制「能不能贴 / 还能贴几枚」
   const tallies = useMemo(
     () => new Map(sorted.map((film) => [film.key, tallyOf(film.key, watched.has(film.key), board)])),
@@ -138,6 +155,7 @@ export function RedBlackPage() {
     [sorted, crowd],
   );
   const totals = useMemo(() => {
+    // 「我的」那份:只回答「标记了几部 / 贴了几枚 / 还能贴几枚」(hero 里那行小字)
     let marked = 0;
     let placed = 0;
     let quota = 0;
@@ -146,11 +164,15 @@ export function RedBlackPage() {
       placed += tally.total;
       quota += tally.quota;
     }
-    // 全站总票数:只用来判断「榜是不是空的」(决定要不要显示那句引导)。
-    // ⚠ 分数**不是**看全站 —— 评分是**每部各自的**(见卡片里的 `filmScore`)。
-    let total = 0;
-    for (const counts of filmCounts.values()) total += counts.red + counts.black;
-    return { marked, placed, quota, total };
+    // 「全站」那份:hero 的大字。`total` 还兼作「榜是不是空的」的判据。
+    // ⚠ 评分**不是**看全站 —— 评分是**每部各自的**(见卡片里的 `filmScore`)。
+    let red = 0;
+    let black = 0;
+    for (const counts of filmCounts.values()) {
+      red += counts.red;
+      black += counts.black;
+    }
+    return { marked, placed, quota, red, black, total: red + black };
   }, [tallies, filmCounts]);
 
   // 落点处理要按 key 反查影片(提示里要片名、贴纸要挂到它上面),先按当前榜单建索引
@@ -311,18 +333,18 @@ export function RedBlackPage() {
           </p>
         </div>
         <div className="rb-totals" aria-live="polite">
-          <span className="rb-total">
-            <strong>{totals.marked}</strong>
-            <small>标记看过</small>
+          {/* 大字是**全站**的:榜本来就看大家贴了什么(改版前这三格全是我的) */}
+          <span className="rb-global">
+            <strong className="rb-global-num">{totals.total}</strong>
+            <span className="rb-global-label">全站贴纸</span>
+            <span className="rb-global-split">
+              红 {totals.red} · 黑 {totals.black}
+            </span>
           </span>
-          <span className="rb-total rb-total--hot">
-            <strong>{totals.quota}</strong>
-            <small>还能贴</small>
-          </span>
-          <span className="rb-total">
-            <strong>{totals.placed}</strong>
-            <small>已贴</small>
-          </span>
+          {/* 我自己那份收成一行小字:它只回答「我还能不能贴」 */}
+          <p className="rb-mine">
+            我的：标记看过 {totals.marked} · 已贴 {totals.placed} · 还能贴 {totals.quota}
+          </p>
         </div>
       </header>
 
@@ -357,6 +379,15 @@ export function RedBlackPage() {
             从高到低；贴纸变化不会打乱当前顺序
           </span>
         </div>
+        {/* 筛选是**另一个视野**,不是排序的第四档 —— 所以留在排序组外面 */}
+        <button
+          type="button"
+          className="rb-sort-btn"
+          aria-pressed={onlyMine}
+          onClick={() => update({ only: onlyMine ? null : "mine" }, true)}
+        >
+          只看我贴过
+        </button>
       </div>
 
       {totals.marked === 0 && totals.total === 0 && (
@@ -365,14 +396,19 @@ export function RedBlackPage() {
         </p>
       )}
 
-      {sorted.length === 0 ? (
+      {visible.length === 0 ? (
         <div className="empty-state">
-          <h2>没有符合条件的影片</h2>
-          <p>试试其他片名，或换一个场次编号。</p>
+          {/* 「只看我贴过」的空态与「搜不到」不是一回事:一个是我还没贴,一个是搜错了 */}
+          <h2>{onlyMine ? "你还没有贴过贴纸" : "没有符合条件的影片"}</h2>
+          <p>
+            {onlyMine
+              ? "取消「只看我贴过」，或先在卡片上标记「看过」再贴一枚。"
+              : "试试其他片名，或换一个场次编号。"}
+          </p>
         </div>
       ) : (
         <div className="rb-grid">
-          {sorted.map((film) => {
+          {visible.map((film) => {
             const tally = tallies.get(film.key)!;
             const placed = board.get(film.key) ?? [];
             const counts = filmCounts.get(film.key)!;
@@ -385,6 +421,9 @@ export function RedBlackPage() {
               red: Math.max(0, counts.red - mine.red),
               black: Math.max(0, counts.black - mine.black),
             };
+            // 画布只画得下 CROWD_CAP 枚「别人的贴纸」,超出的部分靠角标交代清楚 ——
+            // 用 `others` 而不是 `counts`:我自己的那枚永远画得出来,不算在画不下的人里。
+            const overflow = crowdOverflow(others);
             return (
               <article
                 key={film.key}
@@ -485,6 +524,14 @@ export function RedBlackPage() {
                       }
                     />
                   ))}
+                  {overflow > 0 && (
+                    <span
+                      className="rb-overflow"
+                      aria-label={`另外还有 ${overflow} 枚别人的贴纸没画出来（画布最多画 ${CROWD_CAP} 枚）`}
+                    >
+                      +{overflow}
+                    </span>
+                  )}
                   {placed.length === 0 && others.total === 0 && (
                     <span className="rb-canvas-hint">
                       {tally.marked ? "点左边的红 / 黑，或把贴纸拖进来" : "标记「看过」后就能贴"}

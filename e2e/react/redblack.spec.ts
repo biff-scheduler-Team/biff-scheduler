@@ -16,6 +16,13 @@ async function stubEmpty(page: Page) {
   );
 }
 
+/** 读接口返回**指定票数** —— 用来验证画布怎么画别人的票(比例 / 溢出) */
+async function stubVotes(page: Page, votes: Record<string, { red: number; black: number }>) {
+  await page.route("**/api/stats/film-votes**", (route) =>
+    route.fulfill({ json: { edition: "biff-2026", votes } }),
+  );
+}
+
 test("首次进入是空榜:一枚贴纸都没有,只留一句怎么开始", async ({ page }) => {
   await stubEmpty(page);
   await ready(page, "/redblack");
@@ -117,4 +124,115 @@ test("切「红榜」:按红票数降序,票多的排前面", async ({ page }) =
   await page.getByRole("button", { name: "红榜", exact: true }).click();
   await expect(page.locator(".rb-card").first()).toHaveAttribute("data-film-key", top);
   await expect(page.locator(`.rb-card[data-film-key="${low}"]`)).toBeVisible();
+});
+
+// 画布上「别人的贴纸」怎么画(2026-09-22,PLAN-20260922142903):
+// ① 少数派颜色不能因为四舍五入整个消失(卡片写着「红 1」而画布无红点);
+// ② 画不下的票数要交代 —— 否则用户把 `CROWD_CAP` 当成真实票数。
+test("票数超过画布上限:画满 16 枚 + 「+N」角标,数量仍以卡片数字为准", async ({ page }) => {
+  const key = keyOf("008");
+  await stubVotes(page, { [key]: { red: 60, black: 40 } });
+  await ready(page, "/redblack");
+
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  // 卡片上的是**真实**票数,与画布画了几枚无关
+  await expect(card.locator(".rb-chip--red")).toHaveText("红 60");
+  await expect(card.locator(".rb-chip--black")).toHaveText("黑 40");
+  // 画布只画 16 枚,红黑按真实比例分(60/100 × 16 = 9.6 → 10 枚红)
+  await expect(card.locator(".rb-dot--crowd")).toHaveCount(16);
+  await expect(card.locator(".rb-dot--crowd.rb-dot--red")).toHaveCount(10);
+  // 多出来的 84 枚必须写出来,不然 16 会被读成票数
+  await expect(card.locator(".rb-overflow")).toHaveText("+84");
+});
+
+test("少数派颜色不会被四舍五入抹掉:1 红 / 100 黑 也画得出那枚红", async ({ page }) => {
+  const key = keyOf("008");
+  await stubVotes(page, { [key]: { red: 1, black: 100 } });
+  await ready(page, "/redblack");
+
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await expect(card.locator(".rb-chip--red")).toHaveText("红 1");
+  // 修复前这里是 0 —— 卡片写着「红 1」,画布上一个红点都没有
+  await expect(card.locator(".rb-dot--crowd.rb-dot--red")).toHaveCount(1);
+  await expect(card.locator(".rb-dot--crowd.rb-dot--black")).toHaveCount(15);
+});
+
+test("「别人的贴纸」与我贴的那枚同尺寸,别人那枚仍不可拖", async ({ page }) => {
+  const key = keyOf("008");
+  await stubVotes(page, { [key]: { red: 3, black: 2 } });
+  await ready(page, "/redblack");
+
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await card.getByRole("button", { name: /贴红贴纸/ }).click();
+
+  const mine = card.locator(".rb-dot:not(.rb-dot--crowd)");
+  const crowd = card.locator(".rb-dot--crowd").first();
+  await expect(mine).toHaveCount(1);
+  // 用户 2026-09-22:「完全拉平,只靠能不能拖区分」—— 尺寸与实心度都必须一致。
+  // ⚠ 不能拿 `boundingBox()` 比:贴纸带 ±15° 歪斜,包围盒随各自角度变(实测 26.98 vs 26.58),
+  //   比**布局尺寸**才说明问题。
+  await expect(crowd).toHaveCSS("width", "26px");
+  await expect(crowd).toHaveCSS("height", "26px");
+  await expect(crowd).toHaveCSS("opacity", "1");
+  await expect(mine.first()).toHaveCSS("width", "26px");
+  // 拉平之后,**唯一**的差异就是这个:别人的拖不动
+  await expect(crowd).toHaveCSS("pointer-events", "none");
+  await expect(mine.first()).toHaveCSS("cursor", "grab");
+});
+
+test("「只看我贴过」:只列我贴过的片,参数进 URL,再点一次恢复全量", async ({ page }) => {
+  await stubEmpty(page);
+  await ready(page, "/redblack");
+
+  const key = keyOf("008");
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await card.getByRole("button", { name: /贴红贴纸/ }).click();
+
+  const all = await page.locator(".rb-card").count();
+  await page.getByRole("button", { name: "只看我贴过" }).click();
+  await expect(page.locator(".rb-card")).toHaveCount(1);
+  await expect(page.locator(`.rb-card[data-film-key="${key}"]`)).toBeVisible();
+  // 筛选是**独立参数**,不挤进 `sort`(排序档位此时仍是默认「总数」)
+  expect(new URL(page.url()).searchParams.get("only")).toBe("mine");
+  expect(new URL(page.url()).searchParams.get("sort")).toBeNull();
+
+  await page.getByRole("button", { name: "只看我贴过" }).click();
+  await expect.poll(() => page.locator(".rb-card").count()).toBe(all);
+  expect(new URL(page.url()).searchParams.get("only")).toBeNull();
+});
+
+// 「有新贴纸 · 重新排序」只在**数量变化**时才提示(2026-09-22,PLAN-20260922142903)。
+// 触发场景:贴一枚 → 上报成功 → 前端重拉票数。重拉拿到的是**新对象**,
+// 若拿对象引用当判据,数字一模一样提示也会白亮一次 —— 用户看到的就是「莫名提示」。
+test("重拉同一份票数不算「有新贴纸」:数量没变就不提示重排", async ({ page }) => {
+  const key = keyOf("008");
+  let reads = 0;
+  // 读接口**固定**返回同一份票数(不随上报变化)—— 模拟「服务端还没算上我这票」
+  await page.route("**/api/stats/film-votes**", async (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({ json: { ok: true, count: 1 } });
+    }
+    reads += 1;
+    return route.fulfill({ json: { edition: "biff-2026", votes: { [key]: { red: 3, black: 2 } } } });
+  });
+  await ready(page, "/redblack");
+
+  const resort = page.locator(".rb-resort");
+  // 首次载入时榜单顺序还是默认序 —— 这时提示一次是**对的**,点掉它
+  await expect(resort).toHaveAttribute("data-rb-stale", "");
+  await resort.click();
+  await expect(resort).not.toHaveAttribute("data-rb-stale", "");
+
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await card.getByRole("button", { name: /贴红贴纸/ }).click();
+  await expect(card.locator(".rb-dot--red")).toHaveCount(1);
+
+  // 等 ping 之后那次**重拉**真的发生(上报有 1200ms 防抖)
+  await expect.poll(() => reads, { timeout: 8000 }).toBeGreaterThan(1);
+  // 给 setVotes → 重渲染留一拍:修复前这里会亮起「有新贴纸」(votes 换了新对象)
+  await page.waitForTimeout(500);
+  await expect(resort).not.toHaveAttribute("data-rb-stale", "");
 });
