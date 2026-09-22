@@ -40,6 +40,8 @@ test("首次进入是空榜:一枚贴纸都没有,只留一句怎么开始", asy
   await expect(page.locator(".rb-hint")).toBeVisible();
   await expect(page.locator(".rb-dot")).toHaveCount(0);
   await expect(page.locator(".rb-card").first()).toBeVisible();
+  // 一枚贴纸都没有时不给「看全部」入口 —— 点开只会是一块空画布
+  await expect(page.getByRole("button", { name: /放大查看/ })).toHaveCount(0);
   // 没有人贴过 → 单部评分显示「—」,而不是 0 分(0 分会被读成「大家都觉得烂」)
   await expect(page.locator(".rb-card").first().locator(".rb-chip--score")).toHaveText("评分 —");
 });
@@ -225,6 +227,48 @@ test("「别人的贴纸」与我贴的那枚同尺寸,别人那枚仍不可拖"
     expected: Math.round(node.getBoundingClientRect().width * window.devicePixelRatio),
   }));
   expect(backing.width).toBe(backing.expected);
+});
+
+// 「放大看全部」弹层(2026-09-22,PLAN-20260922145815)。
+// 卡片那块画布只有一百多像素高,票一多就叠成一片 —— 弹层给一块大画布。
+// a11y 全部走 S2 `Dialog`(role=dialog / focus trap / Esc),焦点归还由卡片那个按钮自己做,
+// 这两条都是 §5 的硬约束,必须有机读断言守着。
+test("放大看全部:弹层给大画布、画全部贴纸,Esc 关闭并把焦点还回按钮", async ({ page }) => {
+  const key = keyOf("008");
+  await stubVotes(page, { [key]: { red: 3, black: 2 } });
+  await ready(page, "/redblack");
+
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await card.getByRole("button", { name: /贴红贴纸/ }).click();
+
+  const opener = card.getByRole("button", { name: /放大查看/ });
+  await opener.click();
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("全部贴纸");
+  // ⚠ 「全部」不是「别人的 + 我的」相加后的重复计数:服务端那份**已含我**,
+  //   所以弹层里的数字应当与卡片上的红黑数字**逐字一致**(3 红 2 黑 → 共 5 枚)
+  await expect(dialog).toContainText("共 5 枚（红 3 · 黑 2）");
+
+  const cardBox = await card.locator("canvas.rb-ink").boundingBox();
+  const stage = dialog.locator(".rb-zoom-stage canvas.rb-ink");
+  await expect(stage).toHaveCount(1);
+  const stageBox = await stage.boundingBox();
+  // 「放大」要真的更大 —— 贴纸是相对坐标,画布一大原来叠着的点就散开了
+  expect(stageBox!.height).toBeGreaterThan(cardBox!.height);
+  // 大画布同样要按 dpr 放大 backing store,否则高分屏上一样糊
+  const backing = await stage.evaluate((node: HTMLCanvasElement) => ({
+    width: node.width,
+    expected: Math.round(node.getBoundingClientRect().width * window.devicePixelRatio),
+  }));
+  expect(backing.width).toBe(backing.expected);
+
+  // Esc 关闭 + 焦点归还原按钮
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(opener).toBeFocused();
 });
 
 test("「只看我贴过」:只列我贴过的片,参数进 URL,再点一次恢复全量", async ({ page }) => {

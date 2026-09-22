@@ -22,6 +22,7 @@ import {
 import { ToastQueue } from "../components/spectrum";
 import { QuerySearchField } from "../components/QuerySearchField";
 import { StickerCanvas } from "../components/StickerCanvas";
+import { StickerZoomDialog } from "../components/StickerZoomDialog";
 import type { FilmNode } from "../app/model";
 import { searchFilm } from "../app/model";
 import { useQuery } from "../app/hooks";
@@ -504,6 +505,27 @@ const RbCard = memo(function RbCard({
   // 这一部**自己的**评分(红票占比折算 0–10);还没有人贴过 → null(显示成「—」)
   const filmScore = scoreOf(counts);
   const myStickers = placed ?? EMPTY_STICKERS;
+  // 「放大看全部」画的是**全部**(群点 + 我贴的那一枚),不是卡片上那份「别人的」——
+  // 点进来看全部却少了自己那一枚,数字会跟卡片对不上。
+  // ⚠ 相加不会重复计数:服务端那份在**上报落地后已含我**,此时 `others` 已经把我减掉;
+  //   上报还没落地时 `others` 被夹到 0,加回来正好是我这一枚 —— 两个方向都对。
+  const all: StickerCounts = {
+    total: others.total + mine.total,
+    red: others.red + mine.red,
+    black: others.black + mine.black,
+  };
+  const [zoomOpen, setZoomOpen] = useState(false);
+  const zoomBtnRef = useRef<HTMLButtonElement | null>(null);
+  const zoomWasOpenRef = useRef(false);
+  // 焦点归还(§5 硬约束):必须在弹层**真正卸载之后**再夺回焦点 ——
+  // ⚠ S2 的 `DialogContainer` 自己也会 restoreFocus,而 WebKit 上点按钮**不会**让按钮获得焦点,
+  //   于是它记下的「原焦点」是 body:在 `onDismiss` 里直接 `focus()` 会被它的 cleanup 覆盖掉
+  //   (实测 iOS WebKit 上焦点落到 body,Chromium 上因为按钮本来就聚焦所以看不出问题)。
+  //   放到 `useEffect`(跑在所有 layout effect 之后)才稳。
+  useEffect(() => {
+    if (zoomWasOpenRef.current && !zoomOpen) zoomBtnRef.current?.focus();
+    zoomWasOpenRef.current = zoomOpen;
+  }, [zoomOpen]);
 
   return (
     <article
@@ -540,6 +562,18 @@ const RbCard = memo(function RbCard({
           </button>
           {counts.red > 0 && <span className="rb-chip rb-chip--red">红 {counts.red}</span>}
           {counts.black > 0 && <span className="rb-chip rb-chip--black">黑 {counts.black}</span>}
+          {/* 一枚都没有时不出现:点开只会看到一块空画布 */}
+          {all.total > 0 && (
+            <button
+              ref={zoomBtnRef}
+              type="button"
+              className="rb-zoom"
+              aria-label={`放大查看《${film.zh}》的全部 ${all.total} 枚贴纸`}
+              onClick={() => setZoomOpen(true)}
+            >
+              看全部
+            </button>
+          )}
         </p>
         {/* 暂存区(海报下方那两枚):点一下 → 随机贴到画布;拖到画布 → 落在松手那一点。
             ⚠ 这里**不写状态文案**(2026-09-16 用户:「太占空间」):
@@ -603,6 +637,10 @@ const RbCard = memo(function RbCard({
           </span>
         )}
       </div>
+
+      {zoomOpen && (
+        <StickerZoomDialog film={film} counts={all} onDismiss={() => setZoomOpen(false)} />
+      )}
     </article>
   );
 });

@@ -324,6 +324,43 @@
   font-weight: 600;
 }
 
+/* 「看全部」(放大看全部贴纸的入口)—— 与 `.rb-mark` 同一档的小按钮:
+ * 它是**查看**动作,不是表态,所以不抢红 / 黑那两个贴纸按钮的视觉权重 */
+.rb-zoom {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.rb-zoom:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+/* ---------- 「放大看全部」弹层 ---------- */
+
+.rb-zoom-lede {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 大画布:与卡片那块同源(同一个 `StickerCanvas`),只是铺得开 ——
+ * 贴纸是相对坐标的百分比,画布一大,原来叠在一起的点就散开了 */
+.rb-zoom-stage {
+  position: relative;
+  width: 100%;
+  height: min(68vh, 560px);
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: var(--raised);
+  overflow: hidden;
+}
+
 /* ---------- 待贴的两枚贴纸(点一下就落到右边) ---------- */
 
 .rb-tray {
