@@ -28,6 +28,24 @@ import type { Catalog, Mapping, Screening } from "./types";
 import { dateInfo, displayTitle, filmInfoOf, fmtMinRangeMin, groupByDate, hmsToMin } from "./util";
 import { effEndMin, gvTalkMin } from "./gv";
 import { venueShort } from "./legend";
+// 分享图共用的笔刷与调色板(与红黑榜分享图 `redblack-poster.ts` 同一套)。
+// 沿用本地短名(`C` / `font`),免得把本文件里几十处调用一起改一遍。
+import {
+  ACCENT_H,
+  COLORS as C,
+  FOOTER_H,
+  PAD,
+  POSTER_W,
+  SCALE,
+  SCALE_DOWN_H,
+  drawAccentBars,
+  drawRule,
+  fitText,
+  posterFont as font,
+  roundRectPath,
+} from "./poster-brush";
+
+export { posterBlob, POSTER_W } from "./poster-brush";
 import type { PickRow } from "./ics";
 import { gvMark, orderedPickRows, shareSummary } from "./share";
 
@@ -126,19 +144,10 @@ export function buildPosterModel(
   };
 }
 
-/* ---------------- 几何 / 配色 ---------------- */
+/* ---------------- 几何(只留本图独有的那几项) ---------------- */
 
-/** 逻辑宽度 —— 分享图按 1080 宽出图(微信 / 相册长图的常规宽度),再按 `SCALE` 超采样取像素。 */
-export const POSTER_W = 1080;
-/** 超采样倍率:逻辑 1px = 2 物理像素(视网膜屏上文字与描边不糊)。 */
-const SCALE = 2;
-/** 长图退档阈值(逻辑高)—— 画布**单边上限 32767**,而一行 168px:
- *  190 场 ≈ 32000 逻辑高,2× 就是 64000 → `toBlob` 静默出空图(不抛错,最难查)。
- *  超过本阈值就回 1×(约可撑到 190 场;再多的行程本来也不该走分享图,该用分享文案)。 */
-const SCALE_DOWN_H = 8000;
-
-const PAD = 56; // 左右内距
-const ACCENT_H = 10; // 顶部 / 底部品牌红条
+// ⚠ 宽度 / 超采样 / 退档阈值 / 内距 / 品牌红条高 / 页脚高 / 调色板 / 字体,全部在 `poster-brush.ts`
+//   —— 红黑榜分享图用的是同一套(§5 口径单一来源)。这里只留**看片计划海报独有**的几何。
 const HEADER_H = 232;
 const DAY_HEAD_H = 76;
 const DAY_GAP = 24;
@@ -147,30 +156,6 @@ const ROW_H_NOTE = 200;
 const THUMB_W = 96;
 const THUMB_H = 144;
 const THUMB_R = 10;
-const FOOTER_H = 104;
-
-/** 海报**固定深色** —— 不跟随应用主题:分享图是对外成品,深底 + 品牌红在聊天流里辨识度最高,
- *  且亮 / 暗两种应用外观下出图一致(否则同一份行程在不同人手里长得不一样)。 */
-const C = {
-  bg: "#101013",
-  card: "#1a1a21",
-  line: "#2b2b33",
-  ink: "#f4f4f6",
-  ink2: "#c7c7d0",
-  muted: "#8a8a95",
-  red: "#ce1e36",
-  red2: "#e8455c",
-  note: "#e2b667",
-  gvBg: "#2b2b35",
-  gvInk: "#f2a6b2",
-};
-
-/** 字体栈与页面同族(中文优先 PingFang / 微软雅黑,拉丁走 system-ui)。 */
-const FONT = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,-apple-system,"Segoe UI",sans-serif';
-
-function font(size: number, weight: number): string {
-  return `${weight} ${size}px ${FONT}`;
-}
 
 /** 一行场次的高度 —— 只随「有无备注」变,故**唯一写这里**:
  *  `posterHeight()` 与 `drawPoster()` 都读它,各算一份必然出现「算出来 3000 高、实际画了 3200」,
@@ -192,25 +177,6 @@ export function posterHeight(model: PosterModel): number {
 
 /* ---------------- 绘制 ---------------- */
 
-/** 圆角矩形路径 —— 手写 `arcTo` 而不依赖 `ctx.roundRect`(兼容性最稳,行为完全确定)。 */
-function roundRectPath(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number
-): void {
-  const rr = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + rr, y);
-  ctx.arcTo(x + w, y, x + w, y + h, rr);
-  ctx.arcTo(x + w, y + h, x, y + h, rr);
-  ctx.arcTo(x, y + h, x, y, rr);
-  ctx.arcTo(x, y, x + w, y, rr);
-  ctx.closePath();
-}
-
 /** 字距加宽的文本 —— canvas 的 `letterSpacing` 兼容性一般,逐字画最稳。 */
 function drawTracked(
   ctx: CanvasRenderingContext2D,
@@ -224,17 +190,6 @@ function drawTracked(
     ctx.fillText(ch, cx, y);
     cx += ctx.measureText(ch).width + tracking;
   }
-}
-
-/** 单行截断:超出 `maxW` 时尾部补「…」(画布没有 CSS 的 text-overflow)。 */
-function fitText(ctx: CanvasRenderingContext2D, text: string, maxW: number): string {
-  if (ctx.measureText(text).width <= maxW) return text;
-  let out = "";
-  for (const ch of text) {
-    if (ctx.measureText(out + ch + "…").width > maxW) break;
-    out += ch;
-  }
-  return out ? `${out}…` : "…";
 }
 
 /** 加宽字距那行的测宽 —— 必须把 `tracking` 一起算进去,否则「量着放得下、画出来溢出」。 */
@@ -348,15 +303,10 @@ export function drawPoster(
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
 
-  // 底色 + 上下品牌红条(渐变同顶栏按钮)
+  // 底色 + 上下品牌红条(与红黑榜分享图同一个 helper)
   ctx.fillStyle = C.bg;
   ctx.fillRect(0, 0, POSTER_W, h);
-  const bar = ctx.createLinearGradient(0, 0, POSTER_W, 0);
-  bar.addColorStop(0, C.red);
-  bar.addColorStop(1, C.red2);
-  ctx.fillStyle = bar;
-  ctx.fillRect(0, 0, POSTER_W, ACCENT_H);
-  ctx.fillRect(0, h - ACCENT_H, POSTER_W, ACCENT_H);
+  drawAccentBars(ctx, POSTER_W, h);
 
   // ---- 头部 ----
   const maxTextW = POSTER_W - PAD * 2;
@@ -380,8 +330,7 @@ export function drawPoster(
   ctx.fillText(`${model.count} 场 / ${model.films} 部`, PAD + headW + 8, y + 180);
 
   y += HEADER_H;
-  ctx.fillStyle = C.line;
-  ctx.fillRect(PAD, y - 24, POSTER_W - PAD * 2, 1);
+  drawRule(ctx, y - 24, POSTER_W - PAD * 2);
 
   // ---- 日期分节 + 场次 ----
   for (const d of model.days) {
@@ -409,19 +358,13 @@ export function drawPoster(
 
   // ---- 页脚(绝对定位:内容再长也不会把它顶出画面) ----
   const footTop = h - ACCENT_H - FOOTER_H;
-  ctx.fillStyle = C.line;
-  ctx.fillRect(PAD, footTop + 24, POSTER_W - PAD * 2, 1);
+  drawRule(ctx, footTop + 24, POSTER_W - PAD * 2);
   ctx.font = font(20, 500);
   ctx.fillStyle = C.muted;
   ctx.fillText("排片数据来自 biff.kr 官方页面 · 仅作个人观影参考", PAD, footTop + 60);
   ctx.textAlign = "right";
   ctx.fillText("由 BIFF 排片工具生成", POSTER_W - PAD, footTop + 60);
   ctx.textAlign = "left";
-}
-
-/** 画布 → PNG Blob(`toBlob` 回调式,包一层 Promise)。 */
-export function posterBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
-  return new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/png"));
 }
 
 /** 加载海报缩略图 —— **失败即静默跳过**(缺图走占位块,不能让一张图挂掉整张海报)。

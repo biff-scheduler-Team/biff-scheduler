@@ -15,6 +15,9 @@
  */
 
 import type { StickerType } from "./redblack";
+// 形状与分享图(`redblack-poster.ts`)共用同一条路径 —— 三处表达(CSS `border-radius` / 这里的
+// sprite / 分享图里的小贴纸)改一处要同步另外两处,详见 `sticker-shape.ts`。
+import { blobPath } from "./sticker-shape";
 
 /** 贴纸边长(CSS px)。⚠ 必须与 `.rb-dot` 的 `width` / `height` 一致 */
 export const STICKER_SIZE = 26;
@@ -46,32 +49,6 @@ function readColors(): Record<StickerType, string> {
   };
   colors = { red: read("--rb-red"), black: read("--rb-black") };
   return colors;
-}
-
-/** 不规则圆片路径 —— 四角各用一对椭圆半径,对应 CSS 的
- *  `border-radius: 48% 52% 45% 55% / 52% 46% 54% 48%`。 */
-function blobPath(ctx: CanvasRenderingContext2D, size: number): void {
-  const tlx = 0.48 * size;
-  const tly = 0.52 * size;
-  const trx = 0.52 * size;
-  const trY = 0.46 * size;
-  const brx = 0.45 * size;
-  const brY = 0.54 * size;
-  const blx = 0.55 * size;
-  const blY = 0.48 * size;
-  const half = Math.PI / 2;
-
-  ctx.beginPath();
-  ctx.moveTo(tlx, 0);
-  ctx.lineTo(size - trx, 0);
-  ctx.ellipse(size - trx, trY, trx, trY, 0, -half, 0);
-  ctx.lineTo(size, size - brY);
-  ctx.ellipse(size - brx, size - brY, brx, brY, 0, 0, half);
-  ctx.lineTo(blx, size);
-  ctx.ellipse(blx, size - blY, blx, blY, 0, half, Math.PI);
-  ctx.lineTo(0, tly);
-  ctx.ellipse(tlx, tly, tlx, tly, 0, Math.PI, Math.PI + half);
-  ctx.closePath();
 }
 
 function build(type: StickerType, dpr: number): StickerSprite {

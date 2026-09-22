@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ActionButton, Button, ToastQueue } from "./spectrum";
+import { ActionButton, Button } from "./spectrum";
 import {
   drawPoster,
   loadPosterImages,
@@ -7,6 +7,10 @@ import {
   type PosterModel,
 } from "../poster";
 import { download } from "../app/download";
+import { copyImageOrDownload } from "./share-image";
+
+/** 下载 / 复制共用一个文件名(两处写死必然会漂移) */
+const FILE_NAME = "BIFF2026-看片计划.png";
 
 /** A preview owns one immutable plan snapshot and the canvas/blob produced for it. */
 export function PosterPreview({
@@ -50,21 +54,10 @@ export function PosterPreview({
     };
   }, [generationId, model, onLoadingChange]);
 
+  // 复制 → 失败退化成下载:与红黑榜分享图共用同一处实现(`share-image.ts`),文案只此一份
   const copyImage = async () => {
     if (!blob) return;
-    try {
-      if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined")
-        throw new Error("clipboard unavailable");
-      await navigator.clipboard.write([
-        new ClipboardItem({ "image/png": blob }),
-      ]);
-      ToastQueue.positive("图片已复制", { timeout: 5000 });
-    } catch {
-      download(blob, "BIFF2026-看片计划.png");
-      ToastQueue.neutral("当前浏览器无法复制图片，已改为下载。", {
-        timeout: 5000,
-      });
-    }
+    await copyImageOrDownload(blob, FILE_NAME);
   };
   return (
     <section className="form-stack" aria-label="分享图片预览">
@@ -85,9 +78,7 @@ export function PosterPreview({
       />
       {blob && (
         <div className="inline-actions">
-          <Button onPress={() => download(blob, "BIFF2026-看片计划.png")}>
-            下载 PNG 图片
-          </Button>
+          <Button onPress={() => download(blob, FILE_NAME)}>下载 PNG 图片</Button>
           <ActionButton
             onPress={() => {
               void copyImage();
