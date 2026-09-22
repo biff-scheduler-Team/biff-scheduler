@@ -221,6 +221,7 @@
         "apps/web/src/pages/RedBlackPage.tsx",
         "apps/web/src/pages/redblack-parity.css",
         "apps/web/src/redblack.ts",
+        "apps/web/src/use-in-view.ts",
         "apps/web/src/film-votes.ts",
         "apps/api/src/film-vote-stats.ts",
         "apps/api/src/film-vote-store.ts",

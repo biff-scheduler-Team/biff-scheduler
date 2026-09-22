@@ -10,6 +10,8 @@
 //   ghost 用 DOM 直接操作而不是每帧 setState —— 一次拖拽只重渲染「目标卡高亮」变化的那几帧。
 
 import {
+  memo,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -26,9 +28,7 @@ import { useCatalog } from "../app/store";
 import {
   boardFilms,
   countsOf,
-  CROWD_CAP,
   crowdOf,
-  crowdOverflow,
   crowdSignature,
   crowdStickers,
   makeSticker,
@@ -45,7 +45,9 @@ import {
   votesOf,
   type CrowdCounts,
   type SortMode,
+  type Sticker,
   type StickerBoard,
+  type StickerCounts,
   type StickerType,
 } from "../redblack";
 import {
@@ -55,6 +57,7 @@ import {
   scheduleFilmVotesPing,
   type FilmVoteCounts,
 } from "../film-votes";
+import { useInView } from "../use-in-view";
 import "./redblack-parity.css";
 
 const SORTS: Array<[SortMode, string]> = [
@@ -73,6 +76,32 @@ interface RbDrag {
   /** null = 从**暂存区**(海报下方那两枚)拖出;有值 = 拖动已经贴在画布上的那一枚 */
   fromKey: string | null;
   fromId: string | null;
+}
+
+/** 没有票的影片共用这一个常量:
+ *  ⚠ 必须共用(`?? { total: 0, red: 0, black: 0 }` 会每次造新对象)—— 卡片是 `memo` 的,
+ *    prop 引用一变就白重渲染一次,299 张卡一起白渲染正是本轮要修的那个卡顿(PLAN-20260922145815)。 */
+const EMPTY_COUNTS: StickerCounts = { total: 0, red: 0, black: 0 };
+const EMPTY_STICKERS: readonly Sticker[] = [];
+
+interface RbCardProps {
+  film: FilmNode;
+  /** 是否标记过「看过」;`canPlace` = 标记过且这一部还没贴 */
+  marked: boolean;
+  canPlace: boolean;
+  /** 我贴的那几枚。⚠ 直接传 `board.get(key)`,**不要** `?? []` —— 那会每次造个新数组,`memo` 失效 */
+  placed: readonly Sticker[] | undefined;
+  /** 这一部的**全体**票数(已含我自己那一票) */
+  counts: StickerCounts;
+  /** 三个回调都必须是**稳定引用**(见 `RedBlackPage` 里 `latest` 那段注释) */
+  onToggleWatched: (film: FilmNode) => void;
+  onPlace: (filmKey: string, type: StickerType, spot?: { posX: number; posY: number }) => void;
+  onBeginDrag: (
+    event: ReactPointerEvent<HTMLElement>,
+    type: StickerType,
+    fromKey: string | null,
+    fromId: string | null,
+  ) => void;
 }
 
 export function RedBlackPage() {
@@ -146,12 +175,7 @@ export function RedBlackPage() {
   //   所以不能再拿它跟本地贴纸相加 —— 会把我算两次。
   const filmCounts = useMemo(
     () =>
-      new Map(
-        sorted.map((film) => [
-          film.key,
-          crowd.get(film.key) ?? { total: 0, red: 0, black: 0 },
-        ] as const),
-      ),
+      new Map(sorted.map((film) => [film.key, crowd.get(film.key) ?? EMPTY_COUNTS] as const)),
     [sorted, crowd],
   );
   const totals = useMemo(() => {
@@ -181,46 +205,61 @@ export function RedBlackPage() {
     [sorted],
   );
 
-  const commitBoard = (next: StickerBoard) => {
+  // ⚠ 下面几个回调**必须是稳定引用**(`useCallback([])` / 依赖同样稳定的东西),否则 `RbCard`
+  //   的 `memo` 全废 —— 而 memo 正是「贴一枚只重渲染那一张」的前提,也是本轮修卡顿的关键
+  //   (PLAN-20260922145815)。它们又要读**最新**状态(board / watched / tallies / filmByKey),
+  //   而卡片与 window 监听拿到的只是创建那一刻的闭包 —— 所以统一从这个 ref 里取,每次渲染刷新一次。
+  const latest = useRef({ board, watched, tallies, filmByKey });
+  latest.current = { board, watched, tallies, filmByKey };
+
+  const commitBoard = useCallback((next: StickerBoard) => {
     setBoard(next);
     // 用户动过手了 —— 从这里开始才允许把「我的票」上报给服务端(见上面 actedRef 的说明)。
     actedRef.current = true;
     saveStickers(next);
-  };
+  }, []);
 
   /** 标记 / 取消标记。
    *  ⚠ 取消时要把**这一部自己的贴纸全部收回**(用户口径):画布上的那枚与暂存区里的选择一起清掉 ——
    *    不这么做的后果是「没标记却贴着一张纸」,谁看都觉得是 bug。 */
-  const toggleWatched = (film: FilmNode) => {
-    const next = new Set(watched);
-    const on = !next.has(film.key);
-    if (on) next.add(film.key);
-    else next.delete(film.key);
-    setWatched(next);
-    saveWatched(next);
-    if (on) {
-      ToastQueue.positive(`已标记《${film.zh}》看过，可以在下面挑一枚贴纸。`, { timeout: 3500 });
-      return;
-    }
-    const placed = board.get(film.key);
-    if (placed?.length) commitBoard(takeSticker(board, film.key, placed[0].id));
-    ToastQueue.neutral(`已取消《${film.zh}》的「看过」，它的贴纸也收回了。`, { timeout: 3500 });
-  };
+  const toggleWatched = useCallback(
+    (film: FilmNode) => {
+      const { watched, board } = latest.current;
+      const next = new Set(watched);
+      const on = !next.has(film.key);
+      if (on) next.add(film.key);
+      else next.delete(film.key);
+      setWatched(next);
+      saveWatched(next);
+      if (on) {
+        ToastQueue.positive(`已标记《${film.zh}》看过，可以在下面挑一枚贴纸。`, { timeout: 3500 });
+        return;
+      }
+      const placed = board.get(film.key);
+      if (placed?.length) commitBoard(takeSticker(board, film.key, placed[0].id));
+      ToastQueue.neutral(`已取消《${film.zh}》的「看过」，它的贴纸也收回了。`, { timeout: 3500 });
+    },
+    [commitBoard],
+  );
 
   /** 贴一枚:点一下 → 落点随机;从暂存区拖进来 → 落在松手那一点 */
-  const place = (filmKey: string, type: StickerType, spot?: { posX: number; posY: number }) => {
-    const name = filmByKey.get(filmKey)?.zh ?? "这部";
-    const tally = tallies.get(filmKey);
-    if (!tally?.marked) {
-      ToastQueue.neutral(`先给《${name}》标一下「看过」，就能贴了。`, { timeout: 4000 });
-      return;
-    }
-    if (!tally.canPlace) {
-      ToastQueue.neutral(`《${name}》已经贴了一枚，把那张拖到画布外就能收回。`, { timeout: 4000 });
-      return;
-    }
-    commitBoard(placeSticker(board, filmKey, makeSticker(type, spot)));
-  };
+  const place = useCallback(
+    (filmKey: string, type: StickerType, spot?: { posX: number; posY: number }) => {
+      const { board, tallies, filmByKey } = latest.current;
+      const name = filmByKey.get(filmKey)?.zh ?? "这部";
+      const tally = tallies.get(filmKey);
+      if (!tally?.marked) {
+        ToastQueue.neutral(`先给《${name}》标一下「看过」，就能贴了。`, { timeout: 4000 });
+        return;
+      }
+      if (!tally.canPlace) {
+        ToastQueue.neutral(`《${name}》已经贴了一枚，把那张拖到画布外就能收回。`, { timeout: 4000 });
+        return;
+      }
+      commitBoard(placeSticker(board, filmKey, makeSticker(type, spot)));
+    },
+    [commitBoard],
+  );
 
   // ⚠ 落点处理要用**最新**的 board,而 window 监听只在开始拖拽时挂一次 ——
   //   所以把处理函数放进 ref,每次渲染更新,监听器里读 ref.current。
@@ -263,16 +302,19 @@ export function RedBlackPage() {
 
   /** ⚠ 这里**不 preventDefault**:暂存区那两枚贴纸既要能拖、也要能点(点一下随机贴),
    *  在 pointerdown 上拦掉默认行为会把 click 一起吃掉。 */
-  const beginDrag = (
-    event: ReactPointerEvent<HTMLElement>,
-    type: StickerType,
-    fromKey: string | null,
-    fromId: string | null,
-  ) => {
-    if (event.pointerType === "mouse" && event.button !== 0) return;
-    dragMeta.current = { startX: event.clientX, startY: event.clientY };
-    setDrag({ type, fromKey, fromId });
-  };
+  const beginDrag = useCallback(
+    (
+      event: ReactPointerEvent<HTMLElement>,
+      type: StickerType,
+      fromKey: string | null,
+      fromId: string | null,
+    ) => {
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      dragMeta.current = { startX: event.clientX, startY: event.clientY };
+      setDrag({ type, fromKey, fromId });
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!drag) return;
@@ -410,135 +452,19 @@ export function RedBlackPage() {
         <div className="rb-grid">
           {visible.map((film) => {
             const tally = tallies.get(film.key)!;
-            const placed = board.get(film.key) ?? [];
-            const counts = filmCounts.get(film.key)!;
-            // 这一部**自己的**评分(红票占比折算 0–10);还没有人贴过 → null(显示成「—」)
-            const filmScore = scoreOf(counts);
-            // 「别人的贴纸」= 全体票数 − 我自己那几枚。服务端那份**含我**,不减掉会把我这枚画重。
-            const mine = countsOf(placed);
-            const others = {
-              total: Math.max(0, counts.total - mine.total),
-              red: Math.max(0, counts.red - mine.red),
-              black: Math.max(0, counts.black - mine.black),
-            };
-            // 画布只画得下 CROWD_CAP 枚「别人的贴纸」,超出的部分靠角标交代清楚 ——
-            // 用 `others` 而不是 `counts`:我自己的那枚永远画得出来,不算在画不下的人里。
-            const overflow = crowdOverflow(others);
             return (
-              <article
+              <RbCard
                 key={film.key}
-                className="rb-card"
-                data-film-key={film.key}
-                data-rb-marked={tally.marked || undefined}
-              >
-                <div className="rb-card-info">
-                  {film.poster ? (
-                    <img className="rb-poster" src={film.poster} loading="lazy" alt="" />
-                  ) : (
-                    <span className="rb-poster rb-poster--none" aria-hidden="true">
-                      {film.zh.slice(0, 1)}
-                    </span>
-                  )}
-                  <h2 className="rb-title">{film.zh}</h2>
-                  {film.en && film.en !== film.zh && <p className="rb-en">{film.en}</p>}
-                  <p className="rb-chips">
-                    <span
-                      className="rb-chip rb-chip--score"
-                      title="这部片的红票占比折算成 0–10 分；还没有人贴时不显示分数"
-                    >
-                      评分 {filmScore === null ? "—" : filmScore.toFixed(1)}
-                    </span>
-                    <button
-                      type="button"
-                      className="rb-mark"
-                      aria-pressed={tally.marked}
-                      aria-label={`${tally.marked ? "取消标记" : "标记"}《${film.zh}》看过`}
-                      onClick={() => toggleWatched(film)}
-                    >
-                      {tally.marked ? "看过 ✓" : "标记看过"}
-                    </button>
-                    {counts.red > 0 && <span className="rb-chip rb-chip--red">红 {counts.red}</span>}
-                    {counts.black > 0 && (
-                      <span className="rb-chip rb-chip--black">黑 {counts.black}</span>
-                    )}
-                  </p>
-                  {/* 暂存区(海报下方那两枚):点一下 → 随机贴到画布;拖到画布 → 落在松手那一点。
-                      ⚠ 这里**不写状态文案**(2026-09-16 用户:「太占空间」):
-                      按钮亮着就说明能贴、暗了就是贴过了 —— 靠形态表达,不靠解释。 */}
-                  <div className="rb-tray" aria-label={`《${film.zh}》的贴纸暂存区`}>
-                    <button
-                      type="button"
-                      className="rb-src rb-src--red"
-                      data-rb-spent={!tally.canPlace || undefined}
-                      aria-label={`给《${film.zh}》贴红贴纸（点一下随机贴，也可以拖到右边画布上）`}
-                      onClick={() => place(film.key, "red")}
-                      onPointerDown={(event) => beginDrag(event, "red", null, null)}
-                    >
-                      红
-                    </button>
-                    <button
-                      type="button"
-                      className="rb-src rb-src--black"
-                      data-rb-spent={!tally.canPlace || undefined}
-                      aria-label={`给《${film.zh}》贴黑贴纸（点一下随机贴，也可以拖到右边画布上）`}
-                      onClick={() => place(film.key, "black")}
-                      onPointerDown={(event) => beginDrag(event, "black", null, null)}
-                    >
-                      黑
-                    </button>
-                  </div>
-                </div>
-
-                <div className="rb-canvas" data-rb-canvas={film.key}>
-                  {/* 别人的贴纸:只读(不挂 pointerdown),位置由 (影片 key, 序号) 确定性推导 ——
-                      用随机坐标的话每次重排这些点都会换地方,看着像在跳。 */}
-                  {crowdStickers(film.key, others).map((sticker) => (
-                    <span
-                      key={sticker.id}
-                      className={`rb-dot rb-dot--${sticker.type} rb-dot--crowd`}
-                      style={
-                        {
-                          left: `${sticker.posX * 100}%`,
-                          top: `${sticker.posY * 100}%`,
-                          "--rb-tilt": `${tiltOf(sticker.id)}deg`,
-                        } as CSSProperties
-                      }
-                      aria-hidden="true"
-                    />
-                  ))}
-                  {placed.map((sticker) => (
-                    <span
-                      key={sticker.id}
-                      className={`rb-dot rb-dot--${sticker.type}`}
-                      style={
-                        {
-                          left: `${sticker.posX * 100}%`,
-                          top: `${sticker.posY * 100}%`,
-                          "--rb-tilt": `${tiltOf(sticker.id)}deg`,
-                        } as CSSProperties
-                      }
-                      role="img"
-                      aria-label={`${sticker.type === "red" ? "红" : "黑"}贴纸；拖动可挪位置或挪到别的片，拖到画布外就收回暂存区`}
-                      onPointerDown={(event) =>
-                        beginDrag(event, sticker.type, film.key, sticker.id)
-                      }
-                    />
-                  ))}
-                  {overflow > 0 && (
-                    <span
-                      className="rb-overflow"
-                      aria-label={`另外还有 ${overflow} 枚别人的贴纸没画出来（画布最多画 ${CROWD_CAP} 枚）`}
-                    >
-                      +{overflow}
-                    </span>
-                  )}
-                  {placed.length === 0 && others.total === 0 && (
-                    <span className="rb-canvas-hint">
-                      {tally.marked ? "点左边的红 / 黑，或把贴纸拖进来" : "标记「看过」后就能贴"}
-                    </span>
-                  )}
-                </div>
-              </article>
+                film={film}
+                marked={tally.marked}
+                canPlace={tally.canPlace}
+                /* ⚠ 直接传 `board.get(...)` 的结果(可能 undefined),不要 `?? []` —— 那会每次造新数组,memo 失效 */
+                placed={board.get(film.key)}
+                counts={filmCounts.get(film.key)!}
+                onToggleWatched={toggleWatched}
+                onPlace={place}
+                onBeginDrag={beginDrag}
+              />
             );
           })}
         </div>
@@ -546,6 +472,154 @@ export function RedBlackPage() {
     </section>
   );
 }
+
+/** 榜单里的**一张卡**。
+ *
+ *  ⚠ 这里 `memo` + 三个稳定回调是**性能的前提**(2026-09-22,PLAN-20260922145815):
+ *    榜单有近 300 张卡,不 memo 的话「贴一枚贴纸」会让 299 张卡全部重算重渲染 ——
+ *    那才是「贴一下卡一下」的主因,比「一张卡画了几枚贴纸」重要得多。
+ *    所以传进来的必须是**稳定引用或值**:回调一律 `useCallback`,我贴的贴纸直接取
+ *    `board.get(key)`(不要 `?? []`),没有票的影片共用 `EMPTY_COUNTS`。 */
+const RbCard = memo(function RbCard({
+  film,
+  marked,
+  canPlace,
+  placed,
+  counts,
+  onToggleWatched,
+  onPlace,
+  onBeginDrag,
+}: RbCardProps) {
+  // 视口按需渲染:屏幕外的卡**一枚贴纸都不画**(见 `useInView` 与 PLAN-20260922145815)。
+  // ⚠ 贴纸是绝对定位,稍后补画不触发兄弟节点回流 —— 所以「滚到才画」不会引起版面跳动。
+  const cardRef = useRef<HTMLElement | null>(null);
+  const inView = useInView(cardRef);
+  const mine = countsOf(placed);
+  // 「别人的贴纸」= 全体票数 − 我自己那几枚。服务端那份**含我**,不减掉会把我这枚画重。
+  const others: StickerCounts = {
+    total: Math.max(0, counts.total - mine.total),
+    red: Math.max(0, counts.red - mine.red),
+    black: Math.max(0, counts.black - mine.black),
+  };
+  // 这一部**自己的**评分(红票占比折算 0–10);还没有人贴过 → null(显示成「—」)
+  const filmScore = scoreOf(counts);
+  const myStickers = placed ?? EMPTY_STICKERS;
+
+  return (
+    <article
+      ref={cardRef}
+      className="rb-card"
+      data-film-key={film.key}
+      data-rb-marked={marked || undefined}
+    >
+      <div className="rb-card-info">
+        {film.poster ? (
+          <img className="rb-poster" src={film.poster} loading="lazy" alt="" />
+        ) : (
+          <span className="rb-poster rb-poster--none" aria-hidden="true">
+            {film.zh.slice(0, 1)}
+          </span>
+        )}
+        <h2 className="rb-title">{film.zh}</h2>
+        {film.en && film.en !== film.zh && <p className="rb-en">{film.en}</p>}
+        <p className="rb-chips">
+          <span
+            className="rb-chip rb-chip--score"
+            title="这部片的红票占比折算成 0–10 分；还没有人贴时不显示分数"
+          >
+            评分 {filmScore === null ? "—" : filmScore.toFixed(1)}
+          </span>
+          <button
+            type="button"
+            className="rb-mark"
+            aria-pressed={marked}
+            aria-label={`${marked ? "取消标记" : "标记"}《${film.zh}》看过`}
+            onClick={() => onToggleWatched(film)}
+          >
+            {marked ? "看过 ✓" : "标记看过"}
+          </button>
+          {counts.red > 0 && <span className="rb-chip rb-chip--red">红 {counts.red}</span>}
+          {counts.black > 0 && <span className="rb-chip rb-chip--black">黑 {counts.black}</span>}
+        </p>
+        {/* 暂存区(海报下方那两枚):点一下 → 随机贴到画布;拖到画布 → 落在松手那一点。
+            ⚠ 这里**不写状态文案**(2026-09-16 用户:「太占空间」):
+            按钮亮着就说明能贴、暗了就是贴过了 —— 靠形态表达,不靠解释。 */}
+        <div className="rb-tray" aria-label={`《${film.zh}》的贴纸暂存区`}>
+          <button
+            type="button"
+            className="rb-src rb-src--red"
+            data-rb-spent={!canPlace || undefined}
+            aria-label={`给《${film.zh}》贴红贴纸（点一下随机贴，也可以拖到右边画布上）`}
+            onClick={() => onPlace(film.key, "red")}
+            onPointerDown={(event) => onBeginDrag(event, "red", null, null)}
+          >
+            红
+          </button>
+          <button
+            type="button"
+            className="rb-src rb-src--black"
+            data-rb-spent={!canPlace || undefined}
+            aria-label={`给《${film.zh}》贴黑贴纸（点一下随机贴，也可以拖到右边画布上）`}
+            onClick={() => onPlace(film.key, "black")}
+            onPointerDown={(event) => onBeginDrag(event, "black", null, null)}
+          >
+            黑
+          </button>
+        </div>
+      </div>
+
+      <div
+        className="rb-canvas"
+        data-rb-canvas={film.key}
+        /* 机读契约:E2E 靠这三个数断言「画布上画了什么」。
+           ⚠ 属性缺席 = **一枚都没画**(屏幕外的卡不画);不要把它写成 0,那与「票数为 0」混了。 */
+        data-rb-crowd={inView ? others.total : undefined}
+        data-rb-crowd-red={inView ? others.red : undefined}
+        data-rb-crowd-black={inView ? others.black : undefined}
+      >
+        {/* 别人的贴纸:只读(不挂 pointerdown),位置由 (影片 key, 序号) 确定性推导 ——
+            用随机坐标的话每次重排这些点都会换地方,看着像在跳。
+            票数几枚就画几枚(不再有每卡上限,见 `redblack.ts::crowdStickers`)。 */}
+        {inView &&
+          crowdStickers(film.key, others).map((sticker) => (
+            <span
+              key={sticker.id}
+              className={`rb-dot rb-dot--${sticker.type} rb-dot--crowd`}
+              style={
+                {
+                  left: `${sticker.posX * 100}%`,
+                  top: `${sticker.posY * 100}%`,
+                  "--rb-tilt": `${tiltOf(sticker.id)}deg`,
+                } as CSSProperties
+              }
+              aria-hidden="true"
+            />
+          ))}
+        {myStickers.map((sticker) => (
+          <span
+            key={sticker.id}
+            className={`rb-dot rb-dot--${sticker.type}`}
+            style={
+              {
+                left: `${sticker.posX * 100}%`,
+                top: `${sticker.posY * 100}%`,
+                "--rb-tilt": `${tiltOf(sticker.id)}deg`,
+              } as CSSProperties
+            }
+            role="img"
+            aria-label={`${sticker.type === "red" ? "红" : "黑"}贴纸；拖动可挪位置或挪到别的片，拖到画布外就收回暂存区`}
+            onPointerDown={(event) => onBeginDrag(event, sticker.type, film.key, sticker.id)}
+          />
+        ))}
+        {myStickers.length === 0 && others.total === 0 && (
+          <span className="rb-canvas-hint">
+            {marked ? "点左边的红 / 黑，或把贴纸拖进来" : "标记「看过」后就能贴"}
+          </span>
+        )}
+      </div>
+    </article>
+  );
+});
 
 /** 指针落点所在的**画布**(ghost 是 `pointer-events: none`,不会挡住命中测试) */
 function canvasAt(x: number, y: number): HTMLElement | null {

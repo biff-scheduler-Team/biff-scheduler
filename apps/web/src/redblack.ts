@@ -53,10 +53,6 @@ const SPOT_MARGIN = 0.08;
  *    这里是大家贴出来的**数量」。 */
 export type CrowdCounts = Map<string, StickerCounts>;
 
-/** 画布上最多画几枚「别人的贴纸」。只做视觉,不影响计数 ——
- *  一部片被上百人贴过时,全画出来既没意义也会拖垮 300 张卡。 */
-export const CROWD_CAP = 16;
-
 /* ---------------- 位置与角度 ---------------- */
 
 /** 字符串 → 稳定哈希(角度 / 落点 / 演示数据都用它推导,保证同一份输入每次结果一样) */
@@ -99,34 +95,22 @@ export function spotOf(id: string): { posX: number; posY: number } {
 }
 
 /** 把「别人的贴纸」变成画布上能画出来的点:位置由 `(filmKey, index)` **确定性**推导,
- *  颜色按这份计数的**真实红黑比例**分配。它们**只读**(渲染时挂 `rb-dot--crowd`、不可拖)。 */
-export function crowdStickers(
-  filmKey: string,
-  counts: StickerCounts | undefined,
-  cap: number = CROWD_CAP,
-): Sticker[] {
+ *  红票几枚就画几枚红、黑票几枚就画几枚黑。它们**只读**(不可拖)。
+ *
+ *  ⚠ 早先这里是 `min(total, 16)` **采样** + 按比例取整 + 「+N」角标 —— 那是为了让「16 枚」不被
+ *    读成真实票数。2026-09-22 用户要求「一部片看全部贴纸」后**取消采样**(PLAN-20260922145815):
+ *    采样除了让画布上的密度失真,还会**把少数派颜色四舍五入抹掉**(1 红 / 100 黑 → 一枚红点都没有,
+ *    而卡片 chip 明明写着「红 1」)。点数变多的代价交给**渲染层**承担:
+ *    视口外的卡不画、视口内的卡用 canvas 画(见 `components/StickerCanvas.tsx`)。 */
+export function crowdStickers(filmKey: string, counts: StickerCounts | undefined): Sticker[] {
   if (!counts || counts.total <= 0) return [];
-  const shown = Math.min(counts.total, cap);
-  let reds = Math.round((counts.red / counts.total) * shown);
-  // ⚠ 四舍五入会把**少数派**整个抹掉:1 红 / 100 黑 → round(0.0099 × 16) = 0,
-  //   画布上一个红点都没有,而卡片 chip 明明写着「红 1」,两边自相矛盾(2026-09-22 修)。
-  //   两色都有票时各留至少 1 枚;`shown < 2` 时留不出两枚,只能保持四舍五入的结果。
-  if (shown >= 2 && counts.red > 0 && counts.black > 0) {
-    reds = Math.min(shown - 1, Math.max(1, reds));
-  }
+  const reds = Math.min(Math.max(0, counts.red), counts.total);
   const out: Sticker[] = [];
-  for (let i = 0; i < shown; i++) {
+  for (let i = 0; i < counts.total; i++) {
     const id = `${filmKey}#crowd-${i}`;
     out.push({ id, type: i < reds ? "red" : "black", ...spotOf(id) });
   }
   return out;
-}
-
-/** 画布**画不下**的票数(`total - cap`)。
- *  ⚠ 有它「16 枚」才不会被读成真实票数:一部片被 100 人贴过时画布只画 16 枚,
- *   多出来的 84 靠一枚「+84」角标说清楚(2026-09-22 用户:「最多只显示 16 枚吗」)。 */
-export function crowdOverflow(counts: StickerCounts | undefined, cap: number = CROWD_CAP): number {
-  return Math.max(0, (counts?.total ?? 0) - cap);
 }
 
 /** 生成一枚新贴纸。**不给 `spot` 时落点随机**(点一下按钮就走这条,允许重叠、不避让);
