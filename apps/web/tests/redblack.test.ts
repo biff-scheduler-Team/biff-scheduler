@@ -15,9 +15,7 @@ import {
   boardFilms,
   clampSpot,
   countsOf,
-  CROWD_CAP,
   crowdOf,
-  crowdOverflow,
   crowdSignature,
   crowdStickers,
   loadStickers,
@@ -250,34 +248,42 @@ describe("对接服务端票数", () => {
   });
 });
 
-// 画布上「别人的贴纸」怎么画(2026-09-22,PLAN-20260922142903)。
+// 画布上「别人的贴纸」怎么画(2026-09-22,PLAN-20260922142903 → PLAN-20260922145815)。
 // 为什么单测它:画布画的是**别人的票数**,画错只会表现为「数字和画面看着不一样」,
 // 没有异常、没有报错 —— 只能靠断言守住:
-// ① 四舍五入把**少数派**抹掉 → 卡片写着「红 1」而画布上没有一个红点;
-// ② 画不下的票数不交代 → 用户把 `CROWD_CAP` 当成真实票数。
-describe("别人的贴纸:红黑比例与溢出", () => {
-  it("少数派不会被四舍五入抹掉(1 红 / 100 黑)", () => {
+// ① 曾经的「按比例取整」会把**少数派**抹掉 → 卡片写着「红 1」而画布上一个红点都没有;
+// ② 曾经的每卡 16 枚上限 → 画布密度与真实票数脱钩(用户把 16 读成真实票数)。
+// 现在口径是**票数几枚就画几枚**,所以断言写成「画出来的红黑构成与计数逐一对上」。
+describe("别人的贴纸:票数几枚就画几枚", () => {
+  it("全量画:3 红 / 2 黑 → 恰恰 3 红 2 黑", () => {
+    const dots = crowdStickers("a", { total: 5, red: 3, black: 2 });
+    expect(dots).toHaveLength(5);
+    expect(dots.filter((d) => d.type === "red")).toHaveLength(3);
+    expect(dots.filter((d) => d.type === "black")).toHaveLength(2);
+  });
+
+  it("少数派不会被抹掉:1 红 / 100 黑 也画得出那一枚红", () => {
     const dots = crowdStickers("a", { total: 101, red: 1, black: 100 });
-    expect(dots).toHaveLength(CROWD_CAP);
+    expect(dots).toHaveLength(101);
     expect(dots.filter((d) => d.type === "red")).toHaveLength(1);
-    expect(dots.filter((d) => d.type === "black")).toHaveLength(CROWD_CAP - 1);
+    expect(dots.filter((d) => d.type === "black")).toHaveLength(100);
   });
 
   it("反向同理(100 红 / 1 黑)", () => {
     const dots = crowdStickers("a", { total: 101, red: 100, black: 1 });
     expect(dots.filter((d) => d.type === "black")).toHaveLength(1);
-    expect(dots.filter((d) => d.type === "red")).toHaveLength(CROWD_CAP - 1);
+    expect(dots.filter((d) => d.type === "red")).toHaveLength(100);
   });
 
   it("纯色不夹取:全黑时不能凭空多出一枚红", () => {
     const dots = crowdStickers("a", { total: 40, red: 0, black: 40 });
     expect(dots.filter((d) => d.type === "red")).toHaveLength(0);
-    expect(dots).toHaveLength(CROWD_CAP);
+    expect(dots).toHaveLength(40);
   });
 
-  it("票数没过上限时一枚不落地全画(3 红 / 2 黑 → 3 红 2 黑)", () => {
-    const dots = crowdStickers("a", { total: 5, red: 3, black: 2 });
-    expect(dots).toHaveLength(5);
+  it("计数是脏数据时也不越界:red 比 total 还大 → 全部按红画,但不多画", () => {
+    const dots = crowdStickers("a", { total: 3, red: 99, black: 0 });
+    expect(dots).toHaveLength(3);
     expect(dots.filter((d) => d.type === "red")).toHaveLength(3);
   });
 
@@ -289,13 +295,6 @@ describe("别人的贴纸:红黑比例与溢出", () => {
   it("位置稳定:同一份计数两次调用落点完全一致(否则重排时点会乱跳)", () => {
     const input = { total: 9, red: 5, black: 4 };
     expect(crowdStickers("a", input)).toEqual(crowdStickers("a", input));
-  });
-
-  it("crowdOverflow:只报画不下的部分,画得下就是 0", () => {
-    expect(crowdOverflow({ total: 100, red: 60, black: 40 })).toBe(100 - CROWD_CAP);
-    expect(crowdOverflow({ total: CROWD_CAP, red: 8, black: 8 })).toBe(0);
-    expect(crowdOverflow({ total: 3, red: 1, black: 2 })).toBe(0);
-    expect(crowdOverflow(undefined)).toBe(0);
   });
 });
 

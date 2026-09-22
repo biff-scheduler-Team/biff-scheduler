@@ -204,6 +204,17 @@
   background: var(--surface);
   box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
+  /* 视口隔离(2026-09-22,PLAN-20260922145815):榜单有近 300 张卡,而人一次只看得到 4~6 张。
+   * `contain: content`(= layout paint style)把这张卡的重绘**圈在自己身上** ——
+   * 卡内贴纸变化不会波及全页;`content-visibility: auto` 让浏览器**整个跳过屏外卡**的
+   * 布局与绘制(比只加 contain 省得多)。
+   * ⚠ `contain-intrinsic-size` 的 `auto` 关键字不能省:卡片高度不齐(片名行数 / 有无英文名),
+   *   写死一个估值会让快速滚动时滚动条一直抖;带 `auto` 时浏览器会记住上次渲染出的真实高度。
+   * ⚠ 这里**不挂 `will-change`**:给 300 张卡各建一个合成层要上百 MB 显存,手机直接崩;
+   *   「不波及全页重绘」由 `contain` 达成,`will-change` 只买到显存暴涨。 */
+  contain: content;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 206px;
 }
 
 .rb-card[data-rb-hover] {
@@ -396,21 +407,6 @@
   color: var(--muted);
   font-size: 12px;
   text-align: center;
-}
-
-/* 画布装不下的票数(`> CROWD_CAP`):画布只画 16 枚,这个角标记着多出来多少 ——
- * 没有它,用户会把 16 当成真实票数(2026-09-22 用户:「现在最多只显示 16 枚吗」)。 */
-.rb-overflow {
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
-  padding: 1px 7px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- 贴纸本体:纸片 ----------
