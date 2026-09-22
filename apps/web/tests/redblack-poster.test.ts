@@ -13,6 +13,7 @@ import {
   SITE,
   TOP_N,
   type RbPosterInput,
+  type RbPosterSection,
 } from "../src/redblack-poster";
 import type { CrowdCounts, StickerBoard } from "../src/redblack";
 import { show } from "./helpers";
@@ -250,6 +251,49 @@ describe("rbPosterRow:每行摊出来的贴纸", () => {
     expect(row.mineIndex).toBe(0);
     expect(row.red).toBe(0);
     expect(row.black).toBe(0);
+  });
+});
+
+describe("buildRbPosterModel:分享哪些节由用户勾选", () => {
+  const films = [film("a", "甲"), film("b", "乙"), film("c", "丙")];
+  const c = crowd({ a: [9, 1], b: [1, 9], c: [5, 5] });
+  const board = boardOf({ a: "red", b: "black" });
+  const sections = (...ids: RbPosterSection[]) => new Set<RbPosterSection>(ids);
+
+  it("只勾红榜 → 图里只有红榜这一节", () => {
+    const model = buildRbPosterModel(input({ films, crowd: c, board, sections: sections("red") }));
+    expect(model.boards.map((b) => b.mode)).toEqual(["red"]);
+    expect(model.myRows).toEqual([]);
+    // 渲染顺序**按固定档位序**,不随勾选顺序变
+    const both = buildRbPosterModel(input({ films, crowd: c, board, sections: sections("black", "total") }));
+    expect(both.boards.map((b) => b.mode)).toEqual(["total", "black"]);
+  });
+
+  it("不勾「我贴过的」→ 那一节不出现,但标题里的条数照旧(不变成 0 部)", () => {
+    const model = buildRbPosterModel(input({ films, crowd: c, board, sections: sections("total") }));
+    expect(model.myRows).toEqual([]);
+    expect(model.myCount).toBe(2);
+    expect(model.myTitle).toBe("我贴过的 2 部");
+  });
+
+  it("一节都不勾 → 只剩头部与署名,而且空态文案说的是「还没选」不是「榜上没贴纸」", () => {
+    const model = buildRbPosterModel(input({ films, crowd: c, board, sections: sections() }));
+    expect(model.boards).toEqual([]);
+    expect(model.myRows).toEqual([]);
+    expect(model.emptyText).toContain("还没选");
+    // 有票却一节都没勾时,更不能说成「榜上还没有贴纸」
+    expect(model.emptyText).not.toContain("还没有贴纸");
+  });
+
+  it("不传 sections = 全选(默认给全,「少给」才需要动作)", () => {
+    const model = buildRbPosterModel(input({ films, crowd: c, board }));
+    expect(model.boards.map((b) => b.mode)).toEqual(["total", "red", "black"]);
+    expect(model.myRows).toHaveLength(2);
+  });
+
+  it("真的一枚票都没有时,空态文案才是「榜上还没有贴纸」", () => {
+    const model = buildRbPosterModel(input({ films }));
+    expect(model.emptyText).toContain("还没有贴纸");
   });
 });
 

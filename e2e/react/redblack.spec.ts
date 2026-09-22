@@ -462,6 +462,9 @@ test("生成分享图:三榜各 TOP10、我贴过的全部、底部署名", asyn
   }
   // 我贴过的片名要真的画上去(而不是只有节标题)
   expect(painted).toContain(topTitle);
+  // 署名**头部与底部各一处**(2026-09-22 用户:「gaaiyeoi 和lcandy 的在头部也加一下就行」)——
+  // 长图常被截一半转发,底部那行会跟着丢掉。出现 2 次 → split 出 3 段
+  expect(painted.split("by @gaaiyeoi 和 by @lcandy2")).toHaveLength(3);
   // 没票的片不该进榜:这一部服务端一枚票都没有
   const silent = keyOf("011");
   const silentTitle = (await page
@@ -473,6 +476,87 @@ test("生成分享图:三榜各 TOP10、我贴过的全部、底部署名", asyn
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(opener).toBeFocused();
+});
+
+// 分享哪些节由用户勾选(2026-09-22):榜单是「全站看法」,不是每个人都愿意三榜全发出去。
+test("生成分享图:可以只分享部分榜单,一节都不勾时下载停用", async ({ page }) => {
+  await trackPaintedTexts(page);
+  const top = keyOf("008");
+  await stubVotes(page, { [top]: { red: 40, black: 0 }, [keyOf("003")]: { red: 0, black: 30 } });
+  await ready(page, "/redblack");
+
+  // 先贴一枚:否则「我贴过的」那一项没有内容、是被置灰的
+  const card = page.locator(`.rb-card[data-film-key="${top}"]`);
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await card.getByRole("button", { name: /贴红贴纸/ }).click();
+
+  await page.getByRole("button", { name: "生成分享图" }).click();
+  const dialog = page.getByRole("dialog");
+  const download = dialog.getByRole("button", { name: "下载 PNG 图片" });
+  await expect(download).toBeVisible();
+  await expect(dialog.getByRole("checkbox")).toHaveCount(4); // 三榜 + 我贴过的
+
+  // 对照组:默认全选,第一张图里三榜都在
+  // ⚠ 断言用的是各节的**口径说明**(「按黑贴纸数」这种)而不是节名 —— 图里那个大标题
+  //   「**红黑榜**」本身就含「黑榜」三个字,拿节名去判「有没有」会永远为真
+  const first = await paintedTexts(page);
+  expect(first).toContain("按黑贴纸数");
+
+  // 尺寸提示(2026-09-22 用户:「提示一下选择不同的分享模块后图片分别的大小是多少」):
+  // 勾一节图就矮一截,所以每换一次选择都读一次这个数字,断言它**真的跟着变**
+  const sizeOf = async () => {
+    const text = await dialog.locator(".rb-share-size").innerText();
+    const matched = text.match(/(\d+)\s*×\s*(\d+)\s*px/);
+    return { width: Number(matched![1]), height: Number(matched![2]) };
+  };
+  const full = await sizeOf();
+  // ⚠ 只断宽度是 1080 / 2160 两种之一:倍数由 `posterScale` 按画布**面积**决定
+  //   (这份 stub 只有 2 部有票 → 图短 → 走 2×),别把某个具体倍数写死
+  expect([1080, 2160]).toContain(full.width);
+
+  // ⚠ RAC 的复选框:真正的 `<input>` 是**视觉隐藏**的,直接 `uncheck()` 会被上层样式 div
+  //   挡掉(`intercepts pointer events`)—— 按用户的做法点**标签文字**(与 `schedule-toolbar` 同手法),
+  //   状态照旧断言在 `checkbox` 角色上。
+  const check = (name: string | RegExp) =>
+    dialog.getByRole("checkbox", { name, exact: typeof name === "string" });
+  const toggle = async (label: string | RegExp) => {
+    await dialog.getByText(label, { exact: typeof label === "string" }).click();
+    await expect(check(label)).not.toBeChecked();
+  };
+
+  // 勾掉「黑榜」→ 重画。⚠ `paintedTexts` 跨多次出图**累加**:要判断「这一张图上有什么」,
+  //   得前后各读一次、只比新增的那一段,否则永远能看到上一张的残留
+  await toggle("黑榜");
+  await expect
+    .poll(async () => (await paintedTexts(page)).slice(first.length).includes("按红贴纸数"))
+    .toBe(true);
+  expect((await sizeOf()).height).toBeLessThan(full.height); // 少一节 → 图矮一截
+  const second = (await paintedTexts(page)).slice(first.length);
+  expect(second).not.toContain("按黑贴纸数");
+  expect(second).toContain("按红 + 黑贴纸数"); // 总数榜照旧
+  expect(second).toContain("按红贴纸数");
+
+  // 再勾掉「我贴过的」→ 那一节消失,两榜还在
+  await toggle(/^我贴过的/);
+  const offset = first.length + second.length;
+  await expect
+    .poll(async () => (await paintedTexts(page)).slice(offset).includes("按红贴纸数"))
+    .toBe(true);
+  const withoutMine = await sizeOf();
+  expect(withoutMine.height).toBeLessThan(full.height); // 「我贴过的」那一节也占高度
+  const third = (await paintedTexts(page)).slice(offset);
+  expect(third).not.toContain("左侧圆点是我贴的那一色"); // 「我贴过的」的说明不再画
+  expect(third).toContain("按红 + 黑贴纸数");
+
+  // 一节都不勾 → 图里只剩头部与署名(空态文案说的是「还没选」,不是「榜上没贴纸」),
+  // 下载 / 复制停用,免得把一张空图发出去
+  await toggle("总数榜");
+  await toggle("红榜");
+  await expect
+    .poll(async () => (await paintedTexts(page)).includes("还没选要分享的内容"))
+    .toBe(true);
+  await expect(download).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "复制图片" })).toBeDisabled();
 });
 
 test("「只看我贴过」:只列我贴过的片,参数进 URL,再点一次恢复全量", async ({ page }) => {
