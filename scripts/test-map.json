@@ -226,6 +226,7 @@
         "apps/web/src/sticker-canvas-guard.ts",
         "apps/web/src/sticker-sprite.ts",
         "apps/web/src/components/StickerCanvas.tsx",
+        "apps/web/src/components/StickerZoomDialog.tsx",
         "apps/web/src/film-votes.ts",
         "apps/api/src/film-vote-stats.ts",
         "apps/api/src/film-vote-store.ts",
