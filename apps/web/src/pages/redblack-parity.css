@@ -4,6 +4,15 @@
  * ⚠ 贴纸的坐标是**相对画布的百分比**(由 React 写成 inline left/top),CSS 只负责把自身
  *   居中到那个点(`translate(-50%, -50%)`)并套上歪斜角(`--rb-tilt`,由 `redblack.ts::tiltOf` 推导)。 */
 
+/* 贴纸本义色(红 / 黑)—— `.rb-src`(暂存区) / `.rb-dot`(画布) / `.rb-ghost`(拖拽浮标)
+ * 三处共用这一对,改色只改这里(AGENTS.md §5:颜色 token 只允许一处实现)。
+ * ⚠ **必须挂 `:root` 而不是 `.rb-page`**:ghost 是 `document.body` 下的浮动元素
+ *   (`RedBlackPage.tsx` 里 `appendChild`),定义在 `.rb-page` 上它继承不到,贴纸会变透明。 */
+:root {
+  --rb-red: #cf3b52;
+  --rb-black: #2f2f36;
+}
+
 .rb-page {
   width: 100%;
   min-width: 0;
@@ -47,33 +56,47 @@
   opacity: 0.9;
 }
 
+/* 「全站为主、我为辅」(用户 2026-09-22):
+ * 榜是大家的 → 大字给**全站总票数**;我自己那份进度收成下面一行小字 ——
+ * 它只回答「我还能不能贴」,不是榜单的主角(改版前这三格全是我的,全站数字一个都没露)。 */
 .rb-totals {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+  text-align: right;
+}
+
+.rb-global {
   display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
 }
 
-.rb-total {
-  display: grid;
-  gap: 2px;
-  min-width: 82px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgb(255 255 255 / 14%);
-  text-align: center;
-}
-
-.rb-total strong {
-  font-size: 22px;
+.rb-global-num {
+  font-size: 34px;
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
-.rb-total small {
-  font-size: 11px;
+.rb-global-label {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.rb-global-split {
+  color: #fff;
+  font-size: 12px;
+  opacity: 0.88;
+  font-variant-numeric: tabular-nums;
+}
+
+.rb-mine {
+  margin: 0;
+  font-size: 12px;
   opacity: 0.85;
-}
-
-.rb-total--hot {
-  background: rgb(255 255 255 / 30%);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- 搜索 / 排序 ---------- */
@@ -318,12 +341,12 @@
 }
 
 .rb-src--red {
-  background-color: #cf3b52;
+  background-color: var(--rb-red);
   transform: rotate(-4deg);
 }
 
 .rb-src--black {
-  background-color: #2f2f36;
+  background-color: var(--rb-black);
   transform: rotate(4deg);
 }
 
@@ -375,6 +398,21 @@
   text-align: center;
 }
 
+/* 画布装不下的票数(`> CROWD_CAP`):画布只画 16 枚,这个角标记着多出来多少 ——
+ * 没有它,用户会把 16 当成真实票数(2026-09-22 用户:「现在最多只显示 16 枚吗」)。 */
+.rb-overflow {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- 贴纸本体:纸片 ----------
  * ① 边缘不是正圆 —— 手工剪/撕下来的圆片总是不规则;
  * ② 每枚歪一个固定角度(`--rb-tilt`,±15°,由 id 推导)—— 这是「手贴上去的」最直接的信号;
@@ -400,30 +438,26 @@
 }
 
 .rb-dot--red {
-  background-color: #cf3b52;
+  background-color: var(--rb-red);
   background-image:
     repeating-linear-gradient(115deg, rgb(255 255 255 / 5%) 0 1px, transparent 1px 3px),
     radial-gradient(circle at 34% 28%, rgb(255 255 255 / 14%), transparent 62%);
 }
 
 .rb-dot--black {
-  background-color: #2f2f36;
+  background-color: var(--rb-black);
   background-image:
     repeating-linear-gradient(115deg, rgb(255 255 255 / 5%) 0 1px, transparent 1px 3px),
     radial-gradient(circle at 34% 28%, rgb(255 255 255 / 10%), transparent 62%);
 }
 
-/* 「别人的贴纸」:同一张画布上的只读小点 —— 比我贴的那枚小一圈、淡一档,
- * 一眼能分出「我贴的(可拖可点)」和「大家贴的(不能动)」。
- * ⚠ `pointer-events: none` 是必须的:不然它们会挡住拖拽落点的命中测试,
- *   用户往这张卡上拖的时候会拖不进来。 */
+/* 「别人的贴纸」:与我贴的那枚**同尺寸、同实心度** —— 用户 2026-09-22 定:
+ * 「完全拉平,只靠能不能拖区分,我贴的只用于收回重贴和移动」。
+ * ⚠ `pointer-events: none` 是**唯一**的差异,且是必须的:不然它们会挡住拖拽落点的
+ *   命中测试,用户往这张卡上拖的时候会拖不进来 —— 而这恰好就是「能不能拖」本身。 */
 .rb-dot--crowd {
-  width: 18px;
-  height: 18px;
-  opacity: 0.62;
   cursor: default;
   pointer-events: none;
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 12%);
 }
 
 /* ---------- 拖拽中的浮动贴纸 ---------- */
@@ -445,11 +479,11 @@
 }
 
 .rb-ghost--red {
-  background-color: #cf3b52;
+  background-color: var(--rb-red);
 }
 
 .rb-ghost--black {
-  background-color: #2f2f36;
+  background-color: var(--rb-black);
 }
 
 /* 窄屏:信息列收窄,画布还是占剩下的全部 */

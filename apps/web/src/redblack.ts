@@ -107,13 +107,26 @@ export function crowdStickers(
 ): Sticker[] {
   if (!counts || counts.total <= 0) return [];
   const shown = Math.min(counts.total, cap);
-  const reds = Math.round((counts.red / counts.total) * shown);
+  let reds = Math.round((counts.red / counts.total) * shown);
+  // ⚠ 四舍五入会把**少数派**整个抹掉:1 红 / 100 黑 → round(0.0099 × 16) = 0,
+  //   画布上一个红点都没有,而卡片 chip 明明写着「红 1」,两边自相矛盾(2026-09-22 修)。
+  //   两色都有票时各留至少 1 枚;`shown < 2` 时留不出两枚,只能保持四舍五入的结果。
+  if (shown >= 2 && counts.red > 0 && counts.black > 0) {
+    reds = Math.min(shown - 1, Math.max(1, reds));
+  }
   const out: Sticker[] = [];
   for (let i = 0; i < shown; i++) {
     const id = `${filmKey}#crowd-${i}`;
     out.push({ id, type: i < reds ? "red" : "black", ...spotOf(id) });
   }
   return out;
+}
+
+/** 画布**画不下**的票数(`total - cap`)。
+ *  ⚠ 有它「16 枚」才不会被读成真实票数:一部片被 100 人贴过时画布只画 16 枚,
+ *   多出来的 84 靠一枚「+84」角标说清楚(2026-09-22 用户:「最多只显示 16 枚吗」)。 */
+export function crowdOverflow(counts: StickerCounts | undefined, cap: number = CROWD_CAP): number {
+  return Math.max(0, (counts?.total ?? 0) - cap);
 }
 
 /** 生成一枚新贴纸。**不给 `spot` 时落点随机**(点一下按钮就走这条,允许重叠、不避让);
@@ -205,6 +218,18 @@ export function crowdOf(
     out.set(key, { total: red + black, red, black });
   }
   return out;
+}
+
+/** 排序依据的**内容签名** —— 用来判断「票数是不是真的变了」(顺序冻结的提示判据)。
+ *  ⚠ 不能拿 `FilmVoteCounts` / `CrowdCounts` 的**对象引用**比:每次重拉票数都会得到新对象,
+ *   数字一模一样也会被当成「有新贴纸」,提示白亮一次
+ *   (用户 2026-09-22:只在**数量变化**时才需要提示「有新贴纸 · 重新排序」)。
+ *  只串排序真正看的那三个数,并按 key 排一次 —— 服务端返回顺序变了也不算变。 */
+export function crowdSignature(counts: CrowdCounts): string {
+  return [...counts]
+    .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    .map(([key, c]) => `${key}:${c.total},${c.red},${c.black}`)
+    .join("|");
 }
 
 /** 我自己贴出来的那几枚 → 上报载荷。一人一部一票,所以每部只取那一枚的颜色。 */
