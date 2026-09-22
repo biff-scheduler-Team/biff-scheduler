@@ -81,12 +81,24 @@
   gap: 18px;
 }
 
-/* 表格：等宽数字对齐，右列不抖。数字列用**百分比宽度**，宽屏下四列数字均匀铺开 */
+/* 表格：等宽数字对齐，右列不抖。数字列用**百分比宽度**，宽屏下四列数字均匀铺开。
+ * ⚠ `table-layout: fixed` + 下面各格 `nowrap` 是**行高恒为 33px** 的前提：
+ *   `max-height: 354px` 推的是「表头 23.5 + 10 行 × 33」，只要有一格换行、行高就变成 51px，
+ *   手机上（首列只剩 ~44% 宽，长片名必定折行）实测只看得见 6 行 —— 「一次看得见 10 行」当场失效。
+ *   固定布局下列宽只由 % 决定，长内容一律省略号（完整片名仍在 DOM 里、并挂在 `title` 上）。 */
 .ra-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
+}
+
+.ra-table th,
+.ra-table td {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* 表格标题 + 视角开关：刻意放在滚动区**外面** ——
