@@ -7,7 +7,6 @@ import { LibraryPage } from "./pages/LibraryPage";
 import { FeedbackPage } from "./pages/FeedbackPage";
 import { AgendaPage } from "./pages/AgendaPage";
 import { RedBlackPage } from "./pages/RedBlackPage";
-import { RushPage } from "./pages/RushPage";
 import { EatsPage } from "./pages/EatsPage";
 import { FilmDialog } from "./pages/FilmDialog";
 import { installUpdateWatch } from "./pwa-update";
@@ -41,9 +40,8 @@ const router = createBrowserRouter([
       },
       { path: "agenda", element: <AgendaPage />, children: filmRoute() },
       { path: "redblack", element: <RedBlackPage />, children: filmRoute() },
-      { path: "rush", element: <RushPage />, children: filmRoute() },
       // 数据分析(2026-09-20,PLAN-20260920161837;同日由「抢票分析」更名见 PLAN-20260920193032):
-      // 与 /rush 并列的第二张票务视图。
+      // 票务主题的「预判 / 复盘」视图(原先与 /rush 并列,`/rush` 已于 2026-09-22 下线)。
       //
       // ⚠ **本页刻意走路由级动态 import**(仓库里唯一一处):它带了 ECharts(原为 recharts),
       //   实测 gzip 193.9 KB —— 比整个主包(82.5 KB)还大一倍多。

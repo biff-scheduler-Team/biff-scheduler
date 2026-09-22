@@ -1,6 +1,7 @@
 // 「吃喝」页(2026-09-16,`PLAN-20260916232230` 修订 1)。
 // 断言全部走 DOM 计数 / 文本 / 属性,不看截图。
-// 覆盖:① 导航位置(吃喝在最后,与选片主线无关);② 清单渲染 + 三条地图链接的模板;
+// 覆盖:① 导航位置(吃喝紧跟在红黑榜之后,与选片主线无关);
+//      ⚠ 2026-09-22 用户重排导航后末尾是「建议」,吃喝不再是最后一项(`PLAN-20260922102751`);② 清单渲染 + 三条地图链接的模板;
 //      ③ 搜索与分区筛选;④ 用户自己添加的店落本地键并出现在列表;
 //      ⑤ 地图数据源没配密钥时(503)**静默降级** —— Naver 那条仍是搜索链接,页面不报错。
 //
@@ -14,14 +15,15 @@ import { ready, storage } from "./helpers";
 const lookupOff = (page: Page) =>
   page.route("**/api/eats/lookup**", (route) => route.fulfill({ status: 503, json: { error: "LOOKUP_DISABLED" } }));
 
-test("「吃喝」排在主导航最后 —— 它与选片 / 观影 / 复盘那条主线无关", async ({ page }) => {
+test("「吃喝」紧跟在「红黑榜」之后 —— 它与选片 / 观影 / 复盘那条主线无关", async ({ page }) => {
   await lookupOff(page);
   await ready(page, "/eats");
   const labels = (
     await page.getByRole("navigation", { name: "主要导航" }).getByRole("link").allTextContents()
   ).map((text) => text.trim());
-  expect(labels[labels.length - 1]).toBe("吃喝");
-  expect(labels.indexOf("吃喝")).toBeGreaterThan(labels.indexOf("红黑榜"));
+  // ⚠ 2026-09-22 用户重排后末尾是「建议」,吃喝不再是最后一项(`PLAN-20260922102751`);
+  //   锁定「紧邻红黑榜且在其后」这个相对关系即可。
+  expect(labels.indexOf("吃喝")).toBe(labels.indexOf("红黑榜") + 1);
   await expect(page.getByRole("heading", { name: "吃喝", exact: true })).toBeVisible();
 });
 

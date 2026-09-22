@@ -116,7 +116,7 @@
         "review-shared",
         "workflows",
         "parity-dialogs",
-        "rush",
+        "share-export",
         "settings-pni"
       ]
     },
@@ -189,15 +189,16 @@
       ]
     },
     {
-      "id": "rush",
-      "note": "抢票页（行程场次按开票批次分组的紧凑清单）/ 开票批次判据（分享文案批次分节共用）",
+      "id": "share-export",
+      "note": "分享文案 / 分享图片（导出弹层 → share.ts / poster.ts）；「顺位」「开票批次」两个扩展已于 2026-09-22 下线（PLAN-20260922102751），原 rush.spec.ts 迁为 share-export.spec.ts",
       "paths": [
-        "apps/web/src/pages/RushPage.tsx",
-        "apps/web/src/pages/rush.css",
-        "apps/web/src/batch.ts"
+        "apps/web/src/share.ts",
+        "apps/web/src/poster.ts",
+        "apps/web/src/components/PosterPreview.tsx"
       ],
       "specs": [
-        "rush"
+        "share-export",
+        "parity-dialogs"
       ]
     },
     {

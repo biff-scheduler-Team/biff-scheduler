@@ -1,16 +1,15 @@
-// 分享图片(行程图)模型单测(2026-09-11 新增;2026-09-16 加顺位 / 备选 / 开票批次)。
+// 分享图片(行程图)模型单测(2026-09-11 新增;2026-09-22 去掉顺位 / 备选 / 开票批次,
+// 见 PLAN-20260922102751)。
 // 只测 `poster.ts::buildPosterModel` / `posterHeight` —— **绘制层不测**(canvas 在 node 里没有);
 // 画布上的文字由 E2E 的 `__paintedTexts` 钩子断言(`e2e/react/parity-dialogs.spec.ts` 同款)。
 // 覆盖点:① 日期分节 + 概要计数;② 内部排序(乱序输入也按日期 / 时间排);
 //        ③ 跨午夜印「次日」不印 24+ 制;④ GV 三态;⑤ 备注行与行高;
 //        ⑥ 影院短名与「英文名 · 中文名」片名口径;⑦ 空输入 / 已下架场次;
-//        ⑧ 带顺位的 rank / 备选行;⑨ 带开票批次的分节与节头(与分享文案同一份 `ShareOptions`)。
+//        ⑧ 模型里不再有顺位 / 备选 / 批次字段(两个扩展已下线)。
 
 import { describe, expect, it } from "vitest";
-import { ticketBatchOf } from "../src/batch";
 import type { PickRow } from "../src/ics";
 import { buildPosterModel, posterHeight } from "../src/poster";
-import { type ShareOptions } from "../src/share";
 import type { Mapping } from "../src/types";
 import { catalog, show } from "./helpers";
 
@@ -19,15 +18,6 @@ const NO_MAP = new Map<string, Mapping>();
 /** 一条已选场次(默认无备注) */
 function row(code: string, patch: Partial<PickRow> = {}): PickRow {
   return { code, note: "", ...patch };
-}
-
-/** 顺位夹具(与 `share.test.ts` 同款):rank 表 + 组内其余场次 —— 口径与行程页一致(只有冲突组才有顺位) */
-function ranking(ranks: Record<string, number>, groups: string[][]): ShareOptions["ranking"] {
-  const mates = new Map<string, string[]>();
-  for (const group of groups) {
-    for (const code of group) mates.set(code, group.filter((c) => c !== code));
-  }
-  return { rankOf: new Map(Object.entries(ranks)), matesOf: (code) => mates.get(code) ?? [] };
 }
 
 describe("buildPosterModel:结构与概要", () => {
@@ -146,138 +136,14 @@ describe("posterHeight", () => {
     expect(posterHeight(twoDays)).toBeGreaterThan(posterHeight(sameDay));
   });
 
-  it("备选行会让行更高(总高与会画出来的行数必须同步,否则 canvas 会把内容裁掉)", () => {
-    const cat = catalog([show({ code: "001" }), show({ code: "002", start_time: "13:00", end_time: "14:40" })]);
-    const plain = buildPosterModel(cat, [row("001")], NO_MAP, () => true)!;
-    const ranked = buildPosterModel(cat, [row("001")], NO_MAP, () => true, {
-      ranking: ranking({ "001": 1, "002": 2 }, [["001", "002"]]),
-    })!;
-    expect(ranked.days[0].rows[0].alts).toHaveLength(1);
-    expect(posterHeight(ranked)).toBeGreaterThan(posterHeight(plain));
-  });
-});
-
-describe("buildPosterModel:顺位 / 备选 / 开票批次(与分享文案同一份 ShareOptions)", () => {
-  it("不勾选时:无顺位、无备选、单一无名节(与没有这两个开关的老图一致)", () => {
+  it("模型里不再有顺位 / 备选 / 批次字段(两个扩展已于 2026-09-22 下线)", () => {
     const cat = catalog([show({ code: "001" })]);
     const model = buildPosterModel(cat, [row("001")], NO_MAP, () => true)!;
-    expect(model.sections).toHaveLength(1);
-    expect(model.sections[0].heading).toBeNull();
-    expect(model.days[0].rows[0].rank).toBeUndefined();
-    expect(model.days[0].rows[0].alts).toEqual([]);
-  });
-
-  it("带顺位:场次带 rank,同冲突组的其余场次成为备选(CODE / 时间 / 片名 / 影院 / 顺位)", () => {
-    const cat = catalog([
-      show({ code: "001", title_en: "Alpha" }),
-      show({ code: "002", title_en: "Beta", start_time: "13:00", end_time: "14:40" }),
-    ]);
-    const model = buildPosterModel(cat, [row("001")], NO_MAP, () => true, {
-      ranking: ranking({ "001": 1, "002": 2 }, [["001", "002"]]),
-    })!;
+    // 单一按天结构:没有批次节(`sections`),行上也没有 rank / alts / altOf
+    expect(Object.hasOwn(model, "sections")).toBe(false);
     const r = model.days[0].rows[0];
-    expect(r.rank).toBe(1);
-    expect(r.alts).toEqual([
-      { code: "002", time: "13:00–14:40", title: "Beta", venue: "BCC 1", rank: 2 },
-    ]);
-  });
-
-  it("共同场次没有顺位(不兜底成「主选」),备选在排期里查不到时静默跳过", () => {
-    const cat = catalog([show({ code: "003" })]);
-    const model = buildPosterModel(cat, [row("003")], NO_MAP, () => true, {
-      ranking: { rankOf: new Map(), matesOf: () => ["999"] },
-    })!;
-    expect(model.days[0].rows[0].rank).toBeUndefined();
-    expect(model.days[0].rows[0].alts).toEqual([]);
-  });
-
-  it("带批次:按批次分节,节头文案来自 headOf;days 是各节的扁平派生(顺序一致)", () => {
-    const cat = catalog([
-      show({ code: "003", date: "2026-10-07", venue_id: "bt", venue_display: "BCC Roof" }),
-      show({ code: "004", date: "2026-10-08" }),
-    ]);
-    const model = buildPosterModel(cat, [row("003"), row("004")], NO_MAP, () => true, {
-      batching: {
-        batchOf: (s) => ticketBatchOf(s),
-        headOf: (batch) => `第 ${batch} 批 · ${batch === 1 ? "9/17" : "9/21"} 14:00 KST`,
-      },
-    })!;
-    expect(model.sections.map((s) => s.heading)).toEqual([
-      "第 1 批 · 9/17 14:00 KST",
-      "第 2 批 · 9/21 14:00 KST",
-    ]);
-    // days 是派生视图:拍平后与各节里的天一一对应(供不看批次的消费方用)
-    expect(model.days).toEqual(model.sections.flatMap((s) => s.days));
-    expect(model.days.map((d) => d.rows[0].code)).toEqual(["003", "004"]);
-  });
-
-  it("批次节头本身占高度(图上多一条,总高必须跟着涨)", () => {
-    const cat = catalog([
-      show({ code: "003", venue_id: "bt", venue_display: "BCC Roof" }),
-      show({ code: "004", date: "2026-10-09" }),
-    ]);
-    const flat = buildPosterModel(cat, [row("003"), row("004")], NO_MAP, () => true)!;
-    const batched = buildPosterModel(cat, [row("003"), row("004")], NO_MAP, () => true, {
-      batching: { batchOf: (s) => ticketBatchOf(s), headOf: (b) => `第 ${b} 批` },
-    })!;
-    expect(posterHeight(batched)).toBeGreaterThan(posterHeight(flat));
-  });
-
-  it("★ 备选与主选**不同批次**时抬成独立行(归自己的批次节,带 altOf;不计入「N 场」)", () => {
-    const cat = catalog([
-      show({
-        code: "003",
-        title_en: "Look Back",
-        date: "2026-10-07",
-        start_time: "20:00",
-        end_time: "21:40",
-        venue_id: "bt",
-        venue_display: "BCC Roof",
-      }),
-      show({ code: "004", title_en: "Alpha" }),
-    ]);
-    const model = buildPosterModel(cat, [row("004")], NO_MAP, () => true, {
-      ranking: ranking({ "004": 1, "003": 2 }, [["004", "003"]]),
-      batching: { batchOf: (s) => ticketBatchOf(s), headOf: (b) => `第 ${b} 批` },
-    })!;
-    expect(model.sections.map((s) => s.heading)).toEqual(["第 1 批", "第 2 批"]);
-    // 003(第 1 批)自己成行:画成 `↳ 004 的备选②` 那一行,不再挂在 004(第 2 批)下面
-    const first = model.sections[0].days[0];
-    expect(first.rows.map((r) => r.code)).toEqual(["003"]);
-    expect(first.rows[0].altOf).toBe("004");
-    expect(first.rows[0].rank).toBe(2);
-    expect(first.count).toBe(0); // 备选不是「要去看的那一场」⇒ 不计入当天场次
-    // 主选下面不再重复挂它,概要也只数主选
-    expect(model.sections[1].days[0].rows[0].alts).toEqual([]);
-    expect(model.count).toBe(1);
-  });
-
-  it("与主选**同批次**的备选仍是主选行下的 alts(不抬出来)", () => {
-    const cat = catalog([
-      show({
-        code: "003",
-        date: "2026-10-07",
-        start_time: "20:00",
-        end_time: "21:40",
-        venue_id: "bt",
-        venue_display: "BCC Roof",
-      }),
-      show({
-        code: "005",
-        date: "2026-10-07",
-        start_time: "22:00",
-        end_time: "23:40",
-        venue_id: "bt",
-        venue_display: "BCC Roof",
-      }),
-    ]);
-    const model = buildPosterModel(cat, [row("003")], NO_MAP, () => true, {
-      ranking: ranking({ "003": 1, "005": 2 }, [["003", "005"]]),
-      batching: { batchOf: (s) => ticketBatchOf(s), headOf: (b) => `第 ${b} 批` },
-    })!;
-    expect(model.sections).toHaveLength(1);
-    expect(model.sections[0].days[0].rows.map((r) => r.code)).toEqual(["003"]);
-    expect(model.sections[0].days[0].rows[0].altOf).toBeUndefined();
-    expect(model.sections[0].days[0].rows[0].alts.map((a) => a.code)).toEqual(["005"]);
+    expect(Object.hasOwn(r, "rank")).toBe(false);
+    expect(Object.hasOwn(r, "alts")).toBe(false);
+    expect(Object.hasOwn(r, "altOf")).toBe(false);
   });
 });
