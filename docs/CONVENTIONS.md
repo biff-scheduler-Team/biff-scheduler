@@ -551,7 +551,10 @@
     `redblack-poster.ts` 的小圆片。后两处共用 `sticker-shape.ts::blobPath()`,改形状要三处同步。
   · **红黑榜分享图的内容口径**:总数榜 / 红榜 / 黑榜**各取 `TOP_N = 10`**(逐字复用页面三档的
     `sortByCounts`,**该榜指标为 0 的片不进该榜**,某榜为空则整节不出现)+ **我贴过的全部(不限条数,
-    按全站总数降序)** + 底部署名(`biff.lcandy.co` / `by @gaaiyeoi 和 by @citron`,与页面页脚逐字一致)。
+    按全站总数降序)** + 底部署名(`biff.lcandy.co` / `by @gaaiyeoi 和 by @lcandy2`,与页面页脚逐字一致)。
+    ⚠ **署名一律写 GitHub 账号名**(`@gaaiyeoi` / `@lcandy2`,各自链到自己的主页),**不写提交者显示名**
+    (`citron` 只是 git 里的 `user.name`)—— 分享图上没有链接,印一个搜不到的显示名等于没署名
+    (2026-09-22 用户:「新版需要对齐旧版页脚」;旧版页脚写的就是 `@lcandy2`)。
     出图是**快照**(弹层打开那一刻的数据)。
   · ⚠ **复制 / 下载只有一个出口**:`components/share-image.ts::copyImageOrDownload()` ——
     先试复制图片、失败退化下载并如实提示(不提示的话用户只会以为「点了没反应」)。

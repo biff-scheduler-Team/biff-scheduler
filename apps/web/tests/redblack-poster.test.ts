@@ -182,7 +182,9 @@ describe("buildRbPosterModel:头部与署名", () => {
     const model = buildRbPosterModel(input());
     expect(model.credit.site).toBe(SITE);
     expect(model.credit.by).toBe(CREDIT_BY);
-    expect(model.credit.by).toBe("by @gaaiyeoi 和 by @citron");
+    // ⚠ 用 GitHub **账号名**(`@lcandy2`),不是提交者显示名 `@citron` —— 图片上没有链接,
+    //   印显示名没人搜得到(2026-09-22 用户:「新版需要对齐旧版页脚」)
+    expect(model.credit.by).toBe("by @gaaiyeoi 和 by @lcandy2");
   });
 });
 

@@ -332,13 +332,17 @@ function Shell() {
         <span>BIFF {cat.schedule.festival.year}，釜山国际电影节</span>
         <span>数据保存在当前浏览器</span>
         <span className="app-footer-credits">
+          {/* ⚠ 显示名用 **GitHub 账号名**(2026-09-22 用户:「新版需要对齐旧版页脚」)——
+              旧版页脚写的是 `@lcandy2`,而 `@citron` 只是他 git 里的提交者显示名,
+              图片 / 页面里印出去别人在 GitHub 上搜不到。两个 handle 都是各自的账号名,
+              链接与文字一一对应,别再改回显示名。 */}
           by{" "}
           <a href="https://github.com/gaaiyeoi" target="_blank" rel="noopener noreferrer">
             @gaaiyeoi
           </a>{" "}
           和 by{" "}
           <a href="https://github.com/lcandy2" target="_blank" rel="noopener noreferrer">
-            @citron
+            @lcandy2
           </a>
         </span>
       </footer>
