@@ -456,7 +456,7 @@ test("生成分享图:三榜各 TOP10、我贴过的全部、底部署名", asyn
     "按黑贴纸数",
     "我贴过的 1 部",
     "biff.lcandy.co",
-    "by @gaaiyeoi 和 by @citron",
+    "by @gaaiyeoi 和 by @lcandy2",
   ]) {
     expect(painted).toContain(needle);
   }

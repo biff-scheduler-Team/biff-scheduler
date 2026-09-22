@@ -44,8 +44,10 @@ export const TOP_N = 10;
 
 /** 网站署名 —— 与页面页脚同源(`App.tsx` 的页脚也用这个域名)。 */
 export const SITE = "biff.lcandy.co";
-/** 作者署名 —— 与页面页脚**逐字一致**(`App.tsx`:「by @gaaiyeoi 和 by @citron」)。 */
-export const CREDIT_BY = "by @gaaiyeoi 和 by @citron";
+/** 作者署名 —— 与页面页脚**逐字一致**(`App.tsx`:「by @gaaiyeoi 和 by @lcandy2」)。
+ *  ⚠ 两个 handle 都是**GitHub 账号名**(不是提交者显示名 `citron`):图片上没有链接,
+ *    印一个搜不到的显示名等于没署名。改这里必须同步 `App.tsx` 的页脚。 */
+export const CREDIT_BY = "by @gaaiyeoi 和 by @lcandy2";
 
 export interface RbPosterRow {
   key: string;
