@@ -4,7 +4,7 @@
 
 /* ---------- 日程表视图(2026-09-21,`PLAN-20260921223658`) ----------
    画布本身与排片表共用 `components/ScheduleGantt.tsx`(连同 `.vertical-schedule` 那套样式),
-   这里只补这一页特有的四块:页头里的概览 tag、一条工具栏(含日期条)、两栏本体、右侧栏。
+   这里只补这一页特有的三块:页头里的概览 tag、一条工具栏(含日期条)、画布容器。
 
    ---------- 首屏压缩的总账(2026-09-22,`PLAN-20260922105228`) ----------
    改前 页头 82 + 概览 36 + 日期条 112 + 工具栏 66 ≈ **296px**(画布起点 y=295);
@@ -103,98 +103,25 @@
   gap: 8px;
 }
 
-/* ---------- 两栏:左画布 / 右侧栏(2026-09-22,`PLAN-20260922105228`) ---------- */
-.agenda-columns {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 16px;
-  align-items: start;
-  padding: 0 20px 4px;
-}
-/* 折叠时只改列模板一处(320 → 40):不留 flex 那种残宽,也不出现"半列空白" */
-.agenda-columns:has(.agenda-side[data-folded]) {
-  grid-template-columns: minmax(0, 1fr) 40px;
-}
-.agenda-column-main {
-  min-width: 0;
-}
-.agenda-side {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
-  /* 侧栏比画布长时不撑页面:自己滚。⚠ 上限跟着视口走,别写死像素 */
-  max-height: calc(100dvh - 260px);
-  overflow-y: auto;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-card);
-  background: var(--surface);
-}
-.agenda-side-toggle {
-  align-self: flex-end;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-chip);
-  background: var(--raised);
-  color: var(--muted-strong);
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-}
-.agenda-side-toggle:hover {
-  border-color: var(--muted);
-  color: var(--text);
-}
-.agenda-side-ranks,
-.agenda-side-detail {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-}
-.agenda-side-ranks > h2,
-.agenda-side-detail > h2,
-.agenda-side-ranks > p,
-.agenda-side-detail > p {
-  margin: 0;
-  font-size: 13px;
-}
+/* ---------- 画布容器(2026-09-21 立;2026-09-22 两度改口径) ----------
+   ⚠ 两栏(`.agenda-columns`)与右侧栏(`.agenda-side*`)的规则已整块删除
+   (2026-09-22,`PLAN-20260922123138`):用户口径是「我的行程**不需要显示**冲突组顺位这个组件 直接铺满」。
+   横向内距随之从 `.agenda-columns` **还回**这里 —— 这正是两栏版之前的口径(`60c8256^`)，
+   只是当年它下面还压着一条 `.agenda-gantt-ranks`(顺位卡,上一轮搬进侧栏时已无引用),一并清掉。 */
 .agenda-gantt {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  padding: 0 20px 4px;
 }
 .agenda-gantt-empty {
   margin: 0;
-}
-/* 顺位卡跟着画布当天走:画布上方画连线,这里排抢票顺序(顺位只在本页拖拽设置) */
-.agenda-gantt-ranks {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.agenda-gantt-ranks > h2,
-.agenda-gantt-ranks > p {
-  margin: 0;
-}
-/* 窄屏回落单列:侧栏叠到画布**下方** —— 顺位卡是那一天唯一能改顺位的入口,不能整块藏掉 */
-@media (max-width: 1099px) {
-  .agenda-columns,
-  .agenda-columns:has(.agenda-side[data-folded]) {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .agenda-side {
-    max-height: none;
-  }
 }
 @media (max-width: 768px) {
   .agenda-actions {
     padding: 12px 14px;
   }
-  .agenda-columns {
+  .agenda-gantt {
     padding: 0 14px 4px;
   }
 }
@@ -241,9 +168,8 @@
 .rank-group[data-broken] {
   border-color: var(--conflict-line);
 }
-.rank-clash-item {
-  margin-top: 12px;
-}
+/* `.rank-clash-item`（「顺位撞车」提示里的每一层）随 `RankClashes` 一起删除
+   (2026-09-22,`PLAN-20260922123138`)—— 那组提示整块下线，规则没有宿主了。 */
 /* 「已保存方案」的「查看场次」弹层 —— 与分享图片同一份信息(有效结束时间 / 片名 / 影院 / GV / 备注 / 海报)。
    限高 + 滚动放在这里:方案可能几十场,不能指望弹层外层一定滚得动。 */
 .plan-shows {

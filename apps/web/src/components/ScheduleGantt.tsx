@@ -3,7 +3,16 @@ import { ScreeningInfoPopover } from "./ScreeningInfoPopover";
 import { officialStills } from "../app/official-stills";
 import { useHighlight } from "../app/highlight";
 import { Component, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { ActionButton, ToggleButton } from "./spectrum";
+import {
+  ActionButton,
+  Button,
+  ButtonGroup,
+  Content,
+  Dialog,
+  DialogContainer,
+  Heading,
+  ToggleButton,
+} from "./spectrum";
 import { Badges, FilmBadge, GvDurationButton } from "./ScreeningCard";
 import { FilterBar } from "./FilterBar";
 import { useCatalog } from "../app/store";
@@ -18,8 +27,9 @@ import { cardStateOf } from "../grid";
 import { effEndMin, filmEndMin, gvTalkMin, talkOnOf } from "../gv";
 import { setGvTalk, setSettings, slotOf, store } from "../state";
 import { scheduleAria } from "../actions-copy";
-import { useScreeningPicker } from "./screening-actions";
+import { removalDropsPick, useScreeningPicker } from "./screening-actions";
 import {
+  dateInfo,
   doubanScoreOf,
   filmInfoOf,
   fmtEndClock,
@@ -78,6 +88,64 @@ export function GanttZoomControls() {
  *  (空集 = 不过滤),不能传 `undefined` 让 `cardStateOf` 各判一次。 */
 const NO_FILTERS = makeFilterState();
 const noop = () => {};
+
+/** 「行程画布上点掉一场」的二次确认(2026-09-22,`PLAN-20260922123138`)。
+ *
+ *  ★ 为什么**只有行程档**需要它:行程画布只画我的场次(`shows` = 当天我的场次),每一格都是
+ *    「已选」,点一下的语义**只有「移出行程」一种**,而且原先静默生效、没有撤销,票务标记
+ *    (`biff.tickets.v1`)还会随 `rebuildIndex()` 的 prune 一起消失。
+ *    排片表那档点格子是「加入 / 移出」双向的日常动作 —— 每次拦一下才是增加成本,故不动。
+ *  ★ 为什么用站内弹层而不是 `window.confirm`(用户拍板):① 与「删除方案 / 顺位修复」同一套观感;
+ *    ② 原生 confirm 装不下「票务标记会一起清掉」「只剩这一场会连带移除选片」这两条必要前提。
+ *  ★ 为什么挂 `DialogContainer` 而不是 `DialogTrigger`:格子是个原生 `<button>`,S2 的 DialogTrigger
+ *    只把 `onPress` 交给 S2 组件;`DialogContainer` + 条件挂载是仓库既有路径
+ *    (`App.tsx` / `FilmDialog` / `AccountHost`),也顺带避开「常驻 `Dialog` 被当成当前弹层」的坑
+ *    (见 `SettingsDialog::ClearDialog` 的注释)。
+ *  ★ 「只剩这一场」那句与弹原生 confirm 的判据**同一处**(`removalDropsPick`),确认时带
+ *    `soleShowAsked: true` —— 用户不会为同一个后果被问两次。 */
+function AgendaRemoveDialog({
+  screening: s,
+  onDismiss,
+}: {
+  screening: Screening;
+  onDismiss: () => void;
+}) {
+  const { cat } = useCatalog();
+  const toggle = useScreeningPicker();
+  const venue = cat.venueById.get(s.venue_id);
+  const title = filmInfoOf(cat, s, store.mappings.get(s.code)).title;
+  return (
+    <DialogContainer onDismiss={onDismiss}>
+      <Dialog size="S">
+        <Heading slot="title">把《{title}》移出行程？</Heading>
+        <Content>
+          <p>
+            {dateInfo(s.date).label} {s.start_time.slice(0, 5)}–
+            {fmtEndClock(effEndMin(s, talkOnOf(s.code)))}
+            {venue ? `，${venueShort(venue)}` : ""}（场次 {s.code}）。
+          </p>
+          <p>移出后这一场不再出现在日程表与行程里，它的票务标记也会一起清掉。</p>
+          {removalDropsPick(cat, s) && (
+            <p>这部片只有这一场，移出会把它一起从「我的选片」移除。</p>
+          )}
+        </Content>
+        <ButtonGroup>
+          <Button variant="secondary" onPress={onDismiss}>
+            取消
+          </Button>
+          <Button
+            onPress={() => {
+              toggle(s, { soleShowAsked: true });
+              onDismiss();
+            }}
+          >
+            移出行程
+          </Button>
+        </ButtonGroup>
+      </Dialog>
+    </DialogContainer>
+  );
+}
 
 function ScheduleArtwork({ still, poster }: { still?: string; poster?: string }) {
   const [failed, setFailed] = useState(false);
@@ -195,6 +263,9 @@ export function ScheduleGantt({
   const agenda = scope === "agenda";
   const { cat, conflicts, codes } = useCatalog();
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // 待确认移除的那一场(只有行程档会写它,见 `AgendaRemoveDialog`)。
+  // 存整条 `Screening` 而不是 code:弹层要印片名 / 时间 / 影院,而移除动作还没发生。
+  const [pendingRemove, setPendingRemove] = useState<Screening | null>(null);
   const highlight = useHighlight();
   const { params, update } = useQuery();
   const toggle = useScreeningPicker();
@@ -508,7 +579,14 @@ export function ScheduleGantt({
                           data-grid-code={s.code}
                           aria-label={scheduleAria(isSelected, s.code, info.title)}
                           aria-pressed={isSelected}
-                          onClick={() => toggle(s)}
+                          // 行程档的每一格都是我的场次 → 这里的点击**只有「移出行程」一种含义**,
+                          // 先出确认弹层再动手(2026-09-22,`PLAN-20260922123138`)。
+                          // ⚠ 判据是 `agenda && isSelected`:排片表那档(以及理论上会出现在任何一档的
+                          //   「未选」状态)仍是即时 `toggle` —— 那是双向日常动作,不拦。
+                          onClick={() => {
+                            if (agenda && isSelected) setPendingRemove(s);
+                            else toggle(s);
+                          }}
                           style={{
                             height: (bodyEnd - hmsToMin(s.start_time)) * ppm - 6,
                           }}
@@ -604,6 +682,13 @@ export function ScheduleGantt({
         </div>
       </GanttViewport>
       </div>
+      {/* 移除确认弹层(只有行程档会把它打开)。条件挂载:不进 DOM 就没有「常驻弹层」可言 */}
+      {pendingRemove && (
+        <AgendaRemoveDialog
+          screening={pendingRemove}
+          onDismiss={() => setPendingRemove(null)}
+        />
+      )}
     </div>
   );
 }

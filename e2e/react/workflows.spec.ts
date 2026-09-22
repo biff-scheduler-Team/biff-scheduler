@@ -262,7 +262,8 @@ test("conflict ranks survive reload and keep driving the card order", async ({
     ),
   });
   await ready(page, "/agenda?date=2026-10-07");
-  // 「收起行程 N」/ 顺位卡都只在卡片视图(日程表视图把顺位卡收在当天画布下方,没有按日折叠)
+  // 「收起行程 N」/ 顺位卡都只在卡片视图 —— 顺位卡自 2026-09-22 起**只剩**这一个落点
+  // (画布上的顺位卡与「顺位撞车」提示都已下线,见 `PLAN-20260922123138`),日程表视图没有它。
   await agendaCards(page);
   await expect(page.getByRole("region", { name: /冲突组/ })).toBeVisible();
   await expect(
