@@ -108,6 +108,10 @@ export interface RbPosterModel {
   myTitle: string;
   myHint: string;
   myRows: RbPosterRow[];
+  /** 勾掉的节不画,但**文案照旧**(「我贴过的 60 部」不因为没勾就变成 0 部) */
+  myCount: number;
+  /** 图里一节都没有时画这一句 —— 分成「没勾」与「真的没票」两种,别把「你还没选」说成「榜上没贴纸」 */
+  emptyText: string;
   credit: { site: string; by: string };
 }
 
@@ -121,6 +125,8 @@ export interface RbPosterInput {
   mine: { marked: number; placed: number; quota: number };
   /** 出图日期 —— **注入**而不是读时钟:否则单测断不了文案 */
   today: Date;
+  /** 要分享哪几节(用户勾选)。**不传 = 全选** —— 分享图默认给全,是「少给」才需要动作 */
+  sections?: ReadonlySet<RbPosterSection>;
 }
 
 const BOARDS: ReadonlyArray<{ mode: SortMode; label: string; hint: string }> = [
@@ -128,6 +134,23 @@ const BOARDS: ReadonlyArray<{ mode: SortMode; label: string; hint: string }> = [
   { mode: "red", label: "红榜", hint: "按红贴纸数" },
   { mode: "black", label: "黑榜", hint: "按黑贴纸数" },
 ];
+
+/** 长图里**可以单独勾掉**的节。
+ *  为什么要有这个:榜单是「全站看法」,不是每个人都愿意把三榜全发出去
+ *  (2026-09-22 用户:「分享的时候 选一下需要分享的长图内容吧 有的人不想所有的榜单都分享」)。
+ *  ⚠ 顺序 = 渲染顺序,不随勾选顺序变(先总数 / 红 / 黑,「我贴过的」收尾)。 */
+export type RbPosterSection = SortMode | "mine";
+
+/** 可勾选的节 —— 榜的名字**只写 `BOARDS` 那一份**(别在这里再抄一遍)。 */
+export const POSTER_SECTIONS: ReadonlyArray<{ id: RbPosterSection; label: string }> = [
+  ...BOARDS.map((b) => ({ id: b.mode as RbPosterSection, label: b.label })),
+  { id: "mine", label: "我贴过的" },
+];
+
+/** 默认全选(弹层刚打开时的样子)。返回**新** Set:调用方各持一份,别共享一个可变对象。 */
+export function allSections(): Set<RbPosterSection> {
+  return new Set(POSTER_SECTIONS.map((s) => s.id));
+}
 
 function isoDate(d: Date): string {
   const m = `${d.getMonth() + 1}`.padStart(2, "0");
@@ -174,25 +197,30 @@ function toRow(film: FilmNode, crowd: CrowdCounts, board: StickerBoard): RbPoste
  */
 export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
   const { films, crowd, board, site, mine, today } = input;
+  const picked = input.sections ?? allSections();
   const candidates = boardFilms(films);
 
-  const boards: RbPosterBoard[] = BOARDS.map((entry) => {
-    const rows = sortByCounts(
-      candidates.filter((film) => sortMetric(crowd.get(film.key), entry.mode) > 0),
-      crowd,
-      entry.mode,
-    )
-      .slice(0, TOP_N)
-      .map((film) => toRow(film, crowd, board));
-    return { ...entry, rows };
-  }).filter((entry) => entry.rows.length > 0);
+  // 勾掉的榜**连算都不算**(不是算完再藏起来):少一节就该少一节的开销
+  const boards: RbPosterBoard[] = BOARDS.filter((entry) => picked.has(entry.mode))
+    .map((entry) => {
+      const rows = sortByCounts(
+        candidates.filter((film) => sortMetric(crowd.get(film.key), entry.mode) > 0),
+        crowd,
+        entry.mode,
+      )
+        .slice(0, TOP_N)
+        .map((film) => toRow(film, crowd, board));
+      return { ...entry, rows };
+    })
+    .filter((entry) => entry.rows.length > 0);
 
   // 我贴过的:按**全站总数**降序(与页面默认档同口径),并列按目录序 —— `sortByCounts` 自带稳定序
-  const myRows = sortByCounts(
+  const placedFilms = sortByCounts(
     candidates.filter((film) => (board.get(film.key)?.length ?? 0) > 0),
     crowd,
     "total",
-  ).map((film) => toRow(film, crowd, board));
+  );
+  const myRows = picked.has("mine") ? placedFilms.map((film) => toRow(film, crowd, board)) : [];
 
   return {
     eyebrow: `${EDITION.replace("-", " ").toUpperCase()} · 观影红黑榜`,
@@ -201,10 +229,16 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
     site: { ...site, films: candidates.length },
     mine,
     boards,
-    myTitle: `我贴过的 ${myRows.length} 部`,
+    myTitle: `我贴过的 ${placedFilms.length} 部`,
     // 右侧那块贴纸区是这一节的主角(它才回答「我贴的那一部长什么样」),左侧圆点只是「我贴的是哪一色」
     myHint: "左侧圆点是我贴的那一色 · 右侧是这部片收到的全部贴纸",
     myRows,
+    myCount: placedFilms.length,
+    // ⚠ 「一节都没勾」与「真的没有票」是两回事,不能共用一句话
+    emptyText:
+      picked.size === 0
+        ? "还没选要分享的内容 —— 勾上「长图内容」里的榜单再出图。"
+        : "榜上还没有贴纸 —— 去「看过」的片子上贴一枚红或黑吧。",
     credit: { site: SITE, by: CREDIT_BY },
   };
 }
@@ -393,6 +427,14 @@ function drawHeader(ctx: CanvasRenderingContext2D, model: RbPosterModel): void {
   ctx.fillStyle = C.muted;
   ctx.fillText(model.eyebrow, PAD, y + 52);
 
+  // 署名**头部也来一处**(2026-09-22 用户:「gaaiyeoi 和lcandy 的在头部也加一下就行」)——
+  // 长图被截一半转发时,底部那行常常跟着丢掉;与届次同一行右对齐,不占额外高度。
+  ctx.textAlign = "right";
+  ctx.font = font(19, 500);
+  ctx.fillStyle = C.muted;
+  ctx.fillText(model.credit.by, POSTER_W - PAD, y + 52);
+  ctx.textAlign = "left";
+
   ctx.font = font(56, 700);
   ctx.fillStyle = C.ink;
   ctx.fillText(fitText(ctx, model.title, maxTextW), PAD, y + 130);
@@ -468,11 +510,11 @@ export function drawRbPoster(canvas: HTMLCanvasElement, model: RbPosterModel): v
     });
   }
 
-  // 空榜:一句友好的话,而不是三个空节 + 一列空白
+  // 一节都没有:说清是「没勾」还是「真没票」(两者共用一句话会把用户误导到别处找原因)
   if (!model.boards.length && !model.myRows.length) {
     ctx.font = font(26, 500);
     ctx.fillStyle = C.muted;
-    ctx.fillText("榜上还没有贴纸 —— 去「看过」的片子上贴一枚红或黑吧。", PAD, y + 96);
+    ctx.fillText(model.emptyText, PAD, y + 96);
   }
 
   // 页脚(绝对定位:内容再长也不会把它顶出画面)

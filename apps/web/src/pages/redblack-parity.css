@@ -349,6 +349,18 @@
   font-size: 12px;
 }
 
+/* 出图尺寸提示:数字是重点,所以加粗那一截、其余压小压灰 */
+.rb-share-size {
+  margin: 6px 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.rb-share-size strong {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
 .rb-share-preview {
   display: block;
   width: 100%;
