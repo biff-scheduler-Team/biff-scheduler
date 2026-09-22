@@ -204,6 +204,15 @@ export function crowdOf(
   return out;
 }
 
+/** 一部影片票数的**内容签名** —— 只串「排序 / 绘制真正看的那三个数」。
+ *  两处共用:① `crowdSignature`(整榜「有新贴纸」的判据)② 画布的**重绘守护**
+ *  (`sticker-canvas-guard.ts`)。
+ *  ⚠ 一律拿它比,**不要**比 `StickerCounts` 的对象引用:每次重算都是新对象,
+ *   数字一模一样也会被当成「变了」——顺序提示会白亮一次、画布会白画一遍。 */
+export function countsSignature(counts: StickerCounts): string {
+  return `${counts.total},${counts.red},${counts.black}`;
+}
+
 /** 排序依据的**内容签名** —— 用来判断「票数是不是真的变了」(顺序冻结的提示判据)。
  *  ⚠ 不能拿 `FilmVoteCounts` / `CrowdCounts` 的**对象引用**比:每次重拉票数都会得到新对象,
  *   数字一模一样也会被当成「有新贴纸」,提示白亮一次
@@ -212,7 +221,7 @@ export function crowdOf(
 export function crowdSignature(counts: CrowdCounts): string {
   return [...counts]
     .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-    .map(([key, c]) => `${key}:${c.total},${c.red},${c.black}`)
+    .map(([key, c]) => `${key}:${countsSignature(c)}`)
     .join("|");
 }
 

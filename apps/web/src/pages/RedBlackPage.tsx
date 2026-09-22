@@ -21,6 +21,7 @@ import {
 } from "react";
 import { ToastQueue } from "../components/spectrum";
 import { QuerySearchField } from "../components/QuerySearchField";
+import { StickerCanvas } from "../components/StickerCanvas";
 import type { FilmNode } from "../app/model";
 import { searchFilm } from "../app/model";
 import { useQuery } from "../app/hooks";
@@ -30,7 +31,6 @@ import {
   countsOf,
   crowdOf,
   crowdSignature,
-  crowdStickers,
   makeSticker,
   moveSticker,
   placeSticker,
@@ -577,24 +577,10 @@ const RbCard = memo(function RbCard({
         data-rb-crowd-red={inView ? others.red : undefined}
         data-rb-crowd-black={inView ? others.black : undefined}
       >
-        {/* 别人的贴纸:只读(不挂 pointerdown),位置由 (影片 key, 序号) 确定性推导 ——
-            用随机坐标的话每次重排这些点都会换地方,看着像在跳。
-            票数几枚就画几枚(不再有每卡上限,见 `redblack.ts::crowdStickers`)。 */}
-        {inView &&
-          crowdStickers(film.key, others).map((sticker) => (
-            <span
-              key={sticker.id}
-              className={`rb-dot rb-dot--${sticker.type} rb-dot--crowd`}
-              style={
-                {
-                  left: `${sticker.posX * 100}%`,
-                  top: `${sticker.posY * 100}%`,
-                  "--rb-tilt": `${tiltOf(sticker.id)}deg`,
-                } as CSSProperties
-              }
-              aria-hidden="true"
-            />
-          ))}
+        {/* 别人的贴纸:整层交给 canvas(票数几枚就画几枚,不再有每卡上限)。
+            只读、不挂 pointerdown —— 位置由 (影片 key, 序号) 确定性推导,
+            用随机坐标的话每次重排这些点都会换地方,看着像在跳。 */}
+        <StickerCanvas filmKey={film.key} counts={others} inView={inView} />
         {myStickers.map((sticker) => (
           <span
             key={sticker.id}

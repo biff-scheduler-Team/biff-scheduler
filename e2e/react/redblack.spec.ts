@@ -187,10 +187,13 @@ test("屏幕外的卡片一枚贴纸都不画,滚回视野再补齐", async ({ p
   // 滚到页面底部:这张卡离开「视口 + 预取边距」→ 画布连机读属性都不再挂(= 一枚没画)
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
   await expect(card.locator(".rb-canvas[data-rb-crowd]")).toHaveCount(0);
+  // backing store 也要真的释放:一张卡约 1MB(含 dpr 放大),299 张全留就是几百 MB 显存
+  await expect(card.locator("canvas.rb-ink")).toHaveJSProperty("width", 0);
 
   // 回到这张卡:补齐(贴纸是绝对定位,补画不引起版面跳动,所以这里只需断言属性回来)
   await card.scrollIntoViewIfNeeded();
   await expect(card.locator(".rb-canvas[data-rb-crowd]")).toHaveAttribute("data-rb-crowd", "5");
+  await expect(card.locator("canvas.rb-ink")).not.toHaveJSProperty("width", 0);
 });
 
 test("「别人的贴纸」与我贴的那枚同尺寸,别人那枚仍不可拖", async ({ page }) => {
@@ -202,19 +205,26 @@ test("「别人的贴纸」与我贴的那枚同尺寸,别人那枚仍不可拖"
   await card.getByRole("button", { name: /^标记《/ }).click();
   await card.getByRole("button", { name: /贴红贴纸/ }).click();
 
-  const mine = card.locator(".rb-dot:not(.rb-dot--crowd)");
-  const crowd = card.locator(".rb-dot--crowd").first();
+  const mine = card.locator(".rb-dot");
   await expect(mine).toHaveCount(1);
-  // 用户 2026-09-22:「完全拉平,只靠能不能拖区分」—— 尺寸与实心度都必须一致。
-  // ⚠ 不能拿 `boundingBox()` 比:贴纸带 ±15° 歪斜,包围盒随各自角度变(实测 26.98 vs 26.58),
-  //   比**布局尺寸**才说明问题。
-  await expect(crowd).toHaveCSS("width", "26px");
-  await expect(crowd).toHaveCSS("height", "26px");
-  await expect(crowd).toHaveCSS("opacity", "1");
   await expect(mine.first()).toHaveCSS("width", "26px");
-  // 拉平之后,**唯一**的差异就是这个:别人的拖不动
-  await expect(crowd).toHaveCSS("pointer-events", "none");
   await expect(mine.first()).toHaveCSS("cursor", "grab");
+
+  // 别人的贴纸整层是 canvas(2026-09-22,PLAN-20260922145815):
+  // ⚠ 必须 `pointer-events: none` —— 拖拽落点靠 `elementFromPoint().closest("[data-rb-canvas]")`,
+  //   画布挡住就拖不进这张卡,而「能不能拖」正是群点与我贴的那一枚**唯一**的区别。
+  const ink = card.locator("canvas.rb-ink");
+  await expect(ink).toHaveCSS("pointer-events", "none");
+  await expect(ink).toHaveCount(1);
+  // 群点不再是 DOM —— 「数 DOM 点」这件事本身已经不存在了
+  await expect(card.locator(".rb-dot--crowd")).toHaveCount(0);
+
+  // 高分屏适配:backing store 必须是 CSS 尺寸 × dpr,否则 Retina / 手机上贴纸边缘发糊
+  const backing = await ink.evaluate((node: HTMLCanvasElement) => ({
+    width: node.width,
+    expected: Math.round(node.getBoundingClientRect().width * window.devicePixelRatio),
+  }));
+  expect(backing.width).toBe(backing.expected);
 });
 
 test("「只看我贴过」:只列我贴过的片,参数进 URL,再点一次恢复全量", async ({ page }) => {
@@ -266,8 +276,8 @@ test("重拉同一份票数不算「有新贴纸」:数量没变就不提示重�
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
   await card.getByRole("button", { name: /^标记《/ }).click();
   await card.getByRole("button", { name: /贴红贴纸/ }).click();
-  // ⚠ 必须排掉 `.rb-dot--crowd`:这一部服务端也返回了 3 枚红,`.rb-dot--red` 会把它们一起数进来
-  await expect(card.locator(".rb-dot--red:not(.rb-dot--crowd)")).toHaveCount(1);
+  // 群点已在 canvas 上,所以 `.rb-dot--red` 只可能是我贴的那一枚
+  await expect(card.locator(".rb-dot--red")).toHaveCount(1);
 
   // 等 ping 之后那次**重拉**真的发生(上报有 1200ms 防抖)
   await expect.poll(() => reads, { timeout: 8000 }).toBeGreaterThan(1);
