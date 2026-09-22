@@ -538,6 +538,20 @@
   · ⚠ 服务端票数**已含我自己那一票**(上报成功后),所以前端**不能**再与本地贴纸相加 —— 会重复计。
     顺序:贴完 → 画布上我那枚**立刻**可见 → 约 1.2s 后数字更新(与 want-counts 同节奏)。
   · 前端 `film-votes.ts` 读失败(接口未部署 / 断网 / 半截响应)一律退化成空表,页面照常可贴 —— 本地贴纸不依赖它。
+- **★ 红黑榜画布的渲染口径(2026-09-22,PLAN-20260922145815)**:**票数几枚就画几枚**,不再有「每卡最多
+  16 枚」的上限与「+N」角标 —— 用户要的是「一部片里看到全部贴纸」,16 枚会被读成真实票数。
+  · 渲染预算的单位是「**同时画几张卡**」,不是「每卡画几枚」:屏幕外的卡(gc 边距 1200px 之外)一枚不画、
+    canvas 的 backing store 也释放掉;视口内的卡全量画。
+  · 只读的「别人的贴纸」由**每卡一张 `<canvas>`** 画(`components/StickerCanvas.tsx`),DOM 里只留
+    **我贴的那一枚**(它要能拖)。画布必须 `pointer-events: none` —— 拖拽落点靠
+    `document.elementFromPoint().closest("[data-rb-canvas]")`,画布挡住就拖不进这张卡。
+  · 画布重绘**按值守护**(`sticker-canvas-guard.ts` + `redblack.ts::countsSignature`):参数逐字没变就不重画,
+    父级无关的 re-render 一律不烧绘制。DPR 变化(跨屏拖窗 / 浏览器缩放)必须重画 —— 它**不触发** `resize`。
+  · ⚠ 贴纸外观只允许一处实现:`redblack-parity.css` 的 `.rb-dot` 是 DOM 版(我贴的那枚 / 暂存区 / 拖拽浮标),
+    `sticker-sprite.ts` 是 canvas 版的离屏 sprite(照抄前者的形状与质感)—— **改一处要同步改另一处**。
+  · 机读契约:E2E 不数 DOM 点(点已由 canvas 绘制),读 `.rb-canvas[data-rb-crowd｜-red｜-black]`;
+    属性**缺席 = 一枚都没画**(屏幕外),不要写成 0(会与「票数为 0」混淆)。
+  · 投票口径本身(一人一部一票、不做加权、服务端票数已含我)不变,见上一条。
 - **★ 场次讨论 / 讨论区 —— 前端已整体下线(2026-09-22,`PLAN-20260922101227`,用户「去掉讨论区入口 相关组件也去掉」)**:
   导航项、`/discussions` 路由、`pages/DiscussionsPage.tsx`、`components/ScreeningDiscussionDialog.tsx`
   (以及它的 `DiscussionEntry`)、`screening-discussion.ts`、`screening-social.css` 里整批 `discussion*` 选择器、
