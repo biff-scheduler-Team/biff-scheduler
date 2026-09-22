@@ -545,6 +545,11 @@
   · 只读的「别人的贴纸」由**每卡一张 `<canvas>`** 画(`components/StickerCanvas.tsx`),DOM 里只留
     **我贴的那一枚**(它要能拖)。画布必须 `pointer-events: none` —— 拖拽落点靠
     `document.elementFromPoint().closest("[data-rb-canvas]")`,画布挡住就拖不进这张卡。
+  · 「我贴的那一枚」是 DOM 上唯一的贴纸元素(`<button>`,可点、可键盘收回):**单击它收回暂存区**,
+    与「拖出画布」共用 `takeBack()`(文案与落库口径只此一处);刚贴下的那一枚**闪一次描边**
+    (`FRESH_MS = 2400`,有界,之后与别人**逐字一致** —— 不做常驻「这枚是你的」标识)。
+    ⚠ 「算拖还是算点」必须靠 `movedRef` 区分:`pointerup` 之后浏览器**还会**补发一次 `click`,
+    不区分的话「微调位置」会变成「撤销」(阈值分档:鼠标 4px / 触屏 10px)。
   · 画布重绘**按值守护**(`sticker-canvas-guard.ts` + `redblack.ts::countsSignature`):参数逐字没变就不重画,
     父级无关的 re-render 一律不烧绘制。DPR 变化(跨屏拖窗 / 浏览器缩放)必须重画 —— 它**不触发** `resize`。
   · ⚠ 贴纸外观只允许一处实现:`redblack-parity.css` 的 `.rb-dot` 是 DOM 版(我贴的那枚 / 暂存区 / 拖拽浮标),
