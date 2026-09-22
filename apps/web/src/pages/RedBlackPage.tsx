@@ -23,6 +23,7 @@ import {
 } from "react";
 import { ToastQueue } from "../components/spectrum";
 import { QuerySearchField } from "../components/QuerySearchField";
+import { RedBlackShareDialog } from "../components/RedBlackShareDialog";
 import { StickerCanvas } from "../components/StickerCanvas";
 import { StickerZoomDialog } from "../components/StickerZoomDialog";
 import type { FilmNode } from "../app/model";
@@ -140,6 +141,16 @@ export function RedBlackPage() {
   const [board, setBoard] = useState<StickerBoard>(boot.board);
   const [watched, setWatched] = useState(boot.watched);
   const [drag, setDrag] = useState<RbDrag | null>(null);
+  // 「生成分享图」弹层。⚠ 焦点归还必须在弹层**真正卸载之后**再做(S2 `DialogContainer`
+  // 自己也会 restoreFocus,而 WebKit 上点按钮不会让按钮获得焦点、它记下的原焦点是 body)——
+  // 所以放 `useEffect` 而不是写在 onDismiss 里,与卡片上的「放大看全部」同一手法。
+  const [shareOpen, setShareOpen] = useState(false);
+  const shareBtnRef = useRef<HTMLButtonElement | null>(null);
+  const shareWasOpenRef = useRef(false);
+  useEffect(() => {
+    if (shareWasOpenRef.current && !shareOpen) shareBtnRef.current?.focus();
+    shareWasOpenRef.current = shareOpen;
+  }, [shareOpen]);
 
   // 全体票数(服务端聚合,见 `film-votes.ts`)。节奏与「想看人数」完全一致:
   // 拉一次 → 我贴完 1200ms 防抖上报 → 上报成功后再拉一次,所以「我自己这一票」
@@ -539,6 +550,15 @@ export function RedBlackPage() {
         >
           只看我贴过
         </button>
+        {/* 出图入口与筛选同排:它是「把这页拿出去给朋友看」,既不是排序也不是筛选 */}
+        <button
+          ref={shareBtnRef}
+          type="button"
+          className="rb-share-btn"
+          onClick={() => setShareOpen(true)}
+        >
+          生成分享图
+        </button>
       </div>
 
       {totals.marked === 0 && totals.total === 0 && (
@@ -579,6 +599,17 @@ export function RedBlackPage() {
             );
           })}
         </div>
+      )}
+
+      {shareOpen && (
+        <RedBlackShareDialog
+          films={films}
+          crowd={crowd}
+          board={board}
+          site={{ total: totals.total, red: totals.red, black: totals.black }}
+          mine={{ marked: totals.marked, placed: totals.placed, quota: totals.quota }}
+          onDismiss={() => setShareOpen(false)}
+        />
       )}
     </section>
   );
