@@ -37,6 +37,7 @@ import {
   crowdSignature,
   makeSticker,
   moveSticker,
+  othersOf,
   placeSticker,
   purgeDemoLeavings,
   saveStickers,
@@ -642,12 +643,8 @@ const RbCard = memo(function RbCard({
   // 没有独立元素(何况「别人的贴纸」本来也不该有个体身份,2026-09-22 拉平口径)
   const freshRef = useRef<HTMLButtonElement | null>(null);
   const mine = countsOf(placed);
-  // 「别人的贴纸」= 全体票数 − 我自己那几枚。服务端那份**含我**,不减掉会把我这枚画重。
-  const others: StickerCounts = {
-    total: Math.max(0, counts.total - mine.total),
-    red: Math.max(0, counts.red - mine.red),
-    black: Math.max(0, counts.black - mine.black),
-  };
+  // 「别人的贴纸」= 全体票数 − 我自己那几枚(口径在 `redblack.ts::othersOf`,分享图同用)
+  const others = othersOf(counts, mine);
   // 这一部**自己的**评分(红票占比折算 0–10);还没有人贴过 → null(显示成「—」)
   const filmScore = scoreOf(counts);
   const myStickers = placed ?? EMPTY_STICKERS;

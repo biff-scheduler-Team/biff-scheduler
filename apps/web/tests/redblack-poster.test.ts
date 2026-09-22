@@ -9,6 +9,7 @@ import {
   buildRbPosterModel,
   CREDIT_BY,
   rbPosterHeight,
+  ROW_H,
   SITE,
   TOP_N,
   type RbPosterInput,
@@ -188,8 +189,72 @@ describe("buildRbPosterModel:头部与署名", () => {
   });
 });
 
+describe("rbPosterRow:每行摊出来的贴纸", () => {
+  it("几枚就画几枚,颜色构成与数字一致", () => {
+    const model = buildRbPosterModel(
+      input({ films: [film("a")], crowd: crowd({ a: [3, 2] }) }),
+    );
+    const row = model.boards[0].rows[0];
+    expect(row.stickers).toHaveLength(5);
+    expect(row.stickers.filter((s) => s.type === "red")).toHaveLength(3);
+    expect(row.stickers.filter((s) => s.type === "black")).toHaveLength(2);
+  });
+
+  it("落点与歪斜是**确定性**的:同一份数据两次构建结果逐字相同", () => {
+    const build = () =>
+      buildRbPosterModel(input({ films: [film("a")], crowd: crowd({ a: [4, 1] }) }));
+    expect(build().boards[0].rows[0].stickers).toEqual(build().boards[0].rows[0].stickers);
+    // 相对坐标落在 0–1 之间(与卡片画布同一口径)
+    for (const s of build().boards[0].rows[0].stickers) {
+      expect(s.posX).toBeGreaterThan(0);
+      expect(s.posX).toBeLessThan(1);
+      expect(s.posY).toBeGreaterThan(0);
+      expect(s.posY).toBeLessThan(1);
+      expect(Math.abs(s.tilt)).toBeLessThanOrEqual(15);
+    }
+  });
+
+  it("我贴过的那一部:群点只算「别人的」,我那一枚**追加在末尾**并记下标(绘制时加亮边)", () => {
+    const model = buildRbPosterModel(
+      input({
+        films: [film("a")],
+        crowd: crowd({ a: [3, 2] }),
+        board: boardOf({ a: "red" }),
+      }),
+    );
+    const row = model.boards[0].rows[0];
+    // 全体 5 枚不变(服务端那份含我),但组成是「别人的 4 + 我 1」
+    expect(row.stickers).toHaveLength(5);
+    expect(row.mineIndex).toBe(4);
+    expect(row.stickers[row.mineIndex].type).toBe("red");
+    // 卡片画布的群点是「别人的」——这里也必须是同一批:去掉我那一枚后,红只剩 2
+    expect(row.stickers.slice(0, 4).filter((s) => s.type === "red")).toHaveLength(2);
+    expect(row.stickers.slice(0, 4).filter((s) => s.type === "black")).toHaveLength(2);
+  });
+
+  it("没贴过的片:没有「我那一枚」,`mineIndex` = -1", () => {
+    const model = buildRbPosterModel(input({ films: [film("a")], crowd: crowd({ a: [1, 1] }) }));
+    const row = model.boards[0].rows[0];
+    expect(row.stickers).toHaveLength(2);
+    expect(row.mineIndex).toBe(-1);
+  });
+
+  it("服务端票数还没含我时不会画出负数(≥ 0)", () => {
+    // 服务端 0 票 + 我贴了 1 枚 → 别人的 0(夹到 0),我那一枚照画
+    const model = buildRbPosterModel(
+      input({ films: [film("a")], board: boardOf({ a: "black" }) }),
+    );
+    const row = model.myRows[0];
+    expect(row.stickers).toHaveLength(1);
+    expect(row.stickers[0].type).toBe("black");
+    expect(row.mineIndex).toBe(0);
+    expect(row.red).toBe(0);
+    expect(row.black).toBe(0);
+  });
+});
+
 describe("rbPosterHeight:与绘制同源", () => {
-  const ONE_ROW = 76;
+  const ONE_ROW = ROW_H;
 
   it("「我贴过的」多一行 → 高度正好多一行(且两边的三榜完全一样)", () => {
     // base:b 没有票 → 三榜只由 a 组成;但 b 我贴过 → 只在「我贴过的」多一行

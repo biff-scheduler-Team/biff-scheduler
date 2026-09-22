@@ -18,6 +18,18 @@ export const SCALE = 2;
 /** 长图退档阈值(逻辑高)—— 画布**单边上限 32767**,超过就回 1×。
  *  ⚠ `toBlob` 超限时**静默出空图**(不抛错,最难查),所以宁可降清晰度也不能让画布过界。 */
 export const SCALE_DOWN_H = 8000;
+/** 画布**面积**上限(物理像素)—— 除了单边 32767,还有一条没人踩过就想不到的:
+ *  **iOS Safari 的单张画布面积上限约 16.7M px**,超了同样**静默出空图**。
+ *  取 16M 留一点余量(保守取值)。⚠ 这条是 2026-09-22 加「红黑榜分享图」时才补的:
+ *  1080×2 = 2160 宽,只要逻辑高超过 ~3700(约 20 场),2× 就已经越线 ——
+ *  而 `SCALE_DOWN_H = 8000` 拦不住它,于是「长行程的分享图在 iPhone 上是一张空图」。 */
+export const MAX_PIXELS = 16_000_000;
+
+/** 按图的大小决定超采样倍率。宁可糊一点,也不能让整张图变成空的。 */
+export function posterScale(logicalWidth: number, logicalHeight: number): number {
+  if (logicalHeight > SCALE_DOWN_H) return 1;
+  return logicalWidth * logicalHeight * SCALE * SCALE <= MAX_PIXELS ? SCALE : 1;
+}
 
 /** 左右内距 */
 export const PAD = 56;

@@ -160,6 +160,19 @@ export function countsOf(list: readonly Sticker[] | undefined): StickerCounts {
   return { total, red, black: total - red };
 }
 
+/** 「**别人的**贴纸」= 全体票数 − 我自己那几枚。
+ *  ⚠ 服务端那份**含我**(上报落地后),不减掉就会把我这一枚画重;上报还没落地时会被夹到 0,
+ *    之后再把「我那一枚」单独画上去,两个方向都对。
+ *  ⚠ 卡片画布(`StickerCanvas`)与分享图(`redblack-poster.ts`)必须共用这一条 ——
+ *    两处各写一份,分享图上摊出来的贴纸数就会与卡片对不上。 */
+export function othersOf(counts: StickerCounts, mine: StickerCounts): StickerCounts {
+  return {
+    total: Math.max(0, counts.total - mine.total),
+    red: Math.max(0, counts.red - mine.red),
+    black: Math.max(0, counts.black - mine.black),
+  };
+}
+
 export interface FilmTally extends StickerCounts {
   /** 用户是否标记了「看过」 */
   marked: boolean;
