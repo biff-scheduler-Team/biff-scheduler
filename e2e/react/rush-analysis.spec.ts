@@ -205,6 +205,10 @@ test("类目名太长时：轴上会截断，hover 轴标签能看到完整名�
   await ready(page, "/rush-analysis");
   const figure = page.locator('[data-chart="crowd-want"]');
   await expect(figure).toHaveAttribute("data-points", /^[1-9]/);
+  // ⚠ 必须先滚进视口:窄屏（412）上这张图在首屏之外,`mouse.move` 到视口外的坐标等于什么都没做
+  //   —— 实测手机视口下柱子 y≈1476 > 视口高 839,高亮块与 tooltip 一律不出来(2026-09-22)。
+  //   真实用户也是先滚到图前再 hover,故这里不是「为测试开后门」。
+  await figure.scrollIntoViewIfNeeded();
 
   // 先找到一个**真被截断**的轴标签（ECharts 的 truncate 会在末尾追加 "..."）——
   // 没有它这条测试就什么都没测到，故直接断言必须存在
@@ -290,6 +294,8 @@ test("hover 柱子时高亮块压在柱子下面、且是半透明（不再遮�
   await ready(page, "/rush-analysis");
   const figure = page.locator('[data-chart="facet-year"]');
   await expect(figure).toBeVisible();
+  // 同上:窄屏上这张图在首屏之外,hover 不到 —— 先滚进视口再量柱子坐标
+  await figure.scrollIntoViewIfNeeded();
 
   // 浅色主题下柱子用品牌色（spec 未指定 colorScheme，Playwright 默认浅色）
   const bar = figure.locator('svg path[fill="#ce1e36"]').first();

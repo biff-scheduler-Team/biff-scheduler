@@ -337,16 +337,18 @@ export function RushCrowdPanel({ tokens }: { tokens: ChartTokens }) {
             {byShow
               ? showRows.map((row) => (
                   <tr key={row.code} data-show={row.code}>
-                    <td>{row.title}</td>
+                    {/* 长片名 / 长影厅名在窄屏会被省略号截掉(见 `rush-analysis.css` 的行高口径),
+                        故把完整值挂到 `title` 上 —— 鼠标可看,手机长按也能看 */}
+                    <td title={row.title}>{row.title}</td>
                     <td>{row.code}</td>
                     <td>{row.when}</td>
-                    <td>{row.venue}</td>
+                    <td title={row.venue}>{row.venue}</td>
                     <td>{row.demand}</td>
                   </tr>
                 ))
               : filtered.slice(0, LIST_ROWS).map((row) => (
                   <tr key={row.key} data-film={row.key}>
-                    <td>{row.title}</td>
+                    <td title={row.title}>{row.title}</td>
                     <td>{row.want}</td>
                     <td>{row.demand}</td>
                     <td>{row.red}</td>
