@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-import { agendaCards, catalog, keyOf, ready, seed, storage } from "./helpers";
+import { agendaCards, keyOf, ready, seed, storage } from "./helpers";
 
 function picks(codes: string[]) {
   const entries = new Map<
@@ -16,74 +16,11 @@ function picks(codes: string[]) {
   return JSON.stringify([...entries.values()]);
 }
 
-// ⚠ 这条用例原先叫「first-choice clashes block **saving** until the user chooses which group yields」:
-// 它靠「保存按钮被禁用 / 改选后可用」来间接证明撞车被判出来了。保存方案已于 2026-09-22 整体下线
-// (`PLAN-20260922105228`),现在直接断言**撞车本身**与**改选的落盘结果** —— 判据更近,不再绕一个按钮。
-test("first-choice clashes are reported per layer, and a yielding group is written to the ranks", async ({
-  page,
-}) => {
-  await seed(page, {
-    "biff.picks.v2": picks(["008", "033", "143", "080"]),
-    "biff.ranks.v1": JSON.stringify({ "008": 1, "033": 2, "143": 1, "080": 2 }),
-  });
-  await ready(page, "/agenda");
-  await expect(
-    page.getByRole("region", { name: "方案对比", exact: true }),
-  ).toHaveCount(0);
-  const clashes = page.getByRole("region", { name: "顺位撞车", exact: true });
-  await expect(clashes).toContainText("第 1 顺位，2 个冲突组");
-  await expect(clashes).toContainText("宛如星辰的你");
-  await clashes
-    .getByRole("button", { name: "OCT 8 10:00 组改选 080", exact: true })
-    .click();
-  expect(JSON.parse((await storage(page))["biff.ranks.v1"])).toEqual({
-    "008": 1,
-    "033": 2,
-    "080": 1,
-    "143": 2,
-  });
-});
-
-test("unfixable rank clashes explain why neither group can yield", async ({
-  page,
-}) => {
-  const first = catalog.byCode.get("008")!;
-  await page.route("**/schedule.json", (route) =>
-    route.fulfill({
-      json: {
-        ...catalog.schedule,
-        screenings: ["008", "033", "143", "080"].map((code) => ({
-          ...catalog.byCode.get(code)!,
-          title_en: first.title_en,
-          title_zh: first.title_zh,
-          title_kr: first.title_kr,
-        })),
-      },
-    }),
-  );
-  await seed(page, {
-    "biff.picks.v2": JSON.stringify([
-      {
-        key: keyOf("008"),
-        picks: ["008", "033", "143", "080"].map((code) => ({ code })),
-        note: "",
-      },
-    ]),
-  });
-  await ready(page, "/agenda");
-  await expect(
-    page.getByRole("region", { name: "顺位撞车", exact: true }),
-  ).toContainText("组内其余场次都是同一部片，无法让路");
-  await page.getByRole("button", { name: "预览顺位修复", exact: true }).click();
-  const dialog = page.getByRole("dialog", {
-    name: "调整抢票顺位",
-    exact: true,
-  });
-  await expect(dialog).toContainText("没有可让路的场次");
-  await expect(
-    dialog.getByRole("button", { name: "应用修复", exact: true }),
-  ).toHaveCount(0);
-});
+/* 「顺位撞车（逐层）→ 预览修复 / 逐组让路」整条用例随 `RankClashes` 组件删除(2026-09-22,`PLAN-20260922123138`)。
+ * 前情:它原叫「first-choice clashes block **saving** …」,靠「保存按钮禁用 / 改选后可用」间接证明撞车被判出来;
+ * 保存方案下线(2026-09-22,`PLAN-20260922105228`)后改成直接断言撞车与改选落盘;本轮用户口径
+ * 「我的行程**不需要显示**冲突组顺位这个组件」——连提示本身一起下线,断言没有宿主了。
+ * ⚠ 顺位机制与 `plans.ts::detectRankClashes` **都没删**:改顺位仍在卡片视图的顺位卡里(见下方拖动用例)。 */
 
 test("a following screening has no misleading gap from one member of a conflict group", async ({
   page,
@@ -136,6 +73,9 @@ test("pointer dragging changes ranks and saves them on touch and mouse", async (
   await page.setViewportSize({ width: isMobile ? 390 : 1512, height: 1400 });
   await seed(page, { "biff.picks.v2": picks(["008", "033"]) });
   await ready(page, "/agenda");
+  // ⚠ 必须切到**卡片**视图:顺位卡自 2026-09-22 起只在那边按日就地展开
+  //   (`PLAN-20260922123138` 撤掉了日历表画布上的顺位卡 —— 日程表默认视图里没有把手)。
+  await agendaCards(page);
   const handles = page.locator(".drag-handle");
   await handles.first().scrollIntoViewIfNeeded();
   const first = (await handles.first().boundingBox())!;
@@ -223,6 +163,8 @@ test("pointer dragging changes ranks and saves them on touch and mouse", async (
     .poll(async () => (await storage(page))["biff.ranks.v1"])
     .toBe('{"033":1,"008":2}');
   await page.reload();
+  // ⚠ 刷新会落回默认的**日程表**视图(视图选择只存在会话内的模块变量里),顺位卡要再切一次卡片视图
+  await agendaCards(page);
   await expect(page.locator("[data-rank-code]").first()).toHaveAttribute(
     "data-rank-code",
     "033",

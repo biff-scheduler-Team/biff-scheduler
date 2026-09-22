@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { catalog, keyOf, ready, seed } from "./helpers";
+import { catalog, keyOf, ready, seed, storage } from "./helpers";
 
 // 「我的行程 → 日程表」视图(2026-09-21,PLAN-20260921223658)。
 // 与排片表共用同一个甘特组件,但画布只有我的场次、X 轴只有我有影片的影厅。
@@ -74,16 +74,13 @@ test("时间重叠在我的两场之间画成连线，并给格子冲突配色",
   await expect(agenda.locator(".conflict-links line")).toHaveCount(1);
   await expect(agenda.locator('[data-grid-slot="008"]')).toHaveClass(/conflict/);
   await expect(agenda.locator('[data-grid-slot="033"]')).toHaveClass(/conflict/);
-  // 冲突组的抢票顺位仍留在这条连线的画布下方(顺位只在这里拖动设置)
-  await expect(
-    agenda.getByRole("region", { name: /冲突组 008 033/ }),
-  ).toHaveCount(1);
+  // 连线**不再**跟着一张顺位卡(2026-09-22,`PLAN-20260922123138`):用户口径是
+  // 「我的行程不需要显示冲突组顺位这个组件」。连线本身保留 —— 它只是「这两场重叠」的视觉证据。
+  // ⚠ 抢票顺位没有被砍掉,改它请切卡片视图(那里按日就地展开顺位卡,见 `parity-agenda`)。
+  await expect(agenda.locator(".rank-group")).toHaveCount(0);
 });
 
-test("日期条切单日，卡片 / 日程表两档可来回切且互不残留", async ({
-  page,
-  isMobile,
-}) => {
+test("日期条切单日，卡片 / 日程表两档可来回切且互不残留", async ({ page }) => {
   await seed(page, { "biff.picks.v2": picks(["001", ...mine]) });
   await ready(page, "/agenda");
   const agenda = page.getByRole("region", { name: "我的行程", exact: true });
@@ -107,16 +104,19 @@ test("日期条切单日，卡片 / 日程表两档可来回切且互不残留",
   await expect(agenda.locator(".agenda-day")).toHaveCount(0);
   await expect(agenda.locator(".vertical-venue")).toHaveCount(2);
 
-  // 侧栏的落位按宽度分两档(2026-09-22,`PLAN-20260922105228`):
-  //   宽屏 = 画布右边独立一列;窄屏(≤1099)= **叠在画布下方**的单列(顺位卡是当天唯一能改顺位的入口,
-  //   不能整块藏掉)。这条用例同时跑桌面与手机两个项目,正好一处把两档都钉住。
-  const canvasBox = (await agenda.locator(".gantt-scroll").boundingBox())!;
-  const sideBox = (await agenda.locator(".agenda-side").boundingBox())!;
-  if (isMobile) {
-    expect(sideBox.y).toBeGreaterThanOrEqual(canvasBox.y + canvasBox.height - 1);
-  } else {
-    expect(sideBox.x).toBeGreaterThanOrEqual(canvasBox.x + canvasBox.width - 1);
-  }
+  // 画布铺满(2026-09-22,`PLAN-20260922123138`):右侧栏(冲突组顺位 + 场次详情)整块下线后,
+  // 这一列不再被第二列分走宽度 —— 画布左右各只剩 `.agenda-gantt` 自己的内距(宽屏 20 / 窄屏 14)。
+  // ⚠ 量的必须是 `.vertical-schedule`(画布含左侧时间刻度列),不是 `.gantt-scroll`:
+  //   后者在 `.schedule-grid` 里排在时间列**右边**,量它会凭空多出一个刻度列的宽度。
+  await expect(agenda.locator(".agenda-columns")).toHaveCount(0);
+  await expect(agenda.locator(".agenda-side")).toHaveCount(0);
+  // ⚠ `region 我的行程` 本身就是 `.agenda-page`(`aria-label` 挂在那上面),故页框直接量它
+  const pageBox = (await agenda.boundingBox())!;
+  const canvasBox = (await agenda.locator(".vertical-schedule").boundingBox())!;
+  expect(canvasBox.x - pageBox.x).toBeLessThanOrEqual(21);
+  expect(
+    pageBox.x + pageBox.width - (canvasBox.x + canvasBox.width),
+  ).toBeLessThanOrEqual(21);
 
   // 「仅看实际行程」联动:一场都没标「已抢到」时画布与日期条一起空掉,并给出说明
   await agenda.getByRole("button", { name: /仅看实际行程/ }).click();
@@ -125,19 +125,19 @@ test("日期条切单日，卡片 / 日程表两档可来回切且互不残留",
   await expect(agenda.locator(".agenda-gantt-empty")).toBeVisible();
 });
 
-// 「我的行程」信息架构收拾(两轮合并,现在是 `PLAN-20260922105228` 定稿的形态):
+// 「我的行程」信息架构收拾(三轮合并,现在是 `PLAN-20260922123138` 定稿的形态):
 //   ① 两行控件并成**一条**工具栏(左:状态与操作,右:视图与缩放);
 //   ② 日期条从独立一行**并进**这条工具栏;
 //   ③ 概览从独立一行收进页头标题右侧;
-//   ④ 画布右侧那块空白改放侧栏(当天顺位卡 + 场次详情);
+//   ④ 画布**单列铺满**(上一轮那块右侧栏连同「冲突组顺位」一起撤掉);
 //   ⑤ 「保存当前方案 / 已保存方案」整体下线 → 断言是**反向**的(计数 0),钉住「没有复活」。
-test("首屏只有一条工具栏（含日期卡），概览收进页头，画布与侧栏两栏并排", async ({
+test("首屏只有一条工具栏（含日期卡），概览收进页头，画布单列铺满", async ({
   page,
   isMobile,
 }) => {
-  // 这条钉的是**桌面两栏**版式:视口被顶到 1512,但移动端模拟下的字宽 / 行高与真桌面不同,
-  // 首屏预算实测差十几像素(288 vs 274)—— 预算只在桌面这一档有意义(窄屏本来就是单列,没有两栏可腾)。
-  test.skip(isMobile, "桌面版式;移动端单列由下一条用例覆盖");
+  // 这条钉的是**桌面**版式:视口被顶到 1512,但移动端模拟下的字宽 / 行高与真桌面不同,
+  // 首屏预算实测差十几像素(288 vs 274)—— 预算只在桌面这一档有意义。
+  test.skip(isMobile, "桌面版式;窄屏的内距与铺满由上面那条用例覆盖");
   // 左右两组要落在同一行才有「左 vs 右」可言,故把视口钉死在桌面宽度
   await page.setViewportSize({ width: 1512, height: 1200 });
   await seed(page, { "biff.picks.v2": picks(mine) });
@@ -195,42 +195,85 @@ test("首屏只有一条工具栏（含日期卡），概览收进页头，画�
   const canvasBox = (await agenda.locator(".gantt-scroll").boundingBox())!;
   expect(canvasBox.y).toBeLessThanOrEqual(280);
 
-  // ⑤ 两栏:画布在左、侧栏在右;侧栏里有当天的顺位卡与场次详情
-  const columns = agenda.locator(".agenda-columns");
-  await expect(columns).toHaveCount(1);
-  const side = agenda.locator(".agenda-side");
-  await expect(side).toHaveCount(1);
-  const sideBox = (await side.boundingBox())!;
-  expect(sideBox.x).toBeGreaterThanOrEqual(canvasBox.x + canvasBox.width);
-  // 这份种子(008 / 033)本身就是一个冲突组 → 侧栏里应有顺位卡
-  await expect(
-    side.getByRole("region", { name: "当天冲突组顺位", exact: true }),
-  ).toContainText("冲突组顺位");
-  await expect(
-    side.getByRole("region", { name: "场次详情", exact: true }),
-  ).toBeVisible();
-
-  // ⑥ 侧栏可折叠:收起后画布变宽、顺位卡退场;再点回来恢复
-  const toggle = agenda.getByRole("button", { name: "收起行程侧栏", exact: true });
-  await toggle.click();
-  await expect(
-    agenda.getByRole("button", { name: "展开行程侧栏", exact: true }),
-  ).toBeVisible();
+  // ⑤ 单列铺满(2026-09-22,`PLAN-20260922123138`):上一轮那两栏与右侧栏
+  //    (当天冲突组顺位 + 场次详情)整块下线,「顺位撞车」提示也一并撤掉 ——
+  //    它们读的是同一批 `plans.rankClashes` / `plans.groups`。
+  await expect(agenda.locator(".agenda-columns")).toHaveCount(0);
+  await expect(agenda.locator(".agenda-side")).toHaveCount(0);
   await expect(
     agenda.getByRole("region", { name: "当天冲突组顺位", exact: true }),
   ).toHaveCount(0);
-  const wideBox = (await agenda.locator(".gantt-scroll").boundingBox())!;
-  expect(wideBox.width).toBeGreaterThan(canvasBox.width);
-  await agenda.getByRole("button", { name: "展开行程侧栏", exact: true }).click();
   await expect(
-    agenda.getByRole("region", { name: "当天冲突组顺位", exact: true }),
-  ).toBeVisible();
+    agenda.getByRole("region", { name: "场次详情", exact: true }),
+  ).toHaveCount(0);
+  await expect(agenda.locator(".rank-clashes")).toHaveCount(0);
+  // ⚠ `region 我的行程` 本身就是 `.agenda-page`,页框直接量它(再写 `.agenda-page` 会找不到后代)
+  const pageBox = (await agenda.boundingBox())!;
+  const canvasRight = (await agenda.locator(".vertical-schedule").boundingBox())!;
+  expect(
+    pageBox.x + pageBox.width - (canvasRight.x + canvasRight.width),
+  ).toBeLessThanOrEqual(21);
 
-  // ⑦ 卡片视图没有画布:图例 / 缩放 / 日期条与侧栏一起退场(顺位卡回到按日就地展开)
+  // ⑥ 卡片视图没有画布:图例 / 缩放 / 日期条一起退场;顺位卡回到按日就地展开
+  //    (改抢票顺位现在只剩这一个入口 —— 侧栏与撞车提示都撤了)
   await right.getByRole("button", { name: "卡片", exact: true }).click();
   await expect(agenda.locator(".schedule-legend")).toHaveCount(0);
   await expect(agenda.locator(".zoom-controls")).toHaveCount(0);
   await expect(strip).toHaveCount(0);
   await expect(agenda.locator(".agenda-side")).toHaveCount(0);
   await expect(agenda.locator(".rank-group").first()).toBeVisible();
+});
+
+// 行程画布上点掉一场要走二次确认(2026-09-22,`PLAN-20260922123138`)。
+// 回归的是改动前的口径:行程画布只画我的场次,每一格都是「已选」,点一下 = 移出行程 ——
+// 原先静默生效、没有撤销,票务标记也会跟着被 prune 掉。
+// ⚠ 排片表那档不受影响(它的点击是「加入 / 移出」双向的日常动作),那条边界单列在下面。
+test("日程表上点掉一场先出站内确认：取消不动、确认才移出", async ({ page }) => {
+  await seed(page, { "biff.picks.v2": picks(mine) });
+  await ready(page, "/agenda");
+  const agenda = page.getByRole("region", { name: "我的行程", exact: true });
+  const cell = agenda.locator('[data-grid-code="008"]');
+  await expect(cell).toHaveAttribute("aria-pressed", "true");
+  expect((await storage(page))["biff.picks.v2"]).toContain("008");
+
+  // ① 点一下**不**立刻移出,先出站内弹层(弹层里说清后果:这一场 + 票务标记)
+  await cell.click();
+  const dialog = page.getByRole("dialog", { name: /把《.*》移出行程？/ });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("008");
+  await expect(dialog).toContainText("票务标记");
+  await expect(cell).toHaveAttribute("aria-pressed", "true");
+  expect((await storage(page))["biff.picks.v2"]).toContain("008");
+
+  // ② 取消 = 什么也没发生
+  await dialog.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(cell).toHaveAttribute("aria-pressed", "true");
+
+  // ③ 确认才真的移出:画布只画我的场次 → 这一格消失,另一场还在
+  await cell.click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "移出行程", exact: true })
+    .click();
+  await expect(agenda.locator('[data-grid-code="008"]')).toHaveCount(0);
+  await expect(agenda.locator('[data-grid-code="033"]')).toBeVisible();
+  expect((await storage(page))["biff.picks.v2"]).not.toContain("008");
+});
+
+// 同一条边界——排片表那档**不拦**(2026-09-22,`PLAN-20260922123138`)。
+// 为什么值得钉:两档共用同一个画布组件与同一个 `toggle` 出口,给行程档加确认时
+// 最省事的写法是拦在共享出口上,那会让排片表「点格子加入 / 移出」每天都多问一句。
+test("排片表点格子仍是即时的加入 / 移出，不弹确认", async ({ page }) => {
+  await ready(page, "/schedule?date=2026-10-07");
+  const cell = page.locator('.schedule-column [data-grid-code="008"]');
+  await expect(cell).toHaveAttribute("aria-pressed", "false");
+
+  await cell.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(cell).toHaveAttribute("aria-pressed", "true");
+
+  await cell.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(cell).toHaveAttribute("aria-pressed", "false");
 });

@@ -77,6 +77,8 @@ test("票务三态 / 同场人数 / 仅看实际行程 / 转票补入", async ({
   await expect(page.locator(".screening-card")).toHaveCount(1);
   await expect(page.locator('.screening-card[data-screening="001"]')).toBeVisible();
   await expect(page.locator(".rank-group")).toHaveCount(0);
+  // 「顺位撞车」提示(`.rank-clashes`)已于 2026-09-22 整块下线(`PLAN-20260922123138`)——
+  // 这条**留着当反向守卫**:撞车提示不该再回到这一页。
   await expect(page.locator(".rank-clashes")).toHaveCount(0);
 
   // 退出筛选,走「添加转票场次」

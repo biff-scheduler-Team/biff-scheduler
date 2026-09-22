@@ -9,11 +9,6 @@ import { Outlet, useLocation, useNavigate } from "react-router";
 import {
   ActionButton,
   Button,
-  ButtonGroup,
-  Dialog,
-  DialogTrigger,
-  Heading,
-  Content,
   ToggleButton,
 } from "../components/spectrum";
 import { TransferAddEntry } from "../components/TransferAddDialog";
@@ -28,10 +23,9 @@ import {
   ScheduleGantt,
 } from "../components/ScheduleGantt";
 import { useCatalog } from "../app/store";
-import { useHighlight } from "../app/highlight";
 import { navSearch } from "../app/nav-query";
 import { useScheduleNavigation } from "../app/navigation";
-import { agendaItems, rankSpotOrder } from "../app/agenda-model";
+import { agendaItems } from "../app/agenda-model";
 import {
   isAgendaFolded,
   setRanks,
@@ -40,10 +34,8 @@ import {
   toggleAgendaFold,
 } from "../state";
 import { actualCodeSet } from "../tickets";
-import { autoFixRanks } from "../plans";
 import {
   dateInfo,
-  displayTitle,
   fmtEndClock,
   groupByDate,
   hmsToMin,
@@ -227,119 +219,12 @@ function RankGroup({ codes }: { codes: string[] }) {
   );
 }
 
-function RankClashes() {
-  const { cat, plans, keyOf } = useCatalog();
-  const clashes = plans.rankClashes;
-  if (!clashes.length) return null;
-  const fix = autoFixRanks(plans.groups, keyOf);
-  const firstLayer = clashes.filter((clash) => clash.layer === 1).length;
-  const groupLabel = (code: string) => {
-    const s = cat.byCode.get(code);
-    return s ? `${dateInfo(s.date).label} ${s.start_time.slice(0, 5)}` : code;
-  };
-  const shortCode = (code: string) => {
-    const s = cat.byCode.get(code);
-    return s ? `${s.start_time.slice(0, 5)} · ${code}` : code;
-  };
-  return (
-    <section className="notice rank-clashes" aria-label="顺位撞车">
-      <strong>
-        {firstLayer
-          ? `${firstLayer} 个冲突组在第 1 顺位撞到同一部片`
-          : `${clashes.length} 处顺位撞车`}
-      </strong>
-      <p>同一层里的同片重复会被剔除，让一组让路即可恢复。</p>
-      <DialogTrigger>
-        <ActionButton>预览顺位修复</ActionButton>
-        <Dialog>
-          {({ close }) => (
-            <>
-              <Heading slot="title">调整抢票顺位</Heading>
-              <Content>
-                {!fix.changes.length ? (
-                  <p>
-                    {fix.remaining.length
-                      ? "没有可让路的场次，每个撞车组里其余场次也都是同一部片。"
-                      : "顺位已经是干净的，无需修复。"}
-                  </p>
-                ) : (
-                  <>
-                    <p>将调整 {fix.changes.length} 个组的顺位：</p>
-                    {fix.changes.map((change) => (
-                      <p key={change.group}>
-                        {groupLabel(change.before[0])}：
-                        {change.before.map(shortCode).join(" → ")} 改为{" "}
-                        {change.after.map(shortCode).join(" → ")}
-                      </p>
-                    ))}
-                    {fix.remaining.length > 0 && (
-                      <p>
-                        另有 {fix.remaining.length}{" "}
-                        处撞车未能自动修复，无处可让。
-                      </p>
-                    )}
-                  </>
-                )}
-              </Content>
-              <ButtonGroup>
-                <Button onPress={close} variant="secondary">
-                  取消
-                </Button>
-                {fix.changes.length > 0 && (
-                  <Button
-                    onPress={() => {
-                      fix.changes.forEach((change) => setRanks(change.after));
-                      close();
-                    }}
-                  >
-                    应用修复
-                  </Button>
-                )}
-              </ButtonGroup>
-            </>
-          )}
-        </Dialog>
-      </DialogTrigger>
-      {clashes.map((clash) => {
-        const first = cat.byCode.get(clash.spots[0].code);
-        const film = first
-          ? displayTitle(first, store.mappings.get(first.code)?.title_cn)
-          : clash.filmKey;
-        return (
-          <div
-            className="rank-clash-item"
-            key={`${clash.layer}-${clash.filmKey}`}
-          >
-            <p>
-              第 {clash.layer} 顺位，{clash.spots.length} 个冲突组都把《{film}
-              》排在这里
-            </p>
-            <div className="inline-actions">
-              {clash.spots.map((spot) =>
-                spot.alt === null ? (
-                  <span className="muted" key={spot.group}>
-                    {groupLabel(spot.code)}{" "}
-                    组：组内其余场次都是同一部片，无法让路
-                  </span>
-                ) : (
-                  <ActionButton
-                    key={spot.group}
-                    onPress={() => {
-                      const next = rankSpotOrder(plans.groups, spot);
-                      if (next) setRanks(next);
-                    }}
-                  >
-                    {groupLabel(spot.code)} 组改选 {spot.alt}
-                  </ActionButton>
-                ),
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </section>
-  );
-}
+/* `RankClashes`（「顺位撞车」提示 + 「预览顺位修复」弹层 + 逐组让路按钮）已于 2026-09-22 整块删除
+ * (`PLAN-20260922123138`):用户口径是「我的行程**不需要显示**冲突组顺位这个组件 直接铺满」。
+ *  它读的 `plans.rankClashes` / `plans.groups` 与右侧栏那张顺位卡**是同一批数据** ——
+ *  侧栏一撤,留它横在画布上方就成了全页唯一一处「报撞车、却不给改」的孤立提示。
+ *  ⚠ 顺位机制本身没动:`RankGroup`（拖拽 / 上移 / 下移 → `setRanks`）仍是**卡片视图**里的入口,
+ *    `biff.ranks.v1`、`plans.ts`、`autoFixRanks` 全部原样保留,只是这一页不再有它们的展示面。 */
 
 function Gap({ before, after }: { before: Screening; after: Screening }) {
   const gap = slackBetween(
@@ -380,9 +265,6 @@ type AgendaView = "gantt" | "cards";
  *   `biff.*` 的读写会被 E2E 的字节级存储快照断言看见,为「记住一次切换」打红一批无关 spec 不划算。 */
 let agendaViewMemory: AgendaView = "gantt";
 
-/** 右侧栏是否折叠(**会话内记忆**,与 `agendaViewMemory` 同一取舍与同一理由)。 */
-let agendaSideFoldedMemory = false;
-
 export function AgendaPage() {
   const slotFilter = useScheduleSelection();
   const { cat, codes, plans, conflicts, keyOf } = useCatalog();
@@ -398,15 +280,6 @@ export function AgendaPage() {
     agendaViewMemory = next;
     setView(next);
   };
-  // 右侧栏的折叠(2026-09-22,`PLAN-20260922105228`):与 `agendaViewMemory` 同口径 ——
-  // **会话内记忆、刷新即回默认展开**,理由见 `agendaViewMemory`(不落 localStorage,
-  // 免得为「记住一次折叠」打红一批字节级存储断言)。
-  const [sideFolded, setSideFolded] = useState(agendaSideFoldedMemory);
-  const toggleSide = () => {
-    agendaSideFoldedMemory = !sideFolded;
-    setSideFolded(!sideFolded);
-  };
-  const highlight = useHighlight();
   const actual = actualCodeSet(tickets);
   const selected = codes
     .filter((code) => !actualOnly || actual.has(code))
@@ -438,12 +311,6 @@ export function AgendaPage() {
     ? pickedDate
     : fallbackDate;
   const dayRows = days.find(([date]) => date === activeDate)?.[1] ?? [];
-  // 「仅看实际行程」时不摆顺位卡:票都抢完了,再显示「顺位 1 / 备选」只会误导
-  const activeGroups = actualOnly
-    ? []
-    : plans.groups.filter(
-        (group) => cat.byCode.get(group[0])?.date === activeDate,
-      );
   // 日期条(2026-09-22,`PLAN-20260922103307`):从画布容器里**提**到概览条下面 —— 用户原话是
   // 「作为主视图的全局日期 Filter」,它不是画布内部的装饰。夹在工具栏与画布之间时,它看起来
   // 既像工具栏的第三行、又看不出自己在筛谁。
@@ -503,14 +370,6 @@ export function AgendaPage() {
         {hasCanvas && <GanttZoomControls />}
       </div>
     </div>
-  );
-  // 视图无关的页级区块 —— 方案整体下线后这里**只剩顺位撞车提示**(2026-09-22,`PLAN-20260922105228`)。
-  // ⚠ 行程为空时不渲染它(它读的是当前行程,空行程上没有任何撞车可言;
-  //   少一个 `codes.length > 0` 就会在空状态多出一块空提示)。
-  const panels = (
-    <>
-      {!actualOnly && codes.length > 0 && <RankClashes />}
-    </>
   );
   const agendaDays = (
     <div className="agenda-days">
@@ -608,70 +467,13 @@ export function AgendaPage() {
       )}
     </div>
   );
-  // 侧栏要显示的那一场 = **当前高亮**的场次,且必须是画布**当天**的
-  // (换日后残留的 code 不该在侧栏里显示一场画布上根本没有的场次)。
-  const highlighted = highlight.code ? cat.byCode.get(highlight.code) : undefined;
-  const detail = highlighted && highlighted.date === activeDate ? highlighted : undefined;
-  // 右侧栏(2026-09-22,`PLAN-20260922105228`):宽屏那块约 780px 的空白改放「当天冲突组顺位 + 场次详情」。
-  // ★ 顺位卡为什么从画布**下方**搬进来:它读的正是画布上那几条连线(同一批 `activeGroups`),
-  //   两块内容本来就该并排看 —— 这一步同时消掉了「画布很长、顺位卡在最底下」。
-  // ★ 「场次详情」为什么用**高亮**而不是"点击选中":画布上点击的语义是「加入 / 移出行程」(`toggle(s)`),
-  //   拿它兼做"查看详情"会把用户已选的场次点掉。高亮走既有 `useHighlight`(鼠标 hover / 键盘 focus),
-  //   零新增交互口径。⚠ 触摸端没有 hover,故那里给一句说明,而不是放一个按不动的死控件。
-  const agendaSide = (
-    <aside
-      className="agenda-side"
-      aria-label="行程侧栏"
-      data-folded={sideFolded || undefined}
-    >
-      <button
-        type="button"
-        className="agenda-side-toggle"
-        aria-expanded={!sideFolded}
-        aria-label={sideFolded ? "展开行程侧栏" : "收起行程侧栏"}
-        onClick={toggleSide}
-      >
-        {sideFolded ? "‹" : "›"}
-      </button>
-      {!sideFolded && (
-        <>
-          <section className="agenda-side-ranks" aria-label="当天冲突组顺位">
-            <h2>冲突组顺位</h2>
-            {activeGroups.length === 0 ? (
-              <p className="muted-strong">
-                {actualOnly
-                  ? "「仅看实际行程」时不排顺位：票都抢完了。"
-                  : "当天没有时间重叠的冲突组。"}
-              </p>
-            ) : (
-              <>
-                <p className="muted-strong">
-                  画布上的连线就是这 {activeGroups.length} 组时间重叠；拖动把手排抢票顺位，顺位 1 为首选。
-                </p>
-                {activeGroups.map((group) => (
-                  <RankGroup key={[...group].sort().join(",")} codes={group} />
-                ))}
-              </>
-            )}
-          </section>
-          <section className="agenda-side-detail" aria-label="场次详情">
-            <h2>场次详情</h2>
-            {detail ? (
-              // ⚠ 侧栏这份卡是**只读检视器**:不带 `controls` / `social`(2026-09-22,`PLAN-20260922105228`)。
-              //   理由有两层:① 画布上的格子本身就带同名的控件(场次格 / 场次卡),同一控件在两处出现
-              //   既会让用户犹豫"点哪个",也会让 `getByRole` 之类的选择器撞成两个;
-              //   ② 侧栏是"看一眼这条是什么"的地方,动手改行程仍回画布 / 卡片。
-              <ScreeningCard screening={detail} venueInfo slotFilter={slotFilter} />
-            ) : (
-              <p className="muted-strong">
-                把鼠标移到日程表上的场次，这里会显示它的详情。
-              </p>
-            )}
-          </section>
-        </>
-      )}
-    </aside>
-  );
+  // 右侧栏（「当天冲突组顺位」+「场次详情」，2026-09-22 `PLAN-20260922105228`）连同它的折叠状态
+  // 与「顺位撞车」提示，整块已于同日删除（`PLAN-20260922123138`）——用户口径是
+  // 「我的行程**不需要显示**冲突组顺位这个组件 直接铺满」。
+  // ⚠ 「场次详情」那块是 `useHighlight().code` 在本页的唯一消费方：没有它之后，本页只剩画布自己
+  //   用 `codes` 做格子联动高亮（`data-highlighted`），`useHighlight` 在这页已不再被读。
+  // ⚠ 顺位机制本身没动：`RankGroup`（拖拽 → `setRanks`）仍是**卡片视图**里的入口，
+  //   想改抢票顺位就切到卡片视图按日就地拖。
   return (
     <>
       <section className="agenda-page" aria-label="我的行程">
@@ -715,34 +517,22 @@ export function AgendaPage() {
           </div>
         </div>
         {toolbar}
+        {/* 三个分支各自直接渲染自己的主体(2026-09-22,`PLAN-20260922123138`):
+            原先每支外面套一层 fragment 是为了装 `{panels}`(顺位撞车提示 / 更早的「保存当前方案」),
+            现在那两块都已下线,画布回到 `.agenda-page` 的直接子元素 = 铺满整幅宽。 */}
         {codes.length === 0 ? (
-          <>
-            <div className="empty-state">
-              <h2>还没有安排场次</h2>
-              <p>从排片表把场次{SCHEDULE_LABEL}，或先到影片库挑选电影。</p>
-              {/* 跨页导航走 `nav-query` 口径:只带排片表的 `date` / `hour`,不搬本页 / 上一页的搜索词 */}
-              <Button onPress={() => navigate(`/library${navSearch(location.search, location.pathname, "/library")}`)}>
-                浏览影片库
-              </Button>
-            </div>
-            {panels}
-          </>
+          <div className="empty-state">
+            <h2>还没有安排场次</h2>
+            <p>从排片表把场次{SCHEDULE_LABEL}，或先到影片库挑选电影。</p>
+            {/* 跨页导航走 `nav-query` 口径:只带排片表的 `date` / `hour`,不搬本页 / 上一页的搜索词 */}
+            <Button onPress={() => navigate(`/library${navSearch(location.search, location.pathname, "/library")}`)}>
+              浏览影片库
+            </Button>
+          </div>
         ) : view === "gantt" ? (
-          <>
-            {/* 两栏(2026-09-22,`PLAN-20260922105228`):左画布 / 右侧栏。用 grid 而不是 flex ——
-                折叠时改的是**列模板**一处,不会留下 flex 的残宽;窄屏(`≤1099`)回落单列,
-                侧栏叠到画布下方(顺位卡是那一天唯一能改顺位的入口,不能整块藏掉)。 */}
-            <div className="agenda-columns">
-              <div className="agenda-column-main">{agendaGantt}</div>
-              {agendaSide}
-            </div>
-            {panels}
-          </>
+          agendaGantt
         ) : (
-          <>
-            {panels}
-            {agendaDays}
-          </>
+          agendaDays
         )}
       </section>
       <Outlet />
