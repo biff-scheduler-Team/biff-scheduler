@@ -49,12 +49,14 @@ async function seedCounts(page: Page) {
   return codes;
 }
 
-test("导航里「数据分析」紧接「抢票」之后，且与页面标题同名", async ({ page }) => {
+test("导航里「数据分析」紧接「建议」之前，且与页面标题同名", async ({ page }) => {
   await ready(page, "/rush-analysis");
   const labels = (
     await page.getByRole("navigation", { name: "主要导航" }).getByRole("link").allTextContents()
   ).map((text) => text.trim());
-  expect(labels.indexOf("数据分析")).toBe(labels.indexOf("抢票") + 1);
+  // ⚠ 「抢票」页已于 2026-09-22 下线(`PLAN-20260922102751`),原先的「紧接抢票之后」不再成立;
+  //   用户重排后它收在后两位、紧邻「建议」。
+  expect(labels.indexOf("数据分析")).toBe(labels.indexOf("建议") - 1);
   await expect(page.getByRole("heading", { name: "数据分析", exact: true })).toBeVisible();
   // ⚠ 导航名与页面标题是**两处各写一遍**的字面量（App.tsx / RushAnalysisPage.tsx）。
   //   这里断言它们逐字相同 —— 以后只改一处（2026-09-20 就是「抢票分析 → 数据分析」这种改名）

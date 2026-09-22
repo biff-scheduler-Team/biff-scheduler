@@ -18,7 +18,7 @@ async function openSettings(page: Page) {
 
 /** 勾 / 取消勾「显示 P&I 场次」并保存。
  *  ⚠ 复选的可点区是外层 `<label>`(input 被视觉层盖住,裸点会被拦指针)——
- *    与 `rush.spec.ts` 的既有写法一致。 */
+ *    与 `share-export.spec.ts` 等既有写法一致。 */
 async function togglePni(page: Page) {
   const dialog = await openSettings(page);
   await dialog.locator("label", { hasText: "显示 P&I 场次" }).click();

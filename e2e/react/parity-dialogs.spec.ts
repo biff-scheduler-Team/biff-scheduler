@@ -114,7 +114,7 @@ test("restoring GV duration preserves attendance, and editing requires confirmat
 test("export defaults to 当前行程 and reopening never exposes an empty downloadable canvas", async ({
   page,
 }) => {
-  // ⚠ 默认范围 = 「当前行程」（与 /rush 同源），不是最后一个已保存方案（PLAN-20260916135942）——
+  // ⚠ 默认范围 = 「当前行程」（取行程「每组第一顺位 + 共同场次」），不是最后一个已保存方案（PLAN-20260916135942）——
   //   故这里必须播种行程，否则默认范围是 0 场、按钮禁用，后面的画布断言就无从谈起。
   await seed(page, {
     "biff.picks.v2": JSON.stringify([

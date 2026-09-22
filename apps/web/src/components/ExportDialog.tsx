@@ -10,7 +10,6 @@ import {
   ActionButton,
   Button,
   ButtonGroup,
-  Checkbox,
   Content,
   Dialog,
   Heading,
@@ -22,7 +21,7 @@ import {
 import { useCatalog } from "../app/store";
 import { topPlanCodes } from "../app/agenda-model";
 import { buildIcs, type PickRow } from "../ics";
-import { buildShareText, type ShareOptions } from "../share";
+import { buildShareText } from "../share";
 import { parseBackupText, parseIcsCodes, restore, snapshot } from "../backup";
 import {
   mergeScreenings,
@@ -34,11 +33,8 @@ import {
 import { talkOnOf } from "../gv";
 import { todayIsoLocal } from "../util";
 import { copyText } from "../clipboard";
-import { groupMatesOf } from "../plans";
-import { batchHeading, programOf } from "../extras";
-import { ticketBatchOf } from "../batch";
 
-/** 「导出范围」里的**伪方案 id** —— 选中它 = 按**当前行程**导出(`/rush` 同源)。 */
+/** 「导出范围」里的**伪方案 id** —— 选中它 = 按**当前行程**导出(取行程「每组第一顺位 + 共同场次」)。 */
 export const SCOPE_CURRENT = "current";
 
 /** 场次集合概要:`29 场，OCT 7–OCT 10`(排期里查不到的 code 记「N 场已不在排期」)。
@@ -198,13 +194,9 @@ function ImportData() {
 }
 export function ExportDialog() {
   const { cat, plans } = useCatalog();
-  // 导出范围:默认「当前行程」(与 `/rush` 同源),已保存方案仍可显式选。
+  // 导出范围:默认「当前行程」,已保存方案仍可显式选。
   const [scope, setScope] = useState<string>(SCOPE_CURRENT);
   const [preview, setPreview] = useState(false);
-  // 「带上顺位」/「带上开票批次」:分享文案的两个可选扩展(见 share.ts 的 ShareOptions)。
-  // 默认关 —— 关掉时输出就是「CODE 前置 + 两行一场」的基线版式,与旧版逐字一致(除 CODE 位置)。
-  const [withRank, setWithRank] = useState(false);
-  const [withBatch, setWithBatch] = useState(false);
   const generation = useRef(0);
   const [image, setImage] = useState<{
     id: number;
@@ -212,9 +204,6 @@ export function ExportDialog() {
     model: PosterModel;
     loading: boolean;
   } | null>(null);
-  // ⚠ 范围决定「导出哪些场次」,**顺位 / 备选 / 批次一律取当前行程**(`plans.rankOf` /
-  //   `groupMatesOf(plans.groups)` / `batch.ts::ticketBatchOf`)—— 两者混用会出现「方案里的 A 印成主选、
-  //   它的备选 B 反而印成『A 的主选』」这种自相矛盾的清单(`PLAN-20260916135942`)。
   const currentCodes = useMemo(() => topPlanCodes(plans), [plans]);
   // 选了已保存方案 → 按方案快照;方案被别的标签页删掉(没有 Picker 事件) → 回落最后一个方案;都没有 → 当前行程。
   const plan =
@@ -237,36 +226,9 @@ export function ExportDialog() {
       code,
       note: store.picks.get(slotOf(code)?.key ?? "")?.note ?? "",
     }));
-  // 备选来自**当前行程**的冲突组(方案快照每组只留第 1 顺位,拿它印顺位恒为「顺位 1」)
-  const groupMates = useMemo(() => groupMatesOf(plans.groups), [plans.groups]);
-  // ⚠ 一份选项同时喂**分享文案与分享图片**(`share.ts` / `poster.ts` 共用同一个 `ShareOptions`)——
-  //   两处各建一份必然出现「文案有顺位、图上没有」这种对不上的成品。
-  const shareOptions: ShareOptions = useMemo(
-    () => ({
-      ranking: withRank
-        ? { rankOf: plans.rankOf, matesOf: (code) => groupMates.get(code) ?? [] }
-        : undefined,
-      batching: withBatch
-        ? {
-            batchOf: (s) => ticketBatchOf(s, { kindOf: (code) => programOf(code)?.kind }),
-            headOf: (batch) => batchHeading(cat.schedule.festival.year, batch),
-          }
-        : undefined,
-    }),
-    [withRank, withBatch, plans.rankOf, groupMates, cat.schedule.festival.year]
-  );
-  const share = buildShareText(cat, rows, store.mappings, talkOnOf, shareOptions);
-  // 改选项就作废已出的图 —— 否则上一次按旧选项画好的图会留在弹层里,看着「没生效」
-  const toggleRank = (on: boolean) => {
-    setWithRank(on);
-    setImage(null);
-  };
-  const toggleBatch = (on: boolean) => {
-    setWithBatch(on);
-    setImage(null);
-  };
+  const share = buildShareText(cat, rows, store.mappings, talkOnOf);
   const buildImage = () => {
-    const model = buildPosterModel(cat, rows, store.mappings, talkOnOf, shareOptions);
+    const model = buildPosterModel(cat, rows, store.mappings, talkOnOf);
     if (!model) return;
     setImage({
       id: ++generation.current,
@@ -302,25 +264,11 @@ export function ExportDialog() {
                     ))}
                   </Picker>
                   <p className="muted">
-                    「当前行程」与「抢票」页同源（每组第一顺位 + 共同场次），改完行程直接导出即可；
+                    「当前行程」取行程里的全部场次（每组第一顺位 + 共同场次），改完行程直接导出即可；
                     已保存方案是快照，之后改行程不会跟着变。
                   </p>
                   <p className="muted">
                     {rows.length} 场有效排期。日历时间会自动转换到手机所在时区。
-                  </p>
-                  <Checkbox isSelected={withRank} onChange={toggleRank}>
-                    带上顺位（含备选场次）
-                  </Checkbox>
-                  {withRank && !plans.groups.length && (
-                    <p className="muted">
-                      当前行程没有时间重叠的场次，顺位不会有内容。
-                    </p>
-                  )}
-                  <Checkbox isSelected={withBatch} onChange={toggleBatch}>
-                    带上开票批次（第 1 批 / 第 2 批分节）
-                  </Checkbox>
-                  <p className="muted">
-                    以上两项同时作用于分享文案与分享图片。
                   </p>
                   <div className="inline-actions">
                     <Button

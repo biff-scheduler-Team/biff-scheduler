@@ -102,7 +102,9 @@ export function ticketOpens(year: number): TicketOpen[] {
 }
 
 /** 批次节头文案 —— 「第 1 批 · 9/17 14:00 KST / 北京 13:00」。
- *  分享文案的批次分节(`share.ts`)与「抢票」页横幅共用同一份,别在两处各拼一次。
+ *  购票信息弹层(`InfoDialogs.tsx::TicketDialog`)与顶栏倒计时共用同一份,别在两处各拼一次。
+ *  ⚠ 原先还与「抢票」页横幅 / 分享文案的批次分节共用 —— 那两处已于 2026-09-22 下线
+ *  (`PLAN-20260922102751`),批次现在只作为**开票时间**的标签存在。
  *  extras 缺文件 / 该批次解析不出来(旧部署 / 首次离线)→ 退化成「第 N 批」,**绝不编造时间**。 */
 export function batchHeading(year: number, batch: number): string {
   const open = ticketOpens(year)[batch - 1];

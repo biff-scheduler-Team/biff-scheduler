@@ -91,7 +91,7 @@ export function RushAnalysisPage() {
       <RushCrowdPanel tokens={tokens} />
       <RushPortraitPanel tokens={tokens} />
 
-      {/* 路由里保留了 `films/:filmKey` 子路由（与 /rush 同形）—— 不渲染 Outlet 的话它永远不会命中 */}
+      {/* 路由里保留了 `films/:filmKey` 子路由（与 /library、/agenda 同形）—— 不渲染 Outlet 的话它永远不会命中 */}
       <Outlet />
     </section>
   );
