@@ -187,20 +187,23 @@ export function scoreOf(counts: StickerCounts): number | null {
  * 三档全部**降序**;并列时保序 —— 所以「一枚贴纸都没有」时结果就是传入顺序
  * (影片库默认顺序:目录序 → 中文名),不引入随机,用户刷新看到的排布是稳定的。 */
 
+/** 某一档排序**看的是哪个数**(总数 / 红 / 黑)。
+ *  ⚠ 单独导出而不是埋在 `sortByCounts` 里:分享图要按同一指标**筛掉「该榜为 0」的片**
+ *    (黑榜里放一堆「黑 0」毫无意义),两处各写一份必然会漂移。 */
+export function sortMetric(counts: StickerCounts | undefined, mode: SortMode): number {
+  if (!counts) return 0;
+  return mode === "red" ? counts.red : mode === "black" ? counts.black : counts.total;
+}
+
 /** 榜单排序按**全体计数**走(红黑榜是大家贴的,排名当然看大家贴了多少) */
 export function sortByCounts<T extends { key: string }>(
   films: readonly T[],
   counts: CrowdCounts,
   mode: SortMode,
 ): T[] {
-  const value = (film: T): number => {
-    const c = counts.get(film.key);
-    if (!c) return 0;
-    return mode === "red" ? c.red : mode === "black" ? c.black : c.total;
-  };
   return films
     .map((film, index) => ({ film, index }))
-    .sort((a, b) => value(b.film) - value(a.film) || a.index - b.index)
+    .sort((a, b) => sortMetric(counts.get(b.film.key), mode) - sortMetric(counts.get(a.film.key), mode) || a.index - b.index)
     .map((entry) => entry.film);
 }
 

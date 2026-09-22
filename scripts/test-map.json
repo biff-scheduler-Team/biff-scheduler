@@ -194,7 +194,10 @@
       "paths": [
         "apps/web/src/share.ts",
         "apps/web/src/poster.ts",
-        "apps/web/src/components/PosterPreview.tsx"
+        "apps/web/src/components/PosterPreview.tsx",
+        "apps/web/src/components/share-image.ts",
+        "apps/web/src/poster-brush.ts",
+        "apps/web/src/sticker-shape.ts"
       ],
       "specs": [
         "share-export",
@@ -227,6 +230,11 @@
         "apps/web/src/sticker-sprite.ts",
         "apps/web/src/components/StickerCanvas.tsx",
         "apps/web/src/components/StickerZoomDialog.tsx",
+        "apps/web/src/components/RedBlackShareDialog.tsx",
+        "apps/web/src/redblack-poster.ts",
+        "apps/web/src/poster-brush.ts",
+        "apps/web/src/sticker-shape.ts",
+        "apps/web/src/components/share-image.ts",
         "apps/web/src/film-votes.ts",
         "apps/api/src/film-vote-stats.ts",
         "apps/api/src/film-vote-store.ts",

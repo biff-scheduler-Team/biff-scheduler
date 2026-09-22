@@ -324,6 +324,42 @@
   font-weight: 600;
 }
 
+/* 「生成分享图」—— 出图是**主动动作**,给一档比筛选更实的形态(实底 + 品牌色),
+ * 但仍小于 hero 里的主操作,免得抢了「标记看过 / 贴贴纸」这条主线的注意力 */
+.rb-share-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--selected-line);
+  border-radius: 999px;
+  background: var(--selected);
+  color: var(--selected-line);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rb-share-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+/* 分享图预览:竖长图,靠容器限宽 + 自适应高度 */
+.rb-share-lede {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.rb-share-preview {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  margin: 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--raised);
+}
+
 /* 「看全部」(放大看全部贴纸的入口)—— 与 `.rb-mark` 同一档的小按钮:
  * 它是**查看**动作,不是表态,所以不抢红 / 黑那两个贴纸按钮的视觉权重 */
 .rb-zoom {

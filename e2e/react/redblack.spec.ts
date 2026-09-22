@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { keyOf, ready } from "./helpers";
+import { keyOf, paintedTexts, ready, trackPaintedTexts } from "./helpers";
 
 // 电影红黑榜(2026-09-16,PLAN-20260916102339)。
 //
@@ -416,6 +416,63 @@ test("票数落下之前用户已经在滚 → 不补排,顺序照旧并亮起�
   // 票数到了,但用户已经动过手 → 顺序不动,提示亮着交给他自己点
   await expect(page.locator(".rb-resort")).toHaveAttribute("data-rb-stale", "true");
   expect(await page.locator(".rb-card").first().getAttribute("data-film-key")).toBe(first);
+});
+
+// 生成分享图(2026-09-22):三榜各 TOP10 + **我贴过的全部** + 底部署名。
+// 出图是 canvas 手绘、没有 DOM 可断言,所以读**画出来的字**
+// (`helpers.ts::trackPaintedTexts` 给 `fillText` 打了补丁)。
+test("生成分享图:三榜各 TOP10、我贴过的全部、底部署名", async ({ page }) => {
+  await trackPaintedTexts(page);
+  const top = keyOf("008");
+  const low = keyOf("003");
+  // 一部只有红票、一部只有黑票 → 红榜 / 黑榜各自只剩一条,便于断言「该榜按该色排」
+  await stubVotes(page, { [top]: { red: 40, black: 0 }, [low]: { red: 0, black: 30 } });
+  await ready(page, "/redblack");
+
+  const card = page.locator(`.rb-card[data-film-key="${top}"]`);
+  const topTitle = (await card.locator(".rb-title").textContent())!.trim();
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await card.getByRole("button", { name: /贴红贴纸/ }).click();
+
+  const opener = page.getByRole("button", { name: "生成分享图" });
+  await opener.click();
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".rb-share-preview")).toBeVisible();
+  // 出图是异步的(画完才 toBlob),这里等按钮出来即代表图已生成
+  await expect(dialog.getByRole("button", { name: "下载 PNG 图片" })).toBeVisible();
+
+  const painted = await paintedTexts(page);
+  // 头部 + 三榜标签 + 我的那一节 + 署名:逐项都要画出来
+  for (const needle of [
+    "BIFF 2026 · 观影红黑榜",
+    "红黑榜",
+    "总数榜",
+    "按红 + 黑贴纸数",
+    "红榜",
+    "按红贴纸数",
+    "黑榜",
+    "按黑贴纸数",
+    "我贴过的 1 部",
+    "biff.lcandy.co",
+    "by @gaaiyeoi 和 by @citron",
+  ]) {
+    expect(painted).toContain(needle);
+  }
+  // 我贴过的片名要真的画上去(而不是只有节标题)
+  expect(painted).toContain(topTitle);
+  // 没票的片不该进榜:这一部服务端一枚票都没有
+  const silent = keyOf("011");
+  const silentTitle = (await page
+    .locator(`.rb-card[data-film-key="${silent}"] .rb-title`)
+    .textContent())!.trim();
+  expect(painted).not.toContain(silentTitle);
+
+  // Esc 关闭 + 焦点归还给打开它的那个按钮(§5 硬约束)
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(opener).toBeFocused();
 });
 
 test("「只看我贴过」:只列我贴过的片,参数进 URL,再点一次恢复全量", async ({ page }) => {
