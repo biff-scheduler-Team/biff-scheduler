@@ -58,8 +58,10 @@ test("guest can read feedback list and is gated on post/react", async ({ page })
   await expect(page.locator('.feedback-chip[data-emoji="👍"]')).toContainText("2");
 
   await page.getByRole("button", { name: "登录后发布", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "IFFDAY 账号", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  const accountDialog = page.getByRole("dialog", { name: "IFFDAY 账号", exact: true });
+  await expect(accountDialog).toBeVisible();
+  // 收进弹层再点:全页查询会撞上别的弹层 / S2 菜单浮层里同样叫「关闭」的隐藏按钮
+  await accountDialog.getByRole("button", { name: "关闭", exact: true }).click();
 
   await page.locator('.feedback-chip[data-emoji="❤️"]').click();
   await expect(page.getByRole("dialog", { name: "IFFDAY 账号", exact: true })).toBeVisible();

@@ -377,7 +377,7 @@ export function openAccountPanel() {
         el(
           "p",
           "text-14",
-          `正在自动导入 ${counts.films} 部选片、${counts.plans} 个保存方案及排片偏好。原始数据会保留本机备份。`,
+          `正在自动导入 ${counts.films} 部选片及排片偏好。原始数据会保留本机备份。`,
         ),
       );
       sync.append(

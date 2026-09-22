@@ -2,7 +2,13 @@ import { initAccount } from "../account";
 import { AccountHost } from "../components/AccountHost";
 import { ScheduleSelectionProvider } from "./schedule-selection";
 import { HighlightProvider } from "./highlight";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ComponentRef,
+  type CSSProperties,
+} from "react";
 import {
   NavLink,
   Link as RouterLink,
@@ -17,7 +23,10 @@ import {
 import { Provider } from "@react-spectrum/s2/Provider";
 import {
   ActionButton,
+  ActionMenu,
+  DialogContainer,
   DialogTrigger,
+  MenuItem,
   ToastContainer,
 } from "../components/spectrum";
 import { SettingsDialog } from "../components/SettingsDialog";
@@ -128,6 +137,36 @@ function Shell() {
   }, [panelOpen, navigate, scheduleSearch]);
   const [settingsSession, setSettingsSession] = useState(0);
   const [exportSession, setExportSession] = useState(0);
+  // 顶部辅助区收纳(2026-09-22,`PLAN-20260922105228`):「导出与分享 / 说明 / 设置」从三个并排的
+  // 文字按钮收进一个「更多」菜单。菜单项与弹层之间只能靠**状态**连线 —— 弹层不再挂在各自的
+  // `DialogTrigger` 上,而是按需挂进 `DialogContainer`(仓库先在 `pages/FilmDialog.tsx` 用过这条路径)。
+  const [exportOpen, setExportOpen] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // ⚠ 类型从组件本身推(`ComponentRef`),不要手写 `useRef<HTMLButtonElement>`:
+  //   S2 的 `ActionMenu` 收的是 `FocusableRefValue`(带 `UNSAFE_getDOMNode`),普通 DOM ref 不赋得上。
+  const headerMore = useRef<ComponentRef<typeof ActionMenu> | null>(null);
+  /** 关掉顶部弹层:先收起,再把焦点**交回「更多」触发件**。
+   *  为什么必须显式交回:弹层是从**菜单项**打开的,而关弹层时那个菜单早就卸载了 ——
+   *  不交回,焦点会掉到 `<body>` 上,键盘用户当场失去位置。
+   *  e2e「keyboard can open and dismiss a dialog, restoring focus」守这一条。 */
+  const closeHeaderDialog = (setOpen: (next: boolean) => void) => () => {
+    setOpen(false);
+    headerMore.current?.focus();
+  };
+  const openHeaderAction = (key: string) => {
+    // 每次打开都换 key → 重挂载弹层,读到的都是当下的设置 / 行程(与原先 DialogTrigger 的
+    // onOpenChange + session 计数同一手法,见 `components/TransferAddDialog.tsx`)。
+    if (key === "export") {
+      setExportSession((n) => n + 1);
+      setExportOpen(true);
+    } else if (key === "guide") {
+      setGuideOpen(true);
+    } else if (key === "settings") {
+      setSettingsSession((n) => n + 1);
+      setSettingsOpen(true);
+    }
+  };
   // 页面浏览 + 点击采集（无 consent UI：用户 2026-09-20 明确「直接上报，不需要提示」）
   useTelemetryTracking();
   const nav = [
@@ -173,42 +212,51 @@ function Shell() {
           <RouterLink to="/legacy/" reloadDocument className="version-link">
             回到旧版
           </RouterLink>
-          <DialogTrigger>
-            <ActionButton>
-              <TicketLabel />
-            </ActionButton>
-            <TicketDialog />
-          </DialogTrigger>
           <DataUpdateButton />
           {conflictCount > 0 && (
             <ActionButton onPress={() => navigate(`/agenda${searchFor("/agenda")}`)}>
               重叠 {conflictCount}
             </ActionButton>
           )}
-          <DialogTrigger
-            onOpenChange={(open) => {
-              if (open) setExportSession((n) => n + 1);
-            }}
-          >
-            <ActionButton>
+          {/* ⚠ 菜单项顺序 = 原来三个按钮的顺序(导出与分享 / 说明 / 设置),别顺手按字母重排 */}
+          <ActionMenu ref={headerMore} aria-label="更多" onAction={(key) => openHeaderAction(String(key))}>
+            <MenuItem id="export">
               <span data-track="export">导出与分享</span>
-            </ActionButton>
-            <ExportDialog key={exportSession} />
-          </DialogTrigger>
-          <DialogTrigger>
-            <ActionButton aria-label="日程表说明">说明</ActionButton>
-            <GuideDialog />
-          </DialogTrigger>
-          <DialogTrigger
-            onOpenChange={(open) => {
-              if (open) setSettingsSession((n) => n + 1);
-            }}
-          >
-            <ActionButton>设置</ActionButton>
-            <SettingsDialog key={settingsSession} />
-          </DialogTrigger>
+            </MenuItem>
+            <MenuItem id="guide">说明</MenuItem>
+            <MenuItem id="settings">设置</MenuItem>
+          </ActionMenu>
         </div>
       </header>
+      {/* 售票信息从 top bar 移出(2026-09-22,`PLAN-20260922105228`,用户「避免占用 Top Bar 的黄金位置」):
+          改成头部下方一条独立通知条。⚠ 触发件与弹层**原样保留** —— 可访问名(「距第 N 批开票」/
+          「BIFF 2026 售票中」)与「购票信息」弹层一字未改,只是换了宿主,既有断言不受影响。 */}
+      <div className="ticket-banner">
+        <span className="ticket-banner-label">票务</span>
+        <DialogTrigger>
+          {/* `size="S"`:这是一条**状态**提示,不是主操作 —— 用小一号按钮能把通知条压到 ~28px,
+              给下面真正的内容让出高度(2026-09-22,`PLAN-20260922105228`) */}
+          <ActionButton size="S">
+            <TicketLabel />
+          </ActionButton>
+          <TicketDialog />
+        </DialogTrigger>
+      </div>
+      {exportOpen && (
+        <DialogContainer onDismiss={closeHeaderDialog(setExportOpen)}>
+          <ExportDialog key={exportSession} />
+        </DialogContainer>
+      )}
+      {guideOpen && (
+        <DialogContainer onDismiss={closeHeaderDialog(setGuideOpen)}>
+          <GuideDialog />
+        </DialogContainer>
+      )}
+      {settingsOpen && (
+        <DialogContainer onDismiss={closeHeaderDialog(setSettingsOpen)}>
+          <SettingsDialog key={settingsSession} />
+        </DialogContainer>
+      )}
       <div className="app-toolbar">
         <nav className="main-nav" aria-label="主要导航">
           {nav.map(([path, text]) => (

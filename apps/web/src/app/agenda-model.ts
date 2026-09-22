@@ -1,9 +1,9 @@
 import type { PlanSet, RankClashSpot } from "../plans";
-import type { SavedPlan } from "../state";
-import type { Catalog, Screening } from "../types";
-import { dateInfo } from "../util";
+import type { Screening } from "../types";
 
-/** A saved plan is the user's first choices, never an enumerated replacement. */
+/** 「当前行程」的**真值**:共同场次 + 每个冲突组的第一顺位。
+ *  ⚠ 名字里的 plan 是历史包袱(2026-09-22 之前它同时是「保存方案」的取值口径,`PLAN-20260922105228`)——
+ *  方案整体下线后它**只剩一个调用方**:`ExportDialog` 的「导出范围 = 当前行程」。别再往它身上挂新语义。 */
 export function topPlanCodes(plans: Pick<PlanSet, "common" | "groups">): string[] {
   return [...plans.common, ...plans.groups.map((group) => group[0])];
 }
@@ -45,23 +45,7 @@ export function agendaItems(rows: Screening[], groups: string[][]): AgendaItem[]
   return items;
 }
 
-/** A snapshot's validity is determined by the catalog, not the current picks. */
-export function describeSavedPlan(cat: Pick<Catalog, "byCode">, plan: Pick<SavedPlan, "codes">) {
-  const shows = plan.codes
-    .map((code) => cat.byCode.get(code))
-    .filter((s): s is Screening => Boolean(s))
-    .sort((a, b) => a.date.localeCompare(b.date) || a.start_time.localeCompare(b.start_time));
-  const gone = plan.codes.length - shows.length;
-  const parts = [`${shows.length} 场`];
-  if (shows.length) {
-    const first = dateInfo(shows[0].date).label;
-    const last = dateInfo(shows[shows.length - 1].date).label;
-    parts.push(first === last ? first : `${first}–${last}`);
-  }
-  if (gone) parts.push(`${gone} 场已不在排期`);
-  const details = plan.codes.map((code) => {
-    const s = cat.byCode.get(code);
-    return s ? `${s.start_time.slice(0, 5)} · ${code}` : code;
-  }).join("\n");
-  return { outline: parts.join("，"), details };
-}
+/* `describeSavedPlan()` 随「已保存方案」一起下线(2026-09-22,`PLAN-20260922105228`)。
+ * 它的职责是「按目录核验一份**快照**还剩几场有效」,而快照这个形态已经没有了 ——
+ * 现在唯一要出的概要(`ExportDialog` 的导出范围标签)走 `ExportDialog.tsx::codesOutline`,
+ * 那份永远对着**当前行程**算,不存在「已不在排期」以外的失效形态。 */

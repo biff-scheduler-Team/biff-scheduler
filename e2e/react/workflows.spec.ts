@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-import { agendaCards, keyOf, legacyData, openExport, openViewingPanel, ready, seed, storage } from "./helpers";
+import { agendaCards, keyOf, openExport, openViewingPanel, ready, seed, storage } from "./helpers";
 
 test("search, select a film, add a screening, edit notes, refresh and remove", async ({
   page,
@@ -231,7 +231,8 @@ test("GV overrides update effective end time and calendar output", async ({
     card.getByRole("checkbox", { name: "参加映后谈", exact: true }),
   ).toBeChecked();
   await expect(card).toContainText("18:00–20:00");
-  await page.getByRole("button", { name: "保存当前方案", exact: true }).click();
+  // 原先这里还点了「保存当前方案」再导出 —— 方案整体下线后(2026-09-22,`PLAN-20260922105228`)
+  // 导出范围就是当前行程,这一步没有必要了。
   const dialog = await openExport(page);
   const wait = page.waitForEvent("download");
   await dialog
@@ -245,7 +246,10 @@ test("GV overrides update effective end time and calendar output", async ({
   expect(text).toContain("TRIGGER:-PT45M");
 });
 
-test("conflict ranks determine the saved plan and survive reload", async ({
+// ⚠ 原用例叫「conflict ranks determine the **saved plan** and survive reload」:它把「顺位落盘」
+// 与「保存方案」两条链绑在一起来断言。方案已于 2026-09-22 整体下线(`PLAN-20260922105228`),
+// 这里只留**顺位**那半段 —— 它与按日折叠的持久化一起,仍是本轮最该守的行为。
+test("conflict ranks survive reload and keep driving the card order", async ({
   page,
 }) => {
   await seed(page, {
@@ -267,10 +271,8 @@ test("conflict ranks determine the saved plan and survive reload", async ({
   await page
     .getByRole("button", { name: "提高 033 顺位", exact: true })
     .click();
-  await page.getByRole("button", { name: "保存当前方案", exact: true }).click();
   const data = await storage(page);
   expect(JSON.parse(data["biff.ranks.v1"])).toEqual({ "033": 1, "008": 2 });
-  expect(JSON.parse(data["biff.savedplans.v1"])[0].codes).toEqual(["033"]);
   await page.reload();
   // 刷新后视图回默认「日程表」(视图选择只在会话内记着),再切回卡片继续断言
   await agendaCards(page);
@@ -278,7 +280,6 @@ test("conflict ranks determine the saved plan and survive reload", async ({
     "data-rank-code",
     "033",
   );
-  await expect(page.getByText("方案 1", { exact: true })).toBeVisible();
   await page
     .getByRole("button", { name: "收起行程 2026-10-07", exact: true })
     .click();
@@ -323,20 +324,19 @@ test("imports ICS by file, previews invalid data, and merges without duplicates"
   ]);
 });
 
-test("saved plans export text and a real PNG, and ticket reminders use UTC", async ({
+test("export text and a real PNG come out of the itinerary, and ticket reminders use UTC", async ({
   page,
 }) => {
   await seed(page, {
     "biff.picks.v2": JSON.stringify([
       { key: keyOf("001"), picks: [{ code: "001" }], note: "" },
     ]),
-    "biff.savedplans.v1": legacyData["biff.savedplans.v1"],
   });
   await ready(page, "/agenda");
   const dialog = await openExport(page);
-  // ⚠ 导出范围默认是「当前行程」（PLAN-20260916135942）；本用例验证的是**已保存方案**照常导出，故显式选它
-  await dialog.getByRole("button", { name: /导出范围/ }).click();
-  await page.getByRole("option", { name: /^方案 7/ }).click();
+  // ⚠ 导出范围只剩「当前行程」一项(2026-09-22,`PLAN-20260922105228`):
+  //   原先这里要先在「导出范围」下拉里选一个已保存方案,下拉已换成静态说明行。
+  await expect(dialog.getByText(/导出范围：当前行程/)).toBeVisible();
   await dialog.getByRole("button", { name: "分享文案", exact: true }).click();
   await expect(
     dialog.getByRole("textbox", { name: "行程分享文案", exact: true }),
@@ -422,8 +422,12 @@ test("keyboard can open and dismiss a dialog, restoring focus", async ({
   page,
 }) => {
   await ready(page, "/library");
-  const trigger = page.getByRole("button", { name: "设置", exact: true });
+  // 入口从「设置」按钮变成了「更多 → 设置」(2026-09-22,`PLAN-20260922105228`)。
+  // 键盘用户走同一条路:焦点落在「更多」上,Enter 开菜单,菜单项的 Enter 才进设置。
+  const trigger = page.getByRole("button", { name: "更多", exact: true });
   await trigger.focus();
+  await page.keyboard.press("Enter");
+  await page.getByRole("menuitem", { name: "设置", exact: true }).focus();
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", { name: "设置", exact: true });
   await expect(dialog).toBeVisible();

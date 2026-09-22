@@ -80,7 +80,10 @@ test("时间重叠在我的两场之间画成连线，并给格子冲突配色",
   ).toHaveCount(1);
 });
 
-test("日期条切单日，卡片 / 日程表两档可来回切且互不残留", async ({ page }) => {
+test("日期条切单日，卡片 / 日程表两档可来回切且互不残留", async ({
+  page,
+  isMobile,
+}) => {
   await seed(page, { "biff.picks.v2": picks(["001", ...mine]) });
   await ready(page, "/agenda");
   const agenda = page.getByRole("region", { name: "我的行程", exact: true });
@@ -104,6 +107,17 @@ test("日期条切单日，卡片 / 日程表两档可来回切且互不残留",
   await expect(agenda.locator(".agenda-day")).toHaveCount(0);
   await expect(agenda.locator(".vertical-venue")).toHaveCount(2);
 
+  // 侧栏的落位按宽度分两档(2026-09-22,`PLAN-20260922105228`):
+  //   宽屏 = 画布右边独立一列;窄屏(≤1099)= **叠在画布下方**的单列(顺位卡是当天唯一能改顺位的入口,
+  //   不能整块藏掉)。这条用例同时跑桌面与手机两个项目,正好一处把两档都钉住。
+  const canvasBox = (await agenda.locator(".gantt-scroll").boundingBox())!;
+  const sideBox = (await agenda.locator(".agenda-side").boundingBox())!;
+  if (isMobile) {
+    expect(sideBox.y).toBeGreaterThanOrEqual(canvasBox.y + canvasBox.height - 1);
+  } else {
+    expect(sideBox.x).toBeGreaterThanOrEqual(canvasBox.x + canvasBox.width - 1);
+  }
+
   // 「仅看实际行程」联动:一场都没标「已抢到」时画布与日期条一起空掉,并给出说明
   await agenda.getByRole("button", { name: /仅看实际行程/ }).click();
   await expect(agenda.locator("[data-grid-slot]")).toHaveCount(0);
@@ -111,21 +125,30 @@ test("日期条切单日，卡片 / 日程表两档可来回切且互不残留",
   await expect(agenda.locator(".agenda-gantt-empty")).toBeVisible();
 });
 
-// 「我的行程」信息架构收拾(2026-09-22,`PLAN-20260922103307`)。
-// 回归的是改动前的两处结构问题:① 工具栏与画布图例**分成两行**、功能混杂;
-// ② 「保存当前方案」悬在日程表与「已保存方案」之间的空白里(不在首屏工具栏)。
-test("顶部工具栏只有一条：左状态操作、右视图与保存，日期条夹在概览条与它之间", async ({
+// 「我的行程」信息架构收拾(两轮合并,现在是 `PLAN-20260922105228` 定稿的形态):
+//   ① 两行控件并成**一条**工具栏(左:状态与操作,右:视图与缩放);
+//   ② 日期条从独立一行**并进**这条工具栏;
+//   ③ 概览从独立一行收进页头标题右侧;
+//   ④ 画布右侧那块空白改放侧栏(当天顺位卡 + 场次详情);
+//   ⑤ 「保存当前方案 / 已保存方案」整体下线 → 断言是**反向**的(计数 0),钉住「没有复活」。
+test("首屏只有一条工具栏（含日期卡），概览收进页头，画布与侧栏两栏并排", async ({
   page,
+  isMobile,
 }) => {
+  // 这条钉的是**桌面两栏**版式:视口被顶到 1512,但移动端模拟下的字宽 / 行高与真桌面不同,
+  // 首屏预算实测差十几像素(288 vs 274)—— 预算只在桌面这一档有意义(窄屏本来就是单列,没有两栏可腾)。
+  test.skip(isMobile, "桌面版式;移动端单列由下一条用例覆盖");
   // 左右两组要落在同一行才有「左 vs 右」可言,故把视口钉死在桌面宽度
   await page.setViewportSize({ width: 1512, height: 1200 });
   await seed(page, { "biff.picks.v2": picks(mine) });
   await ready(page, "/agenda");
   const agenda = page.getByRole("region", { name: "我的行程", exact: true });
 
-  // ① 全页只有一条工具栏:图例、操作、视图、缩放全在里面
+  // ① 全页只有一条工具栏:日期卡、图例、操作、视图、缩放全在里面
   const toolbar = agenda.locator(".agenda-actions");
   await expect(toolbar).toHaveCount(1);
+  const strip = toolbar.locator(".date-strip.calendar-strip");
+  await expect(strip).toHaveCount(1);
   const legend = toolbar.locator(".schedule-legend");
   await expect(legend).toHaveCount(1);
   await expect(legend).toContainText("时间紧张");
@@ -136,42 +159,78 @@ test("顶部工具栏只有一条：左状态操作、右视图与保存，日�
   // 画布容器里不再有第二行图例(否则就是「两行控件」又回来了)
   await expect(agenda.locator(".agenda-gantt .schedule-legend")).toHaveCount(0);
 
-  // ② 左组 = 图例 + 添加转票场次 + 仅看实际行程;右组 = 日程表 / 卡片 + 缩放 + 保存当前方案
+  // ② 左组 = 日期卡 + 图例 + 添加转票场次 + 仅看实际行程;右组 = 日程表 / 卡片 + 缩放
   const left = toolbar.locator(".agenda-actions-left");
   const right = toolbar.locator(".agenda-actions-right");
   expect(await left.innerText()).toContain("添加转票场次");
   expect(await left.innerText()).toContain("仅看实际行程");
   expect(await right.innerText()).toContain("日程表");
   expect(await right.innerText()).toContain("卡片");
-  expect(await right.innerText()).toContain("保存当前方案");
   const leftBox = (await left.boundingBox())!;
   const rightBox = (await right.boundingBox())!;
   expect(rightBox.x).toBeGreaterThanOrEqual(leftBox.x + leftBox.width);
 
-  // ③ 保存当前方案在工具栏里,不再是日程表与「已保存方案」之间那块孤立按钮
+  // ③ 「方案」整体下线(2026-09-22,`PLAN-20260922105228`):保存按钮与已保存方案区块都不在了
   await expect(agenda.locator(".agenda-save")).toHaveCount(0);
   await expect(
-    right.getByRole("button", { name: "保存当前方案", exact: true }),
-  ).toHaveCount(1);
+    agenda.getByRole("button", { name: "保存当前方案", exact: true }),
+  ).toHaveCount(0);
+  await expect(agenda.locator(".saved-plans")).toHaveCount(0);
 
-  // ④ 层次:概览条 → 日期导航 → 工具栏
-  const strip = agenda.locator(".date-strip.calendar-strip");
-  await expect(strip).toHaveCount(1);
-  const summaryBox = (await agenda.locator(".summary-strip").boundingBox())!;
-  const stripBox = (await strip.boundingBox())!;
-  const toolbarBox = (await toolbar.boundingBox())!;
-  expect(summaryBox.y + summaryBox.height).toBeLessThanOrEqual(stripBox.y);
-  expect(stripBox.y + stripBox.height).toBeLessThanOrEqual(toolbarBox.y);
+  // ④ 概览不再独占一行,而是标题右侧的一排 tag;画布起点按**首屏预算**钉住。
+  //    预算账(1512 宽实测,2026-09-22):
+  //      改前 = 页头 82 + 概览 36 + 日期条 112 + 工具栏 66 = 296(画布起点 y≈295)
+  //      改后 = 页头 ~62(副标题收进 h1 同行)+ 一条工具栏 ~60(日期卡压成药丸)= **274**
+  //    ⚠ 这条预算**包含**新增的票务通知条(~28)与全站固定两条(站点 header 64 + 主导航 44)——
+  //      所以它不是"能压到多小"的记录,而是"别再把离散层级加回来"的守卫:多一行就红。
+  //    ⚠ 别再往下抠那 ~25px:剩下的都是标题/工具栏的内边距,抠掉就是拿呼吸感换算高度。
+  const overview = agenda.locator(".agenda-overview");
+  await expect(overview).toHaveCount(1);
+  await expect(overview).toContainText("部电影");
+  await expect(overview).toContainText("质量分");
+  await expect(agenda.locator(".summary-strip")).toHaveCount(0);
+  const headingBox = (await agenda.locator(".panel-heading").boundingBox())!;
+  const overviewBox = (await overview.boundingBox())!;
+  expect(overviewBox.y).toBeLessThan(headingBox.y + headingBox.height);
+  const canvasBox = (await agenda.locator(".gantt-scroll").boundingBox())!;
+  expect(canvasBox.y).toBeLessThanOrEqual(280);
 
-  // ⑤ 卡片视图没有画布:图例 / 缩放 / 日期条一起退场,但保存按钮留下
+  // ⑤ 两栏:画布在左、侧栏在右;侧栏里有当天的顺位卡与场次详情
+  const columns = agenda.locator(".agenda-columns");
+  await expect(columns).toHaveCount(1);
+  const side = agenda.locator(".agenda-side");
+  await expect(side).toHaveCount(1);
+  const sideBox = (await side.boundingBox())!;
+  expect(sideBox.x).toBeGreaterThanOrEqual(canvasBox.x + canvasBox.width);
+  // 这份种子(008 / 033)本身就是一个冲突组 → 侧栏里应有顺位卡
+  await expect(
+    side.getByRole("region", { name: "当天冲突组顺位", exact: true }),
+  ).toContainText("冲突组顺位");
+  await expect(
+    side.getByRole("region", { name: "场次详情", exact: true }),
+  ).toBeVisible();
+
+  // ⑥ 侧栏可折叠:收起后画布变宽、顺位卡退场;再点回来恢复
+  const toggle = agenda.getByRole("button", { name: "收起行程侧栏", exact: true });
+  await toggle.click();
+  await expect(
+    agenda.getByRole("button", { name: "展开行程侧栏", exact: true }),
+  ).toBeVisible();
+  await expect(
+    agenda.getByRole("region", { name: "当天冲突组顺位", exact: true }),
+  ).toHaveCount(0);
+  const wideBox = (await agenda.locator(".gantt-scroll").boundingBox())!;
+  expect(wideBox.width).toBeGreaterThan(canvasBox.width);
+  await agenda.getByRole("button", { name: "展开行程侧栏", exact: true }).click();
+  await expect(
+    agenda.getByRole("region", { name: "当天冲突组顺位", exact: true }),
+  ).toBeVisible();
+
+  // ⑦ 卡片视图没有画布:图例 / 缩放 / 日期条与侧栏一起退场(顺位卡回到按日就地展开)
   await right.getByRole("button", { name: "卡片", exact: true }).click();
   await expect(agenda.locator(".schedule-legend")).toHaveCount(0);
   await expect(agenda.locator(".zoom-controls")).toHaveCount(0);
   await expect(strip).toHaveCount(0);
-  await expect(
-    agenda.locator(".agenda-actions-right").getByRole("button", {
-      name: "保存当前方案",
-      exact: true,
-    }),
-  ).toHaveCount(1);
+  await expect(agenda.locator(".agenda-side")).toHaveCount(0);
+  await expect(agenda.locator(".rank-group").first()).toBeVisible();
 });

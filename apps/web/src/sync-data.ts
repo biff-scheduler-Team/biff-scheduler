@@ -99,9 +99,6 @@ export function readWorkspace(storage: WorkspaceStorage): WorkspaceRecords {
           note: typeof item.note === "string" ? item.note : "",
         });
       }
-    } else if (key === "biff.savedplans.v1" && Array.isArray(value)) {
-      for (const item of value)
-        if (item && typeof item.id === "string") records[`plan:${item.id}`] = canonical(item);
     } else records[`local:${key}`] = canonical(value);
   }
   return records;
@@ -114,7 +111,6 @@ export function writeWorkspace(storage: WorkspaceStorage, records: WorkspaceReco
   }
   const entries: Record<string, string> = Object.create(null);
   const picks: unknown[] = [];
-  const plans: unknown[] = [];
   for (const [key, raw] of Object.entries(records)) {
     const value = JSON.parse(raw);
     if (key.startsWith("pick:"))
@@ -126,15 +122,12 @@ export function writeWorkspace(storage: WorkspaceStorage, records: WorkspaceReco
           .filter((code) => value.codes[code])
           .map((code) => ({ code })),
       });
-    else if (key.startsWith("plan:")) plans.push(value);
     else if (key.startsWith("local:biff.")) entries[key.slice(6)] = raw;
     else if (key.startsWith("raw:biff.") && typeof value === "string")
       entries[key.slice(4)] = value;
   }
   if (picks.length || !("biff.picks.v2" in entries))
     entries["biff.picks.v2"] = JSON.stringify(picks);
-  if (plans.length || !("biff.savedplans.v1" in entries))
-    entries["biff.savedplans.v1"] = JSON.stringify(plans);
   // Keep a recoverable snapshot if a browser storage quota failure interrupts replacement.
   const before = Object.fromEntries(remove.map((key) => [key, storage.getItem(key)!]));
   try {
@@ -146,9 +139,10 @@ export function writeWorkspace(storage: WorkspaceStorage, records: WorkspaceReco
     throw error;
   }
 }
+/** 导入提示要用的计数。⚠ 方案那一项随「已保存方案」下线(2026-09-22,`PLAN-20260922105228`):
+ *  它原先数的是 `plan:` 前缀的专列记录,而那类记录现在不存在了(旧键走通用的 `local:` 分支)。 */
 export function workspaceCounts(records: WorkspaceRecords) {
   return {
     films: Object.keys(records).filter((key) => key.startsWith("pick:")).length,
-    plans: Object.keys(records).filter((key) => key.startsWith("plan:")).length,
   };
 }

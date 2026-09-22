@@ -1,4 +1,7 @@
 export { ActionButton } from "@react-spectrum/s2/ActionButton";
+// 顶部辅助区的「更多」是「一个按钮 + 一个菜单」的标准形态(`ActionMenu` 就是为此存在的):
+// 2026-09-22 把「设置 / 说明 / 导出与分享」三项收进去(`PLAN-20260922105228`)。
+export { ActionMenu, MenuItem } from "@react-spectrum/s2/ActionMenu";
 export { Button } from "@react-spectrum/s2/Button";
 export { ButtonGroup } from "@react-spectrum/s2/ButtonGroup";
 export { Checkbox } from "@react-spectrum/s2/Checkbox";

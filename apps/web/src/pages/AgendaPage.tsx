@@ -14,12 +14,10 @@ import {
   DialogTrigger,
   Heading,
   Content,
-  ToastQueue,
   ToggleButton,
 } from "../components/spectrum";
 import { TransferAddEntry } from "../components/TransferAddDialog";
 import { ScreeningCard } from "../components/ScreeningCard";
-import { PlanShowsDialog } from "../components/PlanShowsDialog";
 // 日程表视图与排片表共用同一个甘特组件(2026-09-21,PLAN-20260921223658):
 // `scope="agenda"` 换掉图例 / 刻度 / 边界文案,`shows` 把画布收成「我的场次」。
 // 图例与缩放档位也复用排片表那两只组件(2026-09-22,PLAN-20260922103307):它们的**实现**只有一份,
@@ -30,24 +28,16 @@ import {
   ScheduleGantt,
 } from "../components/ScheduleGantt";
 import { useCatalog } from "../app/store";
+import { useHighlight } from "../app/highlight";
 import { navSearch } from "../app/nav-query";
 import { useScheduleNavigation } from "../app/navigation";
+import { agendaItems, rankSpotOrder } from "../app/agenda-model";
 import {
-  agendaItems,
-  describeSavedPlan,
-  rankSpotOrder,
-  topPlanCodes,
-} from "../app/agenda-model";
-import {
-  deletePlan,
   isAgendaFolded,
-  savePlan,
-  savedPlans,
   setRanks,
   store,
   tickets,
   toggleAgendaFold,
-  type SavedPlan,
 } from "../state";
 import { actualCodeSet } from "../tickets";
 import { autoFixRanks } from "../plans";
@@ -67,59 +57,9 @@ import type { Screening } from "../types";
 import { SCHEDULE_LABEL } from "../actions-copy";
 import "./agenda-parity.css";
 
-export function saveCodes(codes: string[]) {
-  const result = savePlan(codes);
-  if (result.ok)
-    ToastQueue.positive(`已保存${result.plan!.name}`, { timeout: 5000 });
-  else
-    ToastQueue.neutral(
-      result.reason === "empty"
-        ? `先${SCHEDULE_LABEL}，再保存方案。`
-        : "这个方案已经保存。",
-      { timeout: 5000 },
-    );
-}
-
-/** 「已保存方案」的删除入口(2026-09-22,`PLAN-20260922103307`)。
- *
- *  ★ 为什么从「卡片右端中部的一个小按钮」改成「右上角 + 二次确认」:
- *    原位置与方案名隔着整行宽度,看不出删的是哪一套;方案名在左上、删除在中右,是两处视觉焦点。
- *    现在它与方案名同一行、右端对齐(见 `.saved-plan-head`),点了先出确认。
- *  ★ 为什么保留「删除」两个字而不做纯垃圾桶图标:用户给的是「二次确认**或**图标」二选一;
- *    图标更难被发现,而二次确认已经解决了误触。
- *  ★ 二次确认**故意**照抄 `SettingsDialog::ClearDialog` 的形状(`DialogTrigger + Dialog size="S"`
- *    + `取消` / negative 确认),不另造一个 Popconfirm 组件 —— 仓库里「破坏性操作先问一句」只有这一种范式。 */
-function DeletePlanButton({ plan }: { plan: SavedPlan }) {
-  return (
-    <DialogTrigger>
-      <ActionButton aria-label={`删除${plan.name}`}>删除</ActionButton>
-      <Dialog size="S">
-        {({ close }) => (
-          <>
-            <Heading slot="title">删除{plan.name}？</Heading>
-            <Content>
-              <p>删除后无法恢复；需要时可以把当前行程重新保存成一套方案。</p>
-            </Content>
-            <ButtonGroup>
-              <Button variant="secondary" onPress={close}>
-                取消
-              </Button>
-              <Button
-                variant="negative"
-                onPress={() => {
-                  deletePlan(plan.id);
-                  close();
-                }}
-              >
-                确认删除
-              </Button>
-            </ButtonGroup>
-          </>
-        )}
-      </Dialog>
-    </DialogTrigger>
-  );
-}
+/* `saveCodes()`(保存方案的 toast 包装)与 `DeletePlanButton`(删除入口 + 二次确认)
+ * 随「已保存方案」一起下线(2026-09-22,`PLAN-20260922105228`)——
+ * 页面上的保存 / 查看场次 / 删除三个入口都在这一个区块里,方案没了它们就没有宿主了。 */
 
 function RankGroup({ codes }: { codes: string[] }) {
   const slotFilter = useScheduleSelection();
@@ -440,6 +380,9 @@ type AgendaView = "gantt" | "cards";
  *   `biff.*` 的读写会被 E2E 的字节级存储快照断言看见,为「记住一次切换」打红一批无关 spec 不划算。 */
 let agendaViewMemory: AgendaView = "gantt";
 
+/** 右侧栏是否折叠(**会话内记忆**,与 `agendaViewMemory` 同一取舍与同一理由)。 */
+let agendaSideFoldedMemory = false;
+
 export function AgendaPage() {
   const slotFilter = useScheduleSelection();
   const { cat, codes, plans, conflicts, keyOf } = useCatalog();
@@ -455,6 +398,15 @@ export function AgendaPage() {
     agendaViewMemory = next;
     setView(next);
   };
+  // 右侧栏的折叠(2026-09-22,`PLAN-20260922105228`):与 `agendaViewMemory` 同口径 ——
+  // **会话内记忆、刷新即回默认展开**,理由见 `agendaViewMemory`(不落 localStorage,
+  // 免得为「记住一次折叠」打红一批字节级存储断言)。
+  const [sideFolded, setSideFolded] = useState(agendaSideFoldedMemory);
+  const toggleSide = () => {
+    agendaSideFoldedMemory = !sideFolded;
+    setSideFolded(!sideFolded);
+  };
+  const highlight = useHighlight();
   const actual = actualCodeSet(tickets);
   const selected = codes
     .filter((code) => !actualOnly || actual.has(code))
@@ -470,7 +422,6 @@ export function AgendaPage() {
     15,
     (s) => effEndMin(s, talkOnOf(s.code)),
   );
-  const firstLayerClash = plans.rankClashes.some((clash) => clash.layer === 1);
   // 日程表是**单日**视图,日期条只列「我有行程的日期」(排片表那条列全届日期)。
   const days = groupByDate(selected, (s) => s.date);
   // 「选中的日子」不额外存状态,由「当前行程 + 上次点的那天」派生 —— 移出行程 / 切「仅看实际行程」
@@ -525,6 +476,10 @@ export function AgendaPage() {
   const toolbar = (
     <div className="agenda-actions">
       <div className="agenda-actions-left">
+        {/* 日期导航并进工具栏(2026-09-22,`PLAN-20260922105228`):它是主视图的**全局日期 Filter**,
+            不该独占一行 —— 与图例 / 操作同排,左组仍是「状态与操作」。
+            ⚠ 日历卡与排片表**同一份**样式(`.date-strip.calendar-strip`),别为这一页另做小号卡。 */}
+        {hasCanvas && dateStrip}
         {hasCanvas && (
           // 类名沿用排片表那条口径(`.schedule-legend`),两处共用同一份图例样式
           <div className="schedule-legend agenda-legend">
@@ -546,60 +501,15 @@ export function AgendaPage() {
           </ToggleButton>
         </div>
         {hasCanvas && <GanttZoomControls />}
-        {!actualOnly && codes.length > 0 && (
-          <>
-            {/* 被禁用时必须**当场**说清原因:`title` 在 disabled 按钮上弹不出来 */}
-            {firstLayerClash && (
-              <span className="muted agenda-save-hint">
-                第一顺位有撞车，请先让路再保存。
-              </span>
-            )}
-            <Button
-              onPress={() => saveCodes(topPlanCodes(plans))}
-              isDisabled={firstLayerClash}
-            >
-              保存当前方案
-            </Button>
-          </>
-        )}
       </div>
     </div>
   );
-  // 视图无关的页级区块(顺位撞车提示 / 已保存方案)—— 抽成一份,两个视图共用,
-  // 免得「切到日程表就看不到已保存方案」。排布顺序按视图给。
+  // 视图无关的页级区块 —— 方案整体下线后这里**只剩顺位撞车提示**(2026-09-22,`PLAN-20260922105228`)。
+  // ⚠ 行程为空时不渲染它(它读的是当前行程,空行程上没有任何撞车可言;
+  //   少一个 `codes.length > 0` 就会在空状态多出一块空提示)。
   const panels = (
     <>
-      {/* ⚠ 行程为空时**只**保留「已保存方案」:顺位撞车在旧版就没有(它读的是当前行程),
-          少一个 `codes.length > 0` 就会在空状态多出一块空提示。
-          ⚠ 「保存当前方案」已从这一块**提**到顶部工具栏(2026-09-22,`PLAN-20260922103307`)——
-          它夹在画布与「已保存方案」之间时,是全页唯一一个「上下都不挨着」的控件。 */}
       {!actualOnly && codes.length > 0 && <RankClashes />}
-      <section className="saved-plans" aria-label="已保存方案">
-        <h2>已保存方案，{savedPlans.length} 套</h2>
-        {savedPlans.length === 0 && (
-          <p className="muted">
-            还没有保存方案。在上方保存当前第一顺位方案，导出与分享时按方案选择。
-          </p>
-        )}
-        {savedPlans.map((plan) => {
-          const summary = describeSavedPlan(cat, plan);
-          return (
-            <div className="saved-plan" key={plan.id}>
-              {/* 方案名与「删除」同一行(2026-09-22,`PLAN-20260922103307`):删除入口钉在右上角,
-                  紧挨它要删的那一套方案,不再飘在卡片右端中部。 */}
-              <div className="saved-plan-head">
-                <strong>{plan.name}</strong>
-                <DeletePlanButton plan={plan} />
-              </div>
-              <p className="muted" title={summary.details}>
-                {summary.outline}
-              </p>
-              {/* 弹层内容与分享图片同源(见 PlanShowsDialog 文件头),不再是内联的「时间 · CODE」纯文本 */}
-              <PlanShowsDialog plan={plan} />
-            </div>
-          );
-        })}
-      </section>
     </>
   );
   const agendaDays = (
@@ -683,61 +593,127 @@ export function AgendaPage() {
   const agendaGantt = (
     <div className="agenda-gantt">
       {days.length === 0 ? (
-        <p className="muted agenda-gantt-empty">
+        <p className="muted-strong agenda-gantt-empty">
           这些场次都还没标「已抢到」，日程表里没有可排的场次。
         </p>
       ) : (
-        <>
-          {activeDate && (
-            <ScheduleGantt
-              scope="agenda"
-              date={activeDate}
-              hour={null}
-              shows={dayRows}
-            />
-          )}
-          {activeGroups.length > 0 && (
-            <section className="agenda-gantt-ranks" aria-label="当天冲突组顺位">
-              <h2>冲突组顺位</h2>
-              <p className="muted">
-                画布上的连线就是这 {activeGroups.length} 组时间重叠；拖动把手排抢票顺位，顺位 1 为首选。
-              </p>
-              {activeGroups.map((group) => (
-                <RankGroup key={[...group].sort().join(",")} codes={group} />
-              ))}
-            </section>
-          )}
-        </>
+        activeDate && (
+          <ScheduleGantt
+            scope="agenda"
+            date={activeDate}
+            hour={null}
+            shows={dayRows}
+          />
+        )
       )}
     </div>
+  );
+  // 侧栏要显示的那一场 = **当前高亮**的场次,且必须是画布**当天**的
+  // (换日后残留的 code 不该在侧栏里显示一场画布上根本没有的场次)。
+  const highlighted = highlight.code ? cat.byCode.get(highlight.code) : undefined;
+  const detail = highlighted && highlighted.date === activeDate ? highlighted : undefined;
+  // 右侧栏(2026-09-22,`PLAN-20260922105228`):宽屏那块约 780px 的空白改放「当天冲突组顺位 + 场次详情」。
+  // ★ 顺位卡为什么从画布**下方**搬进来:它读的正是画布上那几条连线(同一批 `activeGroups`),
+  //   两块内容本来就该并排看 —— 这一步同时消掉了「画布很长、顺位卡在最底下」。
+  // ★ 「场次详情」为什么用**高亮**而不是"点击选中":画布上点击的语义是「加入 / 移出行程」(`toggle(s)`),
+  //   拿它兼做"查看详情"会把用户已选的场次点掉。高亮走既有 `useHighlight`(鼠标 hover / 键盘 focus),
+  //   零新增交互口径。⚠ 触摸端没有 hover,故那里给一句说明,而不是放一个按不动的死控件。
+  const agendaSide = (
+    <aside
+      className="agenda-side"
+      aria-label="行程侧栏"
+      data-folded={sideFolded || undefined}
+    >
+      <button
+        type="button"
+        className="agenda-side-toggle"
+        aria-expanded={!sideFolded}
+        aria-label={sideFolded ? "展开行程侧栏" : "收起行程侧栏"}
+        onClick={toggleSide}
+      >
+        {sideFolded ? "‹" : "›"}
+      </button>
+      {!sideFolded && (
+        <>
+          <section className="agenda-side-ranks" aria-label="当天冲突组顺位">
+            <h2>冲突组顺位</h2>
+            {activeGroups.length === 0 ? (
+              <p className="muted-strong">
+                {actualOnly
+                  ? "「仅看实际行程」时不排顺位：票都抢完了。"
+                  : "当天没有时间重叠的冲突组。"}
+              </p>
+            ) : (
+              <>
+                <p className="muted-strong">
+                  画布上的连线就是这 {activeGroups.length} 组时间重叠；拖动把手排抢票顺位，顺位 1 为首选。
+                </p>
+                {activeGroups.map((group) => (
+                  <RankGroup key={[...group].sort().join(",")} codes={group} />
+                ))}
+              </>
+            )}
+          </section>
+          <section className="agenda-side-detail" aria-label="场次详情">
+            <h2>场次详情</h2>
+            {detail ? (
+              // ⚠ 侧栏这份卡是**只读检视器**:不带 `controls` / `social`(2026-09-22,`PLAN-20260922105228`)。
+              //   理由有两层:① 画布上的格子本身就带同名的控件(场次格 / 场次卡),同一控件在两处出现
+              //   既会让用户犹豫"点哪个",也会让 `getByRole` 之类的选择器撞成两个;
+              //   ② 侧栏是"看一眼这条是什么"的地方,动手改行程仍回画布 / 卡片。
+              <ScreeningCard screening={detail} venueInfo slotFilter={slotFilter} />
+            ) : (
+              <p className="muted-strong">
+                把鼠标移到日程表上的场次，这里会显示它的详情。
+              </p>
+            )}
+          </section>
+        </>
+      )}
+    </aside>
   );
   return (
     <>
       <section className="agenda-page" aria-label="我的行程">
         <div className="panel-heading">
           <div>
-            <p className="eyebrow">挑场次，留备选</p>
-            <h1>我的行程</h1>
+            {/* ⚠ 副标题**必须**留在 `h1` 外面:塞进去会把标题的 accessible name 污染成
+                「我的行程 挑场次，留备选」,`getByRole("heading", { name: "我的行程" })` 会全线失配
+                (与「豆瓣入口别塞进片名 h3」同一课)。同行只靠这一行的 flex 对齐实现。 */}
+            <div className="agenda-title-row">
+              <h1>我的行程</h1>
+              {/* 这句原先独立占一行:收成同行(2026-09-22,`PLAN-20260922105228`)——
+                  首屏每压掉一行,画布就早一步进视野。文案 / 字阶都没变,只是不再独占一行。 */}
+              <p className="eyebrow-inline">挑场次，留备选</p>
+            </div>
           </div>
-          <span className="count" aria-live="polite">
-            {codes.length} 场
-          </span>
+          {/* 概览微型化(2026-09-22,`PLAN-20260922105228`):原先它独占一行、还带一条分隔线,
+              把画布往下推了 36px —— 这些数字是**读一眼**的东西,做成标题右侧的灰 tag 就够。 */}
+          <div className="agenda-overview" aria-label="行程概览">
+            <span className="overview-tag">
+              {new Set(selected.map((s) => keyOf(s.code))).size} 部电影
+            </span>
+            <span className="overview-tag">{days.length} 天</span>
+            <span
+              className="overview-tag"
+              title="票务状态标为「已抢到」的场次（含转票补入）"
+            >
+              实际 {actual.size} 场
+            </span>
+            <span className="overview-tag">
+              {formatKrw(selected.reduce((n, s) => n + priceOf(s), 0))}
+            </span>
+            <span
+              className="overview-tag"
+              title={`场次 ${score.count} + GV ${score.gv} − 紧转场 ${score.tight}`}
+            >
+              质量分 {score.total}
+            </span>
+            <span className="count" aria-live="polite">
+              {codes.length} 场
+            </span>
+          </div>
         </div>
-        <div className="summary-strip">
-          <span>{new Set(selected.map((s) => keyOf(s.code))).size} 部电影</span>
-          <span>{days.length} 天</span>
-          <span title="票务状态标为「已抢到」的场次（含转票补入）">
-            实际 {actual.size} 场
-          </span>
-          <span>{formatKrw(selected.reduce((n, s) => n + priceOf(s), 0))}</span>
-          <span
-            title={`场次 ${score.count} + GV ${score.gv} − 紧转场 ${score.tight}`}
-          >
-            质量分 {score.total}
-          </span>
-        </div>
-        {/* 日期导航紧贴概览条(2026-09-22,`PLAN-20260922103307`):概览 → 日期 → 时刻表 */}
-        {hasCanvas && dateStrip}
         {toolbar}
         {codes.length === 0 ? (
           <>
@@ -749,12 +725,17 @@ export function AgendaPage() {
                 浏览影片库
               </Button>
             </div>
-            {/* 行程为空也要能管理「已保存方案」——旧版就在这里,别把它关进行程非空的分支 */}
             {panels}
           </>
         ) : view === "gantt" ? (
           <>
-            {agendaGantt}
+            {/* 两栏(2026-09-22,`PLAN-20260922105228`):左画布 / 右侧栏。用 grid 而不是 flex ——
+                折叠时改的是**列模板**一处,不会留下 flex 的残宽;窄屏(`≤1099`)回落单列,
+                侧栏叠到画布下方(顺位卡是那一天唯一能改顺位的入口,不能整块藏掉)。 */}
+            <div className="agenda-columns">
+              <div className="agenda-column-main">{agendaGantt}</div>
+              {agendaSide}
+            </div>
             {panels}
           </>
         ) : (

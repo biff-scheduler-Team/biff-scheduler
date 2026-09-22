@@ -171,8 +171,15 @@ export const DEFAULT_SCHEDULE_ZOOM = 0.55;
 export const VERTICAL_PX_PER_MIN = 4;
 export const hourTickPx = (zoom = DEFAULT_SCHEDULE_ZOOM) =>
   60 * VERTICAL_PX_PER_MIN * zoom;
+/** 顶部辅助区的入口(2026-09-22,`PLAN-20260922105228`)。
+ *  「导出与分享 / 说明 / 设置」三个文字按钮已收进右侧的**「更多」菜单** ——
+ *  所以点它们之前必须先开菜单;这条是那三个入口的**唯一**打开方式,别再在 spec 里手写两步。 */
+export async function headerAction(page: Page, name: string) {
+  await page.getByRole("button", { name: "更多", exact: true }).click();
+  await page.getByRole("menuitem", { name, exact: true }).click();
+}
 export async function openExport(page: Page) {
-  await page.getByRole("button", { name: "导出与分享", exact: true }).click();
+  await headerAction(page, "导出与分享");
   await expect(page.getByRole("dialog", { name: "导出与分享" })).toBeVisible();
   return page.getByRole("dialog", { name: "导出与分享" });
 }

@@ -16,7 +16,10 @@ function picks(codes: string[]) {
   return JSON.stringify([...entries.values()]);
 }
 
-test("first-choice clashes block saving until the user chooses which group yields", async ({
+// ⚠ 这条用例原先叫「first-choice clashes block **saving** until the user chooses which group yields」:
+// 它靠「保存按钮被禁用 / 改选后可用」来间接证明撞车被判出来了。保存方案已于 2026-09-22 整体下线
+// (`PLAN-20260922105228`),现在直接断言**撞车本身**与**改选的落盘结果** —— 判据更近,不再绕一个按钮。
+test("first-choice clashes are reported per layer, and a yielding group is written to the ranks", async ({
   page,
 }) => {
   await seed(page, {
@@ -24,8 +27,6 @@ test("first-choice clashes block saving until the user chooses which group yield
     "biff.ranks.v1": JSON.stringify({ "008": 1, "033": 2, "143": 1, "080": 2 }),
   });
   await ready(page, "/agenda");
-  const save = page.getByRole("button", { name: "保存当前方案", exact: true });
-  await expect(save).toBeDisabled();
   await expect(
     page.getByRole("region", { name: "方案对比", exact: true }),
   ).toHaveCount(0);
@@ -35,14 +36,7 @@ test("first-choice clashes block saving until the user chooses which group yield
   await clashes
     .getByRole("button", { name: "OCT 8 10:00 组改选 080", exact: true })
     .click();
-  await expect(save).toBeEnabled();
-  await save.click();
-  const current = await storage(page);
-  expect(JSON.parse(current["biff.savedplans.v1"])[0].codes).toEqual([
-    "008",
-    "080",
-  ]);
-  expect(JSON.parse(current["biff.ranks.v1"])).toEqual({
+  expect(JSON.parse((await storage(page))["biff.ranks.v1"])).toEqual({
     "008": 1,
     "033": 2,
     "080": 1,
@@ -107,45 +101,10 @@ test("a following screening has no misleading gap from one member of a conflict 
   await expect(page.locator(".agenda-page .gap-label")).toHaveCount(0);
 });
 
-test("saved snapshots retain catalog validity, date range, and inspectable codes", async ({
-  page,
-}) => {
-  await seed(page, {
-    "biff.savedplans.v1": JSON.stringify([
-      {
-        id: "old",
-        name: "方案 7",
-        codes: ["001", "008", "99999"],
-        createdAt: 1,
-      },
-    ]),
-  });
-  await ready(page, "/agenda");
-  const saved = page.getByRole("region", { name: "已保存方案", exact: true });
-  await expect(saved).toContainText("2 场，OCT 6–OCT 7，1 场已不在排期");
-  // 「查看场次」是弹层(2026-09-14):内容与分享图片同源 —— 有效结束时间 / 片名 / 影院 / GV 标记,
-  // 不再是内联 <details> 里的「HH:MM · CODE」纯文本。
-  await saved
-    .getByRole("button", { name: "查看「方案 7」的场次", exact: true })
-    .click();
-  const dialog = page.getByRole("dialog");
-  await expect(
-    dialog.getByRole("heading", { name: "方案 7", exact: true }),
-  ).toBeVisible();
-  await expect(dialog).toContainText("OCT 6–OCT 7 · 共 2 场 / 2 部");
-  // 001:18:00 起 + 80 分钟正片 + 25 分钟默认映后谈 → 有效结束 19:45(与分享图片同一口径)
-  await expect(dialog).toContainText("18:00–19:45");
-  await expect(dialog).toContainText("The Table: Day and Night · 彼此的日夜");
-  await expect(dialog).toContainText("BCC Roof · 001");
-  // GV 文案与分享文案同源(`share.ts::gvMark`):2026-09-16 起「含映后谈」缩成「映后」
-  await expect(dialog).toContainText("映后");
-  await expect(dialog).toContainText("08:40–11:20");
-  await expect(dialog).toContainText("You, Like a Star · 宛如星辰的你");
-  await expect(dialog).toContainText("BCC Cinema 1 · 008");
-  // 换版残留的 code 不能静默消失
-  await expect(dialog).toContainText("1 场已不在当前排期：99999");
-  await expect(saved).not.toContainText("已不在当前行程");
-});
+/* 「已保存方案的快照校验 / 查看场次弹层」整条用例随方案下线删除(2026-09-22,`PLAN-20260922105228`)。
+ * 它覆盖的三件事都没了宿主:①快照的日期区间与「N 场已不在排期」概要(`describeSavedPlan`)、
+ * ②「查看场次」弹层(`PlanShowsDialog`,它的信息口径与分享图片同源)、
+ * ③「已保存方案」区块本身。行程侧的等价口径仍由下面的按日折叠用例与 `share-export` 覆盖。 */
 
 test("folded days retain daily prices, overlap counts, and their legacy time span", async ({
   page,
@@ -309,46 +268,9 @@ test("after the final batch the ticket banner says tickets are on sale", async (
   ).toBeVisible();
 });
 
-// 「已保存方案」的删除入口(2026-09-22,`PLAN-20260922103307`)。
-// 回归的是改动前的两处问题:① 删除按钮飘在卡片右端中部、与方案名隔着整行宽度;
-// ② 一点就删,没有二次确认。
-test("方案卡片的删除钉在方案名右边，且要先过二次确认", async ({ page }) => {
-  await seed(page, {
-    "biff.savedplans.v1": JSON.stringify([
-      { id: "keep", name: "方案 1", codes: ["008"], createdAt: 1 },
-      { id: "gone", name: "方案 2", codes: ["033"], createdAt: 2 },
-    ]),
-  });
-  await ready(page, "/agenda");
-  const saved = page.getByRole("region", { name: "已保存方案", exact: true });
-  const card = saved.locator(".saved-plan").filter({ hasText: "方案 2" });
-  const del = card.getByRole("button", { name: "删除方案 2", exact: true });
-  const name = card.locator(".saved-plan-head > strong");
-
-  // ① 与方案名**同一行**(纵向有重叠)、且在片名的右边
-  const nameBox = (await name.boundingBox())!;
-  const delBox = (await del.boundingBox())!;
-  expect(delBox.y).toBeLessThan(nameBox.y + nameBox.height);
-  expect(nameBox.y).toBeLessThan(delBox.y + delBox.height);
-  expect(delBox.x).toBeGreaterThan(nameBox.x + nameBox.width);
-
-  // ② 点入口只出确认,方案还在
-  await del.click();
-  const dialog = page.getByRole("dialog", { name: "删除方案 2？", exact: true });
-  await expect(dialog).toBeVisible();
-  await expect(card).toHaveCount(1);
-
-  // ③ 取消不删
-  await dialog.getByRole("button", { name: "取消", exact: true }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(saved).toContainText("2 套");
-
-  // ④ 确认才真的删
-  await del.click();
-  await dialog.getByRole("button", { name: "确认删除", exact: true }).click();
-  await expect(saved).toContainText("1 套");
-  await expect(saved).not.toContainText("方案 2");
-});
+/* 「方案卡片的删除入口钉在方案名右边 + 二次确认」整条用例随方案下线删除
+ * (2026-09-22,`PLAN-20260922105228`)—— 卡片、方案名、删除入口与那个确认弹层都不存在了。
+ * ⚠ 它上一轮(`PLAN-20260922103307`)刚被写出来,所以这里留档一句:不是漏改,是宿主没了。 */
 
 test("agenda cards carry the venue code, place details and a Google Maps entry", async ({
   page,

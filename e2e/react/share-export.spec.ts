@@ -12,7 +12,7 @@
 //   （行程页冲突组在用），只是**不再进分享内容**。
 
 import { test, expect } from "@playwright/test";
-import { keyOf, paintedTexts, ready, seed, trackPaintedTexts } from "./helpers";
+import { headerAction, keyOf, paintedTexts, ready, seed, trackPaintedTexts } from "./helpers";
 
 /** 已选场次 → `biff.picks.v2`（每场一个 key，与行程页口径一致） */
 const picks = (...codes: string[]) =>
@@ -48,15 +48,17 @@ test("分享文案按「当前行程」导出，且不含顺位 / 备选 / 开�
   await seed(page, {
     "biff.picks.v2": picks("070", "126"),
     "biff.ranks.v1": JSON.stringify({ "126": 1, "070": 2 }),
-    // ⚠ 方案里故意放一个**与行程无关**的 code：默认范围必须是「当前行程」（`PLAN-20260916135942`）。
-    //   若哪天回归成「默认选最后一个已保存方案」，下面的 126 / 070 会整个从文案里消失。
+    // ⚠ `biff.savedplans.v1` 是**废键**(「已保存方案」2026-09-22 整体下线,`PLAN-20260922105228`)。
+    //   这里仍塞一个**与行程无关**的 code:它必须彻底失效 —— 既不能进导出范围,也不能进分享文案。
     "biff.savedplans.v1": plan("033"),
   });
   await ready(page, "/agenda");
 
-  await page.getByRole("button", { name: "导出与分享", exact: true }).click();
+  await headerAction(page, "导出与分享");
   const dialog = page.getByRole("dialog", { name: "导出与分享" });
-  await expect(dialog.getByRole("button", { name: /导出范围/ })).toContainText("当前行程");
+  // 导出范围只剩「当前行程」一项,故下拉已换成一行静态说明(单选项下拉是死控件)
+  await expect(dialog.getByText(/导出范围：当前行程/)).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /导出范围/ })).toHaveCount(0);
   // 两个勾选框已随功能下线 —— 弹层里不该再有任何复选开关
   await expect(dialog.getByRole("checkbox")).toHaveCount(0);
 
@@ -82,7 +84,7 @@ test("分享图片同样不含顺位 / 备选 / 批次节头，但内容照画",
     "biff.savedplans.v1": plan("070", "126"),
   });
   await ready(page, "/agenda");
-  await page.getByRole("button", { name: "导出与分享", exact: true }).click();
+  await headerAction(page, "导出与分享");
   const dialog = page.getByRole("dialog", { name: "导出与分享" });
   await dialog.getByRole("button", { name: "生成分享图片", exact: true }).click();
   const canvas = dialog.getByLabel("行程分享图片", { exact: true });

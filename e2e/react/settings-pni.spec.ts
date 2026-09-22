@@ -4,13 +4,13 @@
 // 读的都是同一份 catalog(`app/store.tsx::derive()` 的入口合并)。而「勾了没反应」与
 // 「没勾就混进来」都只有跑起来才看得见。断言一律走 DOM(`data-badge` / 计数),不靠截图。
 import { expect, test, type Page } from "@playwright/test";
-import { ready } from "./helpers";
+import { headerAction, ready } from "./helpers";
 
 /** P&I 徽章 —— `ScreeningCard.tsx::Badges` 把每个特性渲染成 `[data-badge="<key>"]`。 */
 const pniBadges = (page: Page) => page.locator('[data-badge="pni"]');
 
 async function openSettings(page: Page) {
-  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await headerAction(page, "设置");
   const dialog = page.getByRole("dialog", { name: "设置" });
   await expect(dialog).toBeVisible();
   return dialog;

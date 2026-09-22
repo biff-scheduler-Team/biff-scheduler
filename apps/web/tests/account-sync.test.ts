@@ -67,12 +67,15 @@ describe("account synchronization", () => {
     expect(once.records).toEqual({ ...local, ...remote });
     expect(mergeRecords({}, once.records, local).records).toEqual(once.records);
   });
-  it("round-trips existing picks, plans, ranks and preferences while excluding account caches", () => {
+  it("round-trips existing picks, ranks and preferences while excluding account caches", () => {
     const storage = new MemoryStorage();
     storage.setItem(
       "biff.picks.v2",
       JSON.stringify([{ key: "cat:f001", picks: [{ code: "101" }], note: "Keep this" }]),
     );
+    // ⚠ `biff.savedplans.v1` 是**废键**(「已保存方案」2026-09-22 整体下线,`PLAN-20260922105228`):
+    //   同步层不再为它开 `plan:` 专列,它落入通用的 `local:biff.*` 分支 —— 本用例断言的是
+    //   「同步往返对它仍然是逐字幂等的」,这正是废键必须满足的性质。
     storage.setItem(
       "biff.savedplans.v1",
       JSON.stringify([{ id: "plan-1", name: "First choice", codes: ["101"], createdAt: 123 }]),
