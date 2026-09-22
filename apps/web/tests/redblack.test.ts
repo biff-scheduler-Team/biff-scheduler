@@ -299,6 +299,37 @@ describe("别人的贴纸:票数几枚就画几枚", () => {
   });
 });
 
+// 落点的**分布**(2026-09-22,PLAN-20260922145815 修订 2)。
+// 为什么单测它:落点直接拿 FNV 哈希的高位算,而同一部片的 id 共享前缀(`cat:f001#crowd-`),
+// 高位对末尾那几个字符几乎不敏感 —— 100 枚会挤成一条横带,个别片甚至全落在上面 40% 里。
+// 一天只画 16 枚时看不出来,放开上限后一眼就是「没铺满」;而它既不会报错也不会崩,只能靠断言守。
+describe("spotOf:落点要真的铺开", () => {
+  const spread = (key: string, axis: "posX" | "posY") => {
+    const values = Array.from({ length: 100 }, (_, i) => spotOf(`${key}#crowd-${i}`)[axis]);
+    values.sort((a, b) => a - b);
+    return { span: values[99] - values[0], median: values[50] };
+  };
+
+  it("100 枚的纵坐标铺满画布,不是一条横带", () => {
+    const { span, median } = spread("cat:f001", "posY");
+    expect(span).toBeGreaterThan(0.5);
+    expect(Math.abs(median - 0.5)).toBeLessThan(0.2);
+  });
+
+  it("横坐标同理", () => {
+    const { span, median } = spread("cat:f001", "posX");
+    expect(span).toBeGreaterThan(0.5);
+    expect(Math.abs(median - 0.5)).toBeLessThan(0.2);
+  });
+
+  it("换几部片都铺得开(不是那部片碰巧对)", () => {
+    for (const key of ["cat:f007", "cat:f020", "cat:f137"]) {
+      expect(spread(key, "posY").span).toBeGreaterThan(0.5);
+      expect(spread(key, "posX").span).toBeGreaterThan(0.5);
+    }
+  });
+});
+
 // 「有新贴纸 · 重新排序」的判据(2026-09-22,PLAN-20260922142903)。
 // 为什么单测它:重拉一次票数就会得到**新对象**,拿引用比会让提示在「数量没变」时也白亮一次
 // —— 表现只是「提示莫名出现」,没有报错,只能靠断言守住「只有数量变了才算」。
