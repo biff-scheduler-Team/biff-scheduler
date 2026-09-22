@@ -4,7 +4,6 @@ import { PosterPreview } from "./PosterPreview";
 import { buildPosterModel, type PosterModel } from "../poster";
 import { dateInfo } from "../util";
 import type { Catalog } from "../types";
-import type { SavedPlan } from "../state";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActionButton,
@@ -13,8 +12,6 @@ import {
   Content,
   Dialog,
   Heading,
-  Picker,
-  PickerItem,
   TextArea,
   ToastQueue,
 } from "./spectrum";
@@ -23,22 +20,14 @@ import { topPlanCodes } from "../app/agenda-model";
 import { buildIcs, type PickRow } from "../ics";
 import { buildShareText } from "../share";
 import { parseBackupText, parseIcsCodes, restore, snapshot } from "../backup";
-import {
-  mergeScreenings,
-  replaceScreenings,
-  savedPlans,
-  slotOf,
-  store,
-} from "../state";
+import { mergeScreenings, replaceScreenings, slotOf, store } from "../state";
 import { talkOnOf } from "../gv";
 import { todayIsoLocal } from "../util";
 import { copyText } from "../clipboard";
 
-/** 「导出范围」里的**伪方案 id** —— 选中它 = 按**当前行程**导出(取行程「每组第一顺位 + 共同场次」)。 */
-export const SCOPE_CURRENT = "current";
-
 /** 场次集合概要:`29 场，OCT 7–OCT 10`(排期里查不到的 code 记「N 场已不在排期」)。
- *  ⚠ 已保存方案与「当前行程」两个范围**共用本函数** —— 各算一份必然让同一份数据印出两个场数。 */
+ *  ⚠ 2026-09-22 起它只服务**一个**范围(当前行程,`PLAN-20260922105228`)——
+ *  「已保存方案」那第二个范围已整体下线,原先「两个范围各算一份会让同一份数据印出两个场数」的坑随之消失。 */
 export function codesOutline(cat: Catalog, codes: string[]): string {
   const shows = codes
     .flatMap((code) => {
@@ -61,10 +50,8 @@ export function codesOutline(cat: Catalog, codes: string[]): string {
   return parts.join("，");
 }
 
-/** 已保存方案的概要(薄封装,见 `codesOutline`)。 */
-export function planOutline(cat: Catalog, plan: SavedPlan): string {
-  return codesOutline(cat, plan.codes);
-}
+/* `planOutline()` 随「已保存方案」一起删除(2026-09-22,`PLAN-20260922105228`)。
+ * 它只是 `codesOutline(cat, plan.codes)` 的薄封装,方案的 codes 没了,它也就没有输入了。 */
 
 function ImportData() {
   const { cat, keyOf } = useCatalog();
@@ -149,7 +136,7 @@ function ImportData() {
                 </ActionButton>
               ) : (
                 <div className="notice">
-                  <p>当前选片、备注、设置和方案将被这份备份替换。</p>
+                  <p>当前选片、备注、顺位和设置将被这份备份替换。</p>
                   <Button variant="negative" onPress={() => apply("replace")}>
                     确认恢复并刷新
                   </Button>
@@ -194,29 +181,26 @@ function ImportData() {
 }
 export function ExportDialog() {
   const { cat, plans } = useCatalog();
-  // 导出范围:默认「当前行程」,已保存方案仍可显式选。
-  const [scope, setScope] = useState<string>(SCOPE_CURRENT);
   const [preview, setPreview] = useState(false);
   const generation = useRef(0);
   const [image, setImage] = useState<{
     id: number;
-    planId: string;
+    signature: string;
     model: PosterModel;
     loading: boolean;
   } | null>(null);
-  const currentCodes = useMemo(() => topPlanCodes(plans), [plans]);
-  // 选了已保存方案 → 按方案快照;方案被别的标签页删掉(没有 Picker 事件) → 回落最后一个方案;都没有 → 当前行程。
-  const plan =
-    scope === SCOPE_CURRENT
-      ? undefined
-      : savedPlans.find((p) => p.id === scope) ?? savedPlans.at(-1);
-  const scopeCodes = plan?.codes ?? currentCodes;
-  const scopeId = plan?.id ?? SCOPE_CURRENT;
-  const activeImage = image?.planId === scopeId ? image : null;
+  // 「导出范围」只剩**当前行程**一个(2026-09-22,`PLAN-20260922105228`):
+  // 每组第一顺位 + 共同场次,口径在 `agenda-model.ts::topPlanCodes`。
+  const scopeCodes = useMemo(() => topPlanCodes(plans), [plans]);
+  // ⚠ 出图是异步的,期间行程可能被改(本标签页切场次 / 另一标签页改完 picks 后 storage 同步过来)。
+  //   所以每张图都记着**生成时那份场次集合**,集合一变就作废 —— 否则用户会拿到一张
+  //   「导出内容与当前行程对不上」的图。这是旧「所选方案被别的标签页删掉 → 作废」判据退役后的等价物
+  //   (旧判据的前提是「范围可被外部删除」,而当前行程不依赖任何可被外部删除的对象)。
+  const scopeSignature = scopeCodes.join("|");
+  const activeImage = image?.signature === scopeSignature ? image : null;
   useEffect(() => {
-    // Storage sync may remove the selected plan without a Picker change event.
-    setImage((current) => current?.planId === scopeId ? current : null);
-  }, [scopeId]);
+    setImage((current) => current?.signature === scopeSignature ? current : null);
+  }, [scopeSignature]);
   const onImageLoadingChange = useCallback((id: number, loading: boolean) => {
     setImage((current) => current?.id === id ? { ...current, loading } : current);
   }, []);
@@ -232,7 +216,7 @@ export function ExportDialog() {
     if (!model) return;
     setImage({
       id: ++generation.current,
-      planId: scopeId,
+      signature: scopeSignature,
       model,
       loading: true,
     });
@@ -244,28 +228,15 @@ export function ExportDialog() {
           <Heading slot="title">导出与分享</Heading>
           <Content>
             <div className="export-content">
-              {rows.length || savedPlans.length ? (
+              {rows.length ? (
                 <section className="form-stack">
-                  <Picker
-                    label="导出范围"
-                    value={scopeId}
-                    onChange={(id) => {
-                      setScope(String(id));
-                      setImage(null);
-                    }}
-                  >
-                    <PickerItem id={SCOPE_CURRENT}>
-                      当前行程（{codesOutline(cat, currentCodes)}）
-                    </PickerItem>
-                    {savedPlans.map((p) => (
-                      <PickerItem key={p.id} id={p.id}>
-                        {p.name}（{planOutline(cat, p)}）
-                      </PickerItem>
-                    ))}
-                  </Picker>
+                  {/* 导出范围只剩一个,故不再用下拉(单选项下拉是个点了没变化的死控件),
+                      改成一行静态说明:口径与场数仍是同一份 `codesOutline`。 */}
+                  <p className="export-scope">
+                    导出范围：当前行程（{codesOutline(cat, scopeCodes)}）
+                  </p>
                   <p className="muted">
-                    「当前行程」取行程里的全部场次（每组第一顺位 + 共同场次），改完行程直接导出即可；
-                    已保存方案是快照，之后改行程不会跟着变。
+                    取行程里的全部场次（每组第一顺位 + 共同场次），改完行程直接导出即可。
                   </p>
                   <p className="muted">
                     {rows.length} 场有效排期。日历时间会自动转换到手机所在时区。
@@ -356,7 +327,7 @@ export function ExportDialog() {
               <section className="backup-section">
                 <h2>数据备份</h2>
                 <p className="muted">
-                  备份包括选片、备注、顺位、已保存方案和设置。换设备或域名时可以导入恢复。
+                  备份包括选片、备注、顺位和设置。换设备或域名时可以导入恢复。
                 </p>
                 <ActionButton
                   onPress={() => {

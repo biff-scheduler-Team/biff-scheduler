@@ -22,43 +22,50 @@ import {
 import type { Settings, ThemePref } from "../types";
 
 function ClearDialog({ all }: { all: boolean }) {
+  // ⚠ **必须**只在打开时挂载 `Dialog`(与 `TransferAddDialog` 同一手法):
+  //   S2 的 `DialogTrigger` 无条件渲染 children,而设置弹层自 2026-09-22 起挂在 `DialogContainer`
+  //   之下(`PLAN-20260922105228`)—— 常驻的那个 `<Dialog>` 会被当成"当前弹层"一起显示出来,
+  //   实测一次打开设置会同时冒出三个对话框(设置 + 这两个清空确认)。
+  const [open, setOpen] = useState(false);
   return (
-    <DialogTrigger>
+    <DialogTrigger isOpen={open} onOpenChange={setOpen}>
       <Button variant="negative">
         {all ? "清空全部选片" : "清空已排场次"}
       </Button>
-      <Dialog size="S">
-        {({ close }) => (
-          <>
-            <Heading slot="title">
-              {all ? "清空全部选片？" : "清空已排场次？"}
-            </Heading>
-            <Content>
-              <p>
-                {all
-                  ? "将删除当前选片、场次与备注。已保存方案和设置会保留。"
-                  : "将移除全部已排场次。有备注的影片会保留，其他空记录会删除；只有一场的影片会连同选片一起移除。"}
-              </p>
-            </Content>
-            <ButtonGroup>
-              <Button variant="secondary" onPress={close}>
-                取消
-              </Button>
-              <Button
-                variant="negative"
-                onPress={() => {
-                  if (all) clearAllPicks();
-                  else clearScreeningSlots();
-                  ToastQueue.positive("已清空", { timeout: 5000 });
-                  close();
-                }}
-              >
-                确认清空
-              </Button>
-            </ButtonGroup>
-          </>
-        )}
-      </Dialog>
+      {open && (
+        <Dialog size="S">
+          {({ close }) => (
+            <>
+              <Heading slot="title">
+                {all ? "清空全部选片？" : "清空已排场次？"}
+              </Heading>
+              <Content>
+                <p>
+                  {all
+                    ? "将删除当前选片、场次与备注。设置会保留。"
+                    : "将移除全部已排场次。有备注的影片会保留，其他空记录会删除；只有一场的影片会连同选片一起移除。"}
+                </p>
+              </Content>
+              <ButtonGroup>
+                <Button variant="secondary" onPress={close}>
+                  取消
+                </Button>
+                <Button
+                  variant="negative"
+                  onPress={() => {
+                    if (all) clearAllPicks();
+                    else clearScreeningSlots();
+                    ToastQueue.positive("已清空", { timeout: 5000 });
+                    close();
+                  }}
+                >
+                  确认清空
+                </Button>
+              </ButtonGroup>
+            </>
+          )}
+        </Dialog>
+      )}
     </DialogTrigger>
   );
 }

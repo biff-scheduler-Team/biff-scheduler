@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agendaItems, describeSavedPlan, rankSpotOrder, topPlanCodes } from "../src/app/agenda-model";
+import { agendaItems, rankSpotOrder, topPlanCodes } from "../src/app/agenda-model";
 import { computeConflicts } from "../src/conflict";
 import { buildPlanSet } from "../src/plans";
 import type { Screening } from "../src/types";
@@ -46,11 +46,6 @@ describe("legacy agenda decisions", () => {
     ]);
   });
 
-  it("describes valid snapshot dates and missing catalog codes independently of current picks", () => {
-    const shows = [show("001", "18:00", "2026-10-06"), show("008", "08:40")];
-    const cat = { byCode: new Map(shows.map((s) => [s.code, s])) };
-    const description = describeSavedPlan(cat, { codes: ["008", "missing", "001"] });
-    expect(description.outline).toBe("2 场，OCT 6–OCT 7，1 场已不在排期");
-    expect(description.details).toBe("08:40 · 008\nmissing\n18:00 · 001");
-  });
+  // ⚠ 「方案快照的日期 / 缺片概要」那条用例随 `describeSavedPlan` 一起删除
+  //   (2026-09-22,`PLAN-20260922105228`):快照这个形态已经没有了。
 });

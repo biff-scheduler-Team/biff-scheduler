@@ -22,13 +22,11 @@ import {
   loadMappings,
   loadPicks,
   loadRanks,
-  loadSavedPlans,
   loadSettings,
   loadTickets,
   notify,
   rankOf,
   registerSoleShows,
-  savedPlans,
   store,
   subscribe,
   tickets,
@@ -58,7 +56,6 @@ export function hydrateStorage(cat: Catalog) {
   gvTalk.clear();
   gvTalkMinOv.clear();
   agendaFolded.clear();
-  savedPlans.length = 0;
   store.settings = {
     alarmMin: 45,
     transitMin: 0,
@@ -73,7 +70,6 @@ export function hydrateStorage(cat: Catalog) {
   loadRanks();
   // 票务状态同理:必须在 loadPicks 之前载入,否则 rebuildIndex() 会把整张表当成脏数据 prune 掉
   loadTickets();
-  loadSavedPlans();
   loadAgendaFold();
   loadPicks((code) => {
     const s = cat.byCode.get(code);

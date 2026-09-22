@@ -4,7 +4,31 @@
 
 /* ---------- 日程表视图(2026-09-21,`PLAN-20260921223658`) ----------
    画布本身与排片表共用 `components/ScheduleGantt.tsx`(连同 `.vertical-schedule` 那套样式),
-   这里只补这一页特有的三块:顶部工具栏、日期条的位置、画布下方的顺位卡。 */
+   这里只补这一页特有的四块:页头里的概览 tag、一条工具栏(含日期条)、两栏本体、右侧栏。
+
+   ---------- 首屏压缩的总账(2026-09-22,`PLAN-20260922105228`) ----------
+   改前 页头 82 + 概览 36 + 日期条 112 + 工具栏 66 ≈ **296px**(画布起点 y=295);
+   改后 页头(含概览 tag) 82 + 一条工具栏(含日期卡) ≈ 124 → 画布起点落在 **210px 上下**。
+   代价写在这里:工具栏因为要装 94px 高的日历卡,自己变成了那一行里最高的东西。 */
+
+/* ---------- 概览 tag:从独立一行收进页头(2026-09-22,`PLAN-20260922105228`) ---------- */
+.agenda-overview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  justify-content: flex-end;
+}
+.overview-tag {
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--raised);
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 
 /* ---------- 顶部工具栏(2026-09-22,`PLAN-20260922103307`) ----------
    改动前这里是**两行**:上一行「添加转票场次 / 仅看实际行程 / 视图切换」,下一行是画布自己的
@@ -17,7 +41,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px 12px;
-  padding: 16px 20px 14px;
+  padding: 12px 20px;
 }
 .agenda-actions-left,
 .agenda-actions-right {
@@ -26,32 +50,122 @@
   align-items: center;
   gap: 8px;
 }
-/* 图例在工具栏里是左组的头一项:去掉排片表那条 `.schedule-legend` 的下方留白。
+/* 图例在工具栏里是左组的一项:去掉排片表那条 `.schedule-legend` 的下方留白。
    ⚠ 选择器带上 `.agenda-actions`(0,2,0)压住 `style.css` 里的 `.schedule-legend`(0,1,0) ——
    两处同为单类时胜负取决于打包顺序,而多出来的 12px 底距会把图例在 `align-items: center` 的行里顶偏。 */
 .agenda-actions .agenda-legend {
   margin-bottom: 0;
 }
-/* 只在「第一顺位有撞车、保存被禁用」时出现 —— `title` 在 disabled 按钮上弹不出来 */
-.agenda-save-hint {
+/* 日期条也进了这条工具栏(2026-09-22,`PLAN-20260922105228`):去掉它作为独立一行时的下内距与
+   自己的横向滚动 —— 它现在是工具栏里的一个普通项,宽度跟着内容走、放不下就换行。 */
+.agenda-actions .date-strip.calendar-strip {
+  padding-bottom: 0;
+  overflow-x: visible;
+  flex-wrap: wrap;
+}
+/* ★ 把这张「日期卡」压成药丸:排片表顶上那版是 76×94 的大卡(它的日期条就是那一页的主导航),
+   而这一页的日期条已经**降级成工具栏里的一项** —— 94px 高会把整条工具栏撑回原来的高度,
+   等于白合并。⚠ 仍然复用同一套 DOM 与类名(`.date-strip.calendar-strip > .calendar-day`),
+   只是在本页把它摊平成一行矮药丸:日期文案 / 场次计数仍来自 `dateInfo` 同一处口径。 */
+.agenda-actions .date-strip.calendar-strip > button {
+  flex: 0 0 auto;
+  width: auto;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+}
+.agenda-actions .calendar-day {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: auto;
+  height: auto;
+}
+.agenda-actions .calendar-weekday {
+  min-height: 0;
+  background: none;
   font-size: 12px;
 }
-/* 日期条紧贴概览条(2026-09-22,`PLAN-20260922103307`):它是主视图的**全局日期 Filter**,
-   不再是画布容器的一部分(见 `AgendaPage` 的 `dateStrip`)。
-   ⚠ 底距为 0 是 `style.css` 那条 `.workspace .agenda-page > .calendar-strip` 给的,别在这里写死。 */
-.agenda-page > .date-strip.calendar-strip {
-  padding: 18px 20px 0;
+.agenda-actions .calendar-number {
+  flex: none;
+  font-size: 15px;
 }
+.agenda-actions .calendar-count {
+  min-height: 0;
+  padding-bottom: 0;
+}
+/* `.agenda-save-hint` 随「保存当前方案」一起删除(2026-09-22,`PLAN-20260922105228`):
+   那条提示只在按钮被禁用(第一顺位撞车)时出现,按钮没了它也没有触发点。 */
 .view-switch {
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
+
+/* ---------- 两栏:左画布 / 右侧栏(2026-09-22,`PLAN-20260922105228`) ---------- */
+.agenda-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
+  padding: 0 20px 4px;
+}
+/* 折叠时只改列模板一处(320 → 40):不留 flex 那种残宽,也不出现"半列空白" */
+.agenda-columns:has(.agenda-side[data-folded]) {
+  grid-template-columns: minmax(0, 1fr) 40px;
+}
+.agenda-column-main {
+  min-width: 0;
+}
+.agenda-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  /* 侧栏比画布长时不撑页面:自己滚。⚠ 上限跟着视口走,别写死像素 */
+  max-height: calc(100dvh - 260px);
+  overflow-y: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+}
+.agenda-side-toggle {
+  align-self: flex-end;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-chip);
+  background: var(--raised);
+  color: var(--muted-strong);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.agenda-side-toggle:hover {
+  border-color: var(--muted);
+  color: var(--text);
+}
+.agenda-side-ranks,
+.agenda-side-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.agenda-side-ranks > h2,
+.agenda-side-detail > h2,
+.agenda-side-ranks > p,
+.agenda-side-detail > p {
+  margin: 0;
+  font-size: 13px;
+}
 .agenda-gantt {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 0 20px 4px;
 }
 .agenda-gantt-empty {
   margin: 0;
@@ -66,15 +180,22 @@
 .agenda-gantt-ranks > p {
   margin: 0;
 }
+/* 窄屏回落单列:侧栏叠到画布**下方** —— 顺位卡是那一天唯一能改顺位的入口,不能整块藏掉 */
+@media (max-width: 1099px) {
+  .agenda-columns,
+  .agenda-columns:has(.agenda-side[data-folded]) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .agenda-side {
+    max-height: none;
+  }
+}
 @media (max-width: 768px) {
-  .agenda-gantt {
-    padding: 0 14px 4px;
-  }
-  .agenda-page > .date-strip.calendar-strip {
-    padding: 16px 14px 0;
-  }
   .agenda-actions {
-    padding: 14px 14px 12px;
+    padding: 12px 14px;
+  }
+  .agenda-columns {
+    padding: 0 14px 4px;
   }
 }
 .agenda-day-count,

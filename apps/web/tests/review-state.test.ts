@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { hydrateStorage } from "../src/app/store";
-import { rankOf, savedPlans } from "../src/state";
+import { rankOf } from "../src/state";
 import { catalog, show } from "./helpers";
 
 const cat = catalog([show({ code: "001" }), show({ code: "002" })]);
@@ -30,14 +30,17 @@ describe("legacy storage hydration order", () => {
     expect(values.get("biff.future.v9")).toBe('{ "unchanged": true }');
   });
 
-  it("keeps valid rank bytes and saved plans across repeated storage synchronization", () => {
+  it("keeps valid rank bytes, and leaves the retired savedplans key byte-for-byte", () => {
     const ranks = '{ "001": 2, "002": 1 }';
-    const plans = [{ id: "saved", name: "方案 1", codes: ["001"], createdAt: 1 }];
+    // 「已保存方案」已整体下线(2026-09-22,`PLAN-20260922105228`):这个键**不再被读**,
+    // 但必须**原样留着** —— 数据契约只增不改,备份前缀快照与 `compatibility.spec.ts` 的字节级断言
+    // 都依赖「加载旧数据不丢键」。哪天误把它读出来再写回去(或删掉),这条会红。
+    const plans = '[{"id":"saved","name":"方案 1","codes":["001"],"createdAt":1}]';
     values.set("biff.ranks.v1", ranks);
-    values.set("biff.savedplans.v1", JSON.stringify(plans));
+    values.set("biff.savedplans.v1", plans);
     hydrateStorage(cat);
     hydrateStorage(cat);
     expect(values.get("biff.ranks.v1")).toBe(ranks);
-    expect(savedPlans).toEqual(plans);
+    expect(values.get("biff.savedplans.v1")).toBe(plans);
   });
 });

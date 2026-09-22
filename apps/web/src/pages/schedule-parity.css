@@ -153,7 +153,8 @@
   flex: 0 0 76px;
   height: 94px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  /* 日期卡走"卡片"那一档 token(2026-09-22,`PLAN-20260922105228`) */
+  border-radius: var(--radius-card);
   padding: 0;
   overflow: hidden;
   background: var(--surface);
@@ -286,7 +287,9 @@
   display: inline-flex;
   align-items: center;
   border: 1px solid currentColor;
-  border-radius: 4px;
+  /* 图例章与小件同一档(2026-09-22,`PLAN-20260922105228`):原先是写死的 4px,
+     和场次格(6px)/ 折叠按钮(6px)并列出现时肉眼可辨 —— 现在三处共用一个 token。 */
+  border-radius: var(--radius-chip);
   padding: 2px 5px;
   font-weight: 700;
   line-height: 1.2;

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { ready, seed, storage, openExport, keyOf } from "./helpers";
+import { headerAction, ready, seed, storage, openExport, keyOf } from "./helpers";
 
 // ⚠ `showPni` 是 `0d68da7`(P&I 开关)加进 `Settings` 的默认字段 —— 该提交没同步这条夹具,
 // 于是下面两条 `toEqual(settings)` 在 main 上恒红(实测多出 `"showPni": false`)。
@@ -18,7 +18,11 @@ const plans = [
   { id: "one", name: "方案 1", codes: ["001"], createdAt: 1 },
   { id: "two", name: "方案 2", codes: ["033"], createdAt: 2 },
 ];
-const pickerLabel = /导出范围/;
+/** 行程播种:`biff.picks.v2` 每场一个 key(与行程页口径一致)。 */
+const picks = (...codes: string[]) =>
+  JSON.stringify(
+    codes.map((code) => ({ key: keyOf(code), picks: [{ code }], note: "" })),
+  );
 
 test("cancel discards settings drafts and reopening reads current preferences", async ({
   page,
@@ -26,7 +30,7 @@ test("cancel discards settings drafts and reopening reads current preferences", 
 }) => {
   await seed(page, { "biff.settings.v1": JSON.stringify(settings) });
   await ready(page, "/schedule");
-  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await headerAction(page, "设置");
   let dialog = page.getByRole("dialog", { name: "设置", exact: true });
   let alarm = dialog.getByRole("textbox", {
     name: "日历提醒提前量（分钟）",
@@ -39,14 +43,14 @@ test("cancel discards settings drafts and reopening reads current preferences", 
     settings,
   );
   if (!isMobile) {
-    await page.getByRole("button", { name: "设置", exact: true }).click();
+    await headerAction(page, "设置");
     const appearance = page.getByRole("dialog", { name: "设置", exact: true });
     await appearance.getByRole("button", { name: /外观/ }).click();
     await page.getByRole("option", { name: "暗色", exact: true }).click();
     await appearance.getByRole("button", { name: "保存设置", exact: true }).click();
     await page.getByRole("group", { name: "排片大小" }).getByRole("button", { name: "大", exact: true }).click();
   }
-  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await headerAction(page, "设置");
   dialog = page.getByRole("dialog", { name: "设置", exact: true });
   alarm = dialog.getByRole("textbox", {
     name: "日历提醒提前量（分钟）",
@@ -114,8 +118,9 @@ test("restoring GV duration preserves attendance, and editing requires confirmat
 test("export defaults to 当前行程 and reopening never exposes an empty downloadable canvas", async ({
   page,
 }) => {
-  // ⚠ 默认范围 = 「当前行程」（取行程「每组第一顺位 + 共同场次」），不是最后一个已保存方案（PLAN-20260916135942）——
-  //   故这里必须播种行程，否则默认范围是 0 场、按钮禁用，后面的画布断言就无从谈起。
+  // ⚠ 必须播种行程:导出范围就是「当前行程」，空行程 → 0 场 → 按钮禁用，后面的画布断言无从谈起。
+  //   `biff.savedplans.v1` 仍塞一份**废键**数据:它不得改变范围、也不得让弹层多出任何选项
+  //   (「已保存方案」2026-09-22 整体下线,`PLAN-20260922105228`)。
   await seed(page, {
     "biff.picks.v2": JSON.stringify([
       { key: keyOf("001"), picks: [{ code: "001" }], note: "" },
@@ -124,9 +129,9 @@ test("export defaults to 当前行程 and reopening never exposes an empty downl
   });
   await ready(page, "/agenda");
   let dialog = await openExport(page);
-  await expect(dialog.getByRole("button", { name: pickerLabel })).toContainText(
-    "当前行程",
-  );
+  // 范围只剩一项,故是一行静态说明(单选项下拉是死控件)
+  await expect(dialog.getByText(/导出范围：当前行程/)).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /导出范围/ })).toHaveCount(0);
   await dialog
     .getByRole("button", { name: "生成分享图片", exact: true })
     .click();
@@ -159,8 +164,14 @@ test("export defaults to 当前行程 and reopening never exposes an empty downl
   ).toBe(255);
 });
 
-test("changing plans invalidates an in-flight image generation", async ({
+// ⚠ 原用例叫「changing **plans** invalidates an in-flight image generation」:它靠切换导出范围
+//   (方案 1 ↔ 方案 2)把**在途出图**作废。方案已于 2026-09-22 整体下线(`PLAN-20260922105228`),
+//   范围只剩「当前行程」—— 于是把同一件事换成「**行程在别处被改了**」:
+//   另一标签页改 picks → storage 事件 → 本页重新水合 → 场次集合变了 → 在途那张图必须作废。
+//   判据实现见 `ExportDialog.tsx` 的 `scopeSignature`(它取代了旧的 `planId`)。
+test("changing the itinerary in another tab invalidates an in-flight image generation", async ({
   page,
+  context,
 }) => {
   await page.addInitScript(() => {
     const NativeImage = window.Image;
@@ -193,11 +204,10 @@ test("changing plans invalidates an in-flight image generation", async ({
       return fillText.call(this, text, ...args);
     };
   });
-  await seed(page, { "biff.savedplans.v1": JSON.stringify(plans) });
+  // 行程里先只有 001(它的片名里有「The Table」)
+  await seed(page, { "biff.picks.v2": picks("001") });
   await ready(page, "/agenda");
   const dialog = await openExport(page);
-  await dialog.getByRole("button", { name: pickerLabel }).click();
-  await page.getByRole("option", { name: /^方案 1/ }).click();
   await page.evaluate(() => {
     (window as typeof window & { __holdImages: boolean }).__holdImages = true;
   });
@@ -213,8 +223,19 @@ test("changing plans invalidates an in-flight image generation", async ({
       ),
     )
     .toBeGreaterThan(0);
-  await dialog.getByRole("button", { name: pickerLabel }).click();
-  await page.getByRole("option", { name: /^方案 2/ }).click();
+  // 另一标签页把行程换成 033(它的片名里有「MEMORIES」)—— 本页收到 storage 事件后重新水合
+  const other = await context.newPage();
+  try {
+    await ready(other, "/agenda");
+    await other.evaluate((next) => {
+      localStorage.setItem("biff.picks.v2", next);
+    }, picks("033"));
+    // 等本页真的把新行程读进来:范围那行会从「OCT 6」(001) 变成「OCT 7」(033) ——
+    // 只等「那行可见」是等不到东西的,它一直在。改成断言**内容变了**。
+    await expect(dialog.getByText(/导出范围：当前行程（1 场，OCT 7）/)).toBeVisible();
+  } finally {
+    await other.close();
+  }
   await page.evaluate(() => {
     const state = window as typeof window & {
       __holdImages: boolean;
@@ -296,7 +317,7 @@ test("empty global numeric settings save as zero, matching legacy number inputs"
 }) => {
   await seed(page, { "biff.settings.v1": JSON.stringify(settings) });
   await ready(page);
-  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await headerAction(page, "设置");
   const dialog = page.getByRole("dialog", { name: "设置", exact: true });
   for (const name of [
     "日历提醒提前量（分钟）",

@@ -79,7 +79,7 @@ export function PosterPreview({
         className="poster-preview"
         hidden={!blob}
         aria-label="行程分享图片"
-        data-plan-codes={model.days
+        data-export-codes={model.days
           .flatMap((d) => d.rows.map((r) => r.code))
           .join(",")}
       />

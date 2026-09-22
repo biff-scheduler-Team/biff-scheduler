@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import {
   agendaCards,
+  headerAction,
   keyOf,
   legacyData,
   legacyRead,
@@ -26,7 +27,10 @@ test("all legacy storage keys survive initial load, navigation, and reload byte 
   ).toBeVisible();
   // 按日折叠 / 顺位卡只在卡片视图(2026-09-21 起默认日程表,见 PLAN-20260921223658)
   await agendaCards(page);
-  await expect(page.getByText("方案 7", { exact: true })).toBeVisible();
+  // ⚠ 「已保存方案」区块已整体下线(2026-09-22,`PLAN-20260922105228`):`legacyData` 里那份
+  //   `biff.savedplans.v1`(方案 7)现在是个**废键** —— 种子里有它,但页面上不该再出现它。
+  //   断言方向随之翻转(原先是 `toBeVisible`),它守的是「废键不得复活」。
+  await expect(page.getByText("方案 7", { exact: true })).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "展开行程 2026-10-07", exact: true }),
   ).toBeVisible();
@@ -73,7 +77,7 @@ test("new UI writes remain readable by the original implementation", async ({
   await page
     .getByRole("button", { name: "提高 008 顺位", exact: true })
     .click();
-  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await headerAction(page, "设置");
   const dialog = page.getByRole("dialog", { name: "设置", exact: true });
   const alarm = dialog.getByRole("textbox", {
     name: "日历提醒提前量（分钟）",
@@ -105,7 +109,7 @@ test("new UI writes remain readable by the original implementation", async ({
       .getByRole("region", { name: "我的行程", exact: true })
       .locator('[data-screening="033"]'),
   ).toHaveCount(0);
-  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await headerAction(page, "设置");
   await expect(
     page.getByRole("textbox", { name: "日历提醒提前量（分钟）", exact: true }),
   ).toHaveValue("75");
@@ -134,7 +138,7 @@ test("v1 plan migrates once, preserves notes, and never resurrects after clearin
   expect(picks[0].note).toBe("最旧版本备注");
   expect(current["biff.plan.v1"]).toBeUndefined();
   expect(current["biff.wish.v1"]).toBeUndefined();
-  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await headerAction(page, "设置");
   await page.getByRole("button", { name: "清空全部选片", exact: true }).click();
   await page.getByRole("button", { name: "确认清空", exact: true }).click();
   await page.reload();

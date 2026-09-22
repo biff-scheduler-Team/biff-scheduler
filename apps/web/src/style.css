@@ -17,6 +17,10 @@
   --raised: #f7f7f8;
   --text: #242427;
   --muted: #67676e;
+  /* 说明性文案用这一档(2026-09-22,`PLAN-20260922105228`):`--muted` 在浅色下对灰底的可读性偏弱,
+     但它是**分隔线 / 图例 / 大量非说明文字**共用的颜色,不能全局加深 —— 故另开一档只给"要读的话"。
+     ⚠ 新增说明文字默认挂 `.muted`,只有「用户真的需要读进去」的提示才用 `.muted-strong`。 */
+  --muted-strong: #4b4b52;
   --line: #dcdce1;
   --brand: #ce1e36;
   --brand-soft: #fff0f2;
@@ -26,6 +30,12 @@
   --conflict-line: #be3346;
   --tight: #fff4d7;
   --tight-line: #916e14;
+  /* 形状 token(2026-09-22,`PLAN-20260922105228`):此前卡片 / 章 / 药丸各写各的圆角
+     (4 / 6 / 8 / 12 / 999 混用),同一屏里出现三种圆角。三档够全站用:
+     `chip` = 小件(图例章 / 折叠按钮),`card` = 面板 / 卡片,`pill` = 药丸(tag / 计数章)。 */
+  --radius-chip: 6px;
+  --radius-card: 12px;
+  --radius-pill: 999px;
   background: var(--page);
   color: var(--text);
   font-synthesis: none;
@@ -39,6 +49,8 @@
   --raised: #1f1f22;
   --text: #eeeef1;
   --muted: #aeafb7;
+  /* 暗色下 `--muted` 本身已经够亮,这一档只是**再提一点**(不是把它压暗) */
+  --muted-strong: #cfd0d6;
   --line: #44444b;
   --brand: #fa7889;
   --brand-soft: #44262d;
@@ -112,6 +124,28 @@ img {
 .muted {
   color: var(--muted);
   font-size: 13px;
+}
+/* 与 `.muted` 同一档位、只是把对比度提上来(见 `:root` 的 `--muted-strong` 注释)。
+   ⚠ 只在「这是一句需要用户读进去的提示」时用它:正文旁注继续挂 `.muted` —— 全站都加深会改掉
+   排片表 / 影片库的观感(用户第 5 条要的是可读性,不是整体换灰阶)。 */
+.muted-strong {
+  color: var(--muted-strong);
+  font-size: 13px;
+}
+/* 与 `h1` 同行的副标题(2026-09-22,`PLAN-20260922105228` `AgendaPage`):内容与 `.eyebrow` 相同,
+   只是不再独占一行 —— 首屏每省一行,下面的内容就早一行进视野。
+   ⚠ 它**不能**放进 `<h1>` 里(会污染标题的 accessible name),同行由外层 flex 行负责。 */
+.agenda-title-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.eyebrow-inline {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
 }
 .eyebrow {
   font-size: 12px;
@@ -226,6 +260,21 @@ img {
   padding: 0 24px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
+}
+/* 票务通知条(2026-09-22,`PLAN-20260922105228`):售票信息从 top bar 右侧移到这里 ——
+   它是一届一次的**全局状态**,不该占导航右边的黄金位,但仍要在首屏可见
+   (与 `.update-banner` 同一取舍:靠 sticky 贴边,不常驻浮层)。
+   ⚠ 左右内距与 `.app-header` / `.app-toolbar` 逐档对齐(24 / 16 / 12),否则三个断点上会错位。 */
+.ticket-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 24px 6px;
+  background: var(--surface);
+}
+.ticket-banner-label {
+  color: var(--muted);
+  font-size: 12px;
 }
 .main-nav {
   display: flex;
@@ -703,7 +752,8 @@ img {
   bottom: 4px;
   display: flex;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  /* 圆角走 token(2026-09-22,`PLAN-20260922105228`):场次格 / 图例章 / 折叠按钮同属"小件"这一档 */
+  border-radius: var(--radius-chip);
   background: var(--surface);
   z-index: 2;
   color: var(--text);
@@ -856,16 +906,15 @@ img {
   color: var(--muted);
   border-bottom: 1px solid var(--line);
 }
-/* `.agenda-save`(日程表与「已保存方案」之间那块「保存当前方案」)已于 2026-09-22 删除
-   (`PLAN-20260922103307`):按钮提到页面顶部工具栏,它原来悬在两段内容之间的空白里。 */
+/* `.agenda-save`(日程表与「已保存方案」之间那块「保存当前方案」)已删除
+   (2026-09-22,`PLAN-20260922103307` 提到工具栏 → `PLAN-20260922105228` 随方案整体下线)。 */
 .section-heading {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
 }
-.plan-comparison,
-.saved-plans {
+.plan-comparison {
   padding: 20px;
   border-top: 1px solid var(--line);
 }
@@ -899,21 +948,8 @@ img {
   gap: 8px;
   font-size: 13px;
 }
-/* 方案卡片改成**两层**(2026-09-22,`PLAN-20260922103307`):上层「方案名 + 删除」,下层摘要与入口。
-   原先是一行两栏(内容 | 删除),删除被顶到卡片右端中部 —— 与方案名隔着整行宽度,看不出删的是哪一套。 */
-.saved-plan {
-  display: grid;
-  gap: 6px;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--line);
-  font-size: 14px;
-}
-.saved-plan-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
+/* `.saved-plan` / `.saved-plan-head`(已保存方案卡片)随「方案整体下线」删除
+   (2026-09-22,`PLAN-20260922105228`):卡片、方案名、摘要、「查看场次」弹层与删除入口一并没了。 */
 .agenda-days {
   padding: 0 20px 20px;
 }
@@ -946,7 +982,9 @@ img {
   font-size: 13px;
 }
 .rank-heading span {
-  color: var(--muted);
+  /* 顺位卡的说明文字(「拖动左侧把手调整抢票顺位」「已排偏好次序」)是**要读进去的操作指引**,
+     不是旁注 —— 走 `--muted-strong`(2026-09-22,`PLAN-20260922105228` 第 5 条)。 */
+  color: var(--muted-strong);
   font-size: 12px;
 }
 .rank-group ol {
@@ -1236,6 +1274,9 @@ img {
   .app-toolbar {
     padding: 0 16px;
   }
+  .ticket-banner {
+    padding: 0 16px 6px;
+  }
 }
 @media (max-width: 768px) {
   .app-header {
@@ -1253,6 +1294,9 @@ img {
   }
   .app-toolbar {
     padding: 0 12px;
+  }
+  .ticket-banner {
+    padding: 0 12px 4px;
   }
   .main-nav {
     gap: 20px;
@@ -1365,8 +1409,7 @@ img {
   .summary-strip {
     padding: 0 14px 14px;
   }
-  .plan-comparison,
-  .saved-plans {
+  .plan-comparison {
     padding: 16px 14px;
   }
   .rank-group {
@@ -1546,12 +1589,11 @@ img {
 .workspace { padding: 20px var(--page-gutter) 12px; }
 .workspace .schedule-page { display: flex; flex-direction: column; gap: 16px; padding: 0; }
 .workspace .schedule-page > .panel-heading { padding: 0; }
-.workspace .schedule-page > .calendar-strip,
-/* 「我的行程 → 日程表」的日期条与排片表同口径:不留 20px 底距。
-   ⚠ 2026-09-22 起行程的日期条是 `.agenda-page` 的**直接子元素**(原先藏在 `.agenda-gantt` 里,
-   这条选择器一直没命中),它的紧邻下方从「画布」换成了「顶部工具栏」
-   (见 `PLAN-20260922103307` / `pages/agenda-parity.css`)。 */
-.workspace .agenda-page > .calendar-strip { padding-bottom: 0; }
+/* ⚠ 这里原先还有一条 `.workspace .agenda-page > .calendar-strip { padding-bottom: 0 }`:
+   它随「行程的日期条并进工具栏」一起删除(2026-09-22,`PLAN-20260922105228`)——
+   日期条现在在 `.agenda-actions` 里,不再是 `.agenda-page` 的直接子元素,底距由
+   `pages/agenda-parity.css` 的 `.agenda-actions .date-strip.calendar-strip` 负责。 */
+.workspace .schedule-page > .calendar-strip { padding-bottom: 0; }
 .full-page-workspace > .library-page > .panel-heading,
 .full-page-workspace > .library-page > .library-controls,
 .full-page-workspace > .library-page > .film-list,
@@ -1566,7 +1608,8 @@ img {
 .film-badge {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 32px; height: 18px; padding: 0 6px;
-  border: 1px solid transparent; border-radius: 999px;
+  /* 药丸这一档(2026-09-22,`PLAN-20260922105228`):CODE 徽章 / 计数章 / 概览 tag 共用一个 token */
+  border: 1px solid transparent; border-radius: var(--radius-pill);
   background: #2b292d; color: #fff;
   font-family: Arial, sans-serif; font-size: 12px; font-weight: 700;
   line-height: 1; white-space: nowrap; vertical-align: middle; flex-shrink: 0;
