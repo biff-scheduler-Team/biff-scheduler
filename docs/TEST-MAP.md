@@ -35,7 +35,7 @@ npx playwright test -c playwright.react.config.ts \
 | `apps/web/src/account.ts`<br>`apps/web/src/account-sync.ts`<br>`apps/web/src/account-errors.ts`<br>`apps/web/src/sync-data.ts`<br>`apps/web/src/workspace-storage.ts`<br>`apps/web/src/components/AccountHost.tsx`<br>`apps/web/src/components/account-ui.css`<br>`apps/api/`<br>`packages/contracts/`<br>`apps/web/legacy/src/account-bridge.ts`<br>`apps/web/legacy/src/state.ts`<br>`apps/web/legacy/src/main.ts`<br>`apps/web/legacy/index.html` | `account-integration` · `legacy` |
 | `apps/web/src/app/`<br>`apps/web/src/main.tsx`<br>`apps/web/src/telemetry.ts` | `persistent-header` · `floating-panel` · `desktop` · `edge-cases` |
 | `apps/web/src/state.ts`<br>`apps/web/src/backup.ts`<br>`apps/web/src/ics.ts`<br>`apps/web/src/share.ts`<br>`apps/web/src/actions-copy.ts` | `review-state-export` · `workflows` · `legacy` · `compatibility` |
-| `apps/web/public/manifest.webmanifest`<br>`apps/web/src/pwa-update.ts`<br>`apps/web/src/components/UpdateBanner.tsx` | `offline` · ⚠ `pwa-update`(不存在) |
+| `apps/web/public/manifest.webmanifest`<br>`apps/web/src/pwa-update.ts`<br>`apps/web/src/components/UpdateBanner.tsx` | `offline` · `pwa-update` |
 | `apps/web/src/pages/RushPage.tsx`<br>`apps/web/src/pages/rush.css`<br>`apps/web/src/batch.ts` | `rush` |
 | `apps/api/src/want-stats.ts`<br>`apps/api/src/want-store.ts`<br>`apps/web/src/want-counts.ts`<br>`apps/api/migrations/0003_film_want_stat.sql` | `want-counts` |
 | `apps/web/src/pages/RedBlackPage.tsx`<br>`apps/web/src/pages/redblack-parity.css`<br>`apps/web/src/redblack.ts`<br>`apps/web/src/film-votes.ts`<br>`apps/api/src/film-vote-stats.ts`<br>`apps/api/src/film-vote-store.ts`<br>`apps/api/migrations/0006_ordinary_silvermane.sql` | `redblack` |
