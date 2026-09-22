@@ -22,7 +22,13 @@ import { ScreeningCard } from "../components/ScreeningCard";
 import { PlanShowsDialog } from "../components/PlanShowsDialog";
 // 日程表视图与排片表共用同一个甘特组件(2026-09-21,PLAN-20260921223658):
 // `scope="agenda"` 换掉图例 / 刻度 / 边界文案,`shows` 把画布收成「我的场次」。
-import { ScheduleGantt } from "../components/ScheduleGantt";
+// 图例与缩放档位也复用排片表那两只组件(2026-09-22,PLAN-20260922103307):它们的**实现**只有一份,
+// 只是行程档把它们挂进了页面顶部工具栏(见下方 `toolbar`),不再挂在画布自己的 `.schedule-legend` 行里。
+import {
+  GanttLegendChips,
+  GanttZoomControls,
+  ScheduleGantt,
+} from "../components/ScheduleGantt";
 import { useCatalog } from "../app/store";
 import { navSearch } from "../app/nav-query";
 import { useScheduleNavigation } from "../app/navigation";
@@ -41,6 +47,7 @@ import {
   store,
   tickets,
   toggleAgendaFold,
+  type SavedPlan,
 } from "../state";
 import { actualCodeSet } from "../tickets";
 import { autoFixRanks } from "../plans";
@@ -71,6 +78,47 @@ export function saveCodes(codes: string[]) {
         : "这个方案已经保存。",
       { timeout: 5000 },
     );
+}
+
+/** 「已保存方案」的删除入口(2026-09-22,`PLAN-20260922103307`)。
+ *
+ *  ★ 为什么从「卡片右端中部的一个小按钮」改成「右上角 + 二次确认」:
+ *    原位置与方案名隔着整行宽度,看不出删的是哪一套;方案名在左上、删除在中右,是两处视觉焦点。
+ *    现在它与方案名同一行、右端对齐(见 `.saved-plan-head`),点了先出确认。
+ *  ★ 为什么保留「删除」两个字而不做纯垃圾桶图标:用户给的是「二次确认**或**图标」二选一;
+ *    图标更难被发现,而二次确认已经解决了误触。
+ *  ★ 二次确认**故意**照抄 `SettingsDialog::ClearDialog` 的形状(`DialogTrigger + Dialog size="S"`
+ *    + `取消` / negative 确认),不另造一个 Popconfirm 组件 —— 仓库里「破坏性操作先问一句」只有这一种范式。 */
+function DeletePlanButton({ plan }: { plan: SavedPlan }) {
+  return (
+    <DialogTrigger>
+      <ActionButton aria-label={`删除${plan.name}`}>删除</ActionButton>
+      <Dialog size="S">
+        {({ close }) => (
+          <>
+            <Heading slot="title">删除{plan.name}？</Heading>
+            <Content>
+              <p>删除后无法恢复；需要时可以把当前行程重新保存成一套方案。</p>
+            </Content>
+            <ButtonGroup>
+              <Button variant="secondary" onPress={close}>
+                取消
+              </Button>
+              <Button
+                variant="negative"
+                onPress={() => {
+                  deletePlan(plan.id);
+                  close();
+                }}
+              >
+                确认删除
+              </Button>
+            </ButtonGroup>
+          </>
+        )}
+      </Dialog>
+    </DialogTrigger>
+  );
 }
 
 function RankGroup({ codes }: { codes: string[] }) {
@@ -445,30 +493,87 @@ export function AgendaPage() {
     : plans.groups.filter(
         (group) => cat.byCode.get(group[0])?.date === activeDate,
       );
-  // 视图无关的页级区块(顺位撞车提示 / 保存当前方案 / 已保存方案)—— 抽成一份,两个视图共用,
-  // 免得「切到日程表就看不到已保存方案」。排布顺序按视图给(卡片视图与改动前逐字一致)。
-  const panels = (
-    <>
-      {/* ⚠ 行程为空时**只**保留「已保存方案」:顺位撞车 / 保存当前方案在旧版就没有(它们读的是当前行程),
-          少一个 `codes.length > 0` 就会在空状态多出一个按不动的「保存当前方案」。 */}
-      {!actualOnly && codes.length > 0 && (
-        <>
-          <RankClashes />
-          <div className="agenda-save">
+  // 日期条(2026-09-22,`PLAN-20260922103307`):从画布容器里**提**到概览条下面 —— 用户原话是
+  // 「作为主视图的全局日期 Filter」,它不是画布内部的装饰。夹在工具栏与画布之间时,它看起来
+  // 既像工具栏的第三行、又看不出自己在筛谁。
+  // ⚠ 只在日程表视图且**确实有可排场次**时渲染:卡片视图按日整段列出、自带折叠,
+  //   再给一条单选日期条就成了第二套「看哪天」的入口;一场都没标「已抢到」时整条会空着。
+  const dateStrip = (
+    <div className="date-strip calendar-strip" aria-label="行程日期">
+      {days.map(([date, rows]) => (
+        <ToggleButton
+          key={date}
+          isSelected={date === activeDate}
+          onChange={() => setPickedDate(date)}
+          aria-label={`选择日期 ${date}`}
+        >
+          <span className="calendar-day">
+            <span className="calendar-weekday">{dateInfo(date).weekday}</span>
+            <span className="calendar-number">{Number(date.slice(-2))}</span>
+            <span className="calendar-count">{rows.length} 场</span>
+          </span>
+        </ToggleButton>
+      ))}
+    </div>
+  );
+  const hasCanvas = view === "gantt" && days.length > 0;
+  // 一条工具栏(2026-09-22,`PLAN-20260922103307`)—— 左组「状态 / 操作」,右组「视图 / 核心操作」。
+  // 改动前这里是**两行**:上一行「添加转票场次 + 仅看实际行程 + 视图切换」,下一行是画布自己的
+  // 图例(时间紧张 / 时间重叠 / 韩国时间 KST)与缩放 —— 两组功能各不相同,却都横在首屏,焦点很散。
+  // ⚠ 图例与缩放只属于**画布**:卡片视图 / 没有可排场次时,它们点了没有任何效果,故不渲染
+  //   (别为了「看起来稳定」把死控件常驻)。
+  const toolbar = (
+    <div className="agenda-actions">
+      <div className="agenda-actions-left">
+        {hasCanvas && (
+          // 类名沿用排片表那条口径(`.schedule-legend`),两处共用同一份图例样式
+          <div className="schedule-legend agenda-legend">
+            <GanttLegendChips />
+          </div>
+        )}
+        <TransferAddEntry />
+        <ToggleButton isSelected={actualOnly} onChange={setActualOnly}>
+          仅看实际行程（{actual.size}）
+        </ToggleButton>
+      </div>
+      <div className="agenda-actions-right">
+        <div className="view-switch" role="group" aria-label="行程视图">
+          <ToggleButton isSelected={view === "gantt"} onChange={() => changeView("gantt")}>
+            日程表
+          </ToggleButton>
+          <ToggleButton isSelected={view === "cards"} onChange={() => changeView("cards")}>
+            卡片
+          </ToggleButton>
+        </div>
+        {hasCanvas && <GanttZoomControls />}
+        {!actualOnly && codes.length > 0 && (
+          <>
+            {/* 被禁用时必须**当场**说清原因:`title` 在 disabled 按钮上弹不出来 */}
+            {firstLayerClash && (
+              <span className="muted agenda-save-hint">
+                第一顺位有撞车，请先让路再保存。
+              </span>
+            )}
             <Button
               onPress={() => saveCodes(topPlanCodes(plans))}
               isDisabled={firstLayerClash}
             >
               保存当前方案
             </Button>
-            <p className="muted">
-              {firstLayerClash
-                ? "第一顺位有撞车，请先让路再保存。"
-                : "保存每个冲突组的第一顺位场次与共同场次。"}
-            </p>
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+  // 视图无关的页级区块(顺位撞车提示 / 已保存方案)—— 抽成一份,两个视图共用,
+  // 免得「切到日程表就看不到已保存方案」。排布顺序按视图给。
+  const panels = (
+    <>
+      {/* ⚠ 行程为空时**只**保留「已保存方案」:顺位撞车在旧版就没有(它读的是当前行程),
+          少一个 `codes.length > 0` 就会在空状态多出一块空提示。
+          ⚠ 「保存当前方案」已从这一块**提**到顶部工具栏(2026-09-22,`PLAN-20260922103307`)——
+          它夹在画布与「已保存方案」之间时,是全页唯一一个「上下都不挨着」的控件。 */}
+      {!actualOnly && codes.length > 0 && <RankClashes />}
       <section className="saved-plans" aria-label="已保存方案">
         <h2>已保存方案，{savedPlans.length} 套</h2>
         {savedPlans.length === 0 && (
@@ -480,20 +585,17 @@ export function AgendaPage() {
           const summary = describeSavedPlan(cat, plan);
           return (
             <div className="saved-plan" key={plan.id}>
-              <div>
+              {/* 方案名与「删除」同一行(2026-09-22,`PLAN-20260922103307`):删除入口钉在右上角,
+                  紧挨它要删的那一套方案,不再飘在卡片右端中部。 */}
+              <div className="saved-plan-head">
                 <strong>{plan.name}</strong>
-                <p className="muted" title={summary.details}>
-                  {summary.outline}
-                </p>
-                {/* 弹层内容与分享图片同源(见 PlanShowsDialog 文件头),不再是内联的「时间 · CODE」纯文本 */}
-                <PlanShowsDialog plan={plan} />
+                <DeletePlanButton plan={plan} />
               </div>
-              <ActionButton
-                aria-label={`删除${plan.name}`}
-                onPress={() => deletePlan(plan.id)}
-              >
-                删除
-              </ActionButton>
+              <p className="muted" title={summary.details}>
+                {summary.outline}
+              </p>
+              {/* 弹层内容与分享图片同源(见 PlanShowsDialog 文件头),不再是内联的「时间 · CODE」纯文本 */}
+              <PlanShowsDialog plan={plan} />
             </div>
           );
         })}
@@ -586,22 +688,6 @@ export function AgendaPage() {
         </p>
       ) : (
         <>
-          <div className="date-strip calendar-strip" aria-label="行程日期">
-            {days.map(([date, rows]) => (
-              <ToggleButton
-                key={date}
-                isSelected={date === activeDate}
-                onChange={() => setPickedDate(date)}
-                aria-label={`选择日期 ${date}`}
-              >
-                <span className="calendar-day">
-                  <span className="calendar-weekday">{dateInfo(date).weekday}</span>
-                  <span className="calendar-number">{Number(date.slice(-2))}</span>
-                  <span className="calendar-count">{rows.length} 场</span>
-                </span>
-              </ToggleButton>
-            ))}
-          </div>
           {activeDate && (
             <ScheduleGantt
               scope="agenda"
@@ -650,20 +736,9 @@ export function AgendaPage() {
             质量分 {score.total}
           </span>
         </div>
-        <div className="agenda-actions">
-          <TransferAddEntry />
-          <ToggleButton isSelected={actualOnly} onChange={setActualOnly}>
-            仅看实际行程（{actual.size}）
-          </ToggleButton>
-          <div className="view-switch" role="group" aria-label="行程视图">
-            <ToggleButton isSelected={view === "gantt"} onChange={() => changeView("gantt")}>
-              日程表
-            </ToggleButton>
-            <ToggleButton isSelected={view === "cards"} onChange={() => changeView("cards")}>
-              卡片
-            </ToggleButton>
-          </div>
-        </div>
+        {/* 日期导航紧贴概览条(2026-09-22,`PLAN-20260922103307`):概览 → 日期 → 时刻表 */}
+        {hasCanvas && dateStrip}
+        {toolbar}
         {codes.length === 0 ? (
           <>
             <div className="empty-state">

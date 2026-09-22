@@ -291,9 +291,12 @@
   font-weight: 700;
   line-height: 1.2;
 }
-.vertical-schedule .schedule-legend > .legend-selected::before,
-.vertical-schedule .schedule-legend > .legend-tight::before,
-.vertical-schedule .schedule-legend > .legend-conflict::before { display: none; }
+/* ⚠ `::before` 的抑制**不再**以 `.vertical-schedule` 打头(2026-09-22,`PLAN-20260922103307`):
+   「我的行程」把同一份图例挂进了页面顶部工具栏(见 `AgendaPage` 的 `.agenda-legend`),
+   那处在 `.vertical-schedule` 之外 —— 不放开的话,行程页会同时出现描边小盒与 8px 色块。 */
+.schedule-legend > .legend-selected::before,
+.schedule-legend > .legend-tight::before,
+.schedule-legend > .legend-conflict::before { display: none; }
 
 .vertical-schedule .gantt-slot.tight .gantt-talk[data-film-selected="true"][aria-pressed="true"] { background-color: var(--tight); }
 .vertical-schedule .gantt-slot.conflict .gantt-talk[data-film-selected="true"][aria-pressed="true"] { background-color: var(--conflict); }

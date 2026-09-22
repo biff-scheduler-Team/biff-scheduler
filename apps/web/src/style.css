@@ -856,13 +856,8 @@ img {
   color: var(--muted);
   border-bottom: 1px solid var(--line);
 }
-.agenda-save {
-  padding: 20px;
-  display: flex;
-  align-items: flex-start;
-  flex-direction: column;
-  gap: 8px;
-}
+/* `.agenda-save`(日程表与「已保存方案」之间那块「保存当前方案」)已于 2026-09-22 删除
+   (`PLAN-20260922103307`):按钮提到页面顶部工具栏,它原来悬在两段内容之间的空白里。 */
 .section-heading {
   display: flex;
   justify-content: space-between;
@@ -904,14 +899,20 @@ img {
   gap: 8px;
   font-size: 13px;
 }
+/* 方案卡片改成**两层**(2026-09-22,`PLAN-20260922103307`):上层「方案名 + 删除」,下层摘要与入口。
+   原先是一行两栏(内容 | 删除),删除被顶到卡片右端中部 —— 与方案名隔着整行宽度,看不出删的是哪一套。 */
 .saved-plan {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: center;
+  display: grid;
+  gap: 6px;
   padding: 14px 0;
   border-bottom: 1px solid var(--line);
   font-size: 14px;
+}
+.saved-plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 .agenda-days {
   padding: 0 20px 20px;
@@ -1364,7 +1365,6 @@ img {
   .summary-strip {
     padding: 0 14px 14px;
   }
-  .agenda-save,
   .plan-comparison,
   .saved-plans {
     padding: 16px 14px;
@@ -1547,7 +1547,10 @@ img {
 .workspace .schedule-page { display: flex; flex-direction: column; gap: 16px; padding: 0; }
 .workspace .schedule-page > .panel-heading { padding: 0; }
 .workspace .schedule-page > .calendar-strip,
-/* 「我的行程 → 日程表」的日期条与排片表同口径:贴着画布,不留 20px 底距 */
+/* 「我的行程 → 日程表」的日期条与排片表同口径:不留 20px 底距。
+   ⚠ 2026-09-22 起行程的日期条是 `.agenda-page` 的**直接子元素**(原先藏在 `.agenda-gantt` 里,
+   这条选择器一直没命中),它的紧邻下方从「画布」换成了「顶部工具栏」
+   (见 `PLAN-20260922103307` / `pages/agenda-parity.css`)。 */
 .workspace .agenda-page > .calendar-strip { padding-bottom: 0; }
 .full-page-workspace > .library-page > .panel-heading,
 .full-page-workspace > .library-page > .library-controls,

@@ -45,6 +45,35 @@ function scheduleZoom(value = 0.55) {
   return SIZE_OPTIONS.reduce((nearest, option) => Math.abs(option.zoom - saved) < Math.abs(nearest.zoom - saved) ? option : nearest).zoom;
 }
 
+/** 画布图例的**色块**(时间紧张 / 时间重叠 / 韩国时间 KST)。
+ *  两档画布共用这**一份**实现:排片表把它摆在 `.schedule-legend` 行里(连同「排片筛选」与「已选」),
+ *  「我的行程」把它摆进顶部工具栏的左侧(见 `AgendaPage`,2026-09-22 `PLAN-20260922103307`)——
+ *  两处的样式仍来自 `schedule-parity.css` 那套 `.schedule-legend > .legend-*`。
+ *  ⚠ 图例只在**有画布**的视图里才有意义(行程的卡片视图没有画布),由调用方自己判。 */
+export function GanttLegendChips() {
+  return (
+    <>
+      <span className="legend-tight">时间紧张</span>
+      <span className="legend-conflict">时间重叠</span>
+      <span className="muted">韩国时间 KST</span>
+    </>
+  );
+}
+
+/** 缩放档位(小 / 默认 / 大)。挂在**父级**工具栏的行尾 —— 排片表在 `.schedule-legend` 行里,
+ *  「我的行程」在顶部工具栏的右侧(见 `AgendaPage`)。
+ *  ⚠ 档位表(`SIZE_OPTIONS`)与写入口径(`setSettings({zoom})`)仍只有这一处,别在页面里再写一份。 */
+export function GanttZoomControls() {
+  const zoom = scheduleZoom(store.settings.zoom);
+  const current = SIZE_OPTIONS.reduce((nearest, candidate) => Math.abs(candidate.zoom - zoom) < Math.abs(nearest.zoom - zoom) ? candidate : nearest);
+  return (
+    <div className="zoom-controls" role="group" aria-label="排片大小">
+      {SIZE_OPTIONS.map(option => <ToggleButton key={option.label} isSelected={option === current}
+        onChange={() => setSettings({zoom: option.zoom})}>{option.label}</ToggleButton>)}
+    </div>
+  );
+}
+
 /** 行程档的「无筛选」状态 —— 行程画布不做字幕 / 影厅 / GV 筛选,但卡片状态仍要一份合法的筛选
  *  (空集 = 不过滤),不能传 `undefined` 让 `cardStateOf` 各判一次。 */
 const NO_FILTERS = makeFilterState();
@@ -323,19 +352,18 @@ export function ScheduleGantt({
   }, []);
   return (
     <div className="vertical-schedule">
-      <div className="schedule-legend">
-        {!agenda && <ActionButton aria-expanded={filtersOpen} aria-controls="schedule-filter-fields" onPress={() => setFiltersOpen(open => !open)}>排片筛选</ActionButton>}
-        {/* 「已选」图例只在排片表有意义:行程画布上的每一格都是我的场次(2026-09-21)。 */}
-        {!agenda && <span className="legend-selected">已选</span>}
-        <span className="legend-tight">时间紧张</span>
-        <span className="legend-conflict">时间重叠</span>
-        <span className="muted">韩国时间 KST</span>
-        <div className="zoom-controls" role="group" aria-label="排片大小">
-          {SIZE_OPTIONS.map(option => <ToggleButton key={option.label}
-            isSelected={option === SIZE_OPTIONS.reduce((nearest, candidate) => Math.abs(candidate.zoom - zoom) < Math.abs(nearest.zoom - zoom) ? candidate : nearest)}
-            onChange={() => setSettings({zoom: option.zoom})}>{option.label}</ToggleButton>)}
+      {/* 这一行是**排片表**的图例 + 缩放。行程档没有它:那边的图例与缩放已由 `AgendaPage` 摆进
+          页面顶部工具栏,与「添加转票场次 / 仅看实际行程 / 视图切换」并成一条
+          (2026-09-22,`PLAN-20260922103307`)。组件仍是这一份,只是挂到了别处。 */}
+      {!agenda && (
+        <div className="schedule-legend">
+          <ActionButton aria-expanded={filtersOpen} aria-controls="schedule-filter-fields" onPress={() => setFiltersOpen(open => !open)}>排片筛选</ActionButton>
+          {/* 「已选」图例只在排片表有意义:行程画布上的每一格都是我的场次(2026-09-21)。 */}
+          <span className="legend-selected">已选</span>
+          <GanttLegendChips />
+          <GanttZoomControls />
         </div>
-      </div>
+      )}
       {!agenda && filtersOpen && <div id="schedule-filter-fields" className="schedule-filter-fields"><FilterBar filters={filters} onChange={changeFilters} label="排片筛选" fieldsOnly /></div>}
       <div className="schedule-grid" style={{"--label-w": `${labelW}px`, "--hour-w": `${ppm * 60}px`} as CSSProperties}>
         <div className="schedule-time-column">

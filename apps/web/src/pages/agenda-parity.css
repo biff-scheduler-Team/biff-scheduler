@@ -4,13 +4,48 @@
 
 /* ---------- 日程表视图(2026-09-21,`PLAN-20260921223658`) ----------
    画布本身与排片表共用 `components/ScheduleGantt.tsx`(连同 `.vertical-schedule` 那套样式),
-   这里只补这一页特有的三块:视图切换、日期条与画布的排布、画布下方的顺位卡。 */
+   这里只补这一页特有的三块:顶部工具栏、日期条的位置、画布下方的顺位卡。 */
+
+/* ---------- 顶部工具栏(2026-09-22,`PLAN-20260922103307`) ----------
+   改动前这里是**两行**:上一行「添加转票场次 / 仅看实际行程 / 视图切换」,下一行是画布自己的
+   图例(时间紧张 / 时间重叠 / 韩国时间 KST)与缩放档位 —— 两组功能各不相同却都横在首屏。
+   现在并成一条:左组状态与操作,右组视图与核心操作(标准的 Left: Operations / Right: Views)。
+   ⚠ 规则原先寄在 `screening-social.css`(那一页已下线讨论区),它属于**本页**布局,故搬回这里。 */
+.agenda-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 16px 20px 14px;
+}
+.agenda-actions-left,
+.agenda-actions-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+/* 图例在工具栏里是左组的头一项:去掉排片表那条 `.schedule-legend` 的下方留白。
+   ⚠ 选择器带上 `.agenda-actions`(0,2,0)压住 `style.css` 里的 `.schedule-legend`(0,1,0) ——
+   两处同为单类时胜负取决于打包顺序,而多出来的 12px 底距会把图例在 `align-items: center` 的行里顶偏。 */
+.agenda-actions .agenda-legend {
+  margin-bottom: 0;
+}
+/* 只在「第一顺位有撞车、保存被禁用」时出现 —— `title` 在 disabled 按钮上弹不出来 */
+.agenda-save-hint {
+  font-size: 12px;
+}
+/* 日期条紧贴概览条(2026-09-22,`PLAN-20260922103307`):它是主视图的**全局日期 Filter**,
+   不再是画布容器的一部分(见 `AgendaPage` 的 `dateStrip`)。
+   ⚠ 底距为 0 是 `style.css` 那条 `.workspace .agenda-page > .calendar-strip` 给的,别在这里写死。 */
+.agenda-page > .date-strip.calendar-strip {
+  padding: 18px 20px 0;
+}
 .view-switch {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  /* 靠右收尾 —— 与「仅看实际行程」拉开距离,免得两个开关看起来是一组 */
-  margin-left: auto;
 }
 .agenda-gantt {
   display: flex;
@@ -21,7 +56,7 @@
 .agenda-gantt-empty {
   margin: 0;
 }
-/* 顺位卡跟着画布当天走:画布上方画连线,这里排抢票顺序(顺位是 `/rush` 的唯一来源) */
+/* 顺位卡跟着画布当天走:画布上方画连线,这里排抢票顺序(顺位只在本页拖拽设置) */
 .agenda-gantt-ranks {
   display: flex;
   flex-direction: column;
@@ -34,6 +69,12 @@
 @media (max-width: 768px) {
   .agenda-gantt {
     padding: 0 14px 4px;
+  }
+  .agenda-page > .date-strip.calendar-strip {
+    padding: 16px 14px 0;
+  }
+  .agenda-actions {
+    padding: 14px 14px 12px;
   }
 }
 .agenda-day-count,
