@@ -224,9 +224,22 @@ test("「别人的贴纸」与我贴的那枚同尺寸,别人那枚仍不可拖"
   // 高分屏适配:backing store 必须是 CSS 尺寸 × dpr,否则 Retina / 手机上贴纸边缘发糊
   const backing = await ink.evaluate((node: HTMLCanvasElement) => ({
     width: node.width,
-    expected: Math.round(node.getBoundingClientRect().width * window.devicePixelRatio),
+    css: node.getBoundingClientRect().width,
+    dpr: window.devicePixelRatio,
   }));
-  expect(backing.width).toBe(backing.expected);
+  expect(backing.width).toBe(Math.round(backing.css * backing.dpr));
+
+  // DPR 变化(跨屏拖窗 / 浏览器缩放)必须按**新**倍率重新分配 backing store —— 它**不触发** `resize`,
+  // 所以 `use-dpr.ts` 除了 matchMedia 还兜了一刀 resize。这里把 dpr 换一个值 + 触发 resize 来验:
+  // 漏了这条的症状是「换个屏幕贴纸就糊」,不报错、不崩,只能靠断言守。
+  const next = backing.dpr >= 2 ? 1 : 2;
+  await page.evaluate((value) => {
+    Object.defineProperty(window, "devicePixelRatio", { configurable: true, get: () => value });
+    window.dispatchEvent(new Event("resize"));
+  }, next);
+  await expect.poll(() => ink.evaluate((node: HTMLCanvasElement) => node.width)).toBe(
+    Math.round(backing.css * next),
+  );
 });
 
 // 「放大看全部」弹层(2026-09-22,PLAN-20260922145815)。
