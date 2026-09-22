@@ -309,6 +309,47 @@ test("after the final batch the ticket banner says tickets are on sale", async (
   ).toBeVisible();
 });
 
+// 「已保存方案」的删除入口(2026-09-22,`PLAN-20260922103307`)。
+// 回归的是改动前的两处问题:① 删除按钮飘在卡片右端中部、与方案名隔着整行宽度;
+// ② 一点就删,没有二次确认。
+test("方案卡片的删除钉在方案名右边，且要先过二次确认", async ({ page }) => {
+  await seed(page, {
+    "biff.savedplans.v1": JSON.stringify([
+      { id: "keep", name: "方案 1", codes: ["008"], createdAt: 1 },
+      { id: "gone", name: "方案 2", codes: ["033"], createdAt: 2 },
+    ]),
+  });
+  await ready(page, "/agenda");
+  const saved = page.getByRole("region", { name: "已保存方案", exact: true });
+  const card = saved.locator(".saved-plan").filter({ hasText: "方案 2" });
+  const del = card.getByRole("button", { name: "删除方案 2", exact: true });
+  const name = card.locator(".saved-plan-head > strong");
+
+  // ① 与方案名**同一行**(纵向有重叠)、且在片名的右边
+  const nameBox = (await name.boundingBox())!;
+  const delBox = (await del.boundingBox())!;
+  expect(delBox.y).toBeLessThan(nameBox.y + nameBox.height);
+  expect(nameBox.y).toBeLessThan(delBox.y + delBox.height);
+  expect(delBox.x).toBeGreaterThan(nameBox.x + nameBox.width);
+
+  // ② 点入口只出确认,方案还在
+  await del.click();
+  const dialog = page.getByRole("dialog", { name: "删除方案 2？", exact: true });
+  await expect(dialog).toBeVisible();
+  await expect(card).toHaveCount(1);
+
+  // ③ 取消不删
+  await dialog.getByRole("button", { name: "取消", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(saved).toContainText("2 套");
+
+  // ④ 确认才真的删
+  await del.click();
+  await dialog.getByRole("button", { name: "确认删除", exact: true }).click();
+  await expect(saved).toContainText("1 套");
+  await expect(saved).not.toContainText("方案 2");
+});
+
 test("agenda cards carry the venue code, place details and a Google Maps entry", async ({
   page,
 }) => {

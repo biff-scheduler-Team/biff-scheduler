@@ -73,13 +73,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 行程页顶部的操作行(添加转票场次 / 仅看实际行程)—— 由 AgendaPage 使用 */
-.agenda-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
+/* ⚠ 行程页顶部工具栏的样式已搬去 `pages/agenda-parity.css`
+   (2026-09-22,`PLAN-20260922103307`)—— 它属于那一页的布局,寄存在讨论区 / 同场观影的样式表里
+   只会让「改工具栏要翻两个文件」。这里不再保留任何 `.agenda-*` 规则。 */
 
 /* ---------- 转票补入弹层 ---------- */
 .transfer-dialog { display: grid; gap: 10px; max-height: 60vh; overflow: auto; }

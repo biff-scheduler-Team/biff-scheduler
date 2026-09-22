@@ -93,7 +93,9 @@ for (const removeAll of [false, true]) {
     const other = await context.newPage();
     try {
       await ready(other, "/agenda");
+      // 删除走二次确认(2026-09-22,`PLAN-20260922103307`):点入口只开「删除方案 N？」,确认才真的删
       await other.getByRole("button", { name: "删除方案 2", exact: true }).click();
+      await other.getByRole("button", { name: "确认删除", exact: true }).click();
       if (removeAll) {
         // 方案全删掉不再是「先保存一个方案」的死胡同：范围自动回落到当前行程（仍有 033 可导出）
         await expect(dialog.getByRole("button", { name: /导出范围/ })).toContainText("当前行程");

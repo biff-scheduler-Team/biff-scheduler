@@ -74,7 +74,7 @@ test("时间重叠在我的两场之间画成连线，并给格子冲突配色",
   await expect(agenda.locator(".conflict-links line")).toHaveCount(1);
   await expect(agenda.locator('[data-grid-slot="008"]')).toHaveClass(/conflict/);
   await expect(agenda.locator('[data-grid-slot="033"]')).toHaveClass(/conflict/);
-  // 冲突组的抢票顺位仍留在这条连线的画布下方(顺位是 /rush 的唯一来源)
+  // 冲突组的抢票顺位仍留在这条连线的画布下方(顺位只在这里拖动设置)
   await expect(
     agenda.getByRole("region", { name: /冲突组 008 033/ }),
   ).toHaveCount(1);
@@ -109,4 +109,69 @@ test("日期条切单日，卡片 / 日程表两档可来回切且互不残留",
   await expect(agenda.locator("[data-grid-slot]")).toHaveCount(0);
   await expect(agenda.locator(".date-strip.calendar-strip")).toHaveCount(0);
   await expect(agenda.locator(".agenda-gantt-empty")).toBeVisible();
+});
+
+// 「我的行程」信息架构收拾(2026-09-22,`PLAN-20260922103307`)。
+// 回归的是改动前的两处结构问题:① 工具栏与画布图例**分成两行**、功能混杂;
+// ② 「保存当前方案」悬在日程表与「已保存方案」之间的空白里(不在首屏工具栏)。
+test("顶部工具栏只有一条：左状态操作、右视图与保存，日期条夹在概览条与它之间", async ({
+  page,
+}) => {
+  // 左右两组要落在同一行才有「左 vs 右」可言,故把视口钉死在桌面宽度
+  await page.setViewportSize({ width: 1512, height: 1200 });
+  await seed(page, { "biff.picks.v2": picks(mine) });
+  await ready(page, "/agenda");
+  const agenda = page.getByRole("region", { name: "我的行程", exact: true });
+
+  // ① 全页只有一条工具栏:图例、操作、视图、缩放全在里面
+  const toolbar = agenda.locator(".agenda-actions");
+  await expect(toolbar).toHaveCount(1);
+  const legend = toolbar.locator(".schedule-legend");
+  await expect(legend).toHaveCount(1);
+  await expect(legend).toContainText("时间紧张");
+  await expect(legend).toContainText("时间重叠");
+  await expect(legend).toContainText("韩国时间 KST");
+  // 缩放档位从画布自己的图例行搬进了这条工具栏
+  await expect(toolbar.locator(".zoom-controls button")).toHaveCount(3);
+  // 画布容器里不再有第二行图例(否则就是「两行控件」又回来了)
+  await expect(agenda.locator(".agenda-gantt .schedule-legend")).toHaveCount(0);
+
+  // ② 左组 = 图例 + 添加转票场次 + 仅看实际行程;右组 = 日程表 / 卡片 + 缩放 + 保存当前方案
+  const left = toolbar.locator(".agenda-actions-left");
+  const right = toolbar.locator(".agenda-actions-right");
+  expect(await left.innerText()).toContain("添加转票场次");
+  expect(await left.innerText()).toContain("仅看实际行程");
+  expect(await right.innerText()).toContain("日程表");
+  expect(await right.innerText()).toContain("卡片");
+  expect(await right.innerText()).toContain("保存当前方案");
+  const leftBox = (await left.boundingBox())!;
+  const rightBox = (await right.boundingBox())!;
+  expect(rightBox.x).toBeGreaterThanOrEqual(leftBox.x + leftBox.width);
+
+  // ③ 保存当前方案在工具栏里,不再是日程表与「已保存方案」之间那块孤立按钮
+  await expect(agenda.locator(".agenda-save")).toHaveCount(0);
+  await expect(
+    right.getByRole("button", { name: "保存当前方案", exact: true }),
+  ).toHaveCount(1);
+
+  // ④ 层次:概览条 → 日期导航 → 工具栏
+  const strip = agenda.locator(".date-strip.calendar-strip");
+  await expect(strip).toHaveCount(1);
+  const summaryBox = (await agenda.locator(".summary-strip").boundingBox())!;
+  const stripBox = (await strip.boundingBox())!;
+  const toolbarBox = (await toolbar.boundingBox())!;
+  expect(summaryBox.y + summaryBox.height).toBeLessThanOrEqual(stripBox.y);
+  expect(stripBox.y + stripBox.height).toBeLessThanOrEqual(toolbarBox.y);
+
+  // ⑤ 卡片视图没有画布:图例 / 缩放 / 日期条一起退场,但保存按钮留下
+  await right.getByRole("button", { name: "卡片", exact: true }).click();
+  await expect(agenda.locator(".schedule-legend")).toHaveCount(0);
+  await expect(agenda.locator(".zoom-controls")).toHaveCount(0);
+  await expect(strip).toHaveCount(0);
+  await expect(
+    agenda.locator(".agenda-actions-right").getByRole("button", {
+      name: "保存当前方案",
+      exact: true,
+    }),
+  ).toHaveCount(1);
 });
