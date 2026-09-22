@@ -84,10 +84,26 @@ export function tiltOf(id: string): number {
   return ((hash % 301) / 10) - 15; // -15.0 ~ +15.0
 }
 
-/** 由 id 推导的**确定性**落点 —— 迁移旧数据 / 示例铺底 / 画「别人的贴纸」都用它
- *  (不能用 `Math.random`,否则每次载入旧数据贴纸都会换位置)。 */
+/** 哈希的**雪崩**收尾(murmur3 的 fmix32)。
+ *  ⚠ 不能直接拿 FNV 的高位当坐标:同一部片的贴纸 id 共享前缀(`cat:f001#crowd-`),
+ *    而 FNV 的高位对**末尾那几个字符**几乎不敏感 —— 实测 `(hash >>> 20) % 1000`
+ *    算出来的纵坐标会挤成一条横带(个别片 100 枚全落在上面 40% 里),画布根本没铺开。
+ *    一天只画 16 枚时看不出来,**放开上限之后一眼就看出**(2026-09-22,PLAN-20260922145815 修订 2)。 */
+function mix32(hash: number): number {
+  let x = hash;
+  x ^= x >>> 16;
+  x = Math.imul(x, 0x85ebca6b);
+  x ^= x >>> 13;
+  x = Math.imul(x, 0xc2b2ae35);
+  x ^= x >>> 16;
+  return x >>> 0;
+}
+
+/** 由 id 推导的**确定性**落点 —— 迁移旧数据 / 画「别人的贴纸」都用它
+ *  (不能用 `Math.random`,否则每次载入旧数据贴纸都会换位置)。
+ *  ⚠ 取坐标前必须过一遍 `mix32`:见它的注释(不 mix 会挤成一条横带)。 */
 export function spotOf(id: string): { posX: number; posY: number } {
-  const hash = hashOf(id);
+  const hash = mix32(hashOf(id));
   const span = 1 - SPOT_MARGIN * 2;
   const a = ((hash >>> 8) % 1000) / 1000;
   const b = ((hash >>> 20) % 1000) / 1000;
