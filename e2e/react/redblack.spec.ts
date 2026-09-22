@@ -284,6 +284,95 @@ test("放大看全部:弹层给大画布、画全部贴纸,Esc 关闭并把焦�
   await expect(opener).toBeFocused();
 });
 
+// 我贴的那一枚的两条交互(2026-09-22,PLAN-20260922160432):
+//  ① **单击收回** —— 文件头早就写着「单击就取下」,但实现里只挂了 pointerdown,
+//     从来没有这个能力;唯一能收回的路径是「拖出画布」这个相当隐蔽的手势。
+//  ② **拖一下不能顺手收走** —— `pointerup` 之后浏览器还会补一次 `click`,
+//     不做区分的话「微调位置」会变成「撤销」。
+test("单击自己贴的那一枚就收回暂存区,按钮重新可贴", async ({ page }) => {
+  const pings: Array<{ votes?: unknown }> = [];
+  await page.route("**/api/stats/film-votes**", async (route) => {
+    if (route.request().method() === "POST") {
+      pings.push(route.request().postDataJSON() as { votes?: unknown });
+      return route.fulfill({ json: { ok: true, count: 0 } });
+    }
+    return route.fulfill({ json: { edition: "biff-2026", votes: {} } });
+  });
+  await ready(page, "/redblack");
+
+  const key = keyOf("008");
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  const trayRed = card.getByRole("button", { name: /贴红贴纸/ });
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await trayRed.click();
+
+  const mine = card.locator(".rb-dot");
+  await expect(mine).toHaveCount(1);
+  // 贴过了 → 暂存区那两枚淡下去(`data-rb-spent` 是**存在即真**,值是 "true")
+  await expect(trayRed).toHaveAttribute("data-rb-spent", "true");
+
+  await mine.click();
+
+  // 收回到暂存区:画布空了、提示回来了、按钮重新亮起
+  await expect(card.locator(".rb-dot")).toHaveCount(0);
+  await expect(card.locator(".rb-canvas-hint")).toHaveCount(1);
+  await expect(trayRed).not.toHaveAttribute("data-rb-spent");
+  // 上报是**整份替换**:收回之后服务端那份应当变成空表(否则服务端还替我留着那一票)
+  await expect.poll(() => pings.at(-1)?.votes ?? null, { timeout: 8000 }).toEqual([]);
+});
+
+test("拖一下微调位置不算单击:贴纸不会被顺手收走", async ({ page }) => {
+  await stubEmpty(page);
+  await ready(page, "/redblack");
+
+  const key = keyOf("008");
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await card.getByRole("button", { name: /贴红贴纸/ }).click();
+
+  const mine = card.locator(".rb-dot");
+  await expect(mine).toHaveCount(1);
+  // ⚠ 先把这张卡滚到视口**中间**:贴纸是随机落点,不居中时它可能落在视口上方
+  //   (实测 y = -41),那样 `page.mouse` 的事件根本送不到它身上 —— 测试会假绿
+  await card.evaluate((node) => node.scrollIntoView({ block: "center" }));
+  const before = (await mine.boundingBox())!;
+  expect(before.y).toBeGreaterThan(0);
+
+  // 只挪 10px(越过鼠标 4px 的拖动阈值),而且**松手点仍落在这枚贴纸自己身上** ——
+  // 这样浏览器会在 pointerup 之后补发一次 click,正是要防的那条路径
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(before.x + before.width / 2 + 10, before.y + before.height / 2 + 8, {
+    steps: 6,
+  });
+  await page.mouse.up();
+
+  await expect(card.locator(".rb-dot")).toHaveCount(1);
+  // 而且是**挪了位置**(说明确实走了拖拽分支),不是原地没动
+  const after = (await mine.boundingBox())!;
+  expect(Math.abs(after.x - before.x) + Math.abs(after.y - before.y)).toBeGreaterThan(4);
+});
+
+// 刚贴下的那一枚闪描边(PLAN-20260922160432):票多时点按钮贴下去的那一枚会被丢进一片点里,
+// 原来没有任何线索指出它在哪;但**必须有界** —— 闪完就与别人的贴纸逐字一致(拉平口径)。
+test("刚贴的那一枚会闪描边,闪完与别人的完全一致", async ({ page }) => {
+  await stubEmpty(page);
+  await ready(page, "/redblack");
+
+  const key = keyOf("008");
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await card.getByRole("button", { name: /贴红贴纸/ }).click();
+
+  const mine = card.locator(".rb-dot");
+  // ⚠ 属性值是 "true"(React 对 data-* 上的布尔值走 setAttribute(String(v)))
+  await expect(mine).toHaveAttribute("data-rb-fresh", "true");
+  await expect(mine).toHaveCSS("outline-style", "solid");
+  // 有界:2.4s 之后连描边一起去掉 —— 不是常驻标识
+  await expect(mine).not.toHaveAttribute("data-rb-fresh");
+  await expect(mine).toHaveCSS("outline-style", "none");
+});
+
 test("「只看我贴过」:只列我贴过的片,参数进 URL,再点一次恢复全量", async ({ page }) => {
   await stubEmpty(page);
   await ready(page, "/redblack");
