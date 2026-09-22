@@ -36,12 +36,11 @@ import {
   FOOTER_H,
   PAD,
   POSTER_W,
-  SCALE,
-  SCALE_DOWN_H,
   drawAccentBars,
   drawRule,
   fitText,
   posterFont as font,
+  posterScale,
   roundRectPath,
 } from "./poster-brush";
 
@@ -294,7 +293,7 @@ export function drawPoster(
   images: Map<string, HTMLImageElement>
 ): void {
   const h = posterHeight(model);
-  const scale = h > SCALE_DOWN_H ? 1 : SCALE;
+  const scale = posterScale(POSTER_W, h);
   canvas.width = POSTER_W * scale;
   canvas.height = h * scale;
   const ctx = canvas.getContext("2d");

@@ -21,22 +21,28 @@ import {
   FOOTER_H,
   PAD,
   POSTER_W,
-  SCALE,
-  SCALE_DOWN_H,
   drawAccentBars,
   drawRule,
   fitText,
   posterFont as font,
+  posterScale,
   roundRectPath,
 } from "./poster-brush";
 import { blobPath } from "./sticker-shape";
 import {
   boardFilms,
+  countsOf,
+  crowdStickers,
+  othersOf,
   sortByCounts,
   sortMetric,
+  tiltOf,
   type CrowdCounts,
   type SortMode,
+  type Sticker,
   type StickerBoard,
+  type StickerCounts,
+  type StickerType,
 } from "./redblack";
 
 /** 每个榜取前几名 */
@@ -49,6 +55,19 @@ export const SITE = "biff.lcandy.co";
  *    印一个搜不到的显示名等于没署名。改这里必须同步 `App.tsx` 的页脚。 */
 export const CREDIT_BY = "by @gaaiyeoi 和 by @lcandy2";
 
+/** 分享图上要摊开的一枚贴纸 —— 只有位置与歪斜(没有交互,是死像素)。
+ *  ⚠ 落点 / 歪斜**不在这里算**:两者都由 `redblack.ts::spotOf` / `tiltOf` 从 id 确定性推导,
+ *    这里只是把结果搬进模型,好让「画了几枚、什么颜色」能被单测断言。 */
+export interface RbPosterSticker {
+  id: string;
+  type: StickerType;
+  /** 0–1 相对坐标(贴纸**中心**)—— 与卡片画布同一口径 */
+  posX: number;
+  posY: number;
+  /** 角度(度),±15 */
+  tilt: number;
+}
+
 export interface RbPosterRow {
   key: string;
   /** 片名(中文优先,与页面卡片一致) */
@@ -60,6 +79,11 @@ export interface RbPosterRow {
   black: number;
   /** 我贴的那一色;没贴过 = null */
   mine: "red" | "black" | null;
+  /** 这一行要摊出来的**全部**贴纸(别人的 + 我那一枚)。
+   *  ⚠ 数量恒等于 `red + black` —— 用户口径是「几枚就画几枚」,分享图上也不打折。 */
+  stickers: RbPosterSticker[];
+  /** 我那一枚在 `stickers` 里的下标(绘制时加一圈亮边);没贴过 = -1 */
+  mineIndex: number;
 }
 
 export interface RbPosterBoard {
@@ -111,18 +135,31 @@ function isoDate(d: Date): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
+function toSticker(s: Sticker): RbPosterSticker {
+  return { id: s.id, type: s.type, posX: s.posX, posY: s.posY, tilt: tiltOf(s.id) };
+}
+
 function toRow(film: FilmNode, crowd: CrowdCounts, board: StickerBoard): RbPosterRow {
-  const c = crowd.get(film.key);
+  const counts: StickerCounts = crowd.get(film.key) ?? { total: 0, red: 0, black: 0 };
+  const placed = board.get(film.key) ?? [];
+  const mine = countsOf(placed);
+  // 群点 = 「别人的」(全体 − 我),与卡片画布同一条口径;我那一枚**追加在末尾** ——
+  // 绘制顺序决定压叠次序,卡片上也是它压在群点之上(用户 2026-09-22 的口径)。
+  const stickers = crowdStickers(film.key, othersOf(counts, mine)).map(toSticker);
+  // 一部只有一枚贴纸(`MAX_PER_FILM = 1`),取第一枚就是「我贴的那一色」
+  const mySticker = placed[0];
+  const mineIndex = mySticker ? stickers.push(toSticker(mySticker)) - 1 : -1;
   return {
     key: film.key,
     title: film.zh,
     // ⚠ 与页面卡片同一条**展示**规则(`RbCard`):中英名相同时不重复画一遍 ——
     //   排期里只有英文名的片(「In Winter」这类)否则会上下两行一模一样
     en: film.en && film.en !== film.zh ? film.en : "",
-    red: c?.red ?? 0,
-    black: c?.black ?? 0,
-    // 一部只有一枚贴纸(`MAX_PER_FILM = 1`),取第一枚就是「我贴的那一色」
-    mine: board.get(film.key)?.[0]?.type ?? null,
+    red: counts.red,
+    black: counts.black,
+    mine: mySticker?.type ?? null,
+    stickers,
+    mineIndex,
   };
 }
 
@@ -165,7 +202,8 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
     mine,
     boards,
     myTitle: `我贴过的 ${myRows.length} 部`,
-    myHint: "圆点是我贴的那一色 · 右侧是全站红黑数",
+    // 横带是这一节的主角(它才回答「我贴的那一部长什么样」),左侧圆点只是「我贴的是哪一色」
+    myHint: "左侧圆点是我贴的那一色 · 横带是这部片收到的全部贴纸",
     myRows,
     credit: { site: SITE, by: CREDIT_BY },
   };
@@ -175,14 +213,18 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
 
 const HEADER_H = 396;
 const SECTION_H = 96;
-const ROW_H = 76;
+/** 一行的高度 = 上行文字 + 下行贴纸带。
+ *  ⚠ 导出给单测用:高度是绘制的自变量,写死数字的断言会在改版式时静默失效。 */
+export const ROW_H = 108;
 /** 三榜的空档(「我贴过的」那一节之前留白多一点) */
 const BLOCK_GAP = 32;
-/** 一行右侧那条红黑比例条的尺寸 */
-const BAR_W = 208;
-const BAR_H = 8;
-/** 数值列(右侧)的宽度 —— 比例条与文字都靠它右对齐 */
-const VALUE_W = 232;
+/** 贴纸带:相对行顶的位置与高度 */
+const BAND_TOP = 66;
+const BAND_H = 32;
+/** 贴纸带里一枚贴纸的边长 —— 比卡片上的 26 小一号:一条带上要摊几十上百枚 */
+const BAND_STICKER = 14;
+/** 右侧「红 N · 黑 N」预留的宽度(片名据此截断) */
+const NUM_W = 200;
 
 /** 分享图总高(逻辑像素,含上下品牌红条)—— 行数决定高度,故必须与 `drawRbPoster` 同源。
  *  ⚠ 两处各算一份必然出现「算出来 3000 高、实际画了 3200」,而画布是按它设的 →
@@ -214,27 +256,58 @@ function drawCounts(ctx: CanvasRenderingContext2D, row: RbPosterRow, right: numb
   }
 }
 
-/** 右侧那条比例条:红 / 黑按票数占比切分。全黑或全红时就是一条纯色。 */
-function drawRatioBar(ctx: CanvasRenderingContext2D, row: RbPosterRow, right: number, top: number): void {
-  const sum = row.red + row.black;
-  if (sum <= 0) return;
-  const left = right - BAR_W;
-  const redW = Math.round((row.red / sum) * BAR_W);
-  ctx.fillStyle = C.red;
-  roundRectPath(ctx, left, top, BAR_W, BAR_H, BAR_H / 2);
+/** 贴纸带:把这一行的**全部**票摊在一条横带上 —— 数字回答「多少」,这里回答「长什么样」。
+ *
+ *  落点与歪斜**逐字复用卡片画布那套**(`spotOf` / `tiltOf`,由 id 确定性推导),
+ *  连「群点 + 我那一枚」的组成也同源(`othersOf` + 我那一枚追加在末尾),所以同一部片在
+ *  分享图与卡片上摊出来的是同一堆贴纸 —— 只是横带更扁(同一张图的不同裁切比例)。
+ *
+ *  ⚠ 数量**不打折**:票数几枚就画几枚(用户 2026-09-22 口径)。超出边缘的按卡片同口径裁掉
+ *    (`.rb-canvas { overflow: hidden }` ↔ 这里的 `clip()`)。
+ */
+function drawBand(ctx: CanvasRenderingContext2D, row: RbPosterRow, top: number): void {
+  if (!row.stickers.length) return;
+  const x = PAD + 64;
+  const w = POSTER_W - PAD - x;
+  // 一小块「地」:与卡片画布同色,让贴纸堆读成一个区域而不是浮在纸上
+  ctx.fillStyle = C.card;
+  roundRectPath(ctx, x, top, w, BAND_H, 8);
   ctx.fill();
-  if (redW < BAR_W) {
-    // 黑的那段从右往左贴,保证整条仍是圆角矩形
+  ctx.save();
+  roundRectPath(ctx, x, top, w, BAND_H, 8);
+  ctx.clip();
+  row.stickers.forEach((s, i) => {
     ctx.save();
-    roundRectPath(ctx, left, top, BAR_W, BAR_H, BAR_H / 2);
-    ctx.clip();
-    ctx.fillStyle = C.ink2;
-    ctx.fillRect(left + redW, top, BAR_W - redW, BAR_H);
+    // ⚠ 相对坐标映射到**去掉一枚贴纸宽度之后**的范围:卡片画布有 176px 高,26px 的贴纸压不出边界,
+    //   而这条横带只有 32px —— 照搬「中心 = posY × 高」会有大半个贴纸被切平(上下沿一排平顶)。
+    //   把中心收进带内,`clip()` 只剩兜底(歪斜后的圆角仍然可能探出去一点)。
+    const half = BAND_STICKER / 2;
+    ctx.translate(x + half + s.posX * (w - BAND_STICKER), top + half + s.posY * (BAND_H - BAND_STICKER));
+    ctx.rotate((s.tilt * Math.PI) / 180);
+    ctx.translate(-BAND_STICKER / 2, -BAND_STICKER / 2);
+    ctx.fillStyle = s.type === "red" ? C.red : C.stickerBlack;
+    blobPath(ctx, BAND_STICKER);
+    ctx.fill();
+    if (s.type === "black") {
+      // 深底上的黑贴纸要靠一圈亮边才认得出(理由同 `poster-brush.ts::COLORS.stickerBlack`)
+      ctx.strokeStyle = C.muted;
+      ctx.lineWidth = 0.8;
+      blobPath(ctx, BAND_STICKER);
+      ctx.stroke();
+    }
+    if (i === row.mineIndex) {
+      // 我那一枚:一圈亮边 —— 与「我贴过的」那一节左侧的圆点同一个含义(这是我的票)
+      ctx.strokeStyle = C.ink;
+      ctx.lineWidth = 1.6;
+      blobPath(ctx, BAND_STICKER);
+      ctx.stroke();
+    }
     ctx.restore();
-  }
+  });
+  ctx.restore();
 }
 
-/** 一行:排名 / 我在这一部贴的那一色 + 片名(中英)+ 右侧全站红黑数 + 比例条。 */
+/** 一行:排名 / 我贴的那一色 + 片名(中英)+ 右侧全站红黑数 + 下方**贴纸带**。 */
 function drawRow(
   ctx: CanvasRenderingContext2D,
   row: RbPosterRow,
@@ -243,14 +316,16 @@ function drawRow(
   withMine: boolean,
 ): void {
   const right = POSTER_W - PAD;
-  const valueLeft = right - VALUE_W;
+  // 文字行的基线(名次与片名共用一条,读起来才是一行)
+  const textBase = top + 36;
 
   // 左侧标记:榜内是名次;「我贴过的」那一节换成我贴的那一色小贴纸(用户口径)
   if (withMine && row.mine) {
     const size = 24;
     const isRed = row.mine === "red";
     ctx.save();
-    ctx.translate(PAD, top + ROW_H / 2 - size / 2);
+    // 与片名那一行**视觉居中对齐**(基线往上约 9px 是字身中心,而不是整行居中)
+    ctx.translate(PAD, textBase - 9 - size / 2);
     ctx.fillStyle = isRed ? C.red : C.stickerBlack;
     blobPath(ctx, size);
     ctx.fill();
@@ -265,24 +340,22 @@ function drawRow(
   } else {
     ctx.font = font(28, 700);
     ctx.fillStyle = rank <= 3 ? C.red2 : C.muted;
-    ctx.fillText(`${rank}`.padStart(2, "0"), PAD, top + ROW_H / 2 + 10);
+    ctx.fillText(`${rank}`.padStart(2, "0"), PAD, textBase);
   }
 
   const titleX = PAD + 64;
-  const titleW = valueLeft - titleX - 24;
-  let ty = top + 34;
+  const titleW = right - NUM_W - titleX - 20;
   ctx.font = font(29, 600);
   ctx.fillStyle = C.ink;
-  ctx.fillText(fitText(ctx, row.title, titleW), titleX, ty);
+  ctx.fillText(fitText(ctx, row.title, titleW), titleX, textBase);
   if (row.en) {
-    ty += 26;
     ctx.font = font(20, 400);
     ctx.fillStyle = C.muted;
-    ctx.fillText(fitText(ctx, row.en, titleW), titleX, ty);
+    ctx.fillText(fitText(ctx, row.en, titleW), titleX, textBase + 24);
   }
 
-  drawCounts(ctx, row, right, top + 34);
-  drawRatioBar(ctx, row, right, top + 50);
+  drawCounts(ctx, row, right, textBase);
+  drawBand(ctx, row, top + BAND_TOP);
 }
 
 /** 分节头:左侧一小段品牌红竖条 + 标题 + 口径说明。 */
@@ -353,7 +426,7 @@ function drawHeader(ctx: CanvasRenderingContext2D, model: RbPosterModel): void {
 /** 把模型画到给定画布上(画布尺寸由本函数按模型设好,调用方不必预先设)。 */
 export function drawRbPoster(canvas: HTMLCanvasElement, model: RbPosterModel): void {
   const h = rbPosterHeight(model);
-  const scale = h > SCALE_DOWN_H ? 1 : SCALE;
+  const scale = posterScale(POSTER_W, h);
   // ⚠ 写 width/height 会**清空画布并重置 transform**,两者必须成对
   canvas.width = POSTER_W * scale;
   canvas.height = h * scale;
