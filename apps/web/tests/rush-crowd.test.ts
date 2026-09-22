@@ -1,12 +1,15 @@
 // C 组「群体行为与口碑」纯逻辑单测（2026-09-20，第 2 轮，PLAN-20260920203010 修订 1）。
 //
-// 覆盖点：① 三个子面在一票 / 一人 / 一条都没有时返回 null（页面走空态）；
+// 覆盖点：① 两个子面在一票 / 一人都没有时返回 null（页面走空态）；
 // ② 想看榜的中位数与「群体热门」基准；③ 「有争议」必须两边都达到最小票数；
 // ④ 我与群体的重合度：`>=` 中位数算热门、零想看算冷门、无数据时 median 为 null。
+//
+// ⚠ 原第三子面 `talkBoard`（场次讨论榜）的用例已于 2026-09-22 随讨论区下线删除
+//   （`PLAN-20260922101227`）—— 纯逻辑连同它的唯一用途一起消失，留着测一个没人用的函数没有意义。
 
 import { describe, expect, it } from "vitest";
 import { MIN_VOTES_FOR_VERDICT } from "../src/rush-analysis";
-import { myCrowdOverlap, talkBoard, voteBoard, wantBoard } from "../src/rush-crowd";
+import { myCrowdOverlap, voteBoard, wantBoard } from "../src/rush-crowd";
 
 describe("wantBoard", () => {
   it("一个人都没点 → null（不画全 0 的图）", () => {
@@ -57,19 +60,6 @@ describe("voteBoard", () => {
     const board = voteBoard([{ key: "a", title: "A", red: -5, black: 3 }]);
     expect(board?.red).toBe(0);
     expect(board?.redShare).toBe(0);
-  });
-});
-
-describe("talkBoard", () => {
-  it("一条讨论都没有 → null；有则按讨论数降序", () => {
-    expect(talkBoard([{ code: "001", title: "A", count: 0 }])).toBeNull();
-    const board = talkBoard([
-      { code: "001", title: "A", count: 2 },
-      { code: "002", title: "B", count: 7 },
-    ]);
-    expect(board?.shows).toBe(2);
-    expect(board?.total).toBe(9);
-    expect(board?.top[0].code).toBe("002");
   });
 });
 

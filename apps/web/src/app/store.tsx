@@ -99,7 +99,8 @@ export function bootstrap(): Promise<Catalog> {
         loadExtras(),
         loadRelated(),
         loadIntros(),
-        // 同场观影人数 / 讨论数:整站一次拉取(场次卡要用),失败静默降级为空表
+        // 同场观影人数:整站一次拉取(场次卡要用),失败静默降级为空表
+        // (接口还会回 `discussions`,但前端自 2026-09-22 起不再消费 —— 见 `screening-counts.ts`)
         loadScreeningCounts(),
         // 排期数据更新日志:缺文件 / 旧部署时静默降级,顶栏不出现「数据更新」入口
         loadChangelog(),

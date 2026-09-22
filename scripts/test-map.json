@@ -177,12 +177,15 @@
     },
     {
       "id": "pwa",
-      "note": "离线 / Service Worker",
+      "note": "离线 / Service Worker / 发版后的「有新版本」提示条",
       "paths": [
-        "apps/web/public/manifest.webmanifest"
+        "apps/web/public/manifest.webmanifest",
+        "apps/web/src/pwa-update.ts",
+        "apps/web/src/components/UpdateBanner.tsx"
       ],
       "specs": [
-        "offline"
+        "offline",
+        "pwa-update"
       ]
     },
     {
@@ -257,21 +260,18 @@
     },
     {
       "id": "screening-social",
-      "note": "同场观影人数 + 场次讨论（票务三态 / 实际行程 / 转票补入 / 讨论区方格墙与直接发帖）",
+      "note": "同场观影人数（票务三态 / 实际行程 / 转票补入）——「场次讨论 / 讨论区」已于 2026-09-22 下线（PLAN-20260922101227），对应前端文件与用例一并删除",
       "paths": [
         "apps/web/src/pages/AgendaPage.tsx",
         "apps/web/src/state.ts",
         "apps/web/src/tickets.ts",
         "apps/web/src/edition.ts",
         "apps/web/src/screening-counts.ts",
-        "apps/web/src/screening-discussion.ts",
         "apps/web/src/app/App.tsx",
         "apps/web/src/app/schedule-search.ts",
         "apps/web/src/main.tsx",
         "apps/web/src/components/ScreeningCard.tsx",
         "apps/web/src/components/ScreeningTickets.tsx",
-        "apps/web/src/components/ScreeningDiscussionDialog.tsx",
-        "apps/web/src/pages/DiscussionsPage.tsx",
         "apps/web/src/components/TransferAddDialog.tsx",
         "apps/web/src/components/screening-social.css",
         "apps/api/src/reactions.ts",

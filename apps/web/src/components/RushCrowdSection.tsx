@@ -1,37 +1,39 @@
 // 分析页 · C 组「群体行为与口碑」（2026-09-20，第 2 轮，PLAN-20260920203010 修订 1）。
 //
-// 三个子面各自的**计量单位不同**（想看按影片 / 红黑票按影片 / 讨论按场次），
-// 所以页面上必须把它们分开摆，不能合成一个「热度」数字（合成后就再也说不清它是什么）。
+// 留下的两个子面都是**影片级**（想看人数 / 红黑票），所以页面上分开摆，
+// 不能合成一个「热度」数字（合成后就再也说不清它是什么）。
+//
+// ⚠ 第三子面「场次讨论」已随「讨论区」下线一并删除
+//   （2026-09-22，`PLAN-20260922101227`）。
+// ⚠ 本组件**当前没有调用方**：2026-09-20 第 4 轮精简后由 `RushCrowdPanel.tsx` 取代
+//   （见 `PLAN-20260920193412` 的死代码记录）。本轮只是因 `rush-crowd.ts::talkBoard` 被删
+//   而做**必要同步**，未顺手清理整份死代码。
 
 import { allCodes } from "../state";
 import type { ChartTokens } from "../chart-theme";
-import { MIN_VOTES_FOR_VERDICT, type ShowDemandRow } from "../rush-analysis";
-import { myCrowdOverlap, talkBoard, voteBoard, wantBoard } from "../rush-crowd";
+import { MIN_VOTES_FOR_VERDICT } from "../rush-analysis";
+import { myCrowdOverlap, voteBoard, wantBoard } from "../rush-crowd";
 import type { Catalog } from "../types";
 import type { FilmNode } from "../app/model";
 import { filmNodeKey } from "../util";
 import { peekFilmVotes } from "../film-votes";
 import { peekWantCounts } from "../want-counts";
-import { peekScreeningCounts } from "../screening-counts";
 import { RankBarChart, StackedBarChart } from "./charts/bars";
 
-/** 榜单长度：三个榜各列前 10 —— 再多就变成「翻页」而不是「一眼看」。 */
+/** 榜单长度：两个榜各列前 10 —— 再多就变成「翻页」而不是「一眼看」。 */
 const TOP = 10;
 
 export function RushCrowdSection({
   cat,
   films,
-  rows,
   tokens,
 }: {
   cat: Catalog;
   films: FilmNode[];
-  rows: ShowDemandRow[];
   tokens: ChartTokens;
 }) {
   const wantCounts = peekWantCounts();
   const votes = peekFilmVotes();
-  const discussions = peekScreeningCounts().discussions;
 
   const wantRows = films.map((film) => ({
     key: film.key,
@@ -44,18 +46,9 @@ export function RushCrowdSection({
     red: votes[film.key]?.red ?? 0,
     black: votes[film.key]?.black ?? 0,
   }));
-  // 场次 code → 片名（一次 O(场次) 建表，避免在 map 里重复查映射）
-  const titleByCode = new Map<string, string>();
-  for (const film of films) for (const s of film.shows) titleByCode.set(s.code, film.title);
-  const talkRows = rows.map((row) => ({
-    code: row.code,
-    title: titleByCode.get(row.code) ?? row.code,
-    count: discussions[row.code] ?? 0,
-  }));
 
   const want = wantBoard(wantRows);
   const voted = voteBoard(voteRows);
-  const talk = talkBoard(talkRows);
 
   // 我排了场次的影片（去重）—— 与全站想看对照用
   const myFilmKeys = new Set<string>();
@@ -65,12 +58,12 @@ export function RushCrowdSection({
   }
   const overlap = myCrowdOverlap([...myFilmKeys], wantRows);
 
-  if (want === null && voted === null && talk === null) {
+  if (want === null && voted === null) {
     return (
       <section className="ra-block" aria-label="群体行为与口碑">
         <h2>群体行为与口碑</h2>
         <p className="ra-hint">
-          还没有任何群体数据 —— 在影片库点「想看」、在红黑榜贴票、在场次下发文，这里就会开始有内容。
+          还没有任何群体数据 —— 在影片库点「想看」、在红黑榜贴票，这里就会开始有内容。
         </p>
       </section>
     );
@@ -83,18 +76,13 @@ export function RushCrowdSection({
     .slice(0, TOP);
 
   return (
-    <section
-      className="ra-block"
-      aria-label="群体行为与口碑"
-      // 有讨论的场次数留在容器上（E2E 与「讨论榜」的图注同源，不另算一遍）
-      data-talk-shows={talk?.shows ?? 0}
-    >
+    <section className="ra-block" aria-label="群体行为与口碑">
       <h2>群体行为与口碑</h2>
       <p
         className="ra-hint"
-        title="三个榜的计量单位不同：想看人数按影片、红黑票按影片、讨论按场次 —— 不能横向比大小，只能各自看排序。"
+        title="两个榜都是影片级：想看人数说意愿、红黑票说口碑 —— 单位相同，但问的不是同一件事。"
       >
-        想看 / 红黑票按<strong>影片</strong>，讨论按<strong>场次</strong>（单位不同，别横比）。
+        想看 / 红黑票都按<strong>影片</strong>统计。
       </p>
 
       <div className="ra-metrics">
@@ -109,10 +97,6 @@ export function RushCrowdSection({
         <div className="ra-metric">
           <b>{voted?.black ?? 0}</b>
           <span>黑票</span>
-        </div>
-        <div className="ra-metric">
-          <b>{talk?.total ?? 0}</b>
-          <span>场次讨论（{talk?.shows ?? 0} 场）</span>
         </div>
         <div className="ra-metric">
           <b>{overlap.mine === 0 ? "—" : `${overlap.hot}/${overlap.mine}`}</b>
@@ -171,18 +155,6 @@ export function RushCrowdSection({
             </span>
           ))}
         </p>
-      )}
-
-      {/* 讨论数也走横排图（原先是一列文字行） */}
-      {talk && talk.top.length > 0 && (
-        <RankBarChart
-          chart="crowd-talk"
-          label="讨论最多的场次"
-          valueName="讨论条数"
-          data={talk.top.slice(0, TOP).map((row) => ({ label: `${row.code} ${row.title}`, value: row.count }))}
-          tokens={tokens}
-          footnote={`${talk.shows} 场有讨论，共 ${talk.total} 条。`}
-        />
       )}
     </section>
   );

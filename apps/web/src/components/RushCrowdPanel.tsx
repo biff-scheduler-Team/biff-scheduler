@@ -2,7 +2,8 @@
 //
 // ★ 用户对上一版的原话：「太复杂了…只留下 群体行为与口碑（能够根据场次和电影筛选想看人数）」。
 //   所以这一组**只做三件事**：想看人数、红黑票、以及把这两者按**影片 / 场次**筛出来看。
-//   讨论数保留在数字卡里（它是「场次」维度的唯一信号），但不单独占一块版面。
+//   ⚠ 原先数字卡里还有一个「场次讨论」（当时是「场次」维度的唯一信号），2026-09-22 随讨论区
+//     一并删除（`PLAN-20260922101227`，用户「指标也删掉，读数链路一起清」）。
 //
 // ★ 为什么筛选要「影片 + 场次」两个：想看人数是**影片级**的，而用户是**按场次**买票的。
 //   两个下拉分别对应这两种视角 ——
@@ -53,7 +54,7 @@ export function RushCrowdPanel({ tokens }: { tokens: ChartTokens }) {
   const { cat, films } = useCatalog();
   const wantCounts = peekWantCounts();
   const votes = peekFilmVotes();
-  const { attendance, discussions } = peekScreeningCounts();
+  const { attendance } = peekScreeningCounts();
 
   // 两个搜索框（2026-09-20，PLAN-20260920193638 —— 用户「场次电影全部采用搜索框」）：
   // 输入即筛。原来的「关键词」框已删 —— 它与「电影」框都是按片名模糊筛，留两个等于同一件事两个入口。
@@ -140,10 +141,6 @@ export function RushCrowdPanel({ tokens }: { tokens: ChartTokens }) {
   const wantTotal = filtered.reduce((sum, row) => sum + row.want, 0);
   const redTotal = filtered.reduce((sum, row) => sum + row.red, 0);
   const blackTotal = filtered.reduce((sum, row) => sum + row.black, 0);
-  const talkTotal = filtered.reduce(
-    (sum, row) => sum + row.shows.reduce((inner, screening) => inner + (discussions[screening.code] ?? 0), 0),
-    0,
-  );
 
   // 选中场次时，把这一场的两个「人数」摆在一起（影片级意愿 vs 本场实际排进行程）
   const showAttendance = selectedShow ? (attendance[selectedShow.code] ?? 0) : 0;
@@ -228,10 +225,6 @@ export function RushCrowdPanel({ tokens }: { tokens: ChartTokens }) {
         <div className="ra-metric">
           <b>{blackTotal}</b>
           <span>黑票</span>
-        </div>
-        <div className="ra-metric">
-          <b>{talkTotal}</b>
-          <span>场次讨论</span>
         </div>
       </div>
 
