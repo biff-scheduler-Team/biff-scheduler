@@ -145,11 +145,47 @@ export function RedBlackPage() {
   // 拉一次 → 我贴完 1200ms 防抖上报 → 上报成功后再拉一次,所以「我自己这一票」
   // 大约一秒后才出现在数字里(画布上那一枚是立刻可见的,不会让人觉得没反应)。
   const [votes, setVotes] = useState<FilmVoteCounts>(() => peekFilmVotes());
+  // 票数**结算**了没有(成功、失败、空表都算结算)—— 首屏那次排序发生在它之前,见下面的补排
+  const [votesSettled, setVotesSettled] = useState(false);
   useEffect(() => {
-    void loadFilmVotes().then(setVotes);
+    void loadFilmVotes().then((next) => {
+      setVotes(next);
+      setVotesSettled(true);
+    });
     return onFilmVotesChange(() => setVotes(peekFilmVotes()));
   }, []);
   const crowd: CrowdCounts = useMemo(() => crowdOf(votes), [votes]);
+  /** 重排触发器 —— 每 +1 就重排一次(见下面 `sorted` 的依赖)。
+   *  声明在这里而不是紧跟 `sorted`,是因为「票数落定后自动补排一次」也要用它。 */
+  const [sortTick, setSortTick] = useState(0);
+  // 票数是**异步**到的,而榜单在它到达之前就排过一次序了 —— 那一次把每部都判成 0 分(并列),
+  // 稳定排序于是原样返回 `boardFilms(films)`,也就是**影片库目录序**。结果就是默认档写着
+  // 「按贴纸总数从高到低」,首屏给的却是目录序(用户 2026-09-22:「好像既不是总数 也不是红数」)。
+  // 所以票数一结算就**自动补排一次**(仅此一次),之后照旧冻结(2026-09-16 用户:「跳动很频繁」)。
+  // ⚠ 用户已经动过手就**跳过**:在读到一半时整页重排等于把人顶走 —— 那种情况下
+  //   「有新贴纸 · 重新排序」本来就亮着,交给他自己点。
+  const resortedRef = useRef(false);
+  const touchedRef = useRef(false);
+  useEffect(() => {
+    const touch = () => {
+      touchedRef.current = true;
+    };
+    // capture:滚动可能发生在任意滚动容器里,不 capture 收不到
+    window.addEventListener("scroll", touch, { capture: true, passive: true });
+    window.addEventListener("pointerdown", touch, { passive: true });
+    window.addEventListener("keydown", touch);
+    return () => {
+      window.removeEventListener("scroll", touch, { capture: true });
+      window.removeEventListener("pointerdown", touch);
+      window.removeEventListener("keydown", touch);
+    };
+  }, []);
+  useEffect(() => {
+    if (resortedRef.current || !votesSettled) return;
+    resortedRef.current = true;
+    if (touchedRef.current) return;
+    setSortTick((count) => count + 1);
+  }, [votesSettled]);
   // 我的贴纸一变就上报整份(服务端据此校正)。
   // ⚠ **只在用户动过手之后**才上报:载入时把空榜报上去,会把「服务端上属于我的那些票」误清掉 ——
   //   换设备 / 清过缓存时本地本来就是空的,而那不是「我撤票了」,只是「这台机器还没数据」。
@@ -171,7 +207,6 @@ export function RedBlackPage() {
   //   整页两列跟着重排 —— 而排序本来就是用户主动想看才需要的动作。
   //   所以顺序只在「搜索词 / 排序档位」变化、或点「重新排序」时刷新;
   //   卡片里的数字 / 颜色仍然即时更新(那是内容,不影响排布)。
-  const [sortTick, setSortTick] = useState(0);
   // 快照存**票数内容**(签名)而不是 `votes` 的对象引用:
   // ⚠ 每次重拉票数都会得到新对象,数字一模一样也会被当成「有新贴纸」而白亮一次
   //   (用户 2026-09-22:只在**数量变化**时才需要提示重排)。

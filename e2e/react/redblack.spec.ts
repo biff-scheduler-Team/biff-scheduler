@@ -373,6 +373,51 @@ test("刚贴的那一枚会闪描边,闪完与别人的完全一致", async ({ p
   await expect(mine).toHaveCSS("outline-style", "none");
 });
 
+// 默认档「按总数从高到低」在**首屏**就得是真的(2026-09-22,PLAN-20260922161710)。
+// 改版前:排序发生在票数到达之前 → 每部并列 0 → 退化成影片库目录序,而 chip 上写着「按总数」。
+// 这条守的是「票数一落定就自动补排一次」。
+test("默认档「按总数」在首屏就是真的:票数落定后自动排一次", async ({ page }) => {
+  const top = keyOf("008");
+  await stubVotes(page, { [top]: { red: 40, black: 0 } });
+  await ready(page, "/redblack");
+
+  await expect(page.locator(".rb-card").first()).toHaveAttribute("data-film-key", top);
+  // 顺序已经是按最新票数排的 → 不留下提示
+  await expect(page.locator(".rb-resort")).not.toHaveAttribute("data-rb-stale");
+});
+
+// 补排**只在用户还没动过手**时发生:在读的人不该被整页重排顶走。
+// 这条是那个门槛的回归判据 —— 去掉门槛它就会红(顺序会被改成票最多的那一部打头)。
+test("票数落下之前用户已经在滚 → 不补排,顺序照旧并亮起「有新贴纸」", async ({ page }) => {
+  const top = keyOf("008");
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  // 把读接口**扣住**不返回,模拟慢网:票数落下之前先让用户滚一下
+  await page.route("**/api/stats/film-votes**", async (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({ json: { ok: true, count: 0 } });
+    }
+    await gate;
+    return route.fulfill({ json: { edition: "biff-2026", votes: { [top]: { red: 40, black: 0 } } } });
+  });
+  await ready(page, "/redblack");
+
+  const first = await page.locator(".rb-card").first().getAttribute("data-film-key");
+  // ⚠ 用 `window.scrollBy` 而不是 `mouse.wheel`:**WebKit 不支持 `mouse.wheel`**
+  //   (仓库里 `vertical-schedule.spec.ts` 也为这条差异分过支)。两者都会派发 `scroll` 事件,
+  //   而门槛判的就是这个事件。
+  await page.evaluate(() => window.scrollBy(0, 400));
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(0);
+
+  release();
+
+  // 票数到了,但用户已经动过手 → 顺序不动,提示亮着交给他自己点
+  await expect(page.locator(".rb-resort")).toHaveAttribute("data-rb-stale", "true");
+  expect(await page.locator(".rb-card").first().getAttribute("data-film-key")).toBe(first);
+});
+
 test("「只看我贴过」:只列我贴过的片,参数进 URL,再点一次恢复全量", async ({ page }) => {
   await stubEmpty(page);
   await ready(page, "/redblack");
@@ -412,11 +457,10 @@ test("重拉同一份票数不算「有新贴纸」:数量没变就不提示重�
   await ready(page, "/redblack");
 
   const resort = page.locator(".rb-resort");
-  // 首次载入时榜单顺序还是默认序 —— 这时提示一次是**对的**,点掉它。
+  // 首屏**不该**留下「有新贴纸」的提示:票数落定后会自动按总数补排一次(2026-09-22,PLAN-20260922161710)。
+  // 改版前首屏那次排序发生在票数到达之前(全部并列 0 → 退化成目录序),所以才需要这条提示让人手动补排。
   // ⚠ 属性值是 `"true"` 而不是空串:React 对 `data-*` 上的布尔值走 `setAttribute(String(v))`
-  //   (`data-rb-stale={orderStale || undefined}`),空串那版断言从来没成立过 —— 写断言要写**实际值**。
-  await expect(resort).toHaveAttribute("data-rb-stale", "true");
-  await resort.click();
+  //   (`data-rb-stale={orderStale || undefined}`)。
   await expect(resort).not.toHaveAttribute("data-rb-stale");
 
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
