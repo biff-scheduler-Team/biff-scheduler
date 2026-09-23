@@ -396,22 +396,20 @@ export function RedBlackPage() {
 
   // ⚠ 落点处理要用**最新**的 board,而 window 监听只在开始拖拽时挂一次 ——
   //   所以把处理函数放进 ref,每次渲染更新,监听器里读 ref.current。
-  const finishRef = useRef<(drag: RbDrag, canvas: HTMLElement | null, x: number, y: number) => void>(
-    () => {},
-  );
-  finishRef.current = (meta, canvas, x, y) => {
-    const key = canvas?.dataset.rbCanvas ?? null;
+  const finishRef = useRef<(drag: RbDrag, x: number, y: number) => void>(() => {});
+  finishRef.current = (meta, x, y) => {
+    // 落点算不算本片张贴区 —— 与拖拽中的高亮 /「会被收回」提示**同一个判据**(`ownCanvasAt`)
+    const canvas = ownCanvasAt(x, y, meta.srcKey);
 
-    // ① 落点**不是这枚贴纸自己的张贴区** → 出界。
-    //    ⚠ 「出界」从「不在任何画布上」扩到「不在**本片**画布上」(2026-09-23 用户:
-    //      「贴纸张贴区应该是电影之间独立的」)—— 旧口径会把《A》的票**直接改记到《B》头上**
-    //      (`moveSticker` 的跨片分支,已删)。所以别片的画布与页面空白是同一类:都算出去。
-    if (key !== meta.srcKey || !canvas) {
+    // ① 出界。⚠ 旧口径是「不落在**任何**画布上」才算出去 —— 那会把《A》的票
+    //    **直接改记到《B》头上**(`moveSticker` 的跨片分支,已删);现在别片的画布与页面空白同一类。
+    if (!canvas) {
       // 已经贴着的那一枚 → 出界就是收回(用户口径:「贴纸拖到外面就需要取消」),
       //   与「单击那枚贴纸」共用 `takeBack`(文案与落库口径只此一处)
       if (meta.fromId) takeBack(meta.srcKey, meta.fromId);
-      else if (key) {
-        // 从暂存区拖出来、却落在别片的画布上 → 什么都不做(它本来就在暂存区),但要讲清为什么
+      else if (canvasAt(x, y)) {
+        // 从暂存区拖出来、却落在别片的画布上 → 什么都不做(它本来就在暂存区),但要讲清为什么。
+        // ⚠ 这里再查一次画布**只为分辨「别片的画布」与「页面空白」**:前者要解释,后者不用。
         const name = filmByKey.get(meta.srcKey)?.zh ?? "这部";
         ToastQueue.neutral(`这枚是《${name}》的贴纸，只能贴到《${name}》自己的张贴区里。`, {
           timeout: 3500,
@@ -468,13 +466,22 @@ export function RedBlackPage() {
       const startY = event.clientY;
       const slop = event.pointerType === "touch" ? DRAG_SLOP_TOUCH : DRAG_SLOP_MOUSE;
       const meta: RbDrag = { type, srcKey, fromId };
+      // 源片那张卡与它的暂存区 —— 出界提示要把「它要回到哪儿」点亮(见 `setOut`)。
+      // ⚠ 在 pointerdown 里**就地**取:`currentTarget` 出了处理函数就可能被 React 回收,
+      //   而之后整场拖拽都只用这两个引用,不每帧再查一次 DOM。
+      const srcCard = event.currentTarget.closest<HTMLElement>("[data-film-key]");
+      const srcTray = srcCard?.querySelector<HTMLElement>(".rb-tray") ?? null;
 
       // ghost 只在**真的开始移动**之后才创建:「点一下贴纸」是合法操作(随机贴),
       //   在 pointerdown 就造浮标会让每次点击都闪一下。
       let ghost: HTMLElement | null = null;
+      /** 浮标下面那枚短标签(出界时才说话,见 `setOut`) */
+      let hint: HTMLElement | null = null;
       // ⚠ 落点高亮**直接改 DOM 属性**而不走 state:榜单有近 300 张卡,
       //   每跨一张卡就 setState 会整页重渲染一次,贴纸立刻跟不上指针。
       let hoverCard: HTMLElement | null = null;
+      /** 当前算不算「出界」(松手会被收回 / 取消) */
+      let out = false;
       let moved = false;
       let frame = 0;
       let lastX = startX;
@@ -486,14 +493,33 @@ export function RedBlackPage() {
         card?.setAttribute("data-rb-hover", "");
         hoverCard = card;
       };
+      /** 出界(松手会收回 / 取消)的**三处提示**,只在状态**变**的时候写 DOM ——
+       *  它每帧被 `flush` 调一次,而页面上有近 300 张卡,白写属性也是开销。
+       *  ① 浮标换装(`rb-ghost--out`:半透明 + **去饱和**,读作「这枚现在不是活的」);
+       *  ② 浮标下面那枚短标签,说清**松开会发生什么**;
+       *  ③ 把**真的会回去的地方**(本片暂存区)点亮。
+       *  ⚠ ③ 只走「已经贴着的那一枚」这条路:`fromId === null`(从暂存区拖出来的那枚)松手是
+       *    「什么也不做」,给它的暂存区亮灯会读成「它会回到这儿」—— 可它本来就在那儿。 */
+      const setOut = (next: boolean) => {
+        if (next === out) return;
+        out = next;
+        ghost?.classList.toggle("rb-ghost--out", next);
+        if (hint) hint.textContent = next ? (fromId ? "松开 · 收回暂存区" : "松开 · 取消") : "";
+        if (fromId) {
+          if (next) srcTray?.setAttribute("data-rb-target", "");
+          else srcTray?.removeAttribute("data-rb-target");
+        }
+      };
       /** 一帧只做一次:浮标跟上指针 + 重新判定落点 */
       const flush = () => {
         frame = 0;
         if (!ghost) return;
         ghost.style.transform = `translate3d(${lastX}px, ${lastY}px, 0) ${GHOST_TILT}`;
-        // ⚠ 只有**本片**卡片能亮成落点:张贴区按片独立,给别片亮灯等于承诺一个不会兑现的落点
-        const card = cardAt(lastX, lastY);
-        setHover(card?.dataset.filmKey === srcKey ? card : null);
+        // ⚠ 高亮与出界提示共用**同一个**判据(`ownCanvasAt`):亮起的就是真能放下的地方,
+        //   反过来灭灯 = 松手会收回。张贴区按片独立,给别片亮灯等于承诺一个不会兑现的落点。
+        const own = ownCanvasAt(lastX, lastY, srcKey);
+        setHover(own ? srcCard : null);
+        setOut(!own);
       };
       const onMove = (event: PointerEvent) => {
         // 只认发起这次手势的那根手指:另一指的移动不该驱动这个浮标 / 命中测试
@@ -524,6 +550,12 @@ export function RedBlackPage() {
           event.preventDefault();
           ghost = document.createElement("span");
           ghost.className = `rb-ghost rb-ghost--${type}`;
+          // 出界那枚短标签**挂在浮标内部**:位移自动跟着浮标的 transform 走(不用每帧同步
+          // 第二个元素),随浮标一起 `remove()`(不留残件),而浮标本身 `pointer-events: none`,
+          // 所以它也不会挡住落点命中测试。
+          hint = document.createElement("span");
+          hint.className = "rb-drag-hint";
+          ghost.appendChild(hint);
           // ⚠ 就地摆正,**不能**等下面那一帧 rAF:新元素没有 transform 就挂在 (0,0),
           //   会先在视口左上角闪一帧。后面才开始按帧合并。
           ghost.style.transform = `translate3d(${event.clientX}px, ${event.clientY}px, 0) ${GHOST_TILT}`;
@@ -539,9 +571,7 @@ export function RedBlackPage() {
         if (event.pointerId !== pointerId) return;
         end();
         // 没移动 = 一次单击(交给元素自己的 onClick),不要误当成一次拖动
-        if (moved) {
-          finishRef.current(meta, canvasAt(event.clientX, event.clientY), event.clientX, event.clientY);
-        }
+        if (moved) finishRef.current(meta, event.clientX, event.clientY);
       };
       /** 收尾:摘监听、撤浮标与高亮、把手势单例让出来。
        *  **幂等** —— `onUp` 与卸载(见 `gestureRef` 的说明)都可能调它。 */
@@ -551,8 +581,13 @@ export function RedBlackPage() {
         window.removeEventListener("pointercancel", onUp);
         if (frame) cancelAnimationFrame(frame);
         frame = 0;
+        // ⚠ 先复位提示、再扔浮标:暂存区那盏灯 `data-rb-target` 挂在**卡片**上,
+        //   浮标一 `remove()` 就没人管它了 —— 漏掉这一句会在卡片上留一盏永远亮着的灯
+        //   (卸载路径也走这里,所以顺手覆盖了「拖到一半换页」)。
+        setOut(false);
         ghost?.remove();
         ghost = null;
+        hint = null;
         setHover(null);
         if (gestureRef.current?.pointerId === pointerId) gestureRef.current = null;
       };
@@ -916,8 +951,14 @@ function canvasAt(x: number, y: number): HTMLElement | null {
   return hit instanceof HTMLElement ? hit.closest<HTMLElement>("[data-rb-canvas]") : null;
 }
 
-/** 指针落点所在的**卡片**(拖拽时直接挂 `data-rb-hover`,不经过 React 状态) */
-function cardAt(x: number, y: number): HTMLElement | null {
-  const hit = document.elementFromPoint(x, y);
-  return hit instanceof HTMLElement ? hit.closest<HTMLElement>("[data-film-key]") : null;
+/** 这一次松手**算不算落在这一部自己的张贴区里** —— 返回那块画布,否则 `null`(= 会被收回)。
+ *
+ *  ⚠ 它是**唯一**的落点判据:拖拽中的高亮 /「会被收回」提示(`beginDrag::flush`)与松手结算
+ *    (`finishRef`)共用它,所以「可张贴区」与「会被收回」的边界不会两处各写一份、各说各话
+ *    (2026-09-23 之前正是两处:高亮按**卡片**判、结算按**画布**判 —— 拖到卡片左侧信息列时
+ *    卡片亮着灯,松手却是收回)。
+ *  ⚠ 别片的画布与页面空白是同一类:都算出界(张贴区按片独立,见 `PLAN-20260923101147`)。 */
+function ownCanvasAt(x: number, y: number, srcKey: string): HTMLElement | null {
+  const canvas = canvasAt(x, y);
+  return canvas?.dataset.rbCanvas === srcKey ? canvas : null;
 }

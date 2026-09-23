@@ -517,6 +517,109 @@ test("跨片拖拽:别片的张贴区一枚都不会多", async ({ page }) => {
   expect(await page.locator(".rb-dot").count()).toBeLessThanOrEqual(1);
 });
 
+// 拖出张贴区要有**明显提示**(2026-09-23 用户:「贴纸拖出可张贴区域 进入被收回区域 需要明显提示」,
+// PLAN-20260923110401)。出界 = 松手会把它**收回暂存区**,这件事必须在松手**之前**看得出来:
+//   ① 浮标换装(`rb-ghost--out`:半透明 + 去饱和) ② 浮标下面「松开 · 收回暂存区」
+//   ③ 源片暂存区点亮(亮的是**真的落点**:它要回到这儿)。
+// 同时「卡片亮着灯、松手却收回」的假承诺必须消失 —— 高亮与出界判据收敛到同一处(`ownCanvasAt`)。
+test("拖出张贴区:先给「会被收回」的提示,拖回来立刻消失,松手确实收回", async ({ page }) => {
+  const key = keyOf("008");
+  await stubEmpty(page);
+  await ready(page, "/redblack");
+
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await card.getByRole("button", { name: /贴红贴纸/ }).click();
+  const mine = card.locator(".rb-dot");
+  await expect(mine).toHaveCount(1);
+
+  // 三个点都要在视口里:`elementFromPoint` 与指针坐标都按视口算(实测过假绿)
+  await card.scrollIntoViewIfNeeded();
+  const canvas = (await card.locator(".rb-canvas").boundingBox())!;
+  const dot = (await mine.boundingBox())!;
+  const info = (await card.locator(".rb-card-info").boundingBox())!;
+  const vh = page.viewportSize()!.height;
+  for (const box of [canvas, dot, info]) {
+    expect(box.y).toBeGreaterThan(0);
+    expect(box.y + box.height).toBeLessThan(vh);
+  }
+  const inCanvas = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 };
+  // 出界点取**卡片左侧信息列的上缘**(海报区):不是画布、也不是任何按钮 —— 松手就是收回
+  const outside = { x: info.x + info.width / 2, y: info.y + 16 };
+
+  const ghost = page.locator(".rb-ghost");
+  const hint = page.locator(".rb-drag-hint");
+  const tray = card.locator(".rb-tray");
+
+  // ⚠ 起手用 `hover()` 而不是「先量坐标再 `mouse.move`」:点「标记看过 / 贴红」之后的那次
+  //   重渲染可能在量完坐标之后才提交,量到的位置就过期了(实测偶发:按下没落在贴纸上,
+  //   手势压根没起,报出来的却是「`.rb-drag-hint` 找不到」这种看不出根因的错)。
+  await mine.hover();
+  await page.mouse.down();
+
+  // ① 起手仍在本片画布内:浮标正常、卡片亮着、暂存区不亮、没有说话
+  await page.mouse.move(inCanvas.x, inCanvas.y, { steps: 4 });
+  await expect(ghost).toHaveCount(1);
+  await expect(ghost).not.toHaveClass(/rb-ghost--out/);
+  await expect(hint).toBeHidden();
+  await expect(card).toHaveAttribute("data-rb-hover", "");
+  await expect(tray).not.toHaveAttribute("data-rb-target", "");
+
+  // ② 拖到卡片左侧信息列(在卡片上、却**不在画布上**)→ 三处提示同时出现,
+  //    ⚠ 卡片灯必须同时灭掉:亮着它就是在承诺一个不会兑现的落点
+  await page.mouse.move(outside.x, outside.y, { steps: 6 });
+  await expect(ghost).toHaveClass(/rb-ghost--out/);
+  await expect(hint).toBeVisible();
+  await expect(hint).toHaveText("松开 · 收回暂存区");
+  await expect(tray).toHaveAttribute("data-rb-target", "");
+  await expect(card).not.toHaveAttribute("data-rb-hover", "");
+
+  // ③ 拖回画布:四处一起恢复 —— 提示是**随位置变化的状态**,不是一次性弹窗
+  await page.mouse.move(inCanvas.x, inCanvas.y, { steps: 6 });
+  await expect(ghost).not.toHaveClass(/rb-ghost--out/);
+  await expect(hint).toBeHidden();
+  await expect(tray).not.toHaveAttribute("data-rb-target", "");
+  await expect(card).toHaveAttribute("data-rb-hover", "");
+
+  // ④ 再拖出去松手:那枚确实被收回(提示承诺过的结果),而且不留残灯、不留浮标
+  await page.mouse.move(outside.x, outside.y, { steps: 6 });
+  await expect(hint).toHaveText("松开 · 收回暂存区");
+  await page.mouse.up();
+  await expect(mine).toHaveCount(0);
+  await expect(ghost).toHaveCount(0);
+  await expect(tray).not.toHaveAttribute("data-rb-target", "");
+  await expect(card.locator(".rb-canvas-hint")).toHaveCount(1);
+});
+
+// 从**暂存区**拖出来的那枚是另一条路(2026-09-23,PLAN-20260923110401):松手「什么也不做」,
+// 所以文案必须说「取消」而不是「收回」,暂存区也**不许**亮灯 —— 它本来就在那儿,
+// 亮灯等于说「它会回到这儿」(见页面 `setOut` 的说明)。
+test("从暂存区拖出并移出画布:提示是「松开 · 取消」,暂存区不亮", async ({ page }) => {
+  const key = keyOf("008");
+  await stubEmpty(page);
+  await ready(page, "/redblack");
+
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  // ⚠ 先等这次重渲染落地(按钮文案从「标记看过」变「看过 ✓」会让左侧信息列改高矮),
+  //   否则后面量到的位置是过期的
+  await expect(card).toHaveAttribute("data-rb-marked", "true");
+  await card.scrollIntoViewIfNeeded();
+
+  const info = (await card.locator(".rb-card-info").boundingBox())!;
+  // ⚠ 起手用 `hover()`:让 Playwright 在**按下的那一刻**现算按钮中心(理由同上)
+  await card.locator(".rb-src--red").hover();
+  await page.mouse.down();
+  await page.mouse.move(info.x + info.width / 2, info.y + 16, { steps: 6 });
+
+  await expect(page.locator(".rb-drag-hint")).toHaveText("松开 · 取消");
+  await expect(card.locator(".rb-tray")).not.toHaveAttribute("data-rb-target", "");
+
+  // 松手:它只是回到暂存区原位,画布上一枚都不会多
+  await page.mouse.up();
+  await expect(card.locator(".rb-dot")).toHaveCount(0);
+});
+
 /** 造一个**原生** PointerEvent 的初始化参数(两处 helper 共用)。
  *  ⚠ 默认 `touch` + 「按下即 `buttons: 1`」—— 双指那条用例要的就是两根手指。
  *  只有「窗口外松手」那条要显式给 `mouse` + `buttons: 0`:那是**鼠标独有**的失效形态。 */
