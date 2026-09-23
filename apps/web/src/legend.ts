@@ -1,14 +1,12 @@
+// 徽章**外观**不在这里:`legend.ts` / `badges.ts` 只负责文案(标签 / hover 说明 / 官方英文)。
+// 形状与配色统一由 `.film-badge[data-badge=…]` 承载(token 见 `style.css` 的 `--badge-*`)——
+// 2026-09-23,`PLAN-20260923113659` T1:此前这里另有一份 `cls`(CHIP_BASE/CHIP_SOLID + bg-rate-*-solid),
+// 零消费方且那些 Tailwind 类在新 `src` 没有定义 —— 同一外观两份定义,改哪份都不确定生效。
+
 import type {RatingKey, SubsKey, Screening, Venue} from './types';
-
-const CHIP_BASE =
-  "not-italic text-10 font-extrabold rounded-3 px-[3px] py-px border " +
-  "leading-[1.45] whitespace-nowrap select-none shrink-0 cursor-help inline-flex items-center";
-
-const CHIP_SOLID = "text-on-brand border-transparent";
 
 interface RateDef {
   label: string;
-  cls: string; // chip 配色(完整字面量)
   zh: string; // 中文说明
   kr: string; // 한국어 표기
   en: string; // 官方准入英文
@@ -18,7 +16,6 @@ interface RateDef {
 export const RATING_DEFS: Record<RatingKey, RateDef> = {
   ALL: {
     label: "ALL",
-    cls: `${CHIP_BASE} ${CHIP_SOLID} bg-rate-all-solid`,
     zh: "全年龄",
     kr: "전체관람가",
     en: "All ages admitted",
@@ -26,7 +23,6 @@ export const RATING_DEFS: Record<RatingKey, RateDef> = {
   },
   "12": {
     label: "12",
-    cls: `${CHIP_BASE} ${CHIP_SOLID} bg-rate-12-solid`,
     zh: "12 岁以上",
     kr: "12세이상관람가",
     en: "Under 12 not admitted",
@@ -34,7 +30,6 @@ export const RATING_DEFS: Record<RatingKey, RateDef> = {
   },
   "15": {
     label: "15",
-    cls: `${CHIP_BASE} ${CHIP_SOLID} bg-rate-15-solid`,
     zh: "15 岁以上",
     kr: "15세이상관람가",
     en: "Under 15 not admitted",
@@ -42,7 +37,6 @@ export const RATING_DEFS: Record<RatingKey, RateDef> = {
   },
   "19": {
     label: "19",
-    cls: `${CHIP_BASE} ${CHIP_SOLID} bg-rate-19-solid`,
     zh: "19 岁以上",
     kr: "청소년관람불가",
     en: "Under 19 not admitted",
@@ -52,7 +46,6 @@ export const RATING_DEFS: Record<RatingKey, RateDef> = {
 
 interface SubsDef {
   label: string;
-  cls: string;
   en: string; // 官方英文全称
   zh: string; // 中文释义
   tip: string;
@@ -61,28 +54,24 @@ interface SubsDef {
 export const SUBS_DEFS: Record<SubsKey, SubsDef> = {
   KE: {
     label: "KE",
-    cls: `${CHIP_BASE} ${CHIP_SOLID} bg-subs-ke-solid`,
     en: "Korean Subtitles + English Subtitles or Dialogue",
     zh: "韩文字幕 + 英文字幕或英文对白(最常见)",
     tip: "字幕 KE — Korean Subtitles + English Subtitles or Dialogue\n韩文字幕 + 英文字幕或英文对白",
   },
   KN: {
     label: "KN",
-    cls: `${CHIP_BASE} ${CHIP_SOLID} bg-subs-kn-solid`,
     en: "Korean Subtitles + Non-English Dialogue without English Subtitles",
     zh: "韩文字幕 + 非英语外语对白(无英字;外语观众慎选)",
     tip: "字幕 KN — Korean Subtitles + Non-English Dialogue without English Subtitles\n韩文字幕 + 非英语外语对白,不配英文字幕\n多为日 / 中 / 西语对白片,不熟该语言需留意",
   },
   KK: {
     label: "KK",
-    cls: `${CHIP_BASE} ${CHIP_SOLID} bg-subs-kk-solid`,
     en: "Korean Subtitles + Korean Dialogue",
     zh: "韩文字幕 + 韩语对白(无外文字幕)",
     tip: "字幕 KK — Korean Subtitles + Korean Dialogue\n韩文字幕 + 韩语对白(无外文字幕;同时为听障观众提供语音 / 字幕解说)",
   },
   NO: {
     label: "NO",
-    cls: `${CHIP_BASE} ${CHIP_SOLID} bg-subs-no-solid`,
     en: "No Dialogue",
     zh: "无对白(实验 / 纪录 / 纯影像)",
     tip: "字幕 NO — No Dialogue\n无对白影片(实验 / 纪录 / 纯影像)",

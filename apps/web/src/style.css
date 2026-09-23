@@ -36,6 +36,22 @@
   --radius-chip: 6px;
   --radius-card: 12px;
   --radius-pill: 999px;
+  /* Film badge 配色(2026-09-23,`PLAN-20260923113659` T1):此前 `.film-badge[data-badge]` 写死 10 处 hex,
+     而 `legend.ts` / `badges.ts` 另有一份 `cls` 死实现(`bg-rate-all-solid` 等 —— 零消费方,
+     且这些类在新 `src` 根本没有定义)。同一外观两份定义,改哪份都不确定生效,故收成 token:
+     **外观只此一处**,React 侧只负责 `data-badge` 形状。两套主题同值(官方色卡不随主题变)。 */
+  --badge-ink: #ffffff;
+  --badge-fallback: #2b292d;
+  --badge-rating-all: #4b9f4e;
+  --badge-rating-12: #f9b025;
+  --badge-rating-15: #fe6c24;
+  --badge-rating-19: #be0e10;
+  --badge-subs-ke: #002a62;
+  --badge-subs-kn: #4e2594;
+  --badge-subs-kk: #795648;
+  --badge-subs-no: #575757;
+  --badge-gv: #9c27b0;
+  --badge-code: #ff3030;
   background: var(--page);
   color: var(--text);
   font-synthesis: none;
@@ -1610,20 +1626,20 @@ img {
   min-width: 32px; height: 18px; padding: 0 6px;
   /* 药丸这一档(2026-09-22,`PLAN-20260922105228`):CODE 徽章 / 计数章 / 概览 tag 共用一个 token */
   border: 1px solid transparent; border-radius: var(--radius-pill);
-  background: #2b292d; color: #fff;
+  background: var(--badge-fallback); color: var(--badge-ink);
   font-family: Arial, sans-serif; font-size: 12px; font-weight: 700;
   line-height: 1; white-space: nowrap; vertical-align: middle; flex-shrink: 0;
 }
-.film-badge[data-badge="rating-ALL"] { background: #4b9f4e; }
-.film-badge[data-badge="rating-12"] { background: #f9b025; }
-.film-badge[data-badge="rating-15"] { background: #fe6c24; }
-.film-badge[data-badge="rating-19"] { background: #be0e10; }
-.film-badge[data-badge="subs-KE"] { background: #002a62; }
-.film-badge[data-badge="subs-KN"] { background: #4e2594; }
-.film-badge[data-badge="subs-KK"] { background: #795648; }
-.film-badge[data-badge="subs-NO"] { background: #575757; }
-.film-badge[data-badge="gv"] { background: #9c27b0; }
-.film-badge[data-badge="code"] { background: transparent; border-color: #ff3030; color: #ff3030; }
+.film-badge[data-badge="rating-ALL"] { background: var(--badge-rating-all); }
+.film-badge[data-badge="rating-12"] { background: var(--badge-rating-12); }
+.film-badge[data-badge="rating-15"] { background: var(--badge-rating-15); }
+.film-badge[data-badge="rating-19"] { background: var(--badge-rating-19); }
+.film-badge[data-badge="subs-KE"] { background: var(--badge-subs-ke); }
+.film-badge[data-badge="subs-KN"] { background: var(--badge-subs-kn); }
+.film-badge[data-badge="subs-KK"] { background: var(--badge-subs-kk); }
+.film-badge[data-badge="subs-NO"] { background: var(--badge-subs-no); }
+.film-badge[data-badge="gv"] { background: var(--badge-gv); }
+.film-badge[data-badge="code"] { background: transparent; border-color: var(--badge-code); color: var(--badge-code); }
 .vertical-schedule .gantt-film-text .badges { max-height: none; }
 
 .screening-info-popover { width: min(340px, calc(100vw - 24px)); max-height: min(480px, calc(100dvh - 24px)); overflow: auto; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: 0 8px 32px #0003; z-index: 40; }

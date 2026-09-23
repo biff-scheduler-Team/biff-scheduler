@@ -1,3 +1,8 @@
+// ⚠ 本文件只放**文案**(标签 / hover 说明),不含外观类名:徽章形状与配色统一由
+//   `.film-badge[data-badge=…]` 承载,色值 token 见 `style.css` 的 `--badge-*`。
+//   2026-09-23,`PLAN-20260923113659` T1:此前每个条目还带一个 `cls` 字段(零消费方,
+//   且其引用的 `bg-gv-solid` / `bg-ev-teal-soft` 等类在新 `src` 未定义)—— 死实现已删。
+
 import type {Screening} from './types';
 
 export function codeTip(code: string): string {
@@ -41,7 +46,6 @@ export interface BadgeDef {
   label: string;
   title: string; // hover 解释
   /** 徽章变体对应的 Tailwind utility 组合(不含基础字阶/圆角);key=gv 时作为默认 */
-  cls: string;
 }
 
 export const BADGE_DEFS: BadgeDef[] = [
@@ -57,33 +61,28 @@ export const BADGE_DEFS: BadgeDef[] = [
     // GV 默认外观:实心**紫**底白字(2026-09-11 起对齐官方新版 Schedule Guide 的 Information 列)
     // ⚠ 底走 `gv-solid` 这个专用 token,不再用 `ink-solid` —— 官方把 GV 画成紫色,
     //    而 `bg-ink` 在暗色下会被提亮成近白 → 白底白字。专用 token 两套主题同值。
-    cls: "px-1 py-px text-on-brand bg-gv-solid",
   },
   {
     key: "masterclass",
     label: "大师班",
     title: "Masterclass · 大师班 / 特别讲座",
-    cls: "px-1 py-px text-on-brand bg-biff",
   },
   {
     key: "premiere",
     label: "首映",
     title: "Premiere · 首映场",
-    // 描边 chip 与等级/字幕(KE)同 padding 口径(px-[3px] py-px),文字不压边框
-    cls: "px-[3px] py-px text-biff-ink bg-card border border-biff",
+    // 描边变体(与等级 / 字幕 KE 同口径):文字不压边框 —— 具体 padding 由 `.film-badge` 承载
   },
   {
     key: "open_talk",
     label: "Open Talk",
     title: "Open Talk · 映后公开对谈",
-    cls: "px-[3px] py-px text-ink bg-card border border-ink",
   },
   {
     key: "batch",
     label: "묶",
     title: "Batch Screening · 连场连续放映(官方偶用;显示即以此为义)",
     // 官方新版把 묶 画成近黑实底(与 GV 的紫、字幕的彩底都错开),这里照搬
-    cls: "px-1 py-px text-on-brand bg-batch-solid",
   },
   // ---- 特别节目(2025 Community BIFF 单元;解析器 tags 直出这三个键)----
   // 配色:青绿族(--ev-teal),与红绿灯(红/黄/绿)、观影等级(绿/橙/深红)两族错开;
@@ -97,7 +96,6 @@ export const BADGE_DEFS: BadgeDef[] = [
       "与 GV 的区别:GV 是「剧组 / 嘉宾到场」,Talk 是「主题对谈节目」;两者可能同场并存",
     // 实心青绿底 + 白字:与 gv 的实心黑同族,表达「有人到场」
     // ⚠ 底走 `ev-teal-solid`(不是 `bg-ev-teal`):后者暗色下提亮成 #5eead4 → 白底白字
-    cls: "px-1 py-px text-on-brand bg-ev-teal-solid",
   },
   {
     key: "commentary",
@@ -107,7 +105,6 @@ export const BADGE_DEFS: BadgeDef[] = [
       "官方原文 실시간 양방향 코멘터리 픽쳐 쇼 — 放映全程叠加实时双向评论音轨\n" +
       "观影体验与常规场不同:全程有人声解说 / 互动",
     // 实线描边:表达「额外挂了一条音轨」(不是到场、也不是活动)
-    cls: "px-[3px] py-px text-ev-teal bg-card border border-ev-teal",
   },
   {
     key: "event",
@@ -116,7 +113,6 @@ export const BADGE_DEFS: BadgeDef[] = [
       "Event · 联动活动场\n" +
       "官方 Community BIFF 的 연계이벤트 — 与放映联动的现场演出 / 活动(2025 例:907 라이브 드로잉 现场作画)",
     // 虚线描边 + 浅底:表达「非正式节目 / 临时活动」;与 batch 的虚线区分在色相
-    cls: "px-[3px] py-px text-ev-teal bg-ev-teal-soft border border-ev-teal border-dashed",
   },
   // ---- 午夜场联映块(2025 Midnight Passion 单元;解析器 tags 直出 "midnight")----
   // 实心青绿与 talk 同款:两者都表示「这不是一场普通放映」,但语义不重叠 ——
@@ -130,7 +126,6 @@ export const BADGE_DEFS: BadgeDef[] = [
       "官方午夜场单元:一个块 = 一张票连看 2~3 部(2025 共 4 块 / 10 部)\n" +
       "格子里只印块名(如 Midnight Passion 1),块内成员片名见详情弹层\n" +
       "注意:成员片的介绍页会把该块 CODE 列为自己的一场 —— 那一条就是这张块票",
-    cls: "px-1 py-px text-on-brand bg-ev-teal-solid",
   },
   // ---- P&I(记者 / 业界场)----
   // 由解析器在 tags 里直出 `pni`(见 tools/extract_schedule.py),只在设置勾选「显示 P&I 场次」
@@ -144,7 +139,6 @@ export const BADGE_DEFS: BadgeDef[] = [
       "官方册子排期页的 BD(Indieplus)/ CGV 7 两列 —— 官方不印场次编号,官网排期页也不列\n" +
       "不对外售票:入场 / 购票规则与普通场次不同,以官方说明为准\n" +
       "默认不显示,可在「设置 → 场次范围」关掉",
-    cls: "px-[3px] py-px text-ink bg-card border border-ink border-dashed",
   },
 ];
 
