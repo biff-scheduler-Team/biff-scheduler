@@ -39,6 +39,23 @@ export function wholeCount(raw: unknown): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+/** 外链地址闸门:只放行绝对的 http/https,其余(`javascript:` / `data:` / 相对路径 / 畸形串)返回 undefined。
+ *
+ *  ⚠ 为什么必须过这一道:`/api/place-lookup` 回来的 `hit.url` 与相关影片的 `rec.url` 在各自模块里
+ *  只校验了「是字符串」(`eats.ts` / `related.ts`)—— 把上游字符串直接塞进 `href`,
+ *  一旦上游被投毒或返回伪协议,点击即执行脚本(`rel="noopener noreferrer"` 挡得住 `window.opener`,
+ *  但挡不住 `javascript:` 这种伪协议)。2026-09-23,PLAN-20260923111748,B6。 */
+export function safeExternalUrl(url: unknown): string | undefined {
+  if (typeof url !== "string" || url.length === 0) return undefined;
+  try {
+    // 刻意不给 base:相对路径 / 裸域名一律拒绝,而不是拼到一个假主机上
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** 本地时区 'YYYY-MM-DD'(与 dateInfo 同用本地时间,避免 UTC 解析偏移) */
 export function todayIsoLocal(): string {
   const d = new Date();

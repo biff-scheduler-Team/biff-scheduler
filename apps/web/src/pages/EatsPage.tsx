@@ -51,6 +51,7 @@ import {
   type EatSubmission,
   type PlaceHit,
 } from "../eats";
+import { safeExternalUrl } from "../util";
 import "./eats.css";
 
 /** 一行 = 一张店卡。把「表里的店」与「用户自己加的店」归一成同一个形状,列表只认这一种。 */
@@ -127,7 +128,9 @@ function hit(row: Row, needle: string): boolean {
  *  Naver 那条在查到精确店铺页时换成精确链接 —— 用户少点一次搜索结果。 */
 function EatLinks({ query, hit, curated }: { query: string; hit?: PlaceHit | null; curated: string }) {
   const links = eatLinks(query);
-  const naver = hit?.provider === "naver" && hit.url ? hit.url : links.naver;
+  // ⚠ 上游 URL 必须过协议闸门：`hit.url` 来自 `/api/place-lookup`，那边只校验「是字符串」
+  //   （`eats.ts`）—— 伪协议直接进 href 会变成「点一下执行脚本」。见 `util.ts::safeExternalUrl`。
+  const naver = hit?.provider === "naver" ? safeExternalUrl(hit.url) ?? links.naver : links.naver;
   return (
     <p className="eat-links">
       <a href={links.google} target="_blank" rel="noopener noreferrer" title="在 Google 地图打开">
@@ -350,8 +353,12 @@ export function EatsPage() {
         const hit = await lookupPlace(name, address);
         if (!hit) continue;
         next.set(id, hit);
-        if (alive) setHits(new Map(next));
+        // 攒批刷新：每命中 5 家刷一次 —— 保留「结果渐次出现」的观感，又不会每命中一家就整页派生
+        // （`rows` / `EatsApi` 都会重跑，40 家 = 数十次重渲染）。循环结束后还有一次收口刷新。
+        // 2026-09-23，PLAN-20260923111748，B6。
+        if (alive && next.size % 5 === 0) setHits(new Map(next));
       }
+      if (alive) setHits(new Map(next));
     })();
     return () => {
       alive = false;

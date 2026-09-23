@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { cardStateOf, type GridCtx } from "../src/grid";
 import { gvTalkMinOv, store } from "../src/state";
 import type { Screening } from "../src/types";
-import { fmtDuration, fmtMinRange, wholeCount } from "../src/util";
+import { fmtDuration, fmtMinRange, safeExternalUrl, wholeCount } from "../src/util";
 import { catalog, show } from "./helpers";
 
 /** 构造一个最小 GridCtx（与 `grid-state.test.ts` 同一套脚手架）。 */
@@ -58,6 +58,29 @@ describe("wholeCount：取整的唯一来源", () => {
     expect(wholeCount(Number.NaN)).toBe(0);
     expect(wholeCount(-5)).toBe(0);
     expect(wholeCount(null)).toBe(0);
+  });
+});
+
+describe("safeExternalUrl：外链协议闸门", () => {
+  it("放行绝对的 http / https", () => {
+    expect(safeExternalUrl("https://map.naver.com/p/search/x")).toBe(
+      "https://map.naver.com/p/search/x",
+    );
+    expect(safeExternalUrl("http://example.com/a")).toBe("http://example.com/a");
+  });
+
+  it("★ 拒绝伪协议与相对路径（上游 URL 只校验过「是字符串」就直接进 href）", () => {
+    expect(safeExternalUrl("javascript:alert(1)")).toBeUndefined();
+    expect(safeExternalUrl("data:text/html,<script>alert(1)</script>")).toBeUndefined();
+    expect(safeExternalUrl("/relative/path")).toBeUndefined();
+    expect(safeExternalUrl("map.naver.com")).toBeUndefined();
+    expect(safeExternalUrl("")).toBeUndefined();
+    expect(safeExternalUrl(null)).toBeUndefined();
+    expect(safeExternalUrl(42)).toBeUndefined();
+  });
+
+  it("对照：伪协议本身就是合法 URL —— 只判「能构造 URL」是挡不住的", () => {
+    expect(new URL("javascript:alert(1)").protocol).toBe("javascript:");
   });
 });
 
