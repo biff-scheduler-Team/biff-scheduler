@@ -1,0 +1,137 @@
+/*
+ * 管理端页面样式（2026-09-23，PLAN-20260923142546，批 2）。
+ *
+ * ⚠ 只用 `style.css` 的 token（`--surface` / `--line` / `--muted` / `--radius-card`…），
+ *   不写死颜色 —— 暗色主题靠覆盖 token 生效，这里写死 hex 就等于给管理端单开一套主题。
+ * ⚠ 断点沿用全站的 768px（JS 与 CSS 值必须逐字一致）。
+ * ⚠ 类名一律 `admin-` 前缀：本文件由 `AdminPage` 独占，别把通用长相挂到这里
+ *   （通用件该进 `style.css`，否则下一个页面又会抄一份）。
+ */
+
+.admin-page {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  color: var(--text);
+}
+
+.admin-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 16px;
+}
+
+.admin-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+.admin-tab {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--muted-strong);
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.admin-tab[aria-current="page"] {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.admin-panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  padding: 12px 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.admin-panel-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.admin-panel--alert {
+  border-color: var(--conflict-line);
+  background: var(--conflict);
+}
+
+.admin-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.admin-table th,
+.admin-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.admin-table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.admin-table td.num,
+.admin-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 身份列可能是 `anon:<43 字符 hash>`，不换行会把表格撑破 */
+.admin-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+
+.admin-row-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-note {
+  margin: 0;
+  color: var(--muted);
+}
+
+.admin-error {
+  color: var(--conflict-line);
+}
+
+@media (max-width: 768px) {
+  .admin-page {
+    padding: 12px;
+  }
+
+  /* 窄屏上表格允许横向滚动：列本身有信息量，压扁比滚动更难读 */
+  .admin-table-wrap {
+    overflow-x: auto;
+  }
+}
