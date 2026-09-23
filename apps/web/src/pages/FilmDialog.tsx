@@ -31,7 +31,7 @@ export function FilmDialog() {
   const readingPositions = useRef(new Map<string, { content: number; dialog: number }>());
   const rememberReadingPosition = useCallback((node: HTMLDivElement | null) => {
     if (!node) return;
-    // Spectrum scrolls Content normally and the whole Dialog in short viewports.
+    // Spectrum 默认滚 Content；视口不够高时改成滚整个 Dialog。
     const content = node.parentElement!;
     const dialog = node.closest<HTMLElement>('[role="dialog"]');
     const saved = readingPositions.current.get(location.key);

@@ -103,7 +103,7 @@ function RankGroup({ codes }: { codes: string[] }) {
     try {
       handle.setPointerCapture(pointerId);
     } catch {
-      /* Window listeners also retain the gesture. */
+      /* 挂在 window 上的监听同样会留住这个手势。 */
     }
     const paint = (y: number) => {
       // 容器 rect 每次现取:页面在拖拽期间滚动时,行与指针一起位移,差值才是真实拖拽距离
@@ -134,7 +134,7 @@ function RankGroup({ codes }: { codes: string[] }) {
       try {
         handle.releasePointerCapture(pointerId);
       } catch {
-        /* Capture may already be released. */
+        /* 指针捕获可能已经释放了。 */
       }
       delete container.dataset.rankDragging;
       for (const element of rows) {

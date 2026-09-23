@@ -52,7 +52,7 @@ export function useFilters(key: string) {
     };
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
-    // Catalog and storage key define the reader for the lifetime of this filter.
+    // 目录与存储键在筛选器的整个生命周期里都是同一个读取器（两者一变就得换实例）。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cat, key]);
   const update = (patch: Partial<FilterState>) => {

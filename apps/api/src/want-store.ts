@@ -17,7 +17,7 @@ function parseWeight(raw: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Replace one contributor's want films; adjusts aggregated weight_sum.
+/** 整份替换某个贡献者的「想看」片单，并同步调整聚合权重。
  *
  *  ⚠ 聚合表的改法在 `stat-batch.ts`（SQL 端原子算术 + 一次批量的往返）。
  *    此前是「读出来在 JS 里加减再写回」，并发上报同一部片会丢更新且永不自愈 —— 见该文件头。
@@ -107,7 +107,7 @@ export async function replaceContributorWants(
 
   for (const filmKey of added) claim(filmKey);
 
-  // Weight changed for still-present films (e.g. anon→auth upgrade): adjust delta.
+  // 仍在片单里、但权重变了的片（例如匿名 → 登录的升级）：按差值调整。
   if (existing.length && Math.abs(previousWeight - weight) > 1e-9) {
     const delta = weight - previousWeight;
     for (const filmKey of previousKeys) {

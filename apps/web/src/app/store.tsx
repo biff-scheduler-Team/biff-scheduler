@@ -66,7 +66,7 @@ export function hydrateStorage(cat: Catalog) {
   loadSettings();
   loadGvTalk();
   loadGvTalkMin();
-  // Legacy boot loads ranks before picks so rebuilding the index prunes stale ranks.
+  // 旧版启动先载 ranks 再载 picks：这样重建索引时会顺手剔掉已失效的名次。
   loadRanks();
   // 票务状态同理:必须在 loadPicks 之前载入,否则 rebuildIndex() 会把整张表当成脏数据 prune 掉
   loadTickets();
@@ -165,7 +165,7 @@ export function CatalogProvider({
   children: ReactNode;
 }) {
   const version = useStore();
-  // The legacy store is mutable. Its revision invalidates all derived projections.
+  // 旧 store 是**原地变更**的可变对象，只能靠版本号让所有派生结果失效重算。
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const value = useMemo(() => derive(cat), [cat, version]);
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

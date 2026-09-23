@@ -8,7 +8,7 @@ export function topPlanCodes(plans: Pick<PlanSet, "common" | "groups">): string[
   return [...plans.common, ...plans.groups.map((group) => group[0])];
 }
 
-/** Let this group yield by swapping only the two spots shown in the clash note. */
+/** 让这一组避让时，只交换冲突提示里点名的那两场。 */
 export function rankSpotOrder(groups: string[][], spot: RankClashSpot): string[] | null {
   const group = groups[spot.group];
   if (!group || spot.alt === null) return null;
@@ -24,7 +24,7 @@ export type AgendaItem =
   | { kind: "group"; codes: string[] }
   | { kind: "screening"; screening: Screening; before: Screening | null };
 
-/** A conflict group has no single predecessor to use for the next transfer. */
+/** 冲突组里没有「唯一的前一场」可用来算下一段转场。 */
 export function agendaItems(rows: Screening[], groups: string[][]): AgendaItem[] {
   const groupOf = new Map(groups.flatMap((group) => group.map((code) => [code, group] as const)));
   const rendered = new Set<string[]>();

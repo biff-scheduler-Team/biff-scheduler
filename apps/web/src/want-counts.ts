@@ -1,4 +1,4 @@
-/** Client cache for GET /api/stats/want-counts + minimal anon film-key ping. */
+/** 「想看人数」的客户端缓存（GET /api/stats/want-counts）+ 极简的匿名片键上报。 */
 
 import { EDITION } from "./edition";
 let cache: Record<string, number> | null = null;
@@ -49,7 +49,7 @@ export async function loadWantCounts(force = false): Promise<Record<string, numb
   return loading;
 }
 
-/** Privacy-safe: only film keys, never full picks document. Debounced. */
+/** 隐私边界：只发片键，绝不发整份片单文档；防抖后上报一次。 */
 export function scheduleWantPing(filmKeys: Iterable<string>) {
   const films = [...new Set(filmKeys)].filter((key) => key.length > 0).slice(0, 500);
   clearTimeout(pingTimer);

@@ -80,7 +80,7 @@ export function loadRanks(): void {
       if (typeof v === "number" && Number.isFinite(v) && v >= 1) rankOf.set(k, Math.round(v));
     }
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -88,7 +88,7 @@ function saveRanks(): void {
   try {
     writeWorkspaceItem(LS_RANKS, JSON.stringify(Object.fromEntries(rankOf)));
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -136,7 +136,7 @@ function saveTickets(): void {
   try {
     writeWorkspaceItem(LS_TICKETS, JSON.stringify(Object.fromEntries(tickets)));
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -200,7 +200,7 @@ export function loadGvTalk(): void {
       if (typeof v === "boolean") gvTalk.set(k, v);
     }
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -208,7 +208,7 @@ export function saveGvTalk(): void {
   try {
     writeWorkspaceItem(LS_GV_TALK, JSON.stringify(Object.fromEntries(gvTalk)));
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -232,7 +232,7 @@ export function loadGvTalkMin(): void {
       if (typeof v === "number" && Number.isFinite(v)) gvTalkMinOv.set(k, v);
     }
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -240,7 +240,7 @@ export function saveGvTalkMin(): void {
   try {
     writeWorkspaceItem(LS_GV_TALK_MIN, JSON.stringify(Object.fromEntries(gvTalkMinOv)));
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -268,7 +268,7 @@ export function loadAgendaFold(): void {
     if (!Array.isArray(rows)) return;
     for (const d of rows) if (typeof d === "string" && d) agendaFolded.add(d);
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -276,7 +276,7 @@ function saveAgendaFold(): void {
   try {
     writeWorkspaceItem(LS_AGENDA_FOLD, JSON.stringify([...agendaFolded]));
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -354,7 +354,7 @@ function saveLocal(): void {
     // 匿名只上报 film key，不上传完整片单（红线 7）
     scheduleWantPing(store.picks.keys());
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -507,7 +507,7 @@ function migrateLegacy(filmKeyOf: (code: string) => string | null): void {
     removeWorkspaceItem(LS_PLAN_LEGACY);
     removeWorkspaceItem(LS_WISH_LEGACY);
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -726,7 +726,7 @@ function saveSettingsLocal(): void {
   try {
     writeWorkspaceItem(LS_SETTINGS, JSON.stringify(store.settings));
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -735,7 +735,7 @@ export function loadSettings(): void {
     const raw = localStorage.getItem(LS_SETTINGS);
     if (raw) store.settings = { ...store.settings, ...(JSON.parse(raw) as Partial<Settings>) };
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -752,7 +752,7 @@ export function loadSettings(): void {
  * ⚠ 顺位(`biff.ranks.v1`)与冲突组**不是**方案的一部分,它们全部保留 ——
  *   导出范围的「当前行程」仍走 `agenda-model.ts::topPlanCodes(plans)`。 */
 
-/** Edit a film note without changing its screening slots. */
+/** 只改影片备注，不动它已排的场次。 */
 export function setPickNote(key: string, note: string): void {
   const current = store.picks.get(key);
   if (current) commit(key, { ...current, note });

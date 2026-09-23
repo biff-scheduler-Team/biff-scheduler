@@ -382,7 +382,7 @@ export function loadStickers(): StickerBoard {
   try {
     removeWorkspaceItem(LS_REDBLACK_V1);
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
   return legacy;
 }
@@ -391,7 +391,7 @@ export function saveStickers(board: StickerBoard): void {
   try {
     writeWorkspaceItem(LS_REDBLACK, JSON.stringify(Object.fromEntries(board)));
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -407,7 +407,7 @@ export function saveWatched(watched: ReadonlySet<string>): void {
   try {
     writeWorkspaceItem(LS_REDBLACK_WATCHED, JSON.stringify([...watched]));
   } catch {
-    /* ignore */
+    /* 忽略 */
   }
 }
 
@@ -443,7 +443,7 @@ export function purgeDemoLeavings(): { board: StickerBoard; watched: Set<string>
     try {
       removeWorkspaceItem(LS_REDBLACK_SEEN);
     } catch {
-      /* ignore */
+      /* 忽略 */
     }
     return { board: stored, watched };
   }
@@ -457,7 +457,7 @@ export function purgeDemoLeavings(): { board: StickerBoard; watched: Set<string>
     try {
       removeWorkspaceItem(LS_REDBLACK_SEEN);
     } catch {
-      /* ignore */
+      /* 忽略 */
     }
     return { board: empty, watched: none };
   }

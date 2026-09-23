@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { check, index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
-// Keep persisted names and defaults compatible with the original 0001_account.sql.
+// 持久化的列名与默认值要与最初的 0001_account.sql 保持兼容。
 export const oauthPending = sqliteTable("oauth_pending", {
   cookie_hash: text().primaryKey().notNull(),
   payload: text().notNull(),
@@ -34,14 +34,14 @@ export const festivalDocument = sqliteTable("festival_document", {
 
 export type SessionRow = typeof appSession.$inferSelect;
 
-// Account-scoped, shared across devices and editions. Only a committed import creates this row.
+// 按账号隔离、跨设备共享；只有一次确认过的导入才会创建这一行。
 export const accountImport = sqliteTable("account_import", {
   subject: text().primaryKey().notNull(),
   operation_id: text().notNull(),
   imported_at: integer().notNull(),
 });
 
-/** Per-contributor want-to-watch weight; recompute film_want_stat from these rows. */
+/** 每个贡献者在每部片上的「想看」权重；聚合表可由这些行重算。 */
 export const filmWantContribution = sqliteTable("film_want_contribution", {
   edition: text().notNull(),
   film_key: text().notNull(),
@@ -53,7 +53,7 @@ export const filmWantContribution = sqliteTable("film_want_contribution", {
   index("film_want_contribution_contributor").on(table.edition, table.contributor),
 ]);
 
-/** Aggregated weight_sum per film for O(film) reads; display with Math.round. */
+/** 按片聚合的 weight_sum，读是 O(片数)；展示时按 Math.round 取整。 */
 export const filmWantStat = sqliteTable("film_want_stat", {
   edition: text().notNull(),
   film_key: text().notNull(),

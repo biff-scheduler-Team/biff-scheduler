@@ -32,7 +32,7 @@ import { BADGE_DEFS } from "../badges";
 import { SCHEDULED_STATE, SCHEDULE_LABEL, WANT_LABEL } from "../actions-copy";
 import type { Venue } from "../types";
 
-// Keep the legacy Chinese summaries, matching the source wording rather than its order.
+// 保留旧版中文摘要：照原文用词，不照原文顺序。
 const NOTE_ZH: [RegExp, string][] = [
   [/Chrome/i, "推荐用 Chrome 浏览器购票"],
   [/pop-up/i, "购票页打不开时，检查浏览器「拦截弹窗」设置"],
@@ -89,7 +89,7 @@ export function TicketDialog() {
   return (
     <Dialog size="L">
       {({ close }) => {
-        // The trigger stays mounted; the dialog body is rendered afresh on open.
+        // 触发器保持挂载；弹层内容每次打开都重新渲染。
         const now = Date.now();
         return (
         <>

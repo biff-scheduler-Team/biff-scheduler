@@ -233,7 +233,7 @@ function activate(account: Account | null) {
       localStorage.setItem(importKey(next), JSON.stringify(local));
     }
     const nextCache = cacheFor(next);
-    // Only switch the ownership marker after both outgoing data and incoming data are saved.
+    // 只在本机旧数据与拉回来的新数据都落盘之后，才切换「这份数据属于谁」的标记。
     apply(nextCache.local);
     owner = next;
     cache = nextCache;
@@ -454,8 +454,8 @@ async function submitImport(remote: CloudDocument, records: WorkspaceRecords, be
   });
   const result = documentSchema.extend({ imported: z.boolean() }).parse(await response.json());
   if (result.subject !== owner) throw new ApiFailure(409, "ACCOUNT_CHANGED");
-  // Keep edits made while the request was in flight. The next merge uses the pre-import
-  // workspace as common ancestor and the committed server response as the remote side.
+  // 请求在途期间的改动必须留下：下一次合并以「导入前的工作区」作共同祖先，
+  // 以服务端确认后的版本作远端。
   cache.base = before;
   cache.local = currentRecords();
   persist();

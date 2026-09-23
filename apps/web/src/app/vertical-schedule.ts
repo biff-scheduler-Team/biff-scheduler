@@ -45,7 +45,7 @@ export function verticalGeometry(
 }
 export type VerticalGeometry = ReturnType<typeof verticalGeometry>;
 
-/** Fit a whole number of readable venue columns, leaving the rest horizontally accessible. */
+/** 放整数条「看得清」的影厅列，剩下的横向可滚。 */
 export function fitVerticalZoom(venueCount: number, viewportWidth: number) {
   const available = Math.max(1, viewportWidth - TIME_RAIL_WIDTH);
   const columns = Math.max(1, Math.min(venueCount, Math.round(available / VENUE_COLUMN_WIDTH)));
@@ -53,7 +53,7 @@ export function fitVerticalZoom(venueCount: number, viewportWidth: number) {
 }
 
 
-/** Only overlapping intervals in the same venue share its column width. */
+/** 只有同一影厅里时间重叠的场次才会分占列宽。 */
 export function screeningLanes(shows: Screening[]) {
   const result = new Map<string, {lane: number; count: number}>();
   let group: Screening[] = [];

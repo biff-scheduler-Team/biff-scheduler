@@ -75,7 +75,7 @@ export function fitZoomLevel(cat: Catalog, date: string, availW: number): number
   return best;
 }
 
-/** The React renderer and fit control share the actual canvas dimensions. */
+/** React 渲染器与「适应宽度」控件共用同一份画布实际尺寸。 */
 export function ganttGeometry(cat: Catalog, date: string, zoom: number) {
   const { start, end } = axisRangeFor(cat, date);
   const ppm = PX_PER_MIN * zoom;

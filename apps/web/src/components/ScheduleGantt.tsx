@@ -210,8 +210,8 @@ interface GanttViewportProps {
   children: ReactNode;
 }
 
-/** This lifecycle reads the old DOM before React mutates canvas dimensions.
- * A layout effect is too late: shrinking has already clamped scrollLeft/Top.
+/** 这一生命周期要在 React 改动画布尺寸**之前**读到旧 DOM。
+ * 用 layout effect 就太晚了：缩小已经先把 scrollLeft/Top 夹住了。
  */
 class GanttViewport extends Component<GanttViewportProps, object, VerticalAnchor | null> {
   getSnapshotBeforeUpdate(previous: GanttViewportProps) {
