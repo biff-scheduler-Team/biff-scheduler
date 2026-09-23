@@ -1,7 +1,7 @@
 import { initAccount } from "../account";
 import { AccountHost } from "../components/AccountHost";
 import { ScheduleSelectionProvider } from "./schedule-selection";
-import { HighlightProvider } from "./highlight";
+
 import {
   useEffect,
   useRef,
@@ -362,9 +362,9 @@ export function Root() {
   return (
     <CatalogProvider cat={cat}>
       <ScheduleSelectionProvider>
-        <HighlightProvider>
-          <Shell />
-        </HighlightProvider>
+        {/* 悬停高亮不再经 Context：它在 `highlight.tsx` 里是模块级外部 store，
+            hover 只写 store、画布直接改 DOM，不再驱动全树重渲染（PLAN-20260923111748，B5）。 */}
+        <Shell />
       </ScheduleSelectionProvider>
     </CatalogProvider>
   );

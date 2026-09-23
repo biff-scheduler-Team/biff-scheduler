@@ -1,7 +1,7 @@
 import { screeningMembers } from "../app/screening-members";
 import { ScreeningInfoPopover } from "./ScreeningInfoPopover";
 import { officialStills } from "../app/official-stills";
-import { useHighlight } from "../app/highlight";
+import { highlightCodesFor, highlightedCode, setHighlight, subscribeHighlight } from "../app/highlight";
 import { Component, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import {
   ActionButton,
@@ -267,10 +267,27 @@ export function ScheduleGantt({
   // 待确认移除的那一场(只有行程档会写它,见 `AgendaRemoveDialog`)。
   // 存整条 `Screening` 而不是 code:弹层要印片名 / 时间 / 影院,而移除动作还没发生。
   const [pendingRemove, setPendingRemove] = useState<Screening | null>(null);
-  const highlight = useHighlight();
   const { params, update } = useQuery();
   const toggle = useScreeningPicker();
   const scroll = useRef<HTMLDivElement>(null);
+  // 悬停高亮：**DOM 直改**而不是 React state（见 `highlight.tsx` 文件头）——
+  // 每次 hover 若要重渲染，整张画布的所有 slot 都要重跑 filmInfoOf / cardStateOf / screeningMembers。
+  //
+  // ⚠ 每次渲染后都要重算一遍：React 重渲染 slot 时会把 imperative 写上的属性冲掉，
+  //   而 store 订阅只覆盖「只有 hover 变化、没有重渲染」的那条路径。
+  const applyHighlight = useRef<() => void>(() => {});
+  useEffect(() => {
+    applyHighlight.current = () => {
+      const codes = highlightCodesFor(cat, conflicts, highlightedCode());
+      for (const node of scroll.current?.querySelectorAll<HTMLElement>("[data-grid-slot]") ?? []) {
+        const code = node.dataset.gridSlot;
+        if (code && codes.has(code)) node.dataset.highlighted = "true";
+        else delete node.dataset.highlighted;
+      }
+    };
+    applyHighlight.current();
+  });
+  useEffect(() => subscribeHighlight(() => applyHighlight.current()), []);
   const zoom = scheduleZoom(store.settings.zoom);
   const [viewportWidth, setViewportWidth] = useState(0);
   const header = useRef<HTMLDivElement>(null);
@@ -560,11 +577,9 @@ export function ScheduleGantt({
                     return (
                       <div
                         data-grid-slot={s.code}
-                        data-highlighted={
-                          highlight.codes.has(s.code) || undefined
-                        }
-                        onMouseEnter={() => highlight.setCode(s.code)}
-                        onMouseLeave={() => highlight.setCode(null)}
+                        // `data-highlighted` 由上面的订阅直改 DOM（不在 render 里读 store）
+                        onMouseEnter={() => setHighlight(s.code)}
+                        onMouseLeave={() => setHighlight(null)}
                         className={`gantt-slot ${dim ? "dimmed" : ""} ${tone}`}
                         key={s.code}
                         style={{

@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Tooltip as BadgeTooltip, TooltipTrigger as BadgeTooltipTrigger, Popover, Dialog as AriaDialog } from "react-aria-components";
 import { useScheduleNavigation } from "../app/navigation";
 import { priceOf, formatKrw } from "../extras";
-import { useHighlight } from "../app/highlight";
+import { highlightCodesFor, setHighlight, useHighlightedCode } from "../app/highlight";
 import { useFilmNavigation } from "../app/film-navigation";
 export { useFilmNavigation } from "../app/film-navigation";
 import type { ScheduleSelection } from "../app/schedule-selection";
@@ -221,7 +221,10 @@ export function ScreeningCard({
   const { cat, conflicts } = useCatalog();
   // 点选 / 取消走共享出口:取消「只有一场」的影片要先提示会连选片一起移除(2026-09-16)
   const pickScreening = useScreeningPicker();
-  const highlight = useHighlight();
+  // 只订阅「当前高亮哪一场」，不再整页共享一个 Context value（见 `highlight.tsx` 文件头）；
+  // `highlightCodesFor` 内部按 ConflictResult 缓存了冲突组展开，故每张卡问一次也是 O(1)。
+  const highlightCode = useHighlightedCode();
+  const highlightCodes = highlightCodesFor(cat, conflicts, highlightCode);
   const { locateScreening } = useScheduleNavigation();
   const openFilm = useFilmNavigation();
   const picked = Boolean(slotOf(s.code));
@@ -275,9 +278,9 @@ export function ScreeningCard({
           return;
         pickScreening(s);
       }}
-      data-highlighted={highlight.codes.has(s.code) || undefined}
-      onMouseEnter={() => highlight.setCode(s.code)}
-      onMouseLeave={() => highlight.setCode(null)}
+      data-highlighted={highlightCodes.has(s.code) || undefined}
+      onMouseEnter={() => setHighlight(s.code)}
+      onMouseLeave={() => setHighlight(null)}
     >
       {showTitle && info.cats[0]?.poster && (
         <img
