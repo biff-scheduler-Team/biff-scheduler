@@ -1,0 +1,140 @@
+/**
+ * 图表层的样式（2026-09-23，PLAN-20260923142546 批 3）。
+ *
+ * ★ 为什么单独一个文件：这些类名（`.ra-chart` / `.ra-chart-canvas` / `.ra-note` /
+ *   `.ra-echart` / `.ra-chart-empty` / `.ra-legend` / `.ra-grid`）**全部由
+ *   `components/charts/*` 自己渲染**，却一直躺在 `pages/rush-analysis.css` 里 ——
+ *   于是「谁引了那个页面的样式，谁的图才长得对」。
+ *   代价在 2026-09-23 露出来了：管理后台的图表复用了同一批组件，却只 import 了
+ *   `admin.css`，趋势图的右上角 ⓘ 与画布定位锚全部失效 —— **而逻辑断言照旧全过**
+ *   （`<details>` 收起时本来就看不见，E2E 点开也照样能读到文字）。
+ *   现在按既有的分层口径归位：**图表层管自己的长相**（这个文件），页面只管页面排版。
+ *
+ * ⚠ 只在这里写尺寸与排版；**颜色一律由 `chart-theme.ts` 从 token 读**。
+ * ⚠ 画布高度由 `ChartFrame` 的 `height` 内联给出；ECharts 在容器宽为 0 时初始化
+ *   会得到一张空图，故 `.ra-echart` 必须有确定的高宽。
+ */
+
+/* 图表的排布：多张图并排（窄屏自动落成一列）。
+ * 由面板自己包一层，页面不必知道图有几张。 */
+.ra-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 18px;
+}
+
+.ra-chart {
+  margin: 0;
+}
+
+.ra-chart-canvas {
+  /* ⓘ 的定位锚（`.ra-note` 是绝对定位） */
+  position: relative;
+  width: 100%;
+}
+
+.ra-echart {
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------------- 图的说明：右上角 ⓘ ----------------
+ * ★ 2026-09-20（PLAN-20260920193412，用户：「太多解释性文案了 全部放到图的右上角的 tooltip 里面」）：
+ *   图注不再是画布下方那行小字，而是右上角一个 ⓘ，点开才浮出说明。
+ * ⚠ 用 `<details>`（点击切换）而不是纯 `:hover`：主要读者在现场用手机，没有 hover。
+ * ⚠ 常态只是「淡圈」——它不该抢图本身的注意力；展开时才提对比。
+ */
+.ra-note {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 3;
+}
+
+.ra-note-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  /* 去掉 <summary> 的默认三角：现代浏览器认 list-style，
+   * WebKit 还要单独关掉 `::-webkit-details-marker`，两个都写才全覆盖 */
+  list-style: none;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+  font-style: italic;
+  cursor: pointer;
+}
+
+.ra-note-btn::-webkit-details-marker {
+  display: none;
+}
+
+.ra-note-btn:hover,
+.ra-note[open] .ra-note-btn {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.ra-note-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+
+.ra-note-body {
+  position: absolute;
+  right: 0;
+  top: 24px;
+  width: 236px;
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 14%);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* 空态：没有数据时给一句**可见**的话，而不是画一张空图再把原因藏进 ⓘ
+ * （2026-09-20 用户口径：「XX 还没有人做」是状态、不是口径解释）。 */
+.ra-chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 140px;
+  padding: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* 图例：颜色点 + 人话标签（图例不写明颜色含义的话，读者只能猜） */
+.ra-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ra-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ra-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
