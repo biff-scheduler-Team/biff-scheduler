@@ -5,7 +5,7 @@ import {useMedia} from '../app/hooks';
 import {useCatalog} from '../app/store';
 import {useFilmNavigation} from '../app/film-navigation';
 import {Badges} from './ScreeningCard';
-import {doubanMappingOf, doubanUrlOf, filmInfoOf, filmNodeKey, fmtDuration, fmtEndClock} from '../util';
+import {dateInfo, doubanMappingOf, doubanUrlOf, filmInfoOf, filmNodeKey, fmtDuration, fmtEndClock, safeExternalUrl} from '../util';
 import {effEndMin, talkOnOf} from '../gv';
 import {introOf} from '../intros';
 import {mapsUrl, regionLabel, venuePlace} from '../legend';
@@ -74,7 +74,12 @@ export function ScreeningInfoPopover({screening: s}: {screening: Screening}) {
       isNonModal placement={compact ? "bottom" : "right top"} offset={8} className="screening-info-popover"
       onPointerEnter={cancel} onPointerLeave={leave}>
       {/* 不再用 `onFocus` 钉住:React 的 focus 是冒泡的,鼠标点弹层里任何一处都会把它锁死 */}
-      <div ref={content} id={id} role="dialog" tabIndex={-1} aria-label={`场次 ${s.code} 影片预览`}>
+      {/* ⚠ 这是**非模态**预览（`isNonModal`：hover 触发、Tab 可穿出、不做焦点陷阱）。
+          按 AGENTS 的弹层口径要么「模态 + 焦点陷阱」，要么不带 `role="dialog"`；
+          这里保留 dialog 语义（内含可交互内容与关闭按钮），用 `aria-modal="false"` 明示非模态，
+          比去掉 role 更能让读屏正确播报。焦点归还已在 `close()` 里做（`trigger.focus()`）。
+          2026-09-23，PLAN-20260923111748，B6。 */}
+      <div ref={content} id={id} role="dialog" aria-modal="false" tabIndex={-1} aria-label={`场次 ${s.code} 影片预览`}>
         <button className="preview-close" type="button" aria-label="关闭影片预览" onClick={close}>×</button>
         <div className="preview-hero">
           {info.cats[0]?.poster && <img className="preview-poster" src={info.cats[0].poster} alt={`${info.zh || info.en} 海报`} />}
@@ -83,7 +88,9 @@ export function ScreeningInfoPopover({screening: s}: {screening: Screening}) {
             {info.zh && info.zh !== info.en && <p className="preview-translation">{info.zh}</p>}
           </div>
         </div>
-        <p className="muted">{s.date} {s.start_time.slice(0,5)}-{fmtEndClock(effEndMin(s,talkOnOf(s.code)))} KST</p>
+        {/* 日期走全站唯一口径（`dateInfo().label`，官方册子的 `OCT 8` 写法），
+            此前这里直接印 `s.date`（`2026-10-08`）——同一页出现两种日期写法。 */}
+        <p className="muted">{dateInfo(s.date).label} {s.start_time.slice(0,5)}-{fmtEndClock(effEndMin(s,talkOnOf(s.code)))} KST</p>
         <p>{venue?.name}　{fmtDuration(s.duration_min)}</p>
         {place && <p className="muted preview-venue">{regionLabel(place.region)} · {place.location}<br />{place.address}<br /><a href={mapsUrl(place)} target="_blank" rel="noopener noreferrer">在 Google 地图打开</a></p>}
         <Badges screening={s} />
@@ -103,7 +110,13 @@ export function ScreeningInfoPopover({screening: s}: {screening: Screening}) {
         </section>}
         {related.more.length > 0 && <section className="preview-related" aria-label="更多相关电影">
           <h4>更多相关电影</h4>
-          <ul>{related.more.map(rec => <li key={rec.id}><a href={rec.url} target="_blank" rel="noopener noreferrer">{rec.title}{rec.year ? `（${rec.year}）` : ""}{rec.rating != null ? `，豆瓣 ${rec.rating}` : ""}</a></li>)}</ul>
+          {/* 外链必须过协议闸门（`rec.url` 在 `related.ts` 只校验了「是字符串」）；
+              不合法的地址降级成纯文本，不要渲染出一个点了会执行脚本的 <a>。 */}
+          <ul>{related.more.map(rec => {
+            const href = safeExternalUrl(rec.url);
+            const label = `${rec.title}${rec.year ? `（${rec.year}）` : ""}${rec.rating != null ? `，豆瓣 ${rec.rating}` : ""}`;
+            return <li key={rec.id}>{href ? <a href={href} target="_blank" rel="noopener noreferrer">{label}</a> : label}</li>;
+          })}</ul>
         </section>}
         <div className="preview-actions">
         <button type="button" className="preview-full" onClick={() => {cancel();setMode('closed');openFilm(filmNodeKey(cat,s),s.code);}}>查看完整影片资料</button>

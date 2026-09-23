@@ -23,6 +23,15 @@ function formatTime(ms: number) {
   }
 }
 
+/** `dateTime` 属性用的 ISO 串 —— 非法时间戳返回 undefined 而不是抛。
+ *  ⚠ `new Date(NaN).toISOString()` 会抛 `RangeError`：此前直接写在 JSX 里，
+ *    服务端来一条脏 `createdAt` 就整条路由渲染失败（掉进 `RouteError` 整页报错）。
+ *    2026-09-23，PLAN-20260923111748，B6。 */
+function isoOf(ms: number): string | undefined {
+  const date = new Date(ms);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
+}
+
 export function FeedbackPage() {
   const [posts, setPosts] = useState<FeedbackPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -191,7 +200,7 @@ export function FeedbackPage() {
               <li key={post.id} className="feedback-card" data-feedback-id={post.id}>
                 <header className="feedback-card-head">
                   <strong>{post.displayName}</strong>
-                  <time dateTime={new Date(post.createdAt).toISOString()}>
+                  <time dateTime={isoOf(post.createdAt)}>
                     {formatTime(post.createdAt)}
                   </time>
                 </header>

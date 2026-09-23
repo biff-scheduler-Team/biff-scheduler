@@ -3,7 +3,11 @@
 import { EDITION } from "./edition";
 let cache: Record<string, number> | null = null;
 let loading: Promise<Record<string, number>> | null = null;
-let pingTimer: number | undefined;
+// ⚠ 用全局 `setTimeout` 而不是 `window.setTimeout`：本模块由 `state.ts::saveLocal()` 调用，
+//   而单测跑在 node 环境（没有 `window`）—— 兄弟模块 `screening-counts` / `film-votes` /
+//   `ticket-stats` 都显式这么写并注释过，只有这里漏了，症状是 node 下抛 ReferenceError
+//   被 saveLocal 的 try/catch 吞掉 → 「想看人数上报」静默不触发（2026-09-23，PLAN-20260923111748，B6）。
+let pingTimer: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<() => void>();
 
 export function onWantCountsChange(listener: () => void): () => void {
@@ -49,7 +53,7 @@ export async function loadWantCounts(force = false): Promise<Record<string, numb
 export function scheduleWantPing(filmKeys: Iterable<string>) {
   const films = [...new Set(filmKeys)].filter((key) => key.length > 0).slice(0, 500);
   clearTimeout(pingTimer);
-  pingTimer = window.setTimeout(() => {
+  pingTimer = setTimeout(() => {
     void fetch("/api/stats/want-ping", {
       method: "POST",
       credentials: "same-origin",
