@@ -16,7 +16,7 @@ export interface GanttScrollAnchor {
   rowScreenY: number;
 }
 
-/** Capture against the old canvas, before a smaller canvas clamps its scroll offsets. */
+/** 要按**旧**画布取尺寸：等画布变小之后再取，滚动位移已经被夹住了。 */
 export function ganttScrollAnchor(
   viewport: { scrollLeft: number; scrollTop: number; clientWidth: number },
   geometry: GanttGeometry,
@@ -43,7 +43,7 @@ export function ganttScrollPosition(
   };
 }
 
-/** Same adjacent-selected-screening calculation as legacy markTightCards. */
+/** 与旧版 markTightCards 同一套「相邻已选场次」算法。 */
 export function tightScreeningTips(
   cat: Catalog,
   date: string,

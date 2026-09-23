@@ -12,7 +12,7 @@ import { copyImageOrDownload } from "./share-image";
 /** 下载 / 复制共用一个文件名(两处写死必然会漂移) */
 const FILE_NAME = "BIFF2026-看片计划.png";
 
-/** A preview owns one immutable plan snapshot and the canvas/blob produced for it. */
+/** 一份预览独占一份不可变的排片快照，以及为它画出的 canvas/blob。 */
 export function PosterPreview({
   generationId,
   model,

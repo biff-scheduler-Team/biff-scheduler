@@ -9,9 +9,9 @@ const schema = z.object({
 });
 export function configuration(env: Env) {
   const config = schema.parse(env);
-  // APP_ORIGIN accepts a comma-separated list so a new custom domain can be
-  // introduced before the old one is retired. The first entry is the default
-  // origin used when a request carries no usable host of its own.
+  // APP_ORIGIN 接受逗号分隔的多个来源：新域名可以先并行上线，
+  // 等旧域名退役再删。第一项是默认来源 ——
+  // 请求自己没有可用 host 时就用它。
   const origins = config.APP_ORIGIN.split(",").map((value) => value.trim()).filter(Boolean);
   if (!origins.length) throw new Error("Missing configured origin");
   for (const origin of [...origins, config.IFFDAY_ORIGIN]) {

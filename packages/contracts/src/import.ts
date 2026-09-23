@@ -1,4 +1,4 @@
-/** Ignore empty containers, nulls and blank strings when deciding whether to claim an import. */
+/** 判断「这次导入是否值得认领」时，空容器 / null / 空白串一律不算内容。 */
 function populated(value: unknown): boolean {
   if (value === null || value === undefined) return false;
   if (typeof value === "string") return value.trim().length > 0;

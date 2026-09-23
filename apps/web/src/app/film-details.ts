@@ -2,12 +2,12 @@ import type { FilmCatalogue } from "../types";
 import type { FilmNode } from "./model";
 import { normText } from "../util";
 
-/** Library cards use the first show; screening buttons keep the exact show they opened. */
+/** 影片库卡片取第一场；场次按钮则记住自己是从哪一场点开的。 */
 export function filmDetailAnchor(film: FilmNode | undefined, code: string | null) {
   return code ? film?.shows.find((show) => show.code === code) : film?.shows[0];
 }
 
-/** Catalogue original titles and the screening's Korean title are different fields. */
+/** 目录里的原始片名与排期里的韩文名是两个不同字段，不能互相顶替。 */
 export function filmDetailNames(film: FilmNode, koreanTitle?: string) {
   const seen = new Set([normText(film.en), normText(film.zh)]);
   return [...film.names, koreanTitle ?? ""].filter((name) => {

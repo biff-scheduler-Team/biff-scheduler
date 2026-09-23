@@ -1,4 +1,4 @@
-/** Want-to-watch weighting: logged-in 1.0, anonymous 0.75; display Math.round (四舍五入). */
+/** 「想看」权重：登录 1.0、匿名 0.75；展示时按 Math.round 四舍五入。 */
 
 export const WANT_WEIGHT_AUTH = 1;
 export const WANT_WEIGHT_ANON = 0.75;
@@ -14,7 +14,7 @@ export function wantWeightFor(authenticated: boolean): number {
   return authenticated ? WANT_WEIGHT_AUTH : WANT_WEIGHT_ANON;
 }
 
-/** Extract film keys from festival_document-style records (`pick:<filmKey>`). */
+/** 从 festival_document 形态的记录里取出片键（形如 pick:<filmKey>）。 */
 export function pickFilmKeysFromRecords(records: Record<string, string>): Set<string> {
   const keys = new Set<string>();
   for (const key of Object.keys(records)) {
@@ -23,7 +23,7 @@ export function pickFilmKeysFromRecords(records: Record<string, string>): Set<st
   return keys;
 }
 
-/** Diff two film-key sets into remove / add for contribution updates. */
+/** 求两个片键集合的差集 → 得出该贡献者要移除 / 新增的项。 */
 export function diffFilmKeys(previous: Iterable<string>, next: Iterable<string>) {
   const prev = new Set(previous);
   const nxt = new Set(next);

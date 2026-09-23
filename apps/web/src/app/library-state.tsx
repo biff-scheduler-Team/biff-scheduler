@@ -20,7 +20,7 @@ export function setFilmExpanded(tab: LibraryTab, key: string, open: boolean) {
   listeners.forEach((listener) => listener());
 }
 
-/** Keep both tabs while the picker is open, just as the legacy drawer closure did. */
+/** 选片器打开期间两个标签都留着 —— 与旧版抽屉的关闭行为一致。 */
 export function useLibraryExpansion(tab: LibraryTab) {
   const value = useSyncExternalStore(subscribe, () => expanded[tab]);
   useEffect(() => () => {

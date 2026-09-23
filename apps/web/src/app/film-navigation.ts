@@ -2,7 +2,7 @@ import { useLocation, useNavigate } from "react-router";
 
 export const FILM_CODE_PARAM = "filmCode";
 
-/** Keep the screening identity in the URL so a refreshed detail link stays scoped to that show. */
+/** 把场次身份留在 URL 里：刷新后的详情链接仍然指向那一场。 */
 export function useFilmNavigation(): (filmKey: string, code?: string) => void {
   const navigate = useNavigate();
   const location = useLocation();

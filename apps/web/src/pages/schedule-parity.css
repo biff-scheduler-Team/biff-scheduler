@@ -41,7 +41,7 @@
   opacity: 0.6;
 }
 
-/* The full time range grows the document; only venues scroll inside the grid. */
+/* 完整时间范围会把文档撑高；只让影厅那部分在网格内滚动。 */
 .vertical-schedule { min-width: 0; }
 .vertical-schedule .gantt-scroll {
   overflow-x: auto;

@@ -1,6 +1,6 @@
 import app from "./index";
 
-// Keep the public origin stable while web assets deploy independently.
+// 前端资源独立部署，这里保持对外来源稳定。
 export default {
   fetch(request, env, ctx) {
     const path = new URL(request.url).pathname;

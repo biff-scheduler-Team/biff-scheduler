@@ -146,8 +146,8 @@ export function provider(
     options,
     auth: oauth.ClientSecretBasic(config.OIDC_CLIENT_SECRET),
     resource: `${config.IFFDAY_ORIGIN}/api/v1/profile`,
-    // Callback must return to the exact host the user started from, otherwise
-    // the browser is sent to a different origin and the pending cookie is lost.
+    // 回调必须回到用户出发时的那个主机，否则浏览器会被送到另一个源、
+    // 登录途中那枚 pending cookie 就丢了。
     redirectUri: `${origin ?? config.origins[0]}/api/auth/callback`,
     async metadata() {
       return oauth.processDiscoveryResponse(issuer, await oauth.discoveryRequest(issuer, options));

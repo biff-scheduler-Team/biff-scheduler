@@ -144,7 +144,7 @@ export function searchFilm(node: FilmNode, query: string): boolean {
   });
 }
 
-/** The same normalization as the legacy picker: merge spelling variants, not sub-sections. */
+/** 与旧版选片器同一套归一化：只合并拼写变体，不合并子单元。 */
 export function unitKey(raw: string | null | undefined): string {
   const value = (raw ?? "").trim();
   const en = value.match(/^([A-Za-z][A-Za-z'&.\- ]*?)\s*(?=[\u4e00-\u9fa5])/);

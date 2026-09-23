@@ -295,7 +295,7 @@ export function LibraryPage({ picked = false }: { picked?: boolean }) {
     dateCounts.set(s.date, (dateCounts.get(s.date) ?? 0) + 1);
   }
   const dates = [...dateCounts.keys()].sort();
-  // Stale dates disappear with their last available screening, as in the old picker.
+  // 日期随它最后一场排片一起消失 —— 与旧版选片器一致。
   const selectedDates = picked
     ? (params.get("pickDate") ?? "").split(",").filter((d) => dateCounts.has(d))
     : [];

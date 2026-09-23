@@ -1,6 +1,6 @@
 import { canonical } from "@biff/contracts/canonical";
 export { canonical } from "@biff/contracts/canonical";
-/** Portable account data. Record IDs remain stable across devices; absence is a deletion. */
+/** 可跨设备搬运的账号数据：记录 ID 跨设备稳定不变，缺席即删除。 */
 export type WorkspaceRecords = Record<string, string>;
 export interface WorkspaceStorage {
   readonly length: number;
@@ -128,7 +128,7 @@ export function writeWorkspace(storage: WorkspaceStorage, records: WorkspaceReco
   }
   if (picks.length || !("biff.picks.v2" in entries))
     entries["biff.picks.v2"] = JSON.stringify(picks);
-  // Keep a recoverable snapshot if a browser storage quota failure interrupts replacement.
+  // 替换途中若撞上浏览器存储配额失败，要留一份可恢复的快照。
   const before = Object.fromEntries(remove.map((key) => [key, storage.getItem(key)!]));
   try {
     for (const key of remove) storage.removeItem(key);

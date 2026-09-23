@@ -15,7 +15,7 @@ export interface ScheduleSelection {
 }
 const ScheduleSelectionContext = createContext<ScheduleSelection | null>(null);
 
-/** Date is chosen once per app session; explicit route dates become the current date. */
+/** 日期每次会话只定一次；带日期的路由会把它设成当前日期。 */
 export function ScheduleSelectionProvider({
   children,
 }: {

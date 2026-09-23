@@ -48,7 +48,7 @@ import { trackClick, useTelemetryTracking } from "../telemetry";
 import { store } from "../state";
 import type { Catalog } from "../types";
 
-// React Router resolves app paths; absolute external links must keep their scheme.
+// React Router 负责解析应用内路径；绝对外链必须保留自己的协议头（否则会被当成应用内路径）。
 function useAppHref(href: string) {
   const external = /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(href);
   const resolved = useHref(external ? "/" : href);
