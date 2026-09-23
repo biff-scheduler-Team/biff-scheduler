@@ -11,6 +11,7 @@
  */
 
 import { EDITION } from "./edition";
+import { wholeCount } from "./util";
 
 /** 影片 key → 红 / 黑票数 */
 export type FilmVoteCounts = Record<string, { red: number; black: number }>;
@@ -46,15 +47,17 @@ export function peekFilmVotes(): FilmVoteCounts {
 }
 
 /** 读取端白名单：服务端固然不会发坏数据，但客户端缓存**不能假设上游永远正确**
- *  （旧版本 API、代理改写、半截响应）—— 非法条目一律丢弃，与 `hydrate()` 同一条原则。 */
+ *  （旧版本 API、代理改写、半截响应）—— 非法条目一律丢弃，与 `hydrate()` 同一条原则。
+ *  ⚠ 取整走 `util.ts::wholeCount`（全站唯一取整口径，与 want / screening / ticket 三个
+ *    同构模块同一份实现）—— 此前这里自己写了一份 `Math.trunc`（2026-09-23 收口）。 */
 export function parseVotes(raw: unknown): FilmVoteCounts {
   const out = emptyCounts();
   if (!raw || typeof raw !== "object") return out;
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!key || !value || typeof value !== "object") continue;
     const counts = value as { red?: unknown; black?: unknown };
-    const red = Math.max(0, Math.trunc(Number(counts.red) || 0));
-    const black = Math.max(0, Math.trunc(Number(counts.black) || 0));
+    const red = wholeCount(counts.red);
+    const black = wholeCount(counts.black);
     if (red <= 0 && black <= 0) continue;
     out[key] = { red, black };
   }
