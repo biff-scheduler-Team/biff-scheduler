@@ -1505,7 +1505,7 @@ html:has(.update-banner) {
   }
 }
 
-/* Bound Spectrum autosizing textareas inside scrollable dialogs. */
+/* 把 Spectrum 的自适应高度 textarea 关在可滚动的弹层里（否则会被撑高）。 */
 .import-data textarea {
   max-height: 180px;
   overflow-y: auto;
@@ -1521,8 +1521,8 @@ html:has(.update-banner) {
 .workspace {
   background: var(--page);
 }
-/* Spectrum measures autosize on blur. A fixed editor height prevents scroll anchoring
-   from moving the import action between pointerdown and pointerup. */
+/* Spectrum 在 blur 时才测高。给编辑器定死高度，免得滚动锚定在 pointerdown 与
+   pointerup 之间把「导入」按钮挪走。 */
 .import-data textarea {
   height: 180px !important;
   min-height: 180px;
@@ -1664,7 +1664,7 @@ html:has(.update-banner) {
 @media (max-width: 1099px) { :root { --page-gutter: 16px; } }
 @media (max-width: 768px) { :root { --page-gutter: 12px; } }
 
-/* Film badges follow the supplied festival legend in both color schemes. */
+/* 影片徽章跟官方图例配色，浅色与暗色两档都照它。 */
 .film-badge {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 32px; height: 18px; padding: 0 6px;
