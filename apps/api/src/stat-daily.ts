@@ -15,21 +15,65 @@
  *   归零删行）—— 那边是「每 (kind,target) 一行」，这边是「每 (metric,target,day) 一行」。
  */
 
-import { and, asc, eq, gte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
 import { database } from "./db";
 import { statDaily } from "./db/schema";
 import { clampAddText, isNonPositiveText, weightText, wouldGoNegativeText } from "./stat-batch";
 import type { StatWrite } from "./stat-batch";
+import type { FilmVote } from "./film-vote-stats";
+import type { TelemetryKind } from "./telemetry-stats";
+import type { TicketOutcome } from "./ticket-stats";
 
 type Db = ReturnType<typeof database>;
 
-/** 记日桶的指标白名单。**新增指标必须在这里登记** —— 读侧靠它收口（未知 metric 一律拒）。 */
-export const DAILY_METRICS = ["want", "vote", "screening", "ticket", "telemetry"] as const;
+/** 记日桶的指标白名单。**新增指标必须在这里登记** —— 读侧靠它收口（未知 metric 一律拒）。
+ *
+ *  ★ 需要区分子类型的指标（抢票的四项结果、事件流水的两种 kind）把**子类型编进 `metric`**，
+ *    而不是编进 `target`。理由：`metric` 的两段都来自**闭合白名单**（指标族 + 子类型）⇒ 天然无歧义；
+ *    而编进 `target` 就需要一个分隔符，可 `target` 自己的字符集（路由是 `^[a-z0-9\-/:*]+$`、
+ *    场次 code 只校验长度）**本来就含 `:`**，随便选分隔符迟早撞上，撞上就是静默串桶。
+ *
+ *  `target` 的形状（每种指标）：want / vote = film key；screening = 场次 code；
+ *  ticket = 场次 code；telemetry = 路由键 / 入口 slug。 */
+export const DAILY_METRICS = [
+  "want",
+  // ⚠ 红黑票按**颜色**分桶：合成一个 "vote" 的话，「改票（红→黑）」当天会 −1/+1 相互抵消，
+  // 趋势图上什么也看不见 —— 而「红黑对战」正是这个榜最想看的东西。
+  "vote:red",
+  "vote:black",
+  "screening",
+  "ticket:got",
+  "ticket:transfer",
+  "ticket:missed",
+  "ticket:dropped",
+  "telemetry:page",
+  "telemetry:click",
+] as const;
 
 export type DailyMetric = (typeof DAILY_METRICS)[number];
 
 export function isDailyMetric(value: unknown): value is DailyMetric {
   return typeof value === "string" && (DAILY_METRICS as readonly string[]).includes(value);
+}
+
+/** 红 / 黑的指标名。子类型只允许来自 `FilmVote` 这个闭合白名单。 */
+export function voteDailyMetric(vote: FilmVote): DailyMetric {
+  return `vote:${vote}`;
+}
+
+/** 抢票某一项结果的指标名。子类型只允许来自 `TicketOutcome` 这个闭合白名单。 */
+export function ticketDailyMetric(outcome: TicketOutcome): DailyMetric {
+  return `ticket:${outcome}`;
+}
+
+/** 事件流水某一类的指标名。子类型只允许来自 `TelemetryKind` 这个闭合白名单。 */
+export function telemetryDailyMetric(kind: TelemetryKind): DailyMetric {
+  return `telemetry:${kind}`;
+}
+
+/** 趋势图上「这一族全部子类型加起来」用的过滤集合（概览用）。 */
+export function dailyMetricFamily(family: "ticket" | "telemetry"): DailyMetric[] {
+  return DAILY_METRICS.filter((metric) => metric.startsWith(`${family}:`));
 }
 
 /** 一次增量。`weightDelta` 是主计数（想看 / 行程 / 票务的加权和，红黑票则是 ±1 票数）；
@@ -158,20 +202,21 @@ export interface DailyPoint {
  */
 export async function readDailySeries(
   db: Db,
-  options: { edition: string; metric: DailyMetric; fromDay: string; target?: string },
+  options: {
+    edition: string;
+    /** 单个指标，或一族指标（如 `dailyMetricFamily("ticket")` —— 四项结果加起来看） */
+    metric: DailyMetric | readonly DailyMetric[];
+    fromDay: string;
+    target?: string;
+  },
 ): Promise<DailyPoint[]> {
-  const where = options.target
-    ? and(
-        eq(statDaily.edition, options.edition),
-        eq(statDaily.metric, options.metric),
-        eq(statDaily.target, options.target),
-        gte(statDaily.day, options.fromDay),
-      )
-    : and(
-        eq(statDaily.edition, options.edition),
-        eq(statDaily.metric, options.metric),
-        gte(statDaily.day, options.fromDay),
-      );
+  const metrics = Array.isArray(options.metric) ? [...options.metric] : [options.metric as DailyMetric];
+  const where = and(
+    eq(statDaily.edition, options.edition),
+    inArray(statDaily.metric, metrics),
+    gte(statDaily.day, options.fromDay),
+    ...(options.target ? [eq(statDaily.target, options.target)] : []),
+  );
   const rows = await db
     .select({
       day: statDaily.day,
