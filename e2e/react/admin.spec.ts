@@ -61,8 +61,9 @@ const FEEDBACK = {
   nextCursor: null,
 };
 
-/** 管理员的四份数据。**趋势刻意只喂 1 天** —— 页面若照原样画，点数就会是 1（见覆盖点 ④）。 */
-async function stubAdmin(page: Page) {
+/** 管理员的四份数据。**趋势刻意只喂 1 天** —— 页面若照原样画，点数就会是 1（见覆盖点 ④）。
+ *  `emptyLedger`：模拟「日账本一行都没有」（部署当天就是这状态）—— 用来验「空态不画空图」。 */
+async function stubAdmin(page: Page, options: { emptyLedger?: boolean } = {}) {
   await page.route("**/api/admin/whoami", (route) => route.fulfill({ json: { ok: true } }));
   await page.route("**/api/admin/overview*", (route) =>
     route.fulfill({
@@ -109,8 +110,8 @@ async function stubAdmin(page: Page) {
         metrics: ["vote:red", "vote:black"],
         fromDay: dayBefore(days),
         days,
-        earliestDay: TODAY,
-        points: [{ day: TODAY, weight: 2, hits: 0 }],
+        earliestDay: options.emptyLedger ? null : TODAY,
+        points: options.emptyLedger ? [] : [{ day: TODAY, weight: 2, hits: 0 }],
       },
     });
   });
@@ -264,6 +265,68 @@ test("★ 内容视图：复用**公开**接口（请求真的打到 /api/discus
   expect(paths).toContain("/api/feedback");
   // 反馈没有「场次 / 分类」列（那是讨论才有的维度）
   await expect(table.locator("thead")).not.toContainText("场次");
+});
+
+/* ---------------- 图表（参考数据分析模块） ---------------- */
+
+test("概览：规模图与内容构成都在，数字与下面那张表同口径", async ({ page }) => {
+  await stubAdmin(page);
+  await ready(page, "/admin");
+  // stub 里只有一个模块 → 一根条；图与表说的是同一件事（参与人数那一列）
+  await expect(page.locator('[data-chart="admin-metric-users"]')).toHaveAttribute("data-points", "1");
+  await expect(page.locator(".admin-table").first().locator("tbody")).toContainText("红黑榜");
+  // 内容构成：讨论 1 + 反馈 1 = 两片
+  await expect(page.locator('[data-chart="admin-content-mix"]')).toHaveAttribute("data-points", "2");
+});
+
+test("内容：分类环 + 作者榜都在；切到反馈时分类环消失（不是空环）", async ({ page }) => {
+  await stubAdmin(page);
+  await ready(page, "/admin?tab=content");
+  await expect(page.locator('[data-chart="admin-content-categories"]')).toHaveAttribute("data-points", "1");
+  await expect(page.locator('[data-chart="admin-content-authors"]')).toHaveAttribute("data-points", "1");
+  // ★ 口径要写在图上：两张图只统计**已加载**的那几条 —— 把「已加载」当「全量」是会出错的
+  const authors = page.locator('[data-chart="admin-content-authors"]');
+  await authors.locator(".ra-note-btn").click();
+  await expect(authors.locator(".ra-note-body")).toContainText("只统计已加载的 1 条");
+
+  await page.getByRole("button", { name: "反馈留言" }).click();
+  await expect(page.locator('[data-chart="admin-content-categories"]')).toHaveCount(0);
+  await expect(page.locator('[data-chart="admin-content-authors"]')).toHaveAttribute("data-points", "1");
+});
+
+test("趋势：日账本一行都没有时**不画空图**，只给一句话（空态口径）", async ({ page }) => {
+  await stubAdmin(page, { emptyLedger: true });
+  await ready(page, "/admin?tab=trends");
+  await expect(page.locator(".ra-chart-empty")).toContainText("日账本还没有数据");
+  // 空图比一句话更糟：全是 0 的柱子看着像图坏了
+  await expect(page.locator('[data-chart="admin-trend"]')).toHaveCount(0);
+});
+
+test("★ 图表外壳样式真的加载了（缺了它，图的 ⓘ 会失效而逻辑断言照旧全过）", async ({ page }) => {
+  await stubAdmin(page);
+  await ready(page, "/admin?tab=trends");
+  const figure = page.locator('[data-chart="admin-trend"]');
+  await expect(figure).toBeVisible();
+  // ⚠ 这几条就是 2026-09-23 那个真 bug 的守门人：`.ra-chart*` / `.ra-note*` 原先只写在
+  //   `pages/rush-analysis.css` 里，管理后台没引它 —— 图能画出来、ⓘ 也能点开（`<details>` 的
+  //   原生行为），**所有逻辑断言都过**，只有计算样式看得出画布锚点与浮层定位全丢了。
+  const styles = await figure.evaluate((el) => {
+    const canvas = el.querySelector(".ra-chart-canvas");
+    const note = el.querySelector(".ra-note");
+    const btn = el.querySelector(".ra-note-btn");
+    return {
+      canvasPosition: canvas ? getComputedStyle(canvas).position : "missing",
+      notePosition: note ? getComputedStyle(note).position : "missing",
+      btnRadius: btn ? getComputedStyle(btn).borderRadius : "missing",
+    };
+  });
+  expect(styles.canvasPosition).toBe("relative");
+  expect(styles.notePosition).toBe("absolute");
+  expect(styles.btnRadius).toBe("50%");
+
+  // `.ra-grid` 同理：没加载时多张图会一张压一张地竖排（图在，但版面是坏的）
+  await ready(page, "/admin?tab=content");
+  await expect(page.locator(".ra-grid").first()).toHaveCSS("display", "grid");
 });
 
 /* ---------------- 兜底 ---------------- */

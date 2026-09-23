@@ -20,6 +20,7 @@
  */
 
 import type { ReactNode } from "react";
+import "./charts.css";
 
 /** 默认画布高度（px）。 */
 export const CHART_HEIGHT = 240;

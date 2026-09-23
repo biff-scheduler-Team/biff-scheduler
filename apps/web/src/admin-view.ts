@@ -7,7 +7,13 @@
  */
 
 import { DISCUSSION_CATEGORIES } from "@biff/contracts/screening";
-import type { AdminAudit, AdminTrendPoint } from "./admin-api";
+import type {
+  AdminAudit,
+  AdminContentPost,
+  AdminMetricSummary,
+  AdminOverview,
+  AdminTrendPoint,
+} from "./admin-api";
 
 /* ---------------- 视图切换 ---------------- */
 
@@ -223,4 +229,74 @@ export function bodyExcerpt(body: string, limit = 60): string {
 export function categoryLabel(key: string | undefined): string {
   if (!key) return "—";
   return DISCUSSION_CATEGORIES.find((category) => category.key === key)?.label ?? key;
+}
+
+/* ---------------- 图表数据 ----------------
+ * ⚠ 全部返回 `{ label, value }` / `{ name, value }` 的**结构化形状**，不 import 图表模块的
+ *   `BarDatum` / `DonutDatum`：那两个类型来自 `components/charts/*`（运行时要 ECharts），
+ *   而本模块要能在 node 里裸测（同 `redblack.ts` 的做法）。形状一致即可赋值。
+ */
+
+export interface AdminBar {
+  label: string;
+  value: number;
+}
+
+export interface AdminSlice {
+  name: string;
+  value: number;
+}
+
+/**
+ * 概览：各模块**参与人数**（去重身份）的横向条形图。
+ *
+ * ⚠ 取「参与人数」而不是「记录数」：记录数会被同一个人反复上报抬高（一个人贴好几场就是好几条），
+ *   而「有多少人用过这个模块」才是运维想看的规模；表里那一列也是这个口径，两处对齐。
+ */
+export function metricBars(metrics: readonly AdminMetricSummary[] | undefined): AdminBar[] {
+  return (metrics ?? []).map((row) => ({
+    label: metricLabel(row.metric),
+    value: row.contributors ?? 0,
+  }));
+}
+
+/** 概览：内容构成（场次讨论 / 反馈留言）。
+ *  ⚠ 两边都是 0 时返回**空数组**，让页面走「空态说一句话」而不是画一个空环（既有口径）。 */
+export function contentDonut(content: AdminOverview["content"] | undefined): AdminSlice[] {
+  return [
+    { name: "场次讨论", value: content?.discussions ?? 0 },
+    { name: "反馈留言", value: content?.feedback ?? 0 },
+  ].filter((slice) => slice.value > 0);
+}
+
+/**
+ * 内容视图：作者发帖数 TOP N。
+ *
+ * ⚠ 标签用 `displayName`，重名时按名字合并 —— 这里**不按 subject 分**：这是给人看的榜，
+ *   同一个人的两条身份（登录/匿名）在内容表里本来就是同一个名字，分开画反而看不懂。
+ *   （要精确到身份请看明细表。）
+ */
+export function authorBars(posts: readonly AdminContentPost[] | undefined, top = 8): AdminBar[] {
+  const counts = new Map<string, number>();
+  for (const post of posts ?? []) {
+    const name = (post.displayName || post.subject || "").trim();
+    if (!name) continue;
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label))
+    .slice(0, top);
+}
+
+/** 内容视图：讨论分类构成（只对讨论有意义，反馈没有分类维度）。 */
+export function categoryDonut(posts: readonly AdminContentPost[] | undefined): AdminSlice[] {
+  const counts = new Map<string, number>();
+  for (const post of posts ?? []) {
+    const key = post.category ?? "";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([key, value]) => ({ name: categoryLabel(key || undefined), value }))
+    .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
 }
