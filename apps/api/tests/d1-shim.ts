@@ -95,7 +95,63 @@ export function createD1(sqlite: DatabaseSync, stats?: D1ShimStats): D1Database 
   } as unknown as D1Database;
 }
 
-/** 计数聚合相关表的建表 DDL（与 `migrations/0003`、`0006`、`0007`、`0008` 逐字一致）。 */
+/** 会话表（与 `migrations/0001_account.sql` 逐字一致）。登录态相关的测试都要它。 */
+export function createSessionSchema(sqlite: DatabaseSync): void {
+  sqlite.exec(`
+    CREATE TABLE app_session (
+      token_hash TEXT PRIMARY KEY NOT NULL,
+      subject TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      token_expires_at INTEGER NOT NULL,
+      refresh_until INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+}
+
+/** 管理端概览会碰到的「非统计」表（与 `migrations/0001`、`0002`、`0004`、`0005` 逐字一致）。
+ *  ⚠ **刻意不含 `app_session`**（那在 `createSessionSchema` 里）—— 两个函数各建一次会让
+ *    同时用它们的测试挂在 "table app_session already exists" 上。
+ *  ⚠ 概览只需这几张表存在；讨论帖 / 反馈的列照迁移给全，免得以后加断言又要来补。 */
+export function createAdminSchema(sqlite: DatabaseSync): void {
+  sqlite.exec(`
+    CREATE TABLE festival_document (
+      subject TEXT NOT NULL,
+      edition TEXT NOT NULL,
+      revision INTEGER NOT NULL DEFAULT 0,
+      records TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(records)),
+      last_operation TEXT,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(subject, edition)
+    );
+    CREATE TABLE account_import (
+      subject TEXT PRIMARY KEY NOT NULL,
+      operation_id TEXT NOT NULL,
+      imported_at INTEGER NOT NULL
+    );
+    CREATE TABLE screening_post (
+      id TEXT PRIMARY KEY NOT NULL,
+      edition TEXT NOT NULL,
+      code TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      category TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE feedback_post (
+      id TEXT PRIMARY KEY NOT NULL,
+      subject TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+  `);
+}
+
+/** 计数聚合相关表的建表 DDL（与 `migrations/0003`、`0006`、`0007`、`0008`、`0010` 逐字一致）。 */
 export function createStatSchema(sqlite: DatabaseSync): void {
   sqlite.exec(`
     CREATE TABLE film_want_contribution (
@@ -181,6 +237,16 @@ export function createStatSchema(sqlite: DatabaseSync): void {
       hits_weight_sum TEXT DEFAULT '0' NOT NULL,
       updated_at INTEGER NOT NULL,
       PRIMARY KEY(edition, kind, target)
+    );
+    CREATE TABLE stat_daily (
+      edition TEXT NOT NULL,
+      day TEXT NOT NULL,
+      metric TEXT NOT NULL,
+      target TEXT NOT NULL,
+      weight_sum TEXT NOT NULL,
+      hits_sum TEXT NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(edition, day, metric, target)
     );
   `);
 }

@@ -9,6 +9,8 @@ import {
   type StatWrite,
 } from "./stat-batch";
 import { diffFilmKeys, formatWantCounts } from "./want-stats";
+import { kstDay } from "./day";
+import { dailyBucketWrites } from "./stat-daily";
 
 type Db = ReturnType<typeof database>;
 
@@ -41,6 +43,8 @@ export async function replaceContributorWants(
   const previousWeight = existing[0] ? parseWeight(existing[0].weight) : weight;
   const { removed, added } = diffFilmKeys(previousKeys, next);
   const now = Date.now();
+  // 日桶用同一时刻算日界（`day.ts`：KST，只能服务端算）
+  const day = kstDay(now);
   const weightLabel = String(weight);
   const writes: StatWrite[] = [];
 
@@ -67,6 +71,13 @@ export async function replaceContributorWants(
     writes.push({
       statement: db.delete(filmWantStat).where(and(key, isNonPositiveText(filmWantStat.weight_sum))),
     });
+    // 日账本记同一个 delta（趋势用）。⚠ 并进**同一个** batch：另起一批等于把每次上报的
+    // D1 往返翻倍，而 `stat-atomicity.test.ts` 的往返断言正是为这条存在的。
+    // ⚠ 「权重变化」（匿名 0.75 → 登录 1.0）也走这里：日账本与聚合表必须记同一个数，
+    // 否则两条口径会慢慢对不上（差值恒为 0 才是自洽）。
+    writes.push(
+      ...dailyBucketWrites(db, { edition, day, metric: "want", target: filmKey, weightDelta: delta }, now),
+    );
   };
 
   /** 认领一部新片：贡献行落定 + 聚合行「插入或原地加」。 */
@@ -88,6 +99,9 @@ export async function replaceContributorWants(
           set: { weight_sum: clampAddText(filmWantStat.weight_sum, weight), updated_at: now },
         }),
     });
+    writes.push(
+      ...dailyBucketWrites(db, { edition, day, metric: "want", target: filmKey, weightDelta: weight }, now),
+    );
   };
 
   for (const filmKey of removed) {

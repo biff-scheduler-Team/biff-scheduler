@@ -23,6 +23,8 @@ import {
   type StatWrite,
 } from "./stat-batch";
 import { diffOutcomes, formatTicketCounts, isTicketOutcome, type TicketOutcome } from "./ticket-stats";
+import { kstDay } from "./day";
+import { dailyBucketWrites, ticketDailyMetric } from "./stat-daily";
 
 type Db = ReturnType<typeof database>;
 type TicketStatTable = typeof screeningTicketStat;
@@ -102,6 +104,8 @@ export async function replaceContributorTickets(
   const previousWeight = existing[0] ? parseWeight(existing[0].weight) : weight;
   const { removed, added } = diffOutcomes(previous, next);
   const now = Date.now();
+  // 日桶用同一时刻算日界（`day.ts`：KST，只能服务端算）
+  const day = kstDay(now);
   const weightLabel = String(weight);
   const writes: StatWrite[] = [];
 
@@ -132,6 +136,15 @@ export async function replaceContributorTickets(
   /** 某一列 +delta：`delta > 0` 走「插入或原地加」，`delta < 0` 走三件套（探测 / 钳零 / 删行）。 */
   const adjust = (code: string, outcome: TicketOutcome, delta: number) => {
     if (delta === 0) return;
+    // 日账本：按 (场次, 结果) 分桶（四项结果各自成桶，见 `stat-daily.ts` 白名单的说明）。
+    // ⚠ 并进同一个 batch，理由见 `stat-daily.ts` 文件头。
+    writes.push(
+      ...dailyBucketWrites(
+        db,
+        { edition, day, metric: ticketDailyMetric(outcome), target: code, weightDelta: delta },
+        now,
+      ),
+    );
     const key = statKey(code);
     if (delta > 0) {
       writes.push({
