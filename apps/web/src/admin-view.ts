@@ -20,13 +20,14 @@ import type {
 /** 管理端的几个视图。**用 `?tab=` 而不是嵌套路由**：本轮刻意不动 `main.tsx` / `App.tsx`
  *  （那个会话正在高频改前端），所以接线只留一行路由 + 一条 fullPage 正则；
  *  视图切换走已有的 `useQuery()` 约定，URL 依然可分享可收藏。 */
-export const ADMIN_TABS = ["overview", "rows", "trends", "content"] as const;
+export const ADMIN_TABS = ["overview", "rows", "stickers", "trends", "content"] as const;
 
 export type AdminTab = (typeof ADMIN_TABS)[number];
 
 const TAB_LABELS: Record<AdminTab, string> = {
   overview: "概览",
   rows: "明细",
+  stickers: "贴纸",
   trends: "趋势",
   content: "内容",
 };
@@ -299,4 +300,61 @@ export function categoryDonut(posts: readonly AdminContentPost[] | undefined): A
   return [...counts.entries()]
     .map(([key, value]) => ({ name: categoryLabel(key || undefined), value }))
     .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+}
+
+/* ---------------- 贴纸（红黑榜投票行） ---------------- */
+
+/** 身份在表里怎么显示。
+ *  ⚠ 匿名 hash 是 64 位、整串糊在表里没法读，所以只留前 8 位（够区分「是不是同一台机器」）；
+ *    **账号 subject 原样显示** —— 排查时经常要把它复制去账号系统对照，截断反而添乱。
+ *  ⚠ 用服务端给的 `anonymous` 布尔判断，不在前端再解析一遍 `anon:` 前缀（那是第二份口径）。 */
+export function shortContributor(row: { contributor: string; anonymous: boolean }): string {
+  if (!row.anonymous) return row.contributor;
+  const hash = row.contributor.replace(/^anon:/, "");
+  return `匿名 ${hash.slice(0, 8)}…`;
+}
+
+/** `cat:f001` → 片名。⚠ 查不到就原样回 key：显示空白会让人以为「这枚贴纸没有对应影片」。 */
+export function filmTitles(
+  films: readonly { key: string; zh: string }[] | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const film of films ?? []) out[film.key] = film.zh || film.key;
+  return out;
+}
+
+export interface StickerCounts {
+  total: number;
+  anonymous: number;
+  red: number;
+  black: number;
+}
+
+export function stickerCounts(rows: readonly { vote: string; anonymous: boolean }[]): StickerCounts {
+  return {
+    total: rows.length,
+    anonymous: rows.filter((row) => row.anonymous).length,
+    red: rows.filter((row) => row.vote === "red").length,
+    black: rows.filter((row) => row.vote === "black").length,
+  };
+}
+
+/**
+ * 贴纸列表的筛选：只留匿名 / 按关键词搜（片名、key、身份都能命中）。
+ *
+ * ⚠ 关键词要一起搜**片名**：人记得的是《蓦然回首》，不是 `cat:f002` ——
+ *   只按 key 搜等于要人先会背主键。
+ */
+export function filterStickerRows<T extends { filmKey: string; contributor: string; anonymous: boolean }>(
+  rows: readonly T[],
+  options: { onlyAnonymous: boolean; query: string; titleOf: (filmKey: string) => string },
+): T[] {
+  const needle = options.query.trim().toLowerCase();
+  return rows.filter((row) => {
+    if (options.onlyAnonymous && !row.anonymous) return false;
+    if (!needle) return true;
+    return [row.filmKey, options.titleOf(row.filmKey), row.contributor].some((text) =>
+      text.toLowerCase().includes(needle),
+    );
+  });
 }
