@@ -71,8 +71,9 @@ export function telemetryDailyMetric(kind: TelemetryKind): DailyMetric {
   return `telemetry:${kind}`;
 }
 
-/** 趋势图上「这一族全部子类型加起来」用的过滤集合（概览用）。 */
-export function dailyMetricFamily(family: "ticket" | "telemetry"): DailyMetric[] {
+/** 趋势图上「这一族全部子类型加起来」用的过滤集合（概览 / 趋势用）。
+ *  没有子类型的指标本身就在 `DAILY_METRICS` 里，直接用它自己的名字，不走这里。 */
+export function dailyMetricFamily(family: "vote" | "ticket" | "telemetry"): DailyMetric[] {
   return DAILY_METRICS.filter((metric) => metric.startsWith(`${family}:`));
 }
 

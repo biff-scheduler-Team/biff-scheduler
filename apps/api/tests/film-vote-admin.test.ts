@@ -13,7 +13,9 @@ import {
   replaceContributorVotes,
 } from "../src/film-vote-store";
 import app from "../src/index";
-import { createD1, createStatSchema } from "./d1-shim";
+import { kstDay, kstDayMinus } from "../src/day";
+import { replaceContributorWants } from "../src/want-store";
+import { createAdminSchema, createD1, createSessionSchema, createStatSchema } from "./d1-shim";
 
 /**
  * 红黑榜**管理端**（2026-09-23，PLAN-20260923140943）。
@@ -203,18 +205,45 @@ function environment(sqlite: DatabaseSync): Env {
   } as unknown as Env;
 }
 
-/** `app_session` 与 `migrations/0001_account.sql` 一致（另有 3 个测试文件各自持一份同形 DDL）。 */
-function createAccountSchema(sqlite: DatabaseSync): void {
-  sqlite.exec(`
-    CREATE TABLE app_session (
-      token_hash TEXT PRIMARY KEY NOT NULL,
-      subject TEXT NOT NULL,
-      payload TEXT NOT NULL,
-      expires_at INTEGER NOT NULL,
-      token_expires_at INTEGER NOT NULL,
-      refresh_until INTEGER NOT NULL DEFAULT 0
-    );
-  `);
+/** 身份服务替身：回的就是会话里的 subject —— 回别的会被 `resolveIdentity` 判成 IDENTITY_MISMATCH
+ *  （那是另一条用例专门测的事）。 */
+function mockIdentityService(sqlite: DatabaseSync): void {
+  bindingFetch.mockReset();
+  bindingFetch.mockImplementation(async () => {
+    const row = sqlite.prepare("SELECT subject FROM app_session").get() as
+      | { subject: string }
+      | undefined;
+    return Response.json({
+      userId: row?.subject ?? NON_ADMIN_SUBJECT,
+      displayName: "Ra",
+      bio: "",
+      website: "",
+      avatarUrl: null,
+      updatedAt: "2026-09-23T00:00:00.000Z",
+      version: 1,
+    });
+  });
+}
+
+/** 以某个 subject 登录后再发请求。
+ *  ⚠ 非 GET/HEAD 必须带**同源 `Origin`**：`/api/*` 那道 CSRF 闸门会把它挡成 403 `FORBIDDEN_ORIGIN`
+ *    —— 那是「跨站请求」，与「不是管理员」的 403 是两件事，所以断言时要连 `error` 一起断言。 */
+async function requestWithSession(
+  sqlite: DatabaseSync,
+  env: Env,
+  subject: string,
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  await seedSession(sqlite, subject);
+  return app.request(
+    path,
+    {
+      ...init,
+      headers: { cookie: `${SESSION_COOKIE}=${COOKIE}`, origin: ORIGIN, ...init.headers },
+    },
+    env,
+  );
 }
 
 async function seedSession(sqlite: DatabaseSync, subject: string): Promise<void> {
@@ -243,50 +272,18 @@ describe("管理端 HTTP 边界", () => {
   beforeEach(() => {
     sqlite = new DatabaseSync(":memory:");
     createStatSchema(sqlite);
-    createAccountSchema(sqlite);
+    createSessionSchema(sqlite);
     db = database(createD1(sqlite));
     env = environment(sqlite);
-    bindingFetch.mockReset();
-    // 身份服务回的就是会话里的 subject —— 回别的会被 `resolveIdentity` 判成 IDENTITY_MISMATCH(那是另一条用例的事)
-    bindingFetch.mockImplementation(async () => {
-      const row = sqlite.prepare("SELECT subject FROM app_session").get() as
-        | { subject: string }
-        | undefined;
-      return Response.json({
-        userId: row?.subject ?? NON_ADMIN_SUBJECT,
-        displayName: "Ra",
-        bio: "",
-        website: "",
-        avatarUrl: null,
-        updatedAt: "2026-09-23T00:00:00.000Z",
-        version: 1,
-      });
-    });
+    mockIdentityService(sqlite);
   });
 
   afterEach(() => {
     sqlite.close();
   });
 
-  /** 以某个 subject 登录后再发请求（身份服务回的就是这个 subject，否则会 IDENTITY_MISMATCH）。
-   *  ⚠ 非 GET/HEAD 必须带**同源 `Origin`**：`/api/*` 那道 CSRF 闸门会把它挡成 403
-   *    `FORBIDDEN_ORIGIN` —— 那是「跨站请求」，与「不是管理员」的 403 是两件事，
-   *    所以下面断言写路径时要连 `error` 一起断言，别让两种 403 互相顶替。 */
-  async function requestAs(
-    subject: string,
-    path: string,
-    init: RequestInit = {},
-  ): Promise<Response> {
-    await seedSession(sqlite, subject);
-    return app.request(
-      path,
-      {
-        ...init,
-        headers: { cookie: `${SESSION_COOKIE}=${COOKIE}`, origin: ORIGIN, ...init.headers },
-      },
-      env,
-    );
-  }
+  const requestAs = (subject: string, path: string, init: RequestInit = {}) =>
+    requestWithSession(sqlite, env, subject, path, init);
 
   it("白名单里确实有测试用的管理员 id（改名单会让下面 200 / 403 两条用例立刻红）", () => {
     expect(ADMIN_SUBJECTS).toContain(ADMIN_SUBJECT);
@@ -417,5 +414,124 @@ describe("管理端 HTTP 边界", () => {
       "cat:f001": { red: 1, black: 0 },
       "cat:f002": { red: 0, black: 1 },
     });
+  });
+});
+
+/* ---------------- 管理端读接口（whoami / overview / rows / trends） ----------------
+ * 与上面同一套 harness：门禁是**同一层**（`/api/admin/*` 两条中间件），所以这里要再钉一遍
+ * 「未登录 401 / 非白名单 403 / 白名单 200」—— 新加一条路由忘了进 `/api/admin/*` 就不会有这两道。 */
+
+const TODAY = kstDay(Date.now());
+
+describe("管理端读接口 HTTP 边界", () => {
+  let sqlite: DatabaseSync;
+  let db: ReturnType<typeof database>;
+  let env: Env;
+  const base = `${ORIGIN}/api/admin`;
+
+  beforeEach(() => {
+    sqlite = new DatabaseSync(":memory:");
+    createStatSchema(sqlite);
+    createSessionSchema(sqlite);
+    createAdminSchema(sqlite);
+    db = database(createD1(sqlite));
+    env = environment(sqlite);
+    mockIdentityService(sqlite);
+  });
+
+  afterEach(() => {
+    sqlite.close();
+  });
+
+  const requestAs = (subject: string, path: string, init: RequestInit = {}) =>
+    requestWithSession(sqlite, env, subject, path, init);
+
+  it("whoami：未登录 401 / 非白名单 403 / 管理员 200（前端据此决定渲染什么）", async () => {
+    expect((await app.request(`${base}/whoami`, {}, env)).status).toBe(401);
+    expect((await requestAs(NON_ADMIN_SUBJECT, `${base}/whoami`)).status).toBe(403);
+    const ok = await requestAs(ADMIN_SUBJECT, `${base}/whoami`);
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ subject: ADMIN_SUBJECT, admin: true });
+  });
+
+  it("★ overview：给出各模块总量与对账结论，且**不含任何片单内容**", async () => {
+    await replaceContributorWants(db, EDITION, NON_ADMIN_SUBJECT, 1, ["cat:f001"]);
+    sqlite
+      .prepare(
+        "INSERT INTO festival_document (subject, edition, revision, records, updated_at) VALUES (?, ?, 1, ?, ?)",
+      )
+      .run(ADMIN_SUBJECT, EDITION, '{"local:biff.picks.v2":"别人的片单"}', Date.now());
+
+    const response = await requestAs(ADMIN_SUBJECT, `${base}/overview?edition=${EDITION}`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      metrics: Array<{ metric: string; total: number }>;
+      audit: { ok: boolean };
+      accounts: { documents: number };
+      today: string;
+    };
+    expect(body.metrics.find((row) => row.metric === "want")?.total).toBe(1);
+    expect(body.audit.ok).toBe(true);
+    expect(body.accounts.documents).toBe(1);
+    expect(body.today).toBe(TODAY);
+    expect(JSON.stringify(body)).not.toContain("别人的片单");
+  });
+
+  it("rows：管理员能读到 contributor 原文；metric 非法 → 422", async () => {
+    await replaceContributorVotes(db, EDITION, `${ANON_PREFIX}dead`, new Map([["cat:f001", "red"]]));
+    const ok = await requestAs(ADMIN_SUBJECT, `${base}/rows?edition=${EDITION}&metric=vote`);
+    expect(ok.status).toBe(200);
+    const body = (await ok.json()) as { rows: unknown[]; nextCursor: string | null };
+    expect(body.rows).toEqual([
+      {
+        target: "cat:f001",
+        sub: "red",
+        contributor: `${ANON_PREFIX}dead`,
+        anonymous: true,
+        weight: 1,
+        hits: null,
+        updatedAt: expect.any(Number),
+      },
+    ]);
+    expect(body.nextCursor).toBeNull();
+
+    const bad = await requestAs(ADMIN_SUBJECT, `${base}/rows?edition=${EDITION}&metric=whatever`);
+    expect(bad.status).toBe(422);
+    expect(await bad.json()).toEqual({ error: "INVALID_ADMIN_QUERY" });
+  });
+
+  it("rows：非白名单 403（读路径的门禁一分都不能少）", async () => {
+    const response = await requestAs(NON_ADMIN_SUBJECT, `${base}/rows?edition=${EDITION}&metric=want`);
+    expect(response.status).toBe(403);
+  });
+
+  it("★ trends：族名展开（vote → 红黑相加）、精确指标也能查、未知指标与超范围天数 → 422", async () => {
+    await replaceContributorVotes(db, EDITION, "c1", new Map([["cat:f001", "red"]]));
+    await replaceContributorVotes(db, EDITION, "c2", new Map([["cat:f001", "black"]]));
+
+    const family = await requestAs(ADMIN_SUBJECT, `${base}/trends?edition=${EDITION}&metric=vote&days=7`);
+    expect(family.status).toBe(200);
+    const familyBody = (await family.json()) as {
+      metrics: string[];
+      points: Array<{ day: string; weight: number; hits: number }>;
+      earliestDay: string | null;
+      fromDay: string;
+    };
+    expect(familyBody.metrics).toEqual(["vote:red", "vote:black"]);
+    expect(familyBody.points).toEqual([{ day: TODAY, weight: 2, hits: 0 }]);
+    expect(familyBody.earliestDay).toBe(TODAY);
+    // days=7 → 起点是「今天往前 6 天」（含今天共 7 天）
+    expect(familyBody.fromDay).toBe(kstDayMinus(6, Date.now()));
+
+    const exact = await requestAs(ADMIN_SUBJECT, `${base}/trends?edition=${EDITION}&metric=vote%3Ared`);
+    const exactBody = (await exact.json()) as { points: Array<{ weight: number }> };
+    expect(exactBody.points).toEqual([{ day: TODAY, weight: 1, hits: 0 }]);
+
+    const bad = await requestAs(ADMIN_SUBJECT, `${base}/trends?edition=${EDITION}&metric=nope`);
+    expect(bad.status).toBe(422);
+    expect(await bad.json()).toEqual({ error: "INVALID_METRIC" });
+
+    expect((await requestAs(ADMIN_SUBJECT, `${base}/trends?edition=${EDITION}&metric=want&days=999`)).status).toBe(422);
+    expect((await app.request(`${base}/trends?edition=${EDITION}&metric=want`, {}, env)).status).toBe(401);
   });
 });
