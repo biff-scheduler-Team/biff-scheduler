@@ -17,20 +17,23 @@
  */
 
 import { DISCUSSION_CATEGORIES } from "@biff/contracts/screening";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { openAccountPanel } from "../account";
-import { onAccountChange } from "../account-sync";
+import { ApiFailure, onAccountChange } from "../account-sync";
 import {
+  deleteAdminVote,
   loadAdminContent,
   loadAdminOverview,
   loadAdminRows,
   loadAdminTrend,
+  loadAdminVoteRows,
   probeAdmin,
   type AdminContentPost,
   type AdminOverview,
   type AdminProbe,
   type AdminRowPage,
   type AdminTrend,
+  type AdminVoteRow,
 } from "../admin-api";
 import {
   ADMIN_CONTENT_KINDS,
@@ -52,18 +55,23 @@ import {
   contentDonut,
   contentKindLabel,
   fillTrendDays,
+  filmTitles,
+  filterStickerRows,
   formatBytes,
   formatTime,
   formatWeight,
   metricBars,
   metricLabel,
   reactionSummary,
+  shortContributor,
+  stickerCounts,
   trendBars,
   trendFieldLabel,
 } from "../admin-view";
 import { CountBarChart, DonutChart, RankBarChart } from "../components/charts/bars";
 import { useChartTokens } from "../chart-theme";
 import { ActionButton, TextField } from "../components/spectrum";
+import { useCatalog } from "../app/store";
 import { useQuery } from "../app/hooks";
 import "./admin.css";
 
@@ -158,6 +166,7 @@ export function AdminPage() {
           </nav>
           {tab === "overview" && <AdminOverviewView />}
           {tab === "rows" && <AdminRowsView />}
+          {tab === "stickers" && <AdminStickersView />}
           {tab === "trends" && <AdminTrendsView />}
           {tab === "content" && <AdminContentView />}
         </>
@@ -489,6 +498,187 @@ function AdminRowsView() {
           下一页
         </ActionButton>
       </div>
+    </section>
+  );
+}
+
+/* ---------------- 贴纸（红黑榜投票行的删） ---------------- */
+
+/** 贴纸视图：把「谁给哪部片贴了红/黑」列出来，并允许**精确删掉一枚**。
+ *
+ *  ★ 为什么这件事只能在这里做：用户端的撤销是「整份 board 替换」——
+ *    服务端只按本地 board 重写「我这份身份」的行。于是**别人贴的**、以及
+ *    **本机匿名 cookie 已经丢了**的匿名票永远撤不掉（就是「死贴纸」，PLAN-20260923124402）。
+ *    服务端为此开了 `DELETE /api/admin/film-vote-contributions`（精确到 contributor + filmKey），
+ *    这一屏就是那个出口的界面。
+ *
+ *  ⚠ 删除**不可撤销**，所以是两步：先点「删除」，该行变成「确认删掉这枚？」，再点确认。
+ *    一次点击就删在手机上是灾难（手指一滑就没了），而且这一页的主要读者就在现场用手机。
+ */
+function AdminStickersView() {
+  const { params, update } = useQuery();
+  const onlyAnonymous = params.get("anon") === "1";
+  const query = params.get("q") ?? "";
+  const { films } = useCatalog();
+  const titles = useMemo(() => filmTitles(films), [films]);
+
+  const [rows, setRows] = useState<AdminVoteRow[]>([]);
+  const [truncated, setTruncated] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  /** 正在等确认的那一行（key = `filmKey|contributor`） */
+  const [confirming, setConfirming] = useState("");
+  const [busy, setBusy] = useState("");
+
+  const rowKey = (row: AdminVoteRow) => `${row.filmKey}|${row.contributor}`;
+  const titleOf = useCallback((filmKey: string) => titles[filmKey] ?? filmKey, [titles]);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    loadAdminVoteRows()
+      .then((result) => {
+        setRows(result.rows);
+        setTruncated(result.truncated);
+        setError("");
+      })
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "加载失败"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => load(), [load]);
+
+  const remove = (row: AdminVoteRow) => {
+    setBusy(rowKey(row));
+    deleteAdminVote({ contributor: row.contributor, filmKey: row.filmKey })
+      .then(() => {
+        setRows((previous) => previous.filter((item) => rowKey(item) !== rowKey(row)));
+        setNotice(
+          `已删掉《${titleOf(row.filmKey)}》上的一枚${row.vote === "red" ? "红" : "黑"}贴纸。`,
+        );
+      })
+      .catch((cause: unknown) => {
+        // ⚠ 「本来就没有这一行」(404) 与「参数写错 / 网络坏了」是两件事，必须分开说：
+        //   前者刷新一下就好，后者要去查。服务端刻意不静默成功，前端也不静默失败。
+        const detail =
+          cause instanceof ApiFailure && cause.status === 404
+            ? "服务端说本来就没有这一行（可能刚被删过）—— 刷新看看。"
+            : cause instanceof Error
+              ? cause.message
+              : "未知错误";
+        setNotice(`没删成：${detail}`);
+      })
+      .finally(() => {
+        setBusy("");
+        setConfirming("");
+      });
+  };
+
+  const visible = filterStickerRows(rows, { onlyAnonymous, query, titleOf });
+  const counts = stickerCounts(rows);
+
+  return (
+    <section className="admin-panel">
+      <h2 className="admin-panel-title">贴纸（红黑榜投票行）</h2>
+      <p className="admin-note text-12">
+        用户端撤不掉**别人贴的**贴纸，也撤不掉**本机 cookie 已丢**的匿名贴纸（那是「死贴纸」）——
+        这一屏是那种贴纸唯一的出口。删除按「谁贴的 + 哪部片」精确定位，**不可撤销**。
+      </p>
+      <div className="admin-row-tools">
+        <button
+          type="button"
+          className="admin-tab"
+          aria-current={!onlyAnonymous ? "page" : undefined}
+          onClick={() => update({ anon: null })}
+        >
+          全部（{counts.total}）
+        </button>
+        <button
+          type="button"
+          className="admin-tab"
+          aria-current={onlyAnonymous ? "page" : undefined}
+          onClick={() => update({ anon: "1" })}
+        >
+          只看匿名（{counts.anonymous}）
+        </button>
+        <span className="admin-note text-12">
+          红 {counts.red} / 黑 {counts.black}
+        </span>
+      </div>
+      <div className="admin-row-tools">
+        <TextField
+          aria-label="搜索片名 / 场次键 / 身份"
+          placeholder="搜片名、cat:f001 或身份"
+          value={query}
+          onChange={(value) => update({ q: value || null })}
+        />
+        <ActionButton onPress={load}>刷新</ActionButton>
+      </div>
+
+      {error && <p className="admin-note admin-error">加载失败：{error}</p>}
+      {notice && <p className="admin-note">{notice}</p>}
+      {truncated && (
+        <p className="admin-note admin-error">
+          行数超过服务端返回上限，这里不是全部 —— 先删掉眼前这些再刷新。
+        </p>
+      )}
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>影片</th>
+              <th>贴纸</th>
+              <th>谁贴的</th>
+              <th>时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((row) => {
+              const key = rowKey(row);
+              return (
+                <tr key={key}>
+                  <td>
+                    {titleOf(row.filmKey)}
+                    <br />
+                    <span className="admin-mono text-12">{row.filmKey}</span>
+                  </td>
+                  <td>
+                    <span className={row.vote === "red" ? "admin-chip-red" : "admin-chip-black"}>
+                      {row.vote === "red" ? "红" : "黑"}
+                    </span>
+                  </td>
+                  <td className="admin-mono text-12" title={row.contributor}>
+                    {shortContributor(row)}
+                  </td>
+                  <td>{formatTime(row.updatedAt)}</td>
+                  <td>
+                    {confirming === key ? (
+                      <>
+                        <ActionButton
+                          isDisabled={busy === key}
+                          onPress={() => remove(row)}
+                        >
+                          确认删掉这枚
+                        </ActionButton>
+                        <ActionButton onPress={() => setConfirming("")}>取消</ActionButton>
+                      </>
+                    ) : (
+                      <ActionButton onPress={() => setConfirming(key)}>删除</ActionButton>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="admin-note text-12">
+        {loading
+          ? "正在加载…"
+          : `当前列出 ${visible.length} 枚（共 ${counts.total} 枚${onlyAnonymous ? "，已筛出匿名" : ""}）。`}
+      </p>
     </section>
   );
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ADMIN_TABS,
   adminContentKindOf,
   adminRowsMetricOf,
   adminTabLabel,
@@ -14,6 +15,8 @@ import {
   contentDonut,
   contentKindLabel,
   fillTrendDays,
+  filmTitles,
+  filterStickerRows,
   metricBars,
   formatBytes,
   formatTime,
@@ -21,7 +24,9 @@ import {
   metricLabel,
   nextDay,
   reactionSummary,
+  shortContributor,
   shortDay,
+  stickerCounts,
   trendBars,
   trendFieldLabel,
 } from "../src/admin-view";
@@ -286,7 +291,7 @@ describe("图表数据（概览 / 内容）", () => {
     expect(authorBars([{ displayName: "", subject: "" }] as never)).toEqual([]);
   });
 
-  it("categoryDonut：用契约里的中文标签、按条数降序、未知分类原样回", () => {
+  it("categoryDonut：标签与排序稳定（同分按名字，不随刷新换序）", () => {
     const posts = [
       { category: "gift" },
       { category: "other" },
@@ -300,5 +305,69 @@ describe("图表数据（概览 / 内容）", () => {
       { name: "brand-new", value: 1 },
       { name: "其他", value: 1 },
     ]);
+  });
+});
+
+describe("贴纸视图（删红黑榜投票行）", () => {
+  const rows = [
+    {
+      filmKey: "cat:f001",
+      vote: "red",
+      contributor: "user_01M2EVF3GTTJ6JC9NTM8NXYNHY",
+      anonymous: false,
+      updatedAt: 1,
+    },
+    {
+      filmKey: "cat:f002",
+      vote: "black",
+      contributor: "anon:0123456789abcdef0123456789abcdef",
+      anonymous: true,
+      updatedAt: 2,
+    },
+  ];
+  const titleOf = (filmKey: string) =>
+    ({ "cat:f001": "彼此的日夜", "cat:f002": "蓦然回首" })[filmKey] ?? filmKey;
+
+  it("标签在名单里（tab 名称与顺序是 E2E 断言的字面量）", () => {
+    expect(ADMIN_TABS).toEqual(["overview", "rows", "stickers", "trends", "content"]);
+    expect(adminTabLabel("stickers")).toBe("贴纸");
+    expect(adminTabOf("stickers")).toBe("stickers");
+  });
+
+  it("★ shortContributor：匿名的只留前 8 位，账号 subject 原样（要能复制去对照）", () => {
+    expect(shortContributor(rows[1])).toBe("匿名 01234567…");
+    expect(shortContributor(rows[0])).toBe("user_01M2EVF3GTTJ6JC9NTM8NXYNHY");
+    // ⚠ 用服务端给的 anonymous 布尔，而不是前端再解析一遍前缀：前缀是第二份口径
+    expect(shortContributor({ contributor: "anon:single", anonymous: false })).toBe("anon:single");
+  });
+
+  it("filmTitles：查得到的给片名，查不到的**原样回 key**（不显示空白）", () => {
+    expect(filmTitles([{ key: "cat:f001", zh: "彼此的日夜" }])).toEqual({ "cat:f001": "彼此的日夜" });
+    // 没有中文名的片：用英文名兜底（`zh` 在 `buildFilms` 里已经是 en 兜底过的）
+    expect(filmTitles([{ key: "cat:x", zh: "" }])).toEqual({ "cat:x": "cat:x" });
+    expect(filmTitles(undefined)).toEqual({});
+  });
+
+  it("stickerCounts 数得清总量 / 匿名 / 红黑", () => {
+    const counts = stickerCounts(rows);
+    expect(counts.total).toBe(2);
+    expect(counts.anonymous).toBe(1);
+    expect(counts.red).toBe(1);
+    expect(counts.black).toBe(1);
+  });
+
+  it("★ filterStickerRows：能按**片名**搜（人记得的是《蓦然回首》，不是 cat:f002）", () => {
+    expect(filterStickerRows(rows, { onlyAnonymous: false, query: "蓦然", titleOf })).toEqual([rows[1]]);
+    // key 与身份也能命中
+    expect(filterStickerRows(rows, { onlyAnonymous: false, query: "cat:f001", titleOf })).toEqual([
+      rows[0],
+    ]);
+    expect(filterStickerRows(rows, { onlyAnonymous: false, query: "01M2EVF3", titleOf })).toEqual([
+      rows[0],
+    ]);
+    // 只看匿名 = 「死贴纸」那条最常用的视角
+    expect(filterStickerRows(rows, { onlyAnonymous: true, query: "", titleOf })).toEqual([rows[1]]);
+    // 空关键词不做多余过滤
+    expect(filterStickerRows(rows, { onlyAnonymous: false, query: "  ", titleOf })).toEqual(rows);
   });
 });

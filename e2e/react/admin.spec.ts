@@ -13,7 +13,8 @@
 //        ⑥ 全页不出现 NaN / Infinity / undefined。
 
 import { test, expect, type Page } from "@playwright/test";
-import { ready } from "./helpers";
+import { buildFilms } from "../../apps/web/src/app/model";
+import { catalog, ready } from "./helpers";
 
 const EDITION = "biff-2026";
 /** 服务端日界「今天」（固定值：断言里要用它推 fromDay，不能跟着真实时间漂）。 */
@@ -61,9 +62,32 @@ const FEEDBACK = {
   nextCursor: null,
 };
 
+/** 两枚贴纸：一枚账号贴的（红）、一枚匿名贴的（黑）—— 后一种就是「死贴纸」那个现场。
+ *  ⚠ 期望的片名**从真实目录算**（与页面同源），不写死字符串：目录换版时这条断言跟着走，
+ *    而写死「彼此的日夜」会在数据更新那天变成假红。 */
+const VOTE_ROWS = [
+  {
+    filmKey: "cat:f001",
+    vote: "red",
+    contributor: "user_01M2EVF3GTTJ6JC9NTM8NXYNHY",
+    anonymous: false,
+    updatedAt: 1789527388822,
+  },
+  {
+    filmKey: "cat:f002",
+    vote: "black",
+    contributor: "anon:0123456789abcdef0123456789abcdef",
+    anonymous: true,
+    updatedAt: 1789527399000,
+  },
+];
+
+const filmTitleOf = (key: string) => buildFilms(catalog, new Map()).find((f) => f.key === key)?.zh ?? key;
+
 /** 管理员的四份数据。**趋势刻意只喂 1 天** —— 页面若照原样画，点数就会是 1（见覆盖点 ④）。
- *  `emptyLedger`：模拟「日账本一行都没有」（部署当天就是这状态）—— 用来验「空态不画空图」。 */
-async function stubAdmin(page: Page, options: { emptyLedger?: boolean } = {}) {
+ *  `emptyLedger`：模拟「日账本一行都没有」（部署当天就是这状态）—— 用来验「空态不画空图」。
+ *  `deleteFails`：模拟服务端 404（那一行已经不在了）—— 用来验「不静默成功」。 */
+async function stubAdmin(page: Page, options: { emptyLedger?: boolean; deleteFails?: boolean } = {}) {
   await page.route("**/api/admin/whoami", (route) => route.fulfill({ json: { ok: true } }));
   await page.route("**/api/admin/overview*", (route) =>
     route.fulfill({
@@ -114,6 +138,15 @@ async function stubAdmin(page: Page, options: { emptyLedger?: boolean } = {}) {
         points: options.emptyLedger ? [] : [{ day: TODAY, weight: 2, hits: 0 }],
       },
     });
+  });
+  // ⚠ 同一个路径走 GET（列）与 DELETE（删），必须按 method 分流 —— 否则删除会被当成一次列表请求
+  await page.route("**/api/admin/film-vote-contributions*", (route) => {
+    if (route.request().method() === "DELETE") {
+      return options.deleteFails
+        ? route.fulfill({ status: 404, json: { error: "NOT_FOUND" } })
+        : route.fulfill({ json: { ok: true, removed: 1 } });
+    }
+    return route.fulfill({ json: { edition: EDITION, truncated: false, rows: VOTE_ROWS } });
   });
   await page.route("**/api/discussions*", (route) => route.fulfill({ json: DISCUSSIONS }));
   await page.route("**/api/feedback*", (route) => route.fulfill({ json: FEEDBACK }));
@@ -173,16 +206,17 @@ test("暗门：主导航里没有入口，路径能直开，且走整页布局",
 
 /* ---------------- 四个视图 ---------------- */
 
-test("四个视图：标签与顺序固定，且 ?tab= 可直达（URL 可收藏可分享）", async ({ page }) => {
+test("五个视图：标签与顺序固定，且 ?tab= 可直达（URL 可收藏可分享）", async ({ page }) => {
   await stubAdmin(page);
   await ready(page, "/admin");
   const tabs = page.getByRole("navigation", { name: "管理端视图" }).getByRole("button");
   // ⚠ 必须先等标签出来再读文本：`allTextContents()` **不会**自动等待，
   //   而 `ready()` 只等主导航（权限探测还在飞）—— 高并发下会读到空数组（实测 mobile-webkit 踩到）
-  await expect(tabs).toHaveCount(4);
+  await expect(tabs).toHaveCount(5);
   expect((await tabs.allTextContents()).map((text) => text.trim())).toEqual([
     "概览",
     "明细",
+    "贴纸",
     "趋势",
     "内容",
   ]);
@@ -267,6 +301,75 @@ test("★ 内容视图：复用**公开**接口（请求真的打到 /api/discus
   await expect(table.locator("thead")).not.toContainText("场次");
 });
 
+/* ---------------- 贴纸（删红黑榜投票行） ---------------- */
+
+test("贴纸：列出全部；片名从目录映射出来；匿名的只露前 8 位，账号原样", async ({ page }) => {
+  await stubAdmin(page);
+  await ready(page, "/admin?tab=stickers");
+  await expect(page.getByRole("heading", { name: "贴纸（红黑榜投票行）" })).toBeVisible();
+  const table = page.locator(".admin-table");
+  await expect(table.locator("tbody tr")).toHaveCount(2);
+  // 片名（不是只给 `cat:f001`）—— 人记得的是片名，不是主键
+  await expect(table.locator("tbody")).toContainText(filmTitleOf("cat:f001"));
+  await expect(table.locator("tbody")).toContainText("匿名 01234567…");
+  // 账号 subject 原样（排查时要能整串复制去账号系统对照）
+  await expect(table.locator("tbody")).toContainText("user_01M2EVF3GTTJ6JC9NTM8NXYNHY");
+});
+
+test("★ 删除是两步：先「删除」再「确认删掉这枚」；请求带对 contributor / filmKey / edition", async ({
+  page,
+}) => {
+  const deletes: string[] = [];
+  await stubAdmin(page);
+  page.on("request", (request) => {
+    if (request.method() === "DELETE") deletes.push(new URL(request.url()).search);
+  });
+  await ready(page, "/admin?tab=stickers");
+  const row = page.locator(".admin-table tbody tr").nth(1);
+  await expect(row).toContainText("匿名");
+
+  await row.getByRole("button", { name: "删除" }).click();
+  // ⚠ 一次点击**不**删：这一页的主要读者在现场用手机，手指一滑就没了
+  expect(deletes).toEqual([]);
+  await row.getByRole("button", { name: "确认删掉这枚" }).click();
+
+  await expect(page.getByText(/已删掉《/)).toBeVisible();
+  await expect(page.locator(".admin-table tbody tr")).toHaveCount(1);
+  const search = new URLSearchParams(deletes[0]);
+  expect(search.get("contributor")).toBe("anon:0123456789abcdef0123456789abcdef");
+  expect(search.get("filmKey")).toBe("cat:f002");
+  // 少了它服务端按默认届次删 —— 会删错届次的同一行
+  expect(search.get("edition")).toBe(EDITION);
+});
+
+test("★ 服务端说「本来就没有这一行」时不静默成功：行留着，并明说没删成", async ({ page }) => {
+  await stubAdmin(page, { deleteFails: true });
+  await ready(page, "/admin?tab=stickers");
+  const row = page.locator(".admin-table tbody tr").first();
+  await row.getByRole("button", { name: "删除" }).click();
+  await row.getByRole("button", { name: "确认删掉这枚" }).click();
+  await expect(page.getByText(/没删成/)).toBeVisible();
+  await expect(page.getByText(/本来就没有这一行/)).toBeVisible();
+  // ★ 关键：**不能**乐观地把行抹掉 —— 否则运维会以为删成功了
+  await expect(page.locator(".admin-table tbody tr")).toHaveCount(2);
+});
+
+test("贴纸：只看匿名会收窄；按片名搜也命中（不必先会背 cat:f001）", async ({ page }) => {
+  await stubAdmin(page);
+  await ready(page, "/admin?tab=stickers");
+  await expect(page.locator(".admin-table tbody tr")).toHaveCount(2);
+
+  await page.getByRole("button", { name: /^只看匿名/ }).click();
+  await expect(page.locator(".admin-table tbody tr")).toHaveCount(1);
+  await expect(page.locator(".admin-table tbody")).toContainText("匿名");
+
+  await page.getByRole("button", { name: /^全部/ }).click();
+  await expect(page.locator(".admin-table tbody tr")).toHaveCount(2);
+  await page.getByRole("textbox", { name: /搜索片名/ }).fill(filmTitleOf("cat:f001"));
+  await expect(page.locator(".admin-table tbody tr")).toHaveCount(1);
+  await expect(page.locator(".admin-table tbody")).toContainText(filmTitleOf("cat:f001"));
+});
+
 /* ---------------- 图表（参考数据分析模块） ---------------- */
 
 test("概览：规模图与内容构成都在，数字与下面那张表同口径", async ({ page }) => {
@@ -331,9 +434,9 @@ test("★ 图表外壳样式真的加载了（缺了它，图的 ⓘ 会失效�
 
 /* ---------------- 兜底 ---------------- */
 
-test("四个视图轮流打开，全页不出现 NaN / Infinity / undefined", async ({ page }) => {
+test("五个视图轮流打开，全页不出现 NaN / Infinity / undefined", async ({ page }) => {
   await stubAdmin(page);
-  for (const tab of ["", "?tab=rows", "?tab=trends", "?tab=content"]) {
+  for (const tab of ["", "?tab=rows", "?tab=stickers", "?tab=trends", "?tab=content"]) {
     await ready(page, `/admin${tab}`);
     const text = await page.evaluate(() => document.body.innerText);
     expect(text, `tab=${tab || "overview"} 出现了 NaN`).not.toContain("NaN");

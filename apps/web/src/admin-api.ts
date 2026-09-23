@@ -141,6 +141,48 @@ export async function loadAdminTrend(options: {
   return (await response.json()) as AdminTrend;
 }
 
+/* ---------------- 贴纸（红黑榜投票行）的读 / 删 ----------------
+ * ⚠ 这是全站**唯一**会回 `contributor` 原文的接口：门禁在服务端的两层（`/api/admin/*` 的
+ *   `requireIdentity` + 名单），前端不抄名单（见 `probeAdmin` 的说明）。
+ * ⚠ 删不掉 ≠ 参数写错：服务端在未命中时回 **404 `NOT_FOUND`**（刻意不静默成功），
+ *   前端必须把这两种情况分开显示（见 `AdminStickersView`）。 */
+
+export interface AdminVoteRow {
+  filmKey: string;
+  vote: "red" | "black";
+  contributor: string;
+  anonymous: boolean;
+  updatedAt: number;
+}
+
+export async function loadAdminVoteRows(): Promise<{ rows: AdminVoteRow[]; truncated: boolean }> {
+  const response = await api(`/api/admin/film-vote-contributions?${q({ edition: EDITION })}`);
+  const body = (await response.json()) as { rows?: AdminVoteRow[]; truncated?: boolean };
+  return { rows: body.rows ?? [], truncated: body.truncated === true };
+}
+
+/**
+ * 删掉一枚贴纸（**精确到「谁贴的 + 哪部片」**）。
+ *
+ * ⚠ 用户与手机版的手势都做不到这件事：贴纸的撤销是「整份 board 替换」（本地 board 里没有那枚
+ *   就减回去），所以服务端上别人贴的、或本机 cookie 已经丢了的匿名票**永远撤不掉** ——
+ *   这个接口就是那种「死贴纸」的唯一出口（PLAN-20260923124402 那条欠账的收尾）。
+ * ⚠ `edition` 必须带上：少了它服务端按默认届次删，会删错届次的同一行。
+ */
+export async function deleteAdminVote(row: {
+  contributor: string;
+  filmKey: string;
+}): Promise<void> {
+  await api(
+    `/api/admin/film-vote-contributions?${q({
+      edition: EDITION,
+      contributor: row.contributor,
+      filmKey: row.filmKey,
+    })}`,
+    { method: "DELETE" },
+  );
+}
+
 /* ---------------- 内容视图（**复用公开接口**，不另造管理端副本） ----------------
  * 这两个接口本来就带作者、反应、游标分页，而且**已经**回 `subject` 与 `displayName`（公开内容）。
  * 再造一份「管理端版本」= 同一口径两份实现，且从此多一处要与公开口径同步的地方。
