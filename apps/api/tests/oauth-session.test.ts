@@ -13,6 +13,9 @@ import {
   sessionFor,
 } from "../src/oauth";
 import * as oauthModule from "../src/oauth";
+// D1 垫片已抽成共享文件（2026-09-23，PLAN-20260923111748）：新增的计数聚合测试要读往返计数，
+// 两份垫片迟早对不上，故只留一份。
+import { createD1 } from "./d1-shim";
 
 // `sessionFor()` 是账号体系里唯一会**在请求路径上改会话状态**的函数:access token 快到期时
 // 它会拿 D1 租约、调上游换 token、再把新 token 写回。这条链路上任何一步处理错,
@@ -67,51 +70,6 @@ function createSchema(sqlite: DatabaseSync) {
       refresh_until INTEGER NOT NULL DEFAULT 0
     );
   `);
-}
-
-/**
- * 最小 D1 接口垫片。drizzle 的 d1 驱动只用到
- * `prepare().bind().run()/all()/raw()` 与 `batch()`(见 `drizzle-orm/d1/session.js`),
- * 因此把 `node:sqlite` 包成这三个方法即可跑真 SQL。
- */
-function createD1(sqlite: DatabaseSync): D1Database {
-  const meta = (changes: number) => ({
-    changes,
-    last_row_id: 0,
-    duration: 0,
-    rows_read: 0,
-    rows_written: changes,
-    size_after: 0,
-  });
-  const statement = (query: string, params: unknown[]) => ({
-    bind: (...next: unknown[]) => statement(query, next),
-    run: async () => {
-      const info = sqlite.prepare(query).run(...(params as never[]));
-      return { success: true, results: [], meta: meta(Number(info.changes)) };
-    },
-    all: async () => ({
-      success: true,
-      results: sqlite.prepare(query).all(...(params as never[])),
-      meta: meta(0),
-    }),
-    // drizzle 的 `.get()` 走 `values()` → `raw()`,要的是「按列顺序的数组的数组」。
-    raw: async () =>
-      (sqlite.prepare(query).all(...(params as never[])) as Record<string, unknown>[]).map((row) =>
-        Object.values(row),
-      ),
-  });
-  return {
-    prepare: (query: string) => statement(query, []),
-    batch: async (statements: { run(): Promise<unknown> }[]) => {
-      const results = [];
-      for (const statement of statements) results.push(await statement.run());
-      return results;
-    },
-    exec: async (query: string) => {
-      sqlite.exec(query);
-      return { count: 0, duration: 0 };
-    },
-  } as unknown as D1Database;
 }
 
 function environment(sqlite: DatabaseSync): Env {
