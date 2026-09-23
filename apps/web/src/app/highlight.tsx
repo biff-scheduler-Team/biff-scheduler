@@ -6,8 +6,13 @@
  *   而甘特图每个 slot、场次卡每张卡在 render 里都要跑 `filmInfoOf` / `doubaoScoreOf` /
  *   `cardStateOf` / `screeningMembers` —— 于是「鼠标划过网格」变成连续多次全届级重计算。
  *   改成外部 store 后：hover 只写这里，**画布在订阅回调里直接改 DOM**（`data-highlighted`，
- *   与 `RedBlackPage::setHover` 同一做法），React 一次都不重渲染；
- *   需要「当前高亮哪一场」的 React 组件用 `useHighlightedCode()` 订阅，只重渲染自己那棵小树。
+ *   与 `RedBlackPage::setHover` 同一做法），画布侧 React 一次都不重渲染；
+ *   需要「当前高亮哪一场」的 React 组件（`ScreeningCard`）用 `useHighlightedCode()` 订阅，
+ *   只有**受影响的卡**会重渲染。
+ *   ⚠ **实测口径**（2026-09-23 量化，见 `PLAN-20260923113659` 修订 2；115 张槽位卡的排片表，逐次 hover）：
+ *     改动前「每次提交重渲染 ~1500–2100 个组件、单次提交最长 53–169ms」→
+ *     改动后「~55–69 个组件、0.1–3.6ms」。是**收敛到受影响的卡**，不是「零重渲染」——
+ *     别把这句读成「hover 完全不再触发 React 提交」。
  *
  * ⚠ 「哪几场要一起亮」仍是**同一处口径**：`highlightCodesFor(cat, conflicts, code)`
  *   （纯函数，可单测）—— 别在看板/行程里各写一遍冲突组展开。
