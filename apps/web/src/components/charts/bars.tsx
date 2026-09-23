@@ -213,6 +213,9 @@ export function CountBarChart({
   rotate?: boolean;
   height?: number;
 }) {
+  /* eslint-disable react-hooks/exhaustive-deps -- 依赖里放的是数据「内容签名」而不是数组引用：
+     图表数据由面板在渲染期派生（引用不稳定），内容一致时不该重画；理由见 `dataKey` 的说明。 */
+  const dataSignature = dataKey(data);
   const option = useMemo<EChartsCoreOption>(() => ({
     animation: false,
     grid: { left: 4, right: 8, top: 16, bottom: 4, containLabel: true },
@@ -248,7 +251,8 @@ export function CountBarChart({
         itemStyle: { color: color ?? tokens.brand, borderRadius: [4, 4, 0, 0] },
       },
     ],
-  }), [tokens, dataKey(data), color, valueName, rotate]);
+  }), [tokens, dataSignature, color, valueName, rotate]);
+  /* eslint-enable react-hooks/exhaustive-deps */
   return (
     <Canvas
       chart={chart}
@@ -286,6 +290,8 @@ export function RankBarChart({
   // 类目在 ECharts 里是**自下而上**排的 —— 想让人第一眼看到最大的那根，就得把数组反过来。
   const ordered = [...data].reverse();
   const height = Math.max(120, data.length * rowHeight + 24);
+  /* eslint-disable react-hooks/exhaustive-deps -- 依赖用数据内容签名，理由同 CountBarChart */
+  const dataSignature = dataKey(data);
   const option = useMemo<EChartsCoreOption>(() => ({
     animation: false,
     grid: { left: 4, right: 28, top: 8, bottom: 4, containLabel: true },
@@ -313,7 +319,8 @@ export function RankBarChart({
         itemStyle: { color: color ?? tokens.brand, borderRadius: [0, 4, 4, 0] },
       },
     ],
-  }), [tokens, dataKey(data), color, valueName, rowHeight]);
+  }), [tokens, dataSignature, color, valueName, rowHeight]);
+  /* eslint-enable react-hooks/exhaustive-deps */
   return (
     <Canvas
       chart={chart}
@@ -363,6 +370,9 @@ export function StackedBarChart({
     tooltip: { show: true },
   };
   const value = { type: "value" as const, minInterval: 1, ...axisCommon(tokens), splitLine: splitLine(tokens) };
+  /* eslint-disable react-hooks/exhaustive-deps -- 依赖用数据 / 系列的内容签名，理由同 CountBarChart */
+  const dataSignature = dataKey(data);
+  const seriesSignature = dataKey(series);
   const option = useMemo<EChartsCoreOption>(() => ({
     animation: false,
     grid: { left: 4, right: horizontal ? 16 : 8, top: 16, bottom: 4, containLabel: true },
@@ -393,7 +403,8 @@ export function StackedBarChart({
             : 0,
       },
     })),
-  }), [tokens, dataKey(data), dataKey(series), horizontal]);
+  }), [tokens, dataSignature, seriesSignature, horizontal]);
+  /* eslint-enable react-hooks/exhaustive-deps */
   return (
     <Canvas
       chart={chart}
@@ -433,6 +444,8 @@ export function DonutChart({
 }) {
   const total = data.reduce((sum, row) => sum + row.value, 0);
   const centerText = centerLabel ?? (total > 0 ? String(total) : "");
+  /* eslint-disable react-hooks/exhaustive-deps -- 依赖用数据内容签名，理由同 CountBarChart */
+  const dataSignature = dataKey(data);
   const option = useMemo<EChartsCoreOption>(() => ({
     animation: false,
     tooltip: sharedTooltip(tokens, {
@@ -481,7 +494,8 @@ export function DonutChart({
         })),
       },
     ],
-  }), [tokens, dataKey(data), centerLabel]);
+  }), [tokens, dataSignature, centerLabel]);
+  /* eslint-enable react-hooks/exhaustive-deps */
   return (
     <Canvas
       chart={chart}
