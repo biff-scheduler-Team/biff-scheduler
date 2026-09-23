@@ -8,7 +8,14 @@ import { DEFAULT_EDITION, EDITIONS, isEdition } from "@biff/contracts/edition";
 import { LOOKUP_RATE_LIMIT, PING_RATE_LIMIT, createRateLimiter } from "./rate-limit";
 import { readWantCounts, replaceContributorWants } from "./want-store";
 import { MAX_VOTES_PER_PING, normalizeVotes } from "./film-vote-stats";
-import { readVoteCounts, replaceContributorVotes } from "./film-vote-store";
+import {
+  ANON_PREFIX,
+  auditVoteRows,
+  MAX_VOTE_ROWS,
+  readVoteCounts,
+  readVoteRows,
+  replaceContributorVotes,
+} from "./film-vote-store";
 import {
   normalizeFeedbackBody,
   writeAuthError,
@@ -604,6 +611,32 @@ app.post("/api/stats/film-votes-ping", limited(pingLimiter), async (c) => {
   const normalized = normalizeVotes(votes);
   await replaceContributorVotes(db, edition, contributor, normalized);
   return c.json({ ok: true, count: normalized.size });
+});
+
+/* ---------------- 红黑榜投票行自查(2026-09-23,PLAN-20260923124402) ----------------
+ * 由来:线上贴纸只能看到聚合数,**查不出「这枚是不是我贴的」** —— 而登录态丢失后同一人会以
+ * 「subject + 匿名」两个身份各占一行(且匿名行在 cookie 丢失后永远撤不掉,见 PLAN)。
+ * 本接口给「当事人自查」开一条只读路径,挂 `/api/account/*` 下 = 继承 `requireIdentity`
+ * (未登录 401),不新造鉴权。
+ * ⚠ **不回 contributor 原文**:公开统计「只回聚合、不回名单」这条口径不因为自查而放宽,
+ *   见 `film-vote-store.ts::VoteAuditRow`。它回答的是「哪些行是我的 / 是不是本机贴的」。 */
+app.get("/api/account/film-vote-contributions", async (c) => {
+  const edition = editionParam(c.req.query("edition"));
+  if (!edition) return c.json({ error: "INVALID_EDITION" }, 422);
+  const config = configuration(c.env);
+  const cookie = getCookie(c, wantAnonCookie(config));
+  const rows = await readVoteRows(database(c.env.DB), edition);
+  return c.json({
+    edition,
+    // ⚠ 截断必须**显式说明**:这是给人下结论用的接口,静默少给几行会让人把「没看到」读成「不存在」
+    truncated: rows.length >= MAX_VOTE_ROWS,
+    ...auditVoteRows(rows, {
+      subject: c.get("session").row.subject,
+      // ⚠ 只用**本次请求带来的**匿名 cookie 算 hash —— 让接口收任意 hash 去试探别人的行,
+      //   才是真正把「谁投了什么」变成可枚举的东西
+      anonContributor: cookie ? `${ANON_PREFIX}${await hash(cookie)}` : null,
+    }),
+  });
 });
 
 /* ---------------- 同场观影人数(2026-09-14,PLAN-20260914164050) ----------------

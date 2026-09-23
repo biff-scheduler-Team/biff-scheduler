@@ -7,7 +7,7 @@
  *   此前是「读出来在 JS 里加减再写回」，两人同时投同一部片会丢票且永不自愈。
  */
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { database } from "./db";
 import { filmVoteContribution, filmVoteStat } from "./db/schema";
 import { diffVotes, formatVoteCounts, isFilmVote, type FilmVote } from "./film-vote-stats";
@@ -141,6 +141,100 @@ export async function replaceContributorVotes(
 /** 撤掉这个贡献者的全部投票（登出、或匿名身份升级为登录身份时调用）。 */
 export async function clearContributorVotes(db: Db, edition: string, contributor: string): Promise<void> {
   await replaceContributorVotes(db, edition, contributor, new Map());
+}
+
+/** 匿名贡献者的标识前缀(`anon:<SHA-256(匿名 cookie)>`)。
+ *  ⚠ 新代码一律用它拼 / 判身份:自查接口靠它区分「我这台机器」与「登录身份」,
+ *    拼错或忘记前缀会**静默判错归属**(而不是报错)。
+ *  ⚠ 已知欠账:5 个 ping 处理器里仍是内联的 `anon:${...}` 字符串 —— 本轮**没顺手改**,
+ *    因为那会把一次排查接口的改动变成跨 5 条上报路径的重构(§4「一次提交只做一件事」)。 */
+export const ANON_PREFIX = "anon:";
+
+/** 自查读一次最多回多少行 —— 线上目前是个位数票,500 是「远大于真实值、又不至于拖垮 isolate」的上限。 */
+export const MAX_VOTE_ROWS = 500;
+
+/** 贡献行原样(含 `contributor`)。**只在服务端内部流转**,不得直接进响应体。 */
+export interface VoteRow {
+  film_key: string;
+  contributor: string;
+  vote: string;
+  updated_at: number;
+}
+
+/** 读该 edition 的贡献行(按更新时间降序,上限 `MAX_VOTE_ROWS`)。
+ *  ⚠ 这是唯一一处把「谁投的」读出库的地方,只服务自查接口(PLAN-20260923124402);
+ *    公开读路径一律走 `readVoteCounts`(聚合),不要把行数据接到榜单 / 统计链路上。 */
+export async function readVoteRows(
+  db: Db,
+  edition: string,
+  limit = MAX_VOTE_ROWS,
+): Promise<VoteRow[]> {
+  return db
+    .select({
+      film_key: filmVoteContribution.film_key,
+      contributor: filmVoteContribution.contributor,
+      vote: filmVoteContribution.vote,
+      updated_at: filmVoteContribution.updated_at,
+    })
+    .from(filmVoteContribution)
+    .where(eq(filmVoteContribution.edition, edition))
+    .orderBy(desc(filmVoteContribution.updated_at))
+    .limit(limit)
+    .all();
+}
+
+/** 自查接口回给浏览器的一行。⚠ **刻意不含 `contributor`** —— subject 是账号标识,
+ *  回出去就是「谁投了什么」的名单;匿名 hash 虽不可反查,但它能当跨表 / 跨接口比对的抓手,
+ *  而本接口要回答的只是「这行是不是我的」。所以两者都不回,只回一个 `anonymous` 布尔。 */
+export interface VoteAuditRow {
+  // ⚠ 字段名走 **camelCase**:库里的行是 snake_case(`VoteRow`),但**对外的 DTO 一律 camelCase**
+  //   —— 与 `/api/account/sync`、讨论区 / 反馈那几套一致(`createdAt` / `updatedAt` / `postId`)。
+  filmKey: string;
+  vote: FilmVote;
+  updatedAt: number;
+  /** 这一行是不是匿名身份投的 */
+  anonymous: boolean;
+}
+
+export interface VoteAudit {
+  /** 我(登录 subject)名下的行 */
+  mine: VoteAuditRow[];
+  /** 其余所有行 —— 只区分「是不是匿名的」,不暴露是谁 */
+  others: VoteAuditRow[];
+  /** 本浏览器这一份匿名身份的情况 */
+  thisBrowser: {
+    hasAnonCookie: boolean;
+    /** 本浏览器匿名身份命中的行(唯一能证明「那枚匿名票是这台机器贴的」的判据) */
+    matched: VoteAuditRow[];
+  };
+}
+
+/** 贡献行 → 「按访问者分档」的投影。纯函数,便于单测(见 `tests/film-vote-audit.test.ts`)。 */
+export function auditVoteRows(
+  rows: readonly VoteRow[],
+  viewer: { subject: string; anonContributor: string | null },
+): VoteAudit {
+  const mine: VoteAuditRow[] = [];
+  const others: VoteAuditRow[] = [];
+  const matched: VoteAuditRow[] = [];
+  for (const row of rows) {
+    // 被人工改过的坏行:白名单之外一律不猜、不展示(与 `replaceContributorVotes` 同一道收口)
+    if (!isFilmVote(row.vote)) continue;
+    const item: VoteAuditRow = {
+      filmKey: row.film_key,
+      vote: row.vote,
+      updatedAt: row.updated_at,
+      anonymous: row.contributor.startsWith(ANON_PREFIX),
+    };
+    if (row.contributor === viewer.subject) mine.push(item);
+    else others.push(item);
+    if (viewer.anonContributor && row.contributor === viewer.anonContributor) matched.push(item);
+  }
+  return {
+    mine,
+    others,
+    thisBrowser: { hasAnonCookie: Boolean(viewer.anonContributor), matched },
+  };
 }
 
 /** 榜单读取：一次拿到这个 edition 下所有影片的红黑票数。 */
