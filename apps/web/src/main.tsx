@@ -43,7 +43,7 @@ const router = createBrowserRouter([
       // 数据分析(2026-09-20,PLAN-20260920161837;同日由「抢票分析」更名见 PLAN-20260920193032):
       // 票务主题的「预判 / 复盘」视图(原先与 /rush 并列,`/rush` 已于 2026-09-22 下线)。
       //
-      // ⚠ **本页刻意走路由级动态 import**(仓库里唯一一处):它带了 ECharts(原为 recharts),
+      // ⚠ **本页刻意走路由级动态 import**(仓库里最早的一处;2026-09-23 起 `admin` 也是):它带了 ECharts(原为 recharts),
       //   实测 gzip 193.9 KB —— 比整个主包(82.5 KB)还大一倍多。
       //   而首屏(排片表)是电影节现场**断网也要能打开**的主路径,两者不该共担加载成本。
       //   走 `lazy` 之后 chart chunk 只在真正进入这一页时才下载,主包增量只有 2 B。
@@ -55,6 +55,15 @@ const router = createBrowserRouter([
           Component: (await import("./pages/RushAnalysisPage")).RushAnalysisPage,
         }),
         children: filmRoute(),
+      },
+      // 管理后台(2026-09-23,PLAN-20260923142546,批 2):
+      // ⚠ **本页同样走路由级动态 import**:趋势视图复用了 `components/charts/bars.tsx`,
+      //   而那里面就是 ECharts —— 不 `lazy` 的话这个包会被拖进首屏主包(理由与 `rush-analysis` 逐字相同)。
+      // ⚠ 它是个**暗门**:不在主导航里,只有知道路径的人打得开。但「知道路径」不等于有权限 ——
+      //   门禁在服务端(`/api/admin/*` 两层校验),前端这一层只是「别让人对着空白页猜」。
+      {
+        path: "admin",
+        lazy: async () => ({ Component: (await import("./pages/AdminPage")).AdminPage }),
       },
       { path: "eats", element: <EatsPage /> },
       { path: "feedback", element: <FeedbackPage /> },
