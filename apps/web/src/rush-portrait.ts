@@ -63,7 +63,12 @@ export interface Portrait {
   days: number;
   /** 覆盖的影厅数 */
   venues: number;
-  /** 总观影时长（分钟；`duration_min` 已含 GV 映后谈） */
+  /** 总观影时长（分钟）—— 口径是**正片时长，不含 GV 映后谈**：
+   *  `duration_min` 与 `gv.ts::filmEndMin`（正片末 = 开场 + `duration_min`）同一口径；
+   *  实测本届 337 场 GV 的「官方槽位长 − `duration_min`」恒为 25 分钟、458 场非 GV 恒为 0
+   *  ——即**官方 `end_time` 才含谈**，`duration_min` 不含。要算含谈的「在场时长」得另加
+   *  `gv.ts::gvTalkMin`（可配置），故这里刻意不叫「在场时长」。
+   *  （2026-09-23 校正：原注释写成「已含 GV 映后谈」，与 `gv.ts` 相矛盾。） */
   minutes: number;
   /** 票面总额（KRW，见文件头的口径边界） */
   priceKrw: number;
