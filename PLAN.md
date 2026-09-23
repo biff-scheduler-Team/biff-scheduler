@@ -5,7 +5,12 @@
 > API `biff-scheduler` + 静态资源 `biff-scheduler-web`)+ React / Router / Spectrum S2 + Vite + TS
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-23(**红黑榜拖拽口径收口**(第二轮 `code-review-skill` 审查 → 用户「开始执行 1-4」)——
+> 最后更新:2026-09-23(**徽标对比度达标**(用户「开始实现批一」;`ui-ux-pro-max` Skill 审核 → `PLAN-20260923122409`)——
+> 单档 `--badge-ink: #ffffff` 拆成按底色明度分档(`--badge-ink-on-dark` / `--badge-ink-on-light`),
+> CODE 描边款另给按主题的 `--badge-code-ink`(浅 `#c62828` / 暗 `#ff8a80`),**底色 token 一个未动**;
+> 新增 `tests/badge-contrast.test.ts`(51 条)读 `src/style.css` 源码算 WCAG 对比度,先红 19 条 → 后绿。
+> 详见 `PLAN-20260923122409` 修订 1;同批的 `PLAN-20260923122500`(四项全局口径)尚未实现);
+> 前次更新:2026-09-23(**红黑榜拖拽口径收口**(第二轮 `code-review-skill` 审查 → 用户「开始执行 1-4」)——
 > 张贴区**按片独立**(别片的画布不是落点,`moveSticker` 去掉 `toKey`);拖拽监听改**同步挂 + rAF 合并**,
 > 且**同一时刻只允许一个手势**(`gestureRef`,并补上「鼠标在窗口外松手丢了 `pointerup`」的兜底:
 > **只收尾、不结算**);我贴的那一枚加**常驻纸白边**;**放大弹层**改成与卡片同一组成(画布只画别人的、
