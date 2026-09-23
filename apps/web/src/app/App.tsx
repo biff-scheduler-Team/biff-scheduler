@@ -44,7 +44,7 @@ import { CatalogProvider, hydrateStorage, useCatalog } from "./store";
 import { useMedia } from "./hooks";
 // 全站事件采集（2026-09-20，第 3 轮，PLAN-20260920203010 修订 2）：
 // 挂在这里是因为**本组件是唯一同时拿到路由位置与全站点击的壳**。
-import { useTelemetryTracking } from "../telemetry";
+import { trackClick, useTelemetryTracking } from "../telemetry";
 import { store } from "../state";
 import type { Catalog } from "../types";
 
@@ -158,6 +158,12 @@ function Shell() {
     // 每次打开都换 key → 重挂载弹层,读到的都是当下的设置 / 行程(与原先 DialogTrigger 的
     // onOpenChange + session 计数同一手法,见 `components/TransferAddDialog.tsx`)。
     if (key === "export") {
+      // 埋点只能这么打(2026-09-22):S2 的 `MenuItem` 只把**字符串** children 包成
+      // `slot="label"` 的文本盒,元素 children 会掉进菜单 grid 第一列那段 `.5625rem` 留白里 ——
+      // 原先的 `<span data-track="export">` 实测被压成 12px 宽 × 105px 高,**每个字一行**。
+      // 所以锚点从 DOM 移到 `onAction`:键盘回车与鼠标点选都会走到这里,与 `data-track`
+      // 是同一条白名单通道(`trackClick` 自己会挡下不在白名单里的 slug)。
+      trackClick("export");
       setExportSession((n) => n + 1);
       setExportOpen(true);
     } else if (key === "guide") {
@@ -218,11 +224,11 @@ function Shell() {
               重叠 {conflictCount}
             </ActionButton>
           )}
-          {/* ⚠ 菜单项顺序 = 原来三个按钮的顺序(导出与分享 / 说明 / 设置),别顺手按字母重排 */}
+          {/* ⚠ 菜单项顺序 = 原来三个按钮的顺序(导出与分享 / 说明 / 设置),别顺手按字母重排。
+              ⚠ 三项目文字**必须写字符串**:套一层 `<span>` 就会被 S2 塞进留白列逐字折行,
+                 对应的埋点已移进 `openHeaderAction`(就地有说明)。 */}
           <ActionMenu ref={headerMore} aria-label="更多" onAction={(key) => openHeaderAction(String(key))}>
-            <MenuItem id="export">
-              <span data-track="export">导出与分享</span>
-            </MenuItem>
+            <MenuItem id="export">导出与分享</MenuItem>
             <MenuItem id="guide">说明</MenuItem>
             <MenuItem id="settings">设置</MenuItem>
           </ActionMenu>

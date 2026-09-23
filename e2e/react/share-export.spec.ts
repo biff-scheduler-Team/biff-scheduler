@@ -7,6 +7,11 @@
 //
 // 断言全部走 DOM 计数 / 文本（DOM token）与画布文字钩子，不看截图。
 //
+// 2026-09-22 补：「更多」菜单的**单行**断言。S2 的 `MenuItem` 只把**字符串** children 包成
+//   `slot="label"` 的文本组件（落进菜单 grid 的 `label` 区）；一旦传元素（原先是
+//   `<span data-track="export">`），它会掉进第一列那段 `.5625rem` 的留白里 ——
+//   实测「导出与分享」被压成 12px 宽 × 105px 高，逐字一行。这条断言钉住那个回归。
+//
 // ⚠ 用真实排期数据里的**真实重叠对**：070(10/8 20:00–22:25 @bt 露天) 与 126(10/8 18:00–20:05 @l3)
 //   同一天、时间重叠，构成一个冲突组；`biff.ranks.v1` 给它排顺位 —— 顺位本身仍存在
 //   （行程页冲突组在用），只是**不再进分享内容**。
@@ -42,6 +47,55 @@ test("主导航是 2026-09-22 指定的新顺序，且「抢票」已下线", as
   // 「抢票」页整体下线：直接访问落到兜底页（不是白屏、不是报错）
   await ready(page, "/rush");
   await expect(page.getByRole("heading", { name: "找不到这个页面" })).toBeVisible();
+});
+
+test("「更多」菜单每一项都是单行文字（元素 children 会被 S2 塞进留白列逐字折行）", async ({
+  page,
+}) => {
+  await ready(page, "/schedule");
+  await page.getByRole("button", { name: "更多", exact: true }).click();
+
+  const heights: number[] = [];
+  for (const name of ["导出与分享", "说明", "设置"]) {
+    const item = page.getByRole("menuitem", { name, exact: true });
+    await expect(item).toBeVisible();
+    const box = await item.boundingBox();
+    // 单行菜单项在两种视口下都远低于 60px;折行那版实测 111px(span 只有 12px 宽)
+    expect(box!.height).toBeLessThan(60);
+    heights.push(box!.height);
+  }
+  // 三项是同一档菜单项:高度必须一致 —— 有个别项折行时这里会先炸,读起来比单个阈值清楚
+  expect(new Set(heights.map((h) => Math.round(h))).size).toBe(1);
+});
+
+test("「导出与分享」从菜单打开时仍记一次 click=export（锚点改显式上报后不能丢）", async ({
+  page,
+}) => {
+  const events: Array<{ kind: string; target: string }> = [];
+  // 埋点是防抖批量发(1.2s),且接口在预览环境不存在 —— 拦下来既避免 404 噪声,也直接读上报内容
+  await page.route("**/api/stats/telemetry-ping", async (route) => {
+    const body = route.request().postDataJSON() as {
+      events?: Array<{ kind: string; target: string }>;
+    };
+    events.push(...(body.events ?? []));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: '{"counts":{}}',
+    });
+  });
+  await ready(page, "/schedule");
+  await headerAction(page, "导出与分享");
+  await expect(page.getByRole("dialog", { name: "导出与分享" })).toBeVisible();
+
+  // ⚠ 不能只等「第一条 ping 到」:页面浏览那条会先发出(攒批是同一个 1.2s 防抖窗口),
+  //   于是 poll 在 click 还没攒够一波时就通过了 —— 必须等到 click=export 本身出现。
+  await expect
+    .poll(
+      () => events.some((event) => event.kind === "click" && event.target === "export"),
+      { timeout: 8_000 },
+    )
+    .toBe(true);
 });
 
 test("分享文案按「当前行程」导出，且不含顺位 / 备选 / 开票批次", async ({ page }) => {
