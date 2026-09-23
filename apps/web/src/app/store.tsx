@@ -37,7 +37,7 @@ import { buildPlanSet } from "../plans";
 import { effEndMin, talkOnOf } from "../gv";
 import { withPni } from "../pni";
 import { filmNodeKey, hmsToMin } from "../util";
-import { buildFilms, soleShowIndex } from "./model";
+import { buildFilmsCached, soleShowIndex } from "./model";
 import type { Catalog } from "../types";
 
 let revision = 0;
@@ -139,7 +139,9 @@ function derive(base: Catalog) {
     (c) => hmsToMin(cat.byCode.get(c)!.start_time),
     keyOf,
   );
-  const films = buildFilms(cat, store.mappings);
+  // films 只依赖目录 + 豆瓣映射，与选片无关 —— 走带缓存的版本，
+  // 免得「点一场片」就把整届 795 场重算一遍（2026-09-23，`PLAN-20260923113659` T3）
+  const films = buildFilmsCached(base, cat, store.mappings, store.mappingRevision);
   return {
     cat,
     codes,
