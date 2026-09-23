@@ -125,6 +125,31 @@
   color: var(--conflict-line);
 }
 
+/* 贴纸的「红 / 黑」色块（贴纸视图）。
+ * ⚠ 与图表同一条口径：红 = 品牌红、黑 = 正文色 —— **别用语义色**，
+ *   语义色里 `--selected-line` 是绿的，拿它画红票与「红黑榜」这套叫法直接冲突
+ *   （2026-09-20 在 `RushCrowdPanel` 上实测踩到过同一条）。 */
+.admin-chip-red,
+.admin-chip-black {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--surface);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.admin-chip-red {
+  background: var(--brand);
+}
+
+.admin-chip-black {
+  background: var(--text);
+}
+
 @media (max-width: 768px) {
   .admin-page {
     padding: 12px;
