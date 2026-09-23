@@ -133,3 +133,35 @@ export async function loadAdminTrend(options: {
   const response = await api(`/api/admin/trends?${q({ metric: options.metric, days: options.days })}`);
   return (await response.json()) as AdminTrend;
 }
+
+/* ---------------- 内容视图（**复用公开接口**，不另造管理端副本） ----------------
+ * 这两个接口本来就带作者、反应、游标分页，而且**已经**回 `subject` 与 `displayName`（公开内容）。
+ * 再造一份「管理端版本」= 同一口径两份实现，且从此多一处要与公开口径同步的地方。
+ * ⚠ 唯一的差别是管理端**不需要**「发布 / 点赞」那几条写路径 —— 这里只做只读列表。 */
+
+export interface AdminContentPost {
+  id: string;
+  /** 讨论帖才有（场次 code） */
+  code?: string;
+  subject: string;
+  displayName: string;
+  category?: string;
+  body: string;
+  createdAt: number;
+  reactionCounts: Record<string, number>;
+  myReactions: string[];
+}
+
+export async function loadAdminContent(options: {
+  kind: "discussion" | "feedback";
+  limit?: number;
+}): Promise<AdminContentPost[]> {
+  // ⚠ 讨论列表要带 edition（它按届次收窄）；反馈没有 edition 维度（全站一份）
+  const path =
+    options.kind === "discussion"
+      ? `/api/discussions?${q({ limit: options.limit })}`
+      : `/api/feedback?${q({ limit: options.limit })}`;
+  const response = await api(path);
+  const body = (await response.json()) as { posts?: AdminContentPost[] };
+  return body.posts ?? [];
+}

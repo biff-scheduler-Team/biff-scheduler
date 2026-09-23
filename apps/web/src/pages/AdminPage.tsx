@@ -20,25 +20,44 @@ import { useCallback, useEffect, useState } from "react";
 import { openAccountPanel } from "../account";
 import { onAccountChange } from "../account-sync";
 import {
+  loadAdminContent,
   loadAdminOverview,
   loadAdminRows,
+  loadAdminTrend,
   probeAdmin,
+  type AdminContentPost,
   type AdminOverview,
   type AdminProbe,
   type AdminRowPage,
+  type AdminTrend,
 } from "../admin-api";
 import {
+  ADMIN_CONTENT_KINDS,
   ADMIN_ROWS_METRICS,
   ADMIN_TABS,
+  ADMIN_TREND_CHOICES,
+  ADMIN_TREND_FIELDS,
+  adminContentKindOf,
+  adminRowsMetricOf,
   adminTabLabel,
   adminTabOf,
-  adminRowsMetricOf,
+  adminTrendFieldOf,
+  adminTrendMetricOf,
   auditHeadline,
+  bodyExcerpt,
+  categoryLabel,
+  contentKindLabel,
+  fillTrendDays,
   formatBytes,
   formatTime,
   formatWeight,
   metricLabel,
+  reactionSummary,
+  trendBars,
+  trendFieldLabel,
 } from "../admin-view";
+import { CountBarChart } from "../components/charts/bars";
+import { useChartTokens } from "../chart-theme";
 import { ActionButton, TextField } from "../components/spectrum";
 import { useQuery } from "../app/hooks";
 import "./admin.css";
@@ -134,15 +153,8 @@ export function AdminPage() {
           </nav>
           {tab === "overview" && <AdminOverviewView />}
           {tab === "rows" && <AdminRowsView />}
-          {(tab === "trends" || tab === "content") && (
-            <section className="admin-panel">
-              <h2 className="admin-panel-title">{adminTabLabel(tab)}：还没做</h2>
-              <p className="admin-note">
-                服务端已经就绪（{tab === "trends" ? "/api/admin/trends" : "/api/discussions + /api/feedback"}），
-                这一屏属于批 2 的第二片；本轮只交了「概览 + 明细」。
-              </p>
-            </section>
-          )}
+          {tab === "trends" && <AdminTrendsView />}
+          {tab === "content" && <AdminContentView />}
         </>
       )}
     </div>
@@ -433,6 +445,208 @@ function AdminRowsView() {
           下一页
         </ActionButton>
       </div>
+    </section>
+  );
+}
+
+/* ---------------- 趋势（复用 components/charts/*） ---------------- */
+
+/** 可选天数（服务端上限 90，正好给满）。 */
+const TREND_DAYS = [7, 30, 90] as const;
+
+function AdminTrendsView() {
+  const { params, update } = useQuery();
+  const metric = adminTrendMetricOf(params.get("metric"));
+  const rawDays = Number(params.get("days"));
+  const days = (TREND_DAYS as readonly number[]).includes(rawDays) ? rawDays : 30;
+  const field = adminTrendFieldOf(params.get("field"));
+  const tokens = useChartTokens();
+  const [data, setData] = useState<AdminTrend | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    loadAdminTrend({ metric, days })
+      .then((next) => {
+        setData(next);
+        setError("");
+      })
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "加载失败"))
+      .finally(() => setLoading(false));
+  }, [metric, days]);
+
+  useEffect(() => load(), [load]);
+
+  // ⚠ 补零在**展示层**（`fillTrendDays`）：接口刻意不补（「那天没人用」与「用了但被撤光」
+  //   在数据上不是一回事）；但图必须补齐 —— 缺天会被两侧直接连起来，看起来像那天也有数据。
+  const filled = data ? fillTrendDays(data.points ?? [], data.fromDay, days) : [];
+  const bars = trendBars(filled, field);
+  const total = filled.reduce((sum, point) => sum + (point[field] ?? 0), 0);
+
+  return (
+    <section className="admin-panel">
+      <h2 className="admin-panel-title">按天趋势</h2>
+      <div className="admin-row-tools">
+        {ADMIN_TREND_CHOICES.map((name) => (
+          <button
+            key={name}
+            type="button"
+            className="admin-tab"
+            aria-current={name === metric ? "page" : undefined}
+            onClick={() => update({ metric: name, tab: "trends" })}
+          >
+            {metricLabel(name)}
+          </button>
+        ))}
+      </div>
+      <div className="admin-row-tools">
+        {TREND_DAYS.map((value) => (
+          <button
+            key={value}
+            type="button"
+            className="admin-tab"
+            aria-current={value === days ? "page" : undefined}
+            onClick={() => update({ days: String(value) })}
+          >
+            近 {value} 天
+          </button>
+        ))}
+        {ADMIN_TREND_FIELDS.map((value) => (
+          <button
+            key={value}
+            type="button"
+            className="admin-tab"
+            aria-current={value === field ? "page" : undefined}
+            onClick={() => update({ field: value })}
+          >
+            {trendFieldLabel(value)}
+          </button>
+        ))}
+      </div>
+
+      {error && <p className="admin-note admin-error">加载失败：{error}</p>}
+
+      {bars.length > 0 && (
+        <CountBarChart
+          chart="admin-trend"
+          // 无障碍名把口径说全：图对读屏用户等于不存在，至少给一句它在画什么
+          label={`${metricLabel(metric)} 近 ${days} 天的${trendFieldLabel(field)}`}
+          data={bars}
+          tokens={tokens}
+          valueName={trendFieldLabel(field)}
+          // 天数一多横轴标签必须转 30°，否则 30 / 90 天会糊成一片（该 prop 就是为此存在）
+          rotate={days > 14}
+          footnote={
+            <>
+              <b>数据来源</b>：按天分桶的日账本，记的是<b>每天的变化量</b>（不是快照）。
+              {data?.earliestDay
+                ? ` 趋势自 ${data.earliestDay} 起 —— 历史不回填，更早的天不是 0 而是没有数据。`
+                : " 日账本还没有数据：它从这次部署开始积累。"}
+              <br />
+              <b>缺的天在图上是 0</b>：「那天没人用」与「用了但被撤光」在数据上是两回事，
+              这一屏按 0 画（要看区别得查明细）。
+            </>
+          }
+        />
+      )}
+
+      <p className="admin-note text-12">
+        {loading ? "正在加载…" : `近 ${days} 天共 ${filled.length} 个数据点，合计 ${formatWeight(total)}。`}
+        {data ? ` 判定用的指标：${(data.metrics ?? []).join(" + ")}。` : ""}
+      </p>
+      {!loading && bars.length === 0 && (
+        <p className="admin-note">这个指标还没有任何日账本数据。</p>
+      )}
+      <div className="admin-row-tools">
+        <ActionButton onPress={load}>刷新</ActionButton>
+      </div>
+    </section>
+  );
+}
+
+/* ---------------- 内容（复用公开接口） ---------------- */
+
+function AdminContentView() {
+  const { params, update } = useQuery();
+  const kind = adminContentKindOf(params.get("kind"));
+  const [posts, setPosts] = useState<AdminContentPost[]>([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    loadAdminContent({ kind, limit: 100 })
+      .then((next) => {
+        setPosts(next);
+        setError("");
+      })
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "加载失败"))
+      .finally(() => setLoading(false));
+  }, [kind]);
+
+  useEffect(() => load(), [load]);
+
+  return (
+    <section className="admin-panel">
+      <h2 className="admin-panel-title">内容（{contentKindLabel(kind)}）</h2>
+      <p className="admin-note text-12">
+        这一屏<b>复用公开接口</b>（讨论走 <code>/api/discussions</code>、反馈走 <code>/api/feedback</code>），
+        不另造管理端副本 —— 那两条本来就带作者与反应，再造一份就是同一口径两份实现。
+        所以这里看到的作者信息，任何人都能看到；管理端没有多读到什么。
+      </p>
+      <div className="admin-row-tools">
+        {ADMIN_CONTENT_KINDS.map((name) => (
+          <button
+            key={name}
+            type="button"
+            className="admin-tab"
+            aria-current={name === kind ? "page" : undefined}
+            onClick={() => update({ kind: name })}
+          >
+            {contentKindLabel(name)}
+          </button>
+        ))}
+        <ActionButton onPress={load}>刷新</ActionButton>
+      </div>
+
+      {error && <p className="admin-note admin-error">加载失败：{error}</p>}
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>作者</th>
+              {kind === "discussion" && <th>场次 / 分类</th>}
+              <th>内容</th>
+              <th>反应</th>
+            </tr>
+          </thead>
+          <tbody>
+            {posts.map((post) => (
+              <tr key={post.id}>
+                <td>{formatTime(post.createdAt)}</td>
+                <td className="admin-mono">
+                  {post.displayName}
+                  <br />
+                  {post.subject}
+                </td>
+                {kind === "discussion" && (
+                  <td>
+                    {post.code ?? "—"} / {categoryLabel(post.category)}
+                  </td>
+                )}
+                <td>{bodyExcerpt(post.body)}</td>
+                <td>{reactionSummary(post.reactionCounts)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="admin-note text-12">
+        {loading ? "正在加载…" : `共 ${posts.length} 条（上限 100 条，更早的内容去对应的公开页面翻页）。`}
+      </p>
     </section>
   );
 }

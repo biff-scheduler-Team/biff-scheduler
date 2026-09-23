@@ -6,6 +6,7 @@
  * 对账结论一句话 —— 就能被单测钉住（这也是既有模块的通行做法，见 `redblack.ts` 文件头）。
  */
 
+import { DISCUSSION_CATEGORIES } from "@biff/contracts/screening";
 import type { AdminAudit, AdminTrendPoint } from "./admin-api";
 
 /* ---------------- 视图切换 ---------------- */
@@ -149,4 +150,77 @@ export function formatTime(ms: number): string {
 export function formatWeight(value: number): string {
   if (!Number.isFinite(value)) return "0";
   return String(Math.round(value * 100) / 100);
+}
+
+/* ---------------- 趋势视图 ---------------- */
+
+/** 画哪条曲线：加权和（默认）还是次数（只有事件流水有）。 */
+export const ADMIN_TREND_FIELDS = ["weight", "hits"] as const;
+
+export type AdminTrendField = (typeof ADMIN_TREND_FIELDS)[number];
+
+export function trendFieldLabel(field: AdminTrendField): string {
+  return field === "hits" ? "次数" : "加权和";
+}
+
+export function adminTrendFieldOf(raw: string | null | undefined): AdminTrendField {
+  return (ADMIN_TREND_FIELDS as readonly string[]).includes(raw ?? "")
+    ? (raw as AdminTrendField)
+    : "weight";
+}
+
+/** `2026-09-23` → `09-23`。横轴只留月日：年份在这一屏里不会变，占宽度不值得。 */
+export function shortDay(day: string): string {
+  return day.length === 10 ? day.slice(5) : day;
+}
+
+/**
+ * 趋势点 → 横向条形图的数据。
+ *
+ * ⚠ 图表**只画有值的那些天**？不 —— 这里刻意把补零后的**全部**天都画进去：折线/条形在
+ *   缺天时会把两侧直接连起来，看起来像「那天也有数据」。`fillTrendDays()` 已经补过零，
+ *   调用方把补零后的序列传进来即可（这一条是给「图上看不出来」的坑留的注释）。
+ */
+export function trendBars(
+  points: readonly AdminTrendPoint[],
+  field: AdminTrendField = "weight",
+): Array<{ label: string; value: number }> {
+  return points.map((point) => ({ label: shortDay(point.day), value: point[field] ?? 0 }));
+}
+
+/* ---------------- 内容视图 ---------------- */
+
+export const ADMIN_CONTENT_KINDS = ["discussion", "feedback"] as const;
+
+export type AdminContentKind = (typeof ADMIN_CONTENT_KINDS)[number];
+
+export function contentKindLabel(kind: AdminContentKind): string {
+  return kind === "feedback" ? "反馈留言" : "场次讨论";
+}
+
+export function adminContentKindOf(raw: string | null | undefined): AdminContentKind {
+  return (ADMIN_CONTENT_KINDS as readonly string[]).includes(raw ?? "")
+    ? (raw as AdminContentKind)
+    : "discussion";
+}
+
+/** 反应计数 → 一行紧凑文案（`👍 2 · ❤️ 1`）。没有反应给 `—` 而不是空串。 */
+export function reactionSummary(counts: Record<string, number> | undefined): string {
+  const entries = Object.entries(counts ?? {}).filter(([, n]) => Number(n) > 0);
+  if (!entries.length) return "—";
+  return entries.map(([emoji, n]) => `${emoji} ${n}`).join(" · ");
+}
+
+/** 正文摘要：列表里只给一眼能扫的长度，全量内容在讨论区 / 反馈页看。 */
+export function bodyExcerpt(body: string, limit = 60): string {
+  const text = (body ?? "").replace(/\s+/g, " ").trim();
+  return text.length > limit ? `${text.slice(0, limit)}…` : text;
+}
+
+/** 讨论分类 → 中文标签。
+ *  ⚠ 用契约里的 `DISCUSSION_CATEGORIES`，**不自造一份映射** —— 那是「前后端唯一来源」，
+ *    另写一份必然在某次改分类时漂移。未知 key 原样回（宁可露出英文也别显示空白）。 */
+export function categoryLabel(key: string | undefined): string {
+  if (!key) return "—";
+  return DISCUSSION_CATEGORIES.find((category) => category.key === key)?.label ?? key;
 }
