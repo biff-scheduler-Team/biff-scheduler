@@ -294,35 +294,23 @@ export function takeSticker(board: StickerBoard, key: string, id: string): Stick
   return next;
 }
 
-/** 拖动已贴的贴纸:改坐标,也可以拖到**另一张卡**上(`toKey` 不同)。
- *  目标卡已经有贴纸了 → 原样返回(调用方据此提示)。 */
+/** 拖动**已经贴在画布上**的那一枚:只改坐标(相对坐标,钳进安全区)。
+ *  ⚠ **没有「挪到别的片」这回事**(2026-09-23 用户:「张贴区应该是电影之间独立的」):
+ *    一枚贴纸的归属就是 `key` 这一部,别片的画布不是它的落点 —— 想给别片贴,走别片自己的暂存区。
+ *    落点算不算「本片画布」由视图层判定(`RedBlackPage.tsx::finishRef`),不是就算出界(收回)。
+ *    所以这里**连参数都不给**跨片的可能:留一条永远不该被调用的路径,就是给下次复发留门。 */
 export function moveSticker(
   board: StickerBoard,
-  fromKey: string,
+  key: string,
   id: string,
-  toKey: string,
   posX: number,
   posY: number,
 ): StickerBoard {
   const next = cloneBoard(board);
-  const src = next.get(fromKey);
+  const src = next.get(key);
   const i = src?.findIndex((s) => s.id === id) ?? -1;
   if (!src || i < 0) return board;
-  const spot = clampSpot(posX, posY);
-  const moving: Sticker = { ...src[i], ...spot };
-
-  if (fromKey === toKey) {
-    src[i] = moving;
-    return next;
-  }
-
-  const dst = next.get(toKey) ?? [];
-  if (dst.length >= MAX_PER_FILM) return board;
-  src.splice(i, 1);
-  dst.push(moving);
-  if (src.length) next.set(fromKey, src);
-  else next.delete(fromKey);
-  next.set(toKey, dst);
+  src[i] = { ...src[i], ...clampSpot(posX, posY) };
   return next;
 }
 

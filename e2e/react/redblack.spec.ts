@@ -46,6 +46,39 @@ test("首次进入是空榜:一枚贴纸都没有,只留一句怎么开始", asy
   await expect(page.locator(".rb-card").first().locator(".rb-chip--score")).toHaveText("评分 —");
 });
 
+// 空榜那句引导**不能**随「标记看过 / 取消标记」出现消失(2026-09-23 用户:
+// 「标记看过 未看过 这个按钮 即使我没有进行贴贴纸动作 好像会触发重新渲染 整个贴纸页面好像闪了一下」)。
+// 它挂在栅格**上方**,一收一放会把整页内容顶上去 53px(实测:38px 提示条 + 15px 间距)——
+// 用户点一下标记,看到的是「整页闪了一下」。根因是条件里混进了 `totals.marked`(本地「我看过」),
+// 而文案说的「榜」指的是全站票数,两回事。
+// ⚠ 判据用**文档坐标**(`rect.top + scrollY`)而不是视口坐标:Playwright 为了点击可能会滚页面,
+//   那样量的是滚动不是布局位移 —— 这次差一点又被它骗过去。
+test("点「标记看过」不会把整页顶上去", async ({ page }) => {
+  await stubEmpty(page);
+  await ready(page, "/redblack");
+
+  const key = keyOf("008");
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  const gridTopDoc = () =>
+    page.evaluate(() =>
+      Math.round(
+        (document.querySelector(".rb-grid") as HTMLElement).getBoundingClientRect().top + scrollY,
+      ),
+    );
+
+  const before = await gridTopDoc();
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await expect(card).toHaveAttribute("data-rb-marked", "true");
+  expect(await gridTopDoc()).toBe(before);
+  // 引导条还在(它只随「全站有没有贴纸」变,与本地的「我看过」无关)
+  await expect(page.locator(".rb-hint")).toBeVisible();
+
+  // 再点回去也一样,不许弹回来
+  await card.getByRole("button", { name: /取消标记/ }).click();
+  await expect(card).not.toHaveAttribute("data-rb-marked", "true");
+  expect(await gridTopDoc()).toBe(before);
+});
+
 test("榜单铺出去重后的影片,同一部只出现一次,且能按场次 code 搜到", async ({ page }) => {
   await stubEmpty(page);
   await ready(page, "/redblack");
@@ -198,7 +231,38 @@ test("屏幕外的卡片一枚贴纸都不画,滚回视野再补齐", async ({ p
   await expect(card.locator("canvas.rb-ink")).not.toHaveJSProperty("width", 0);
 });
 
-test("「别人的贴纸」与我贴的那枚同尺寸,别人那枚仍不可拖", async ({ page }) => {
+// 「按视口省渲染」只管**别人的**那一层 canvas:我贴的那一枚是**可拖的真实元素**,
+// 屏幕外也必须留在 DOM 里 —— 它要是跟着群点一起被省掉,用户滚回来才看见它,会读成「我的贴纸丢了」。
+// 用户 2026-09-23:「能否实现自己贴的贴纸始终能被自己拖动?」—— 这条就是那个「始终」的判据。
+test("屏幕外的卡片仍留着我贴的那一枚:自己的贴纸始终抓得到", async ({ page }) => {
+  const key = keyOf("008");
+  await stubVotes(page, { [key]: { red: 3, black: 2 } });
+  await ready(page, "/redblack");
+
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await card.getByRole("button", { name: /贴红贴纸/ }).click();
+  const mine = card.locator(".rb-dot");
+  await expect(mine).toHaveCount(1);
+
+  // 滚到页面底部:这张卡离开「视口 + 预取边距」→ 别人的点连 backing store 都释放了
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect(card.locator("canvas.rb-ink")).toHaveJSProperty("width", 0);
+  // 我那一枚没被省掉:它还在 DOM 里(所以滚回来时是「本来就在」而不是「补画出来」)
+  await expect(mine).toHaveCount(1);
+  await card.scrollIntoViewIfNeeded();
+  await expect(mine).toHaveCount(1);
+  // 而且它压在最上层、点得到自己 —— 这就是「能不能拖」本身
+  // (群点在 `.rb-ink` 上,那层 `pointer-events: none`,不会把它盖住)
+  const hitSelf = await mine.evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return hit === node || node.contains(hit);
+  });
+  expect(hitSelf).toBe(true);
+});
+
+test("「别人的贴纸」与我贴的那枚同尺寸,只差常驻纸白边与能不能拖", async ({ page }) => {
   const key = keyOf("008");
   await stubVotes(page, { [key]: { red: 3, black: 2 } });
   await ready(page, "/redblack");
@@ -212,9 +276,15 @@ test("「别人的贴纸」与我贴的那枚同尺寸,别人那枚仍不可拖"
   await expect(mine.first()).toHaveCSS("width", "26px");
   await expect(mine.first()).toHaveCSS("cursor", "grab");
 
+  // **常驻纸白边**(2026-09-23):我贴的那一枚独有,群点那边(canvas / sprite)不许有这一层 ——
+  // 票数一多,同色同尺寸的点里根本认不出自己那枚,「自己贴的贴纸始终能被自己拖动」就先卡在“找不到”。
+  // ⚠ 只断言那一层 `1.5px` 的实心圈(整个 `box-shadow` 字符串各浏览器序列化不同,比不得);
+  //   `1.5px` 在这条规则里只出现这一次,所以这个松匹配等于精确匹配。
+  await expect(mine.first()).toHaveCSS("box-shadow", /1\.5px/);
+
   // 别人的贴纸整层是 canvas(2026-09-22,PLAN-20260922145815):
   // ⚠ 必须 `pointer-events: none` —— 拖拽落点靠 `elementFromPoint().closest("[data-rb-canvas]")`,
-  //   画布挡住就拖不进这张卡,而「能不能拖」正是群点与我贴的那一枚**唯一**的区别。
+  //   画布挡住就拖不进这张卡,而「能不能拖」是群点与我贴的那一枚**两处**区别之一(另一处是纸白边)。
   const ink = card.locator("canvas.rb-ink");
   await expect(ink).toHaveCSS("pointer-events", "none");
   await expect(ink).toHaveCount(1);
@@ -284,6 +354,46 @@ test("放大看全部:弹层给大画布、画全部贴纸,Esc 关闭并把焦�
   await expect(opener).toBeFocused();
 });
 
+// 弹层里也要认得出自己那枚(2026-09-23,PLAN-20260923104622)。改之前这里把 `all` 交给画布:
+// 我那一枚被画成 `crowdStickers(filmKey, all)` 的**最后一枚** —— 那是由 id 推导出来的点,
+// 既不是它在卡片上的真实落点,也没有卡片上那圈常驻纸白边;而 lede 还写着「位置与卡片上一致」。
+test("放大弹层里也认得出自己那枚:同位置、同白边", async ({ page }) => {
+  const key = keyOf("008");
+  await stubVotes(page, { [key]: { red: 3, black: 2 } });
+  await ready(page, "/redblack");
+
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await card.getByRole("button", { name: /贴红贴纸/ }).click();
+  const cardDot = card.locator(".rb-canvas .rb-dot");
+  await expect(cardDot).toHaveCount(1);
+
+  await card.getByRole("button", { name: /放大查看/ }).click();
+  const stage = page.getByRole("dialog").locator(".rb-zoom-stage");
+  await expect(stage).toBeVisible();
+
+  // ① 弹层里那一枚就是卡片上那一枚:独立的 DOM 元素(不是画布上的群点),白边还在
+  const zoomDot = stage.locator(".rb-dot");
+  await expect(zoomDot).toHaveCount(1);
+  await expect(zoomDot).toHaveCSS("box-shadow", /1\.5px/);
+  // 只读:光标不能还是 `grab` —— 弹层里拖不动,留着那是在承诺一个不存在的交互
+  await expect(zoomDot).toHaveCSS("cursor", "default");
+
+  // ② 相对位置一致(两边都是 `posX / posY` 的百分比,所以量**归一化**后的坐标 —— 画布尺寸不同)
+  const rel = async (dot: Locator, box: Locator) => {
+    const d = (await dot.boundingBox())!;
+    const b = (await box.boundingBox())!;
+    return {
+      x: (d.x + d.width / 2 - b.x) / b.width,
+      y: (d.y + d.height / 2 - b.y) / b.height,
+    };
+  };
+  const onCard = await rel(cardDot, card.locator(".rb-canvas"));
+  const inZoom = await rel(zoomDot, stage);
+  expect(Math.abs(onCard.x - inZoom.x)).toBeLessThan(0.02);
+  expect(Math.abs(onCard.y - inZoom.y)).toBeLessThan(0.02);
+});
+
 // 我贴的那一枚的两条交互(2026-09-22,PLAN-20260922160432):
 //  ① **单击收回** —— 文件头早就写着「单击就取下」,但实现里只挂了 pointerdown,
 //     从来没有这个能力;唯一能收回的路径是「拖出画布」这个相当隐蔽的手势。
@@ -351,6 +461,295 @@ test("拖一下微调位置不算单击:贴纸不会被顺手收走", async ({ p
   // 而且是**挪了位置**(说明确实走了拖拽分支),不是原地没动
   const after = (await mine.boundingBox())!;
   expect(Math.abs(after.x - before.x) + Math.abs(after.y - before.y)).toBeGreaterThan(4);
+});
+
+// 张贴区**按片独立**(2026-09-23 用户:「从 A 电影张贴区的贴纸 移到 B 电影的 会直接被贴上
+// 我认为应该贴纸张贴区应该是电影之间独立的」)。旧口径 `moveSticker` 收一个 `toKey`:
+// 拖到别片的画布上松手,这一票就被**直接改记到别片头上** —— 不报错、不提示,只有盯着两张卡才看得出来。
+test("跨片拖拽:别片的张贴区一枚都不会多", async ({ page }) => {
+  await stubEmpty(page);
+  await ready(page, "/redblack");
+
+  // ⚠ 用**相邻的两张卡**而不是挑两个 key:拖拽走真实指针坐标,两张卡必须同时在视口里
+  //   (挑 key 的话它们可能隔着几十张卡,`page.mouse` 的事件送不到另一张身上,测试会假绿)。
+  const a = page.locator(".rb-card").nth(0);
+  const b = page.locator(".rb-card").nth(1);
+  await a.getByRole("button", { name: /^标记《/ }).click();
+  await b.getByRole("button", { name: /^标记《/ }).click();
+  await a.getByRole("button", { name: /贴红贴纸/ }).click();
+
+  const mine = a.locator(".rb-dot");
+  await expect(mine).toHaveCount(1);
+  // ⚠ 贴纸是随机落点,不居中时它可能落在视口上方 —— 那样 `page.mouse` 的事件根本送不到它身上
+  await a.evaluate((node) => node.scrollIntoView({ block: "center" }));
+  const from = (await mine.boundingBox())!;
+  const aBox = (await a.locator(".rb-canvas").boundingBox())!;
+  const bBox = (await b.locator(".rb-canvas").boundingBox())!;
+  const vh = page.viewportSize()!.height;
+  const center = (box: { x: number; y: number; width: number; height: number }) => ({
+    x: box.x + box.width / 2,
+    y: box.y + box.height / 2,
+  });
+  const here = center(from);
+  const aMid = center(aBox);
+  const bMid = center(bBox);
+  for (const point of [here, aMid, bMid]) {
+    expect(point.y).toBeGreaterThan(0);
+    expect(point.y).toBeLessThan(vh);
+  }
+
+  await page.mouse.move(here.x, here.y);
+  await page.mouse.down();
+  // 先在本片画布上走一段:这张卡**是**合法落点 → 它亮着
+  await page.mouse.move(aMid.x, aMid.y, { steps: 4 });
+  await expect(a).toHaveAttribute("data-rb-hover", "");
+
+  // 再拖到《B》的画布正中:张贴区按片独立 → 《B》不该被点亮成落点(亮灯 = 承诺一个不会兑现的落点)
+  await page.mouse.move(bMid.x, bMid.y, { steps: 8 });
+  await expect(b).not.toHaveAttribute("data-rb-hover", "");
+  await expect(a).not.toHaveAttribute("data-rb-hover", "");
+  await page.mouse.up();
+
+  // 松手:《B》一枚都不会多(旧口径下这一枚会直接落在《B》的画布上)
+  await expect(b.locator(".rb-dot")).toHaveCount(0);
+  await expect(b.locator(".rb-canvas-hint")).toHaveCount(1);
+  // 页面上贴纸总数不会变多:《A》那枚要么留在原位、要么收回暂存区,两者都不是「贴到《B》」
+  expect(await page.locator(".rb-dot").count()).toBeLessThanOrEqual(1);
+});
+
+/** 造一个**原生** PointerEvent 的初始化参数(两处 helper 共用)。
+ *  ⚠ 默认 `touch` + 「按下即 `buttons: 1`」—— 双指那条用例要的就是两根手指。
+ *  只有「窗口外松手」那条要显式给 `mouse` + `buttons: 0`:那是**鼠标独有**的失效形态。 */
+function pointerInit(
+  type: "pointerdown" | "pointermove" | "pointerup",
+  pointerId: number,
+  point: { x: number; y: number },
+  opts: { pointerType?: string; buttons?: number } = {},
+) {
+  return {
+    type,
+    pointerId,
+    x: point.x,
+    y: point.y,
+    pointerType: opts.pointerType ?? "touch",
+    buttons: opts.buttons ?? (type === "pointerup" ? 0 : 1),
+  };
+}
+
+/** 往**元素**上派发一个指针事件(按下 / 移动)。
+ *  ⚠ 为什么要绕开 Playwright 的输入 API:`page.mouse` 与 `page.touchscreen` 都是**单指**,
+ *    而「一次松手结算两次落点」必须**两指同时按住**才复现 —— 只能自己造带不同 `pointerId` 的事件。
+ *    事件 `bubbles` 到 root 上,React 的 `onPointerDown` 照常收得到。 */
+async function dispatchPointer(
+  target: Locator,
+  type: "pointerdown" | "pointermove",
+  pointerId: number,
+  point: { x: number; y: number },
+  opts: { pointerType?: string; buttons?: number } = {},
+) {
+  await target.evaluate(
+    (node, init) => {
+      node.dispatchEvent(
+        new PointerEvent(init.type, {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          pointerId: init.pointerId,
+          pointerType: init.pointerType,
+          isPrimary: init.pointerId === 1,
+          button: 0,
+          buttons: init.buttons,
+          clientX: init.x,
+          clientY: init.y,
+        }),
+      );
+    },
+    pointerInit(type, pointerId, point, opts),
+  );
+}
+
+/** 抬起 / 取消：直接派发到 `window`(拖拽监听器就挂在它上面)。
+ *  ⚠ 刻意**不**落在具体元素上:回归时《B》那枚会被旧代码误判成「拖出画布」而原地收回,
+ *    定位它会一直等到超时 —— 那样失败信息是「元素等不到」而不是「次数不对」,读不出根因。 */
+async function dispatchPointerUp(page: Page, pointerId: number, point: { x: number; y: number }) {
+  await page.evaluate((init) => {
+    window.dispatchEvent(
+      new PointerEvent(init.type, {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        pointerId: init.pointerId,
+        pointerType: "touch",
+        isPrimary: init.pointerId === 1,
+        button: 0,
+        buttons: init.buttons,
+        clientX: init.x,
+        clientY: init.y,
+      }),
+    );
+  }, pointerInit("pointerup", pointerId, point));
+}
+
+// 单手势守卫(2026-09-23 review,PLAN-20260923103830)。监听器改成在 `pointerdown` 里**同步**挂到
+// `window` 之后,旧实现那层「`useEffect` cleanup 先摘掉上一套监听」的保护没有了:两指各按住一张卡的
+// 贴纸时,两套 `onUp` 都会收到**同一个** `pointerup`,各自用当前坐标调一次 `finishRef` ——
+// 一次松手把**两张卡**都结算了(第二套用的还是第一根手指的坐标)。
+// ⚠ 现有用例抓不到它:它们全都只按一根手指。
+test("两指同时按住两张卡的贴纸:一次松手只结算发起的那一枚", async ({ page }) => {
+  await stubEmpty(page);
+  await ready(page, "/redblack");
+
+  const a = page.locator(".rb-card").nth(0);
+  const b = page.locator(".rb-card").nth(1);
+  await a.getByRole("button", { name: /^标记《/ }).click();
+  await b.getByRole("button", { name: /^标记《/ }).click();
+  await a.getByRole("button", { name: /贴红贴纸/ }).click();
+  await b.getByRole("button", { name: /贴黑贴纸/ }).click();
+  const dotA = a.locator(".rb-dot");
+  const dotB = b.locator(".rb-dot");
+  await expect(dotA).toHaveCount(1);
+  await expect(dotB).toHaveCount(1);
+
+  // 两张卡都要在视口里:`elementFromPoint` 与指针坐标都按视口算(实测过假绿)
+  await a.evaluate((node) => node.scrollIntoView({ block: "center" }));
+  const vh = page.viewportSize()!.height;
+  for (const dot of [dotA, dotB]) {
+    const box = (await dot.boundingBox())!;
+    expect(box.y).toBeGreaterThan(0);
+    expect(box.y + box.height).toBeLessThan(vh);
+  }
+  const aBox = (await dotA.boundingBox())!;
+  const bBox = (await dotB.boundingBox())!;
+  const centerOf = (box: { x: number; y: number; width: number; height: number }) => ({
+    x: box.x + box.width / 2,
+    y: box.y + box.height / 2,
+  });
+  const aFrom = centerOf(aBox);
+  const bAt = centerOf(bBox);
+
+  // 第一指按住《A》那枚 → 第二指按住《B》那枚(同一时刻的两个指针)
+  await dispatchPointer(dotA, "pointerdown", 1, aFrom);
+  await dispatchPointer(dotB, "pointerdown", 2, bAt);
+  // ⚠ 落点取《A》画布的**几何中心**,不是「贴纸中心 + 固定像素」(2026-09-23,PLAN-20260923104622):
+  //   贴纸落点是 `Math.random` 的,靠近画布右下角时那个偏移会把松手点推出画布 → 判成出界 →
+  //   那枚被收回 → 断言以「确实动了」失败(偶发**假红**)。按画布矩形推出来的点才是确定性的。
+  const aDrop = centerOf((await a.locator(".rb-canvas").boundingBox())!);
+  // 第一指拖动(越过触屏 10px 阈值),第二指不动
+  await dispatchPointer(dotA, "pointermove", 1, aDrop);
+  // 抬起第一指 —— 旧实现这一刻两套 `onUp` 都会收到它,第二套还会拿**这个坐标**去结算《B》
+  // (实测症状:坐标落在《A》的画布上 → 对《B》而言是「拖出画布」→ 那枚被**当场误收回**,连弹一条 toast)
+  await dispatchPointerUp(page, 1, aDrop);
+  await dispatchPointerUp(page, 2, bAt);
+
+  // 发起的那一枚**确实被挪到了松手那一点**(否则就是「手势压根没跑」,测试会假绿)
+  const aAfter = centerOf((await dotA.boundingBox())!);
+  expect(Math.abs(aAfter.x - aDrop.x)).toBeLessThan(2);
+  expect(Math.abs(aAfter.y - aDrop.y)).toBeLessThan(2);
+  // 《B》那枚**一枚不多、一位不移**
+  await expect(dotB).toHaveCount(1);
+  const bAfter = (await dotB.boundingBox())!;
+  expect(Math.abs(bAfter.x - bBox.x) + Math.abs(bAfter.y - bBox.y)).toBeLessThan(1);
+  expect(await page.locator(".rb-dot").count()).toBe(2);
+});
+
+// 丢了 `pointerup` 的兜底(2026-09-23 review 第二轮,PLAN-20260923104622)。鼠标在**浏览器窗口外**
+// 松手时,抬手那一刻可能根本没送到页面上 —— `end()` 永不执行、`gestureRef` 一直占着,于是此后
+// **每一次**拖拽都在 `beginDrag` 第一行被挡掉、ghost 还粘在鼠标上,只有换页才能恢复
+// (旧实现监听挂 `useEffect([drag])` 上,下一次 `pointerdown` 会顶掉旧监听而自愈;同步挂之后没这层)。
+test("窗口外松手丢了 pointerup:手势不卡死,贴纸也原样留着", async ({ page }) => {
+  await stubEmpty(page);
+  await ready(page, "/redblack");
+
+  const a = page.locator(".rb-card").nth(0);
+  const b = page.locator(".rb-card").nth(1);
+  await a.getByRole("button", { name: /^标记《/ }).click();
+  await b.getByRole("button", { name: /^标记《/ }).click();
+  await a.getByRole("button", { name: /贴红贴纸/ }).click();
+  const mine = a.locator(".rb-dot");
+  await expect(mine).toHaveCount(1);
+  // 两张卡都要在视口里:落点命中测试(`elementFromPoint`)与指针坐标都按视口算
+  await a.evaluate((node) => node.scrollIntoView({ block: "center" }));
+
+  const before = (await mine.boundingBox())!;
+  const at = { x: before.x + before.width / 2, y: before.y + before.height / 2 };
+  const aCanvas = (await a.locator(".rb-canvas").boundingBox())!;
+
+  // 按下(起手势)→ 一个 `buttons: 0` 的 move:真实场景里后者就是鼠标**重新进入窗口**时的第一帧,
+  // 而松手那一刻的坐标从来没送达过页面
+  await dispatchPointer(mine, "pointerdown", 1, at, { pointerType: "mouse" });
+  await dispatchPointer(
+    a.locator(".rb-canvas"),
+    "pointermove",
+    1,
+    { x: aCanvas.x + 6, y: aCanvas.y + 6 },
+    { pointerType: "mouse", buttons: 0 },
+  );
+
+  // ① 手势已经收尾 —— 未修前 ghost 会一直挂在页面上(跟着鼠标跑),直到换页
+  await expect(page.locator(".rb-ghost")).toHaveCount(0);
+  // ② 只收尾、不结算:那个坐标**不是**松手点,不能拿它挪走 / 收回贴纸
+  await expect(mine).toHaveCount(1);
+  const still = (await mine.boundingBox())!;
+  expect(Math.abs(still.x - before.x) + Math.abs(still.y - before.y)).toBeLessThan(1);
+
+  // ③ 让出来的手势要**真的能再用**:把《B》暂存区那枚拖到《B》自己的画布上,它必须落下去
+  //    (未修前 `beginDrag` 会被那个卡住的手势一直挡掉:《B》一枚都贴不上,而《A》那枚
+  //     还会被那套陈旧的监听拿**这次**的坐标结算一次)
+  const src = (await b.locator(".rb-src--red").boundingBox())!;
+  const bCanvas = (await b.locator(".rb-canvas").boundingBox())!;
+  const from = { x: src.x + src.width / 2, y: src.y + src.height / 2 };
+  const to = { x: bCanvas.x + bCanvas.width / 2, y: bCanvas.y + bCanvas.height / 2 };
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 6 });
+  await page.mouse.up();
+  const placedB = b.locator(".rb-dot");
+  await expect(placedB).toHaveCount(1);
+  // 落在松手那一点(证明走的是完整手势,而不是「本来就有一枚」)。
+  // ⚠ 判据用**画布内的相对位置**,不是视口坐标:这一枚落下去会让卡片多出一个「看全部」按钮,
+  //   那一行折行顺手把卡片(连同画布)撑高 30px —— 拿布局变化前的视口坐标去比会差 15px(实测),
+  //   而贴纸是相对坐标,它一直在那块画布的正中(`posY = 0.5`)。
+  const bNow = (await b.locator(".rb-canvas").boundingBox())!;
+  const put = (await placedB.boundingBox())!;
+  const relNow = {
+    x: (put.x + put.width / 2 - bNow.x) / bNow.width,
+    y: (put.y + put.height / 2 - bNow.y) / bNow.height,
+  };
+  expect(Math.abs(relNow.x - 0.5)).toBeLessThan(0.02);
+  expect(Math.abs(relNow.y - 0.5)).toBeLessThan(0.02);
+});
+
+// 键盘收回(2026-09-23 review,PLAN-20260923103830)。`movedRef` 只在**下一次 `pointerdown`** 复位,
+// 而键盘 `Enter` 触发的 `click` 根本不经过 pointerdown —— 于是「刚拖过一次」会把后来的回车收回
+// **静默吞掉**(按钮有反应、贴纸不动)。修法:`MouseEvent.detail === 0` 的 click(键盘 / `element.click()`)
+// 不问 `movedRef`。
+test("拖过一次之后,键盘回车照样能把贴纸收回来", async ({ page }) => {
+  await stubEmpty(page);
+  await ready(page, "/redblack");
+
+  const key = keyOf("008");
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await card.getByRole("button", { name: /贴红贴纸/ }).click();
+
+  const mine = card.locator(".rb-dot");
+  await expect(mine).toHaveCount(1);
+  await card.evaluate((node) => node.scrollIntoView({ block: "center" }));
+  const box = (await mine.boundingBox())!;
+  expect(box.y).toBeGreaterThan(0);
+
+  // 先真的拖一次 → `movedRef` 置位(这正是键盘路径的干扰源)
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 12, box.y + box.height / 2 + 10, { steps: 6 });
+  await page.mouse.up();
+  await expect(card.locator(".rb-dot")).toHaveCount(1);
+
+  // 它是个 `<button>`,聚焦后按回车就该收回
+  await mine.focus();
+  await page.keyboard.press("Enter");
+  await expect(card.locator(".rb-dot")).toHaveCount(0);
+  await expect(card.locator(".rb-canvas-hint")).toHaveCount(1);
 });
 
 // 刚贴下的那一枚闪描边(PLAN-20260922160432):票多时点按钮贴下去的那一枚会被丢进一片点里,
