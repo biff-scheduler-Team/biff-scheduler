@@ -17,7 +17,7 @@
  */
 
 import { DISCUSSION_CATEGORIES } from "@biff/contracts/screening";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { openAccountPanel } from "../account";
 import { ApiFailure, onAccountChange } from "../account-sync";
 import {
@@ -78,6 +78,25 @@ import "./admin.css";
 /** 权限判定：loading → admin / guest / forbidden，另有「问不到」这一态（网络/超时）。 */
 type Gate = "loading" | AdminProbe | "error";
 
+/**
+ * 面板右上角的 ⓘ：**口径说明默认收起**。
+ *
+ * ★ 2026-09-23 用户「管理后台 概览特别长」：实测桌面整页 1145px 里说明性文案占 **524px**、
+ *   手机 412px 下整页 **2017px** —— 面板被解释性文字撑长的成分比数据本身还多。
+ *   说明是**按需再取**的东西（与 2026-09-20 用户对图表说的「全部放到右上角 tooltip 里面」
+ *   是同一句话），所以收进这里；**被判定的信息**（今天的日界、扫描行数、结论一句话）留在外面。
+ */
+function PanelMore({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <details className="admin-more">
+      <summary className="admin-more-btn" aria-label={`${label}：口径说明`}>
+        i
+      </summary>
+      <div className="admin-more-body">{children}</div>
+    </details>
+  );
+}
+
 export function AdminPage() {
   const { params, update } = useQuery();
   const tab = adminTabOf(params.get("tab"));
@@ -105,7 +124,7 @@ export function AdminPage() {
       <header className="admin-head">
         <h1 className="admin-title">管理后台</h1>
         <p className="admin-note text-12">
-          仅白名单账号可见。这里能看到的是**聚合与身份**，不含任何人的片单内容。
+          仅白名单账号可见：看到的是聚合与身份，不含任何人的片单内容。
         </p>
       </header>
 
@@ -219,7 +238,7 @@ function AdminOverviewView() {
     <div className="admin-grid">
       {/* 规模先给一眼能扫的图，明细表在下面 —— 与数据分析页同一个先后顺序。
        *  ⚠ 空态**不画空图**：全 0 的图看着像坏了，而「还没有人发过内容」是一句话就能说清的状态。 */}
-      <section className="admin-panel">
+      <section className="admin-panel admin-panel--wide">
         <h2 className="admin-panel-title">规模</h2>
         <div className="ra-grid">
           <RankBarChart
@@ -251,12 +270,20 @@ function AdminOverviewView() {
       </section>
 
       <section className="admin-panel">
-        <h2 className="admin-panel-title">数据总览（{data.edition}）</h2>
+        <div className="admin-panel-head">
+          <h2 className="admin-panel-title">数据总览（{data.edition}）</h2>
+          <PanelMore label="数据总览">
+            <p className="admin-note">
+              权重口径：登录 1.0 / 匿名 0.75。红黑榜一人一票、不加权，所以那一行是整数票数。
+            </p>
+            <p className="admin-note">
+              「参与人数」按身份去重：同一个人既登录过又匿名投过，会各算一次。
+            </p>
+          </PanelMore>
+        </div>
         <p className="admin-note text-12">
-          服务端日界今天是 <b>{data.today}</b>（KST）。
-          {data.earliestDay
-            ? ` 趋势自 ${data.earliestDay} 起 —— 历史不回填。`
-            : " 日账本还没有数据：趋势要从部署那一刻开始积累。"}
+          今日（KST）<b>{data.today}</b> ·{" "}
+          {data.earliestDay ? `趋势自 ${data.earliestDay} 起，历史不回填` : "日账本待积累"}
         </p>
         <div className="admin-table-wrap">
           <table className="admin-table">
@@ -284,21 +311,26 @@ function AdminOverviewView() {
             </tbody>
           </table>
         </div>
-        <p className="admin-note text-12">
-          权重口径：登录 1.0 / 匿名 0.75（红黑榜一人一票、不加权，所以那一行是整数票数）。
-        </p>
         <div className="admin-row-tools">
           <ActionButton onPress={load}>刷新</ActionButton>
         </div>
       </section>
 
       <section className={`admin-panel${audit?.ok ? "" : " admin-panel--alert"}`}>
-        <h2 className="admin-panel-title">数据体检（聚合对账）</h2>
+        <div className="admin-panel-head">
+          <h2 className="admin-panel-title">数据体检（聚合对账）</h2>
+          <PanelMore label="数据体检">
+            <p className="admin-note">
+              做法：把每张贡献表现算一遍，与读侧真正用的预聚合表逐项比。聚合表一旦漂移，
+              榜单照常显示、只是数字错了 —— 读侧永远看不出来，所以要有这一屏。
+            </p>
+            <p className="admin-note">
+              对账只报告不修：修法是重算聚合（属写路径），不该由一个体检接口顺手做 ——
+              否则「谁在什么时候把数字改回去了」就没人知道。
+            </p>
+          </PanelMore>
+        </div>
         <p className="admin-note">{auditHeadline(audit)}</p>
-        <p className="admin-note text-12">
-          做法：把每张**贡献表**现算一遍，与读侧真正用的**预聚合表**逐项比。
-          聚合表一旦漂移，榜单照常显示、只是数字错了 —— 读侧永远看不出来，所以要有这一屏。
-        </p>
         {audit && !audit.ok && (
           <div className="admin-table-wrap">
             <table className="admin-table">
@@ -329,17 +361,17 @@ function AdminOverviewView() {
             .map(([table, count]) => `${table} ${count}`)
             .join(" · ") || "—"}
         </p>
-        <p className="admin-note text-12">
-          对账**只报告不修**：修法是重算聚合（属写路径），不该由一个体检接口顺手做 ——
-          否则「谁在什么时候把数字改回去了」就没人知道。
-        </p>
       </section>
 
       <section className="admin-panel">
-        <h2 className="admin-panel-title">账号与内容</h2>
-        <p className="admin-note text-12">
-          ⚠ 账号这块**只回统计量**：片单内容属于账号自己，管理端永远不读。
-        </p>
+        <div className="admin-panel-head">
+          <h2 className="admin-panel-title">账号与内容</h2>
+          <PanelMore label="账号与内容">
+            <p className="admin-note">
+              ⚠ 账号这块只回统计量：片单内容属于账号自己，管理端永远不读。
+            </p>
+          </PanelMore>
+        </div>
         <div className="admin-table-wrap">
           <table className="admin-table">
             <tbody>
@@ -581,8 +613,8 @@ function AdminStickersView() {
     <section className="admin-panel">
       <h2 className="admin-panel-title">贴纸（红黑榜投票行）</h2>
       <p className="admin-note text-12">
-        用户端撤不掉**别人贴的**贴纸，也撤不掉**本机 cookie 已丢**的匿名贴纸（那是「死贴纸」）——
-        这一屏是那种贴纸唯一的出口。删除按「谁贴的 + 哪部片」精确定位，**不可撤销**。
+        用户端撤不掉别人贴的贴纸，也撤不掉本机 cookie 已丢的匿名贴纸（「死贴纸」）——
+        这一屏是那种贴纸唯一的出口；删除按「谁贴的 + 哪部片」定位，不可撤销。
       </p>
       <div className="admin-row-tools">
         <button
