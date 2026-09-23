@@ -17,7 +17,7 @@
  *   不靠入场效果。
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as echarts from "echarts/core";
 import { BarChart as EChartsBar, LineChart, PieChart } from "echarts/charts";
 import {
@@ -111,6 +111,17 @@ function splitLine(tokens: ChartTokens) {
   return { lineStyle: { color: tokens.line, type: "dashed" as const } };
 }
 
+/** 图表数据的**内容签名**，用作 `option` 的 useMemo 依赖。
+ *
+ *  ★ 为什么不是「要求上游把 data 用 useMemo 稳定住」（2026-09-23，`PLAN-20260923113659` T2）：
+ *    图表数据是面板**渲染期派生**出来的数组（map / filter），要让引用稳定，每个面板都得记得包一层 ——
+ *    漏一处就静默退化（`option` 每次重建 → `useChart` 的 effect 又以 `notMerge` 全量重画）。
+ *    在图表这一层按内容签名判定，等价且只此一处；数据量是几十项，序列化成本比整张 SVG 重绘低几个数量级。
+ *  ⚠ 依赖里用签名、memo 体里用当前数组：两者内容一致时才命中缓存，故不会画出旧数据。 */
+function dataKey(value: unknown): string {
+  return JSON.stringify(value);
+}
+
 /** 容器尺寸就绪后才 `setOption`：宽为 0 时初始化会画出一张空图（`ResponsiveContainer`
  *  时代踩过的同一个坑，换库后仍然存在 —— 只是报错形式不同）。 */
 function useChart(ref: React.RefObject<HTMLDivElement | null>, option: EChartsCoreOption, ready: boolean) {
@@ -202,7 +213,7 @@ export function CountBarChart({
   rotate?: boolean;
   height?: number;
 }) {
-  const option: EChartsCoreOption = {
+  const option = useMemo<EChartsCoreOption>(() => ({
     animation: false,
     grid: { left: 4, right: 8, top: 16, bottom: 4, containLabel: true },
     tooltip: sharedTooltip(tokens, {
@@ -237,7 +248,7 @@ export function CountBarChart({
         itemStyle: { color: color ?? tokens.brand, borderRadius: [4, 4, 0, 0] },
       },
     ],
-  };
+  }), [tokens, dataKey(data), color, valueName, rotate]);
   return (
     <Canvas
       chart={chart}
@@ -275,7 +286,7 @@ export function RankBarChart({
   // 类目在 ECharts 里是**自下而上**排的 —— 想让人第一眼看到最大的那根，就得把数组反过来。
   const ordered = [...data].reverse();
   const height = Math.max(120, data.length * rowHeight + 24);
-  const option: EChartsCoreOption = {
+  const option = useMemo<EChartsCoreOption>(() => ({
     animation: false,
     grid: { left: 4, right: 28, top: 8, bottom: 4, containLabel: true },
     tooltip: sharedTooltip(tokens, {
@@ -302,7 +313,7 @@ export function RankBarChart({
         itemStyle: { color: color ?? tokens.brand, borderRadius: [0, 4, 4, 0] },
       },
     ],
-  };
+  }), [tokens, dataKey(data), color, valueName, rowHeight]);
   return (
     <Canvas
       chart={chart}
@@ -352,7 +363,7 @@ export function StackedBarChart({
     tooltip: { show: true },
   };
   const value = { type: "value" as const, minInterval: 1, ...axisCommon(tokens), splitLine: splitLine(tokens) };
-  const option: EChartsCoreOption = {
+  const option = useMemo<EChartsCoreOption>(() => ({
     animation: false,
     grid: { left: 4, right: horizontal ? 16 : 8, top: 16, bottom: 4, containLabel: true },
     tooltip: sharedTooltip(tokens, {
@@ -382,7 +393,7 @@ export function StackedBarChart({
             : 0,
       },
     })),
-  };
+  }), [tokens, dataKey(data), dataKey(series), horizontal]);
   return (
     <Canvas
       chart={chart}
@@ -422,7 +433,7 @@ export function DonutChart({
 }) {
   const total = data.reduce((sum, row) => sum + row.value, 0);
   const centerText = centerLabel ?? (total > 0 ? String(total) : "");
-  const option: EChartsCoreOption = {
+  const option = useMemo<EChartsCoreOption>(() => ({
     animation: false,
     tooltip: sharedTooltip(tokens, {
       trigger: "item",
@@ -470,7 +481,7 @@ export function DonutChart({
         })),
       },
     ],
-  };
+  }), [tokens, dataKey(data), centerLabel]);
   return (
     <Canvas
       chart={chart}
