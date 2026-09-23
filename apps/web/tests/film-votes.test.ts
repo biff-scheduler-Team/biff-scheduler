@@ -43,6 +43,36 @@ describe("parseVotes 白名单", () => {
   });
 });
 
+// 「服务端已确认含我」的那份快照(2026-09-23,PLAN-20260923182810)。
+// 为什么单测它:它是画布扣减的**基准** —— 记错只会表现为「画布上多一枚 / 少一枚点」,
+// 没有异常、没有报错,而且要等 1200ms 上报 + 重拉之后才可能自愈(用户看到的正是「过一会儿才刷新」)。
+describe("synced:服务端那份 counts 里属于我的票", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it("采纳一份票:红 / 黑各按一票记,同一 key 只留最后一次", async () => {
+    vi.resetModules();
+    const { adoptSyncedVotes, peekSyncedVotes } = await import("../src/film-votes");
+    expect(peekSyncedVotes()).toEqual({});
+    adoptSyncedVotes([
+      { key: "a", vote: "red" },
+      { key: "b", vote: "black" },
+      { key: "a", vote: "black" },
+    ]);
+    expect(peekSyncedVotes()).toEqual({ a: { red: 0, black: 1 }, b: { red: 0, black: 1 } });
+  });
+
+  it("空表也是合法输入:它说的是「服务端那份里已经没有我了」", async () => {
+    vi.resetModules();
+    const { adoptSyncedVotes, peekSyncedVotes } = await import("../src/film-votes");
+    adoptSyncedVotes([{ key: "a", vote: "red" }]);
+    adoptSyncedVotes([]);
+    expect(peekSyncedVotes()).toEqual({});
+  });
+});
+
 describe("loadFilmVotes 容错", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -127,5 +157,40 @@ describe("scheduleFilmVotesPing", () => {
     await vi.advanceTimersByTimeAsync(1200);
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect((JSON.parse(String(init.body)) as { votes: unknown[] }).votes).toHaveLength(500);
+  });
+
+  it("上报成功 → 把刚发出去的这份记成「服务端已含我」,并顺手重拉一次", async () => {
+    vi.resetModules();
+    let reads = 0;
+    const fetchMock = vi.fn((url: string) => {
+      if (String(url).includes("film-votes-ping")) {
+        return Promise.resolve({ ok: true, json: async () => ({ ok: true }) } as unknown as Response);
+      }
+      reads += 1;
+      return okJson({ votes: { a: { red: 1, black: 0 } } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { peekSyncedVotes, scheduleFilmVotesPing } = await import("../src/film-votes");
+
+    expect(peekSyncedVotes()).toEqual({});
+    scheduleFilmVotesPing([{ key: "a", vote: "red" }]);
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(peekSyncedVotes()).toEqual({ a: { red: 1, black: 0 } });
+    // 上报成功后自己那一票立刻体现在榜单上(读接口被再拉一次)
+    expect(reads).toBe(1);
+  });
+
+  it("上报失败 → 不动「已同步」快照(本地保持乐观,下次成功时自愈)", async () => {
+    vi.resetModules();
+    const fetchMock = vi.fn(() => fail());
+    vi.stubGlobal("fetch", fetchMock);
+    const { adoptSyncedVotes, peekSyncedVotes, scheduleFilmVotesPing } = await import(
+      "../src/film-votes"
+    );
+
+    adoptSyncedVotes([{ key: "a", vote: "red" }]);
+    scheduleFilmVotesPing([{ key: "b", vote: "black" }]);
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(peekSyncedVotes()).toEqual({ a: { red: 1, black: 0 } });
   });
 });

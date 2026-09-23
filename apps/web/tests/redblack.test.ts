@@ -24,8 +24,10 @@ import {
   makeSticker,
   MAX_PER_FILM,
   moveSticker,
+  othersOf,
   placeSticker,
   purgeDemoLeavings,
+  reconcile,
   saveStickers,
   saveWatched,
   scoreOf,
@@ -246,6 +248,50 @@ describe("对接服务端票数", () => {
       { key: "a", vote: "red" },
       { key: "b", vote: "black" },
     ]);
+  });
+});
+
+// 「以本地视角修正过的全站票数」(2026-09-23,PLAN-20260923182810)。
+// 为什么单测它:用户报的是「收回贴纸之后 贴纸仍残留 然后过一段时间才刷新」——
+// 表现只是**画面上多一枚点**,没有报错、没有异常,等 1200ms 防抖上报 + 重拉之后又会自己好,
+// 所以只能靠断言把「立刻」这两个字钉住。
+describe("reconcile:全站票数按本地视角修正", () => {
+  const counts = { total: 5, red: 3, black: 2 };
+
+  it("服务端已含我 + 我贴着一枚 → 与 counts 逐字一致(上报前后不跳)", () => {
+    expect(reconcile(counts, { total: 1, red: 1, black: 0 }, { total: 1, red: 1, black: 0 })).toEqual(
+      counts,
+    );
+  });
+
+  it("收回那一枚:服务端还没撤(counts 仍含我) → 立刻少一枚,不留残影", () => {
+    const serverMine = { total: 1, red: 1, black: 0 };
+    const noMine = { total: 0, red: 0, black: 0 };
+    // 用户看到的那一幕:本地已归 0,服务端 counts 还是 3 红 —— 修正后当场变成 2 红 2 黑
+    const reconciled = reconcile(counts, serverMine, noMine);
+    expect(reconciled).toEqual({ total: 4, red: 2, black: 2 });
+    // 画布拿它减掉「我的」(此刻为 0)→ 4 枚
+    expect(othersOf(reconciled, noMine).total).toBe(4);
+    // ⚠ 与改前的对照:老的写法直接拿 counts 减**本地**票,这一刻算出 5 枚
+    //   —— 「别人的贴纸」凭空多一枚,正是那条「仍残留」
+    expect(othersOf(counts, noMine).total).toBe(5);
+  });
+
+  it("刚贴上一枚:服务端还没有我那一票 → 立刻多一枚(不是少一枚)", () => {
+    const fresh = { total: 0, red: 0, black: 0 };
+    expect(reconcile(counts, fresh, { total: 1, red: 0, black: 1 })).toEqual({
+      total: 6,
+      red: 3,
+      black: 3,
+    });
+  });
+
+  it("服务端已经撤了而我这边还记着「它含我」→ 每色先夹 0,不会把别人的票算少", () => {
+    // 管理端删票 / 换设备:counts 里已经没有我那枚红(红已归 0),但 synced 还写着「有 1 红」
+    const withoutMe = { total: 2, red: 0, black: 2 };
+    const noMine = { total: 0, red: 0, black: 0 };
+    // 不夹 0 的话红会变成 −1,total 跟着少一枚 —— 把别人的黑票也一起算丢了
+    expect(reconcile(withoutMe, { total: 1, red: 1, black: 0 }, noMine)).toEqual(withoutMe);
   });
 });
 

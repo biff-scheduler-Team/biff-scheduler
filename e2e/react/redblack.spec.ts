@@ -431,6 +431,50 @@ test("单击自己贴的那一枚就收回暂存区,按钮重新可贴", async (
   await expect.poll(() => pings.at(-1)?.votes ?? null, { timeout: 8000 }).toEqual([]);
 });
 
+// 用户 2026-09-23:「收回贴纸之后 贴纸仍残留 然后过一段时间才刷新」。
+// 本地先确定、请求后同步 —— 收回那一拍画布与数字就该少一枚,而不是等 1200ms 防抖 + 重拉。
+// ⚠ 断言必须在**防抖窗口内**成立才算数:所以把「收回后的那次上报」扣住不返回。
+//   一旦放它过去,重拉回来的真值也会把画布修对 —— 这条用例就变成假绿(spec 里原本那几条
+//   正是这么放过去的:它们造的都是「服务端票数为空」的场景,压根没有「服务端还含我」那一拍)。
+test("收回自己那一枚:画布与数字**当场**少一枚,不等上报", async ({ page }) => {
+  const key = keyOf("008");
+  let reads = 0;
+  let pings = 0;
+  await page.route("**/api/stats/film-votes**", async (route) => {
+    if (route.request().method() === "POST") {
+      pings += 1;
+      // 只有贴完的那一次放行(让它落地成服务端的一份票);收回那一次永远扣住
+      if (pings === 1) return route.fulfill({ json: { ok: true, count: 1 } });
+      return;
+    }
+    reads += 1;
+    // 载入那次是空榜;上报落地之后服务端就有我这一票(1 红)
+    return route.fulfill({
+      json: { edition: "biff-2026", votes: reads === 1 ? {} : { [key]: { red: 1, black: 0 } } },
+    });
+  });
+  await ready(page, "/redblack");
+
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await card.getByRole("button", { name: /贴红贴纸/ }).click();
+
+  // 先等「服务端已含我」这个前提成立(上报落地后会自动重拉一次)
+  await expect.poll(() => reads).toBeGreaterThan(1);
+  const canvas = await paintedCanvas(card);
+  await expect(canvas).toHaveAttribute("data-rb-crowd", "0");
+  await card.locator(".rb-dot").click();
+
+  // ① 我那一枚当场消失
+  await expect(card.locator(".rb-dot")).toHaveCount(0);
+  // ② 画布上**没有**把它补成「别人的票」——这一条才是那个 bug 的判据(改前会变成 1)
+  await expect(canvas).toHaveAttribute("data-rb-crowd", "0");
+  // ③ 数字也跟着回去(改前要等重拉)
+  await expect(card.locator(".rb-chip--red")).toHaveCount(0);
+  // ④ 上面三条都是**本地**生效的:期间没有任何新的读请求(收回那次上报还被扣着,没触发重拉)
+  expect(reads).toBe(2);
+});
+
 test("拖一下微调位置不算单击:贴纸不会被顺手收走", async ({ page }) => {
   await stubEmpty(page);
   await ready(page, "/redblack");

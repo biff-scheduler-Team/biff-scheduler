@@ -160,9 +160,33 @@ export function countsOf(list: readonly Sticker[] | undefined): StickerCounts {
   return { total, red, black: total - red };
 }
 
-/** 「**别人的**贴纸」= 全体票数 − 我自己那几枚。
- *  ⚠ 服务端那份**含我**(上报落地后),不减掉就会把我这一枚画重;上报还没落地时会被夹到 0,
- *    之后再把「我那一枚」单独画上去,两个方向都对。
+/** 「以本地视角修正过的**全站**票数」= 服务端 `counts` **减去它里面属于我的那部分** (`serverMine`),
+ *  再加上**我当前**贴的那几枚 (`mine`)。
+ *
+ * 为什么不能直接拿 `counts` 当全站(2026-09-23 用户报的「收回贴纸之后 贴纸仍残留」):
+ * 贴 / 收回之后,服务端那份 `counts` 要等 1200ms 防抖上报 **+** 一次重拉才会更新。这期间若
+ * 「全站 = counts、我的 = 本地 board」两边直接相减:
+ *   · **收回** → 本地已归 0 而 `counts` 还含我 → 「别人的贴纸」凭空多一枚(就是那句「仍残留」);
+ *   · **贴上** → 本地已有一枚而 `counts` 还没有 → 「别人的贴纸」凭空少一枚。
+ * 把扣减基准换成 `serverMine`(服务端已确认含我的那份,见 `film-votes.ts::peekSyncedVotes`),
+ * 两个方向都**立刻**正确,而服务端一确认就无跳动地切到真值。
+ *
+ * ⚠ 每色**先夹 0 再相加**:服务端已经撤掉而我这边还记着「它含我」(管理端删票 / 换设备)时,
+ *    `counts − serverMine` 会是负数,直接加 `mine` 会把别人的票算少。 */
+export function reconcile(
+  counts: StickerCounts,
+  serverMine: StickerCounts,
+  mine: StickerCounts,
+): StickerCounts {
+  const red = Math.max(0, counts.red - serverMine.red) + mine.red;
+  const black = Math.max(0, counts.black - serverMine.black) + mine.black;
+  return { total: red + black, red, black };
+}
+
+/** 「**别人的**贴纸」= 全站票数 − 我自己那几枚。
+ *  ⚠ 传进来的 `counts` 必须是**已经过 `reconcile` 的全站票数**(卡片与分享图都走那一条),
+ *    否则「服务端还没算上我」/「服务端还留着我旧票」这两个窗口里会各错一枚
+ *    (前者少画、后者多画 —— 后者正是用户报的那个 bug)。
  *  ⚠ 卡片画布(`StickerCanvas`)与分享图(`redblack-poster.ts`)必须共用这一条 ——
  *    两处各写一份,分享图上摊出来的贴纸数就会与卡片对不上。 */
 export function othersOf(counts: StickerCounts, mine: StickerCounts): StickerCounts {
