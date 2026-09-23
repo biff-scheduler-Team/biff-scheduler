@@ -85,6 +85,15 @@
   outline-offset: 1px;
 }
 
+/* ⚠ 收起的浮层必须**显式** `display: none`：新版 Chromium 对关闭的 `<details>` 用的是
+ *   `content-visibility: hidden`（**保留布局**），于是这个绝对定位的浮层虽然不画出来，
+ *   却仍然往下撑开文档高度（2026-09-23 在管理端实测：一个收起的面板 ⓘ 把整页撑高 300+px）。
+ *   E2E 里「默认 hidden」的断言两条路都能过（`display: none` 与「无可见盒」都算 hidden），
+ *   所以这个坑**只能靠量高度发现**。 */
+.ra-note:not([open]) .ra-note-body {
+  display: none;
+}
+
 .ra-note-body {
   position: absolute;
   right: 0;

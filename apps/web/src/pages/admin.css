@@ -13,6 +13,14 @@
   gap: 16px;
   padding: 16px;
   color: var(--text);
+  /* ⚠ 必须**显式占满**：`#workspace` 是 `display: flex` 的**行**容器，而下面的栅格
+   *   `minmax(420px, 1fr)` 会把本页的**内在宽度**压到 ~448px（auto-fit 在内在尺寸计算里
+   *   只当一列），flex item 默认 `flex-grow: 0` → 它就只占这么宽。
+   *   实测 1512px 桌面下整页被压成 **478px 单列**，页面高度直接翻倍 —— 这正是
+   *   用户说的「概览特别长」的主因（不是文案长短，那是次要的）。
+   *   `.ra-page`（数据分析页）看着正常只是因为它的内在宽度本来就大，一样脆弱。 */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .admin-head {
@@ -59,12 +67,102 @@
   padding: 12px 14px;
   display: grid;
   gap: 8px;
+  /* 面板级 ⓘ（`.admin-more`）的定位锚 */
+  position: relative;
 }
 
 .admin-panel-title {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
+}
+
+/* 面板标题行：标题在左、ⓘ 在右。
+ * ⚠ ⓘ **不做绝对定位**：早先把它放在面板右上角（靠 z-index 压住标题行），
+ *   实测窄屏下它的可点区域会与后面的兄弟节点重叠 —— 浏览器命中的是后者，
+ *   真人点不到（E2E 报 `… intercepts pointer events`）。
+ *   放进标题行当普通 flex 项：既不会重叠，也对齐得像「标题的一部分」。 */
+.admin-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* 占满整行的面板（概览的「规模」）：两张图并排（都是宽幅图），
+ * 三张表落到下一行并排 —— 比「4 个面板挤 3 列、第 4 个孤零零掉到第二行」既短又整齐。 */
+.admin-panel--wide {
+  grid-column: 1 / -1;
+}
+
+/* ---------------- 面板级 ⓘ：口径说明默认收起 ----------------
+ * ★ 2026-09-23（用户：「管理后台 概览特别长」；实测桌面整页 1145px 里说明文字占 524px、
+ *   手机 412px 下整页 2017px）：说明是**按需再取**的东西，不该把面板撑长。
+ *   这与 2026-09-20 用户对图表说的那句是同一件事（「全部放到图的右上角的 tooltip 里面」）。
+ * ⚠ 视觉语言抄图表那套 `.ra-note`（右上角小 ⓘ + 浮层），但**刻意不共用那个类**：
+ *   那是图表层的东西、挂在画布上；面板不是图。长相抄一次没关系，语义别混。
+ * ⚠ 用原生 `<details>`：这一页的主要读者在现场用手机，点击是手机上唯一可靠的打开方式。
+ */
+.admin-more {
+  /* 浮层的定位锚：浮层挂在 ⓘ 自己身上，不与标题行抢位置 */
+  position: relative;
+  flex: none;
+}
+
+.admin-more-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  list-style: none;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+  font-style: italic;
+  cursor: pointer;
+}
+
+.admin-more-btn::-webkit-details-marker {
+  display: none;
+}
+
+.admin-more-btn:hover,
+.admin-more[open] .admin-more-btn {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.admin-more-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+
+/* ⚠ 收起的浮层必须**显式** `display: none`：新版 Chromium 对关闭的 `<details>` 用的是
+ *   `content-visibility: hidden`（**保留布局**），于是这个绝对定位的浮层虽然不画出来，
+ *   却仍然往下撑开文档高度 —— 实测概览因此从 1145px 涨到 1483px（浮层溢出到面板外）。
+ *   `.ra-note-body`（charts.css）是同一个坑，那边也加了同一条。 */
+.admin-more:not([open]) .admin-more-body {
+  display: none;
+}
+
+.admin-more-body {
+  position: absolute;
+  right: 0;
+  top: 24px;
+  width: min(280px, calc(100vw - 40px));
+  padding: 8px 10px;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 14%);
+  line-height: 1.6;
 }
 
 .admin-panel--alert {
@@ -75,7 +173,13 @@
 .admin-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  /* ⚠ `260px` 会让宽屏上出现 3 列各 ~295px 的窄栏 —— 表格与文案在里面疯狂折行，
+   *   实测「数据体检」那段说明因此从 2 行涨到 4 行（122px），把整页撑长。
+   *   改成 420px：1512px 下仍是 3 列，但每列约 490px，一屏能读完。
+   * ⚠ `align-items: start`：默认的 `stretch` 会把同排的矮面板拉到与最高的一样高，
+   *   实测三个面板全被拉到 505px，矮的里面全是大片空白。 */
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  align-items: start;
 }
 
 .admin-table {
