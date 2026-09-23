@@ -95,7 +95,7 @@ export function createD1(sqlite: DatabaseSync, stats?: D1ShimStats): D1Database 
   } as unknown as D1Database;
 }
 
-/** 计数聚合相关表的建表 DDL（与 `migrations/0003`、`0006`、`0007`、`0008` 逐字一致）。 */
+/** 计数聚合相关表的建表 DDL（与 `migrations/0003`、`0006`、`0007`、`0008`、`0010` 逐字一致）。 */
 export function createStatSchema(sqlite: DatabaseSync): void {
   sqlite.exec(`
     CREATE TABLE film_want_contribution (
@@ -181,6 +181,16 @@ export function createStatSchema(sqlite: DatabaseSync): void {
       hits_weight_sum TEXT DEFAULT '0' NOT NULL,
       updated_at INTEGER NOT NULL,
       PRIMARY KEY(edition, kind, target)
+    );
+    CREATE TABLE stat_daily (
+      edition TEXT NOT NULL,
+      day TEXT NOT NULL,
+      metric TEXT NOT NULL,
+      target TEXT NOT NULL,
+      weight_sum TEXT NOT NULL,
+      hits_sum TEXT NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(edition, day, metric, target)
     );
   `);
 }
