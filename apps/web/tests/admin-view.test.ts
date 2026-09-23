@@ -7,10 +7,14 @@ import {
   adminTrendFieldOf,
   adminTrendMetricOf,
   auditHeadline,
+  authorBars,
   bodyExcerpt,
+  categoryDonut,
   categoryLabel,
+  contentDonut,
   contentKindLabel,
   fillTrendDays,
+  metricBars,
   formatBytes,
   formatTime,
   formatWeight,
@@ -218,5 +222,83 @@ describe("内容视图", () => {
     expect(bodyExcerpt("  很伟大的  一个网站\n谢谢  ")).toBe("很伟大的 一个网站 谢谢");
     expect(bodyExcerpt("一二三四五", 3)).toBe("一二三…");
     expect(bodyExcerpt("", 3)).toBe("");
+  });
+});
+
+describe("图表数据（概览 / 内容）", () => {
+  const metrics = [
+    { metric: "vote", rows: 12, contributors: 3, targets: 2, total: 12, today: 1 },
+    { metric: "telemetry:click", rows: 900, contributors: 40, targets: 5, total: 900, today: 30 },
+  ];
+
+  it("metricBars：标签用中文、数值取**参与人数**（不是记录数）", () => {
+    expect(metricBars(metrics)).toEqual([
+      { label: "红黑榜", value: 3 },
+      { label: "点击", value: 40 },
+    ]);
+    // 未定义 / 空表一律给空数组，页面据此走空态
+    expect(metricBars(undefined)).toEqual([]);
+  });
+
+  it("★ contentDonut：两边都是 0 时返回空数组（让页面说一句话，而不是画一个空环）", () => {
+    expect(contentDonut({ discussions: 0, feedback: 0 })).toEqual([]);
+    expect(contentDonut(undefined)).toEqual([]);
+    expect(contentDonut({ discussions: 2, feedback: 0 })).toEqual([{ name: "场次讨论", value: 2 }]);
+    expect(contentDonut({ discussions: 2, feedback: 3 })).toEqual([
+      { name: "场次讨论", value: 2 },
+      { name: "反馈留言", value: 3 },
+    ]);
+  });
+
+  it("authorBars：计数后按帖子数降序，同名的登录 / 匿名身份算在一起", () => {
+    const posts = [
+      { displayName: "citron", subject: "s1" },
+      { displayName: "citron", subject: "s1" },
+      { displayName: "gaaiyeoi", subject: "s2" },
+      { displayName: "citron", subject: "s9" }, // 同一名字、另一条身份 → 仍合并
+    ];
+    expect(authorBars(posts as never)).toEqual([
+      { label: "citron", value: 3 },
+      { label: "gaaiyeoi", value: 1 },
+    ]);
+  });
+
+  it("authorBars：名字为空时退回 subject；两者都空的行丢掉；只取 TOP N", () => {
+    const posts = [
+      { displayName: "", subject: "s-anon" },
+      { displayName: "  ", subject: "" },
+      ...Array.from({ length: 12 }, (_, index) => ({
+        displayName: `who-${index}`,
+        subject: `s-${index}`,
+      })),
+    ];
+    const bars = authorBars(posts as never, 5);
+    expect(bars).toHaveLength(5);
+    // 名字空的退回 subject（`s-anon` 进来了）；13 个人人各 1 条，同分时按名字排
+    //（结果稳定 —— 否则每次刷新榜单换一批人，看图的人会以为「热度在变」）
+    expect(bars.map((bar) => bar.label)).toEqual([
+      "s-anon",
+      "who-0",
+      "who-1",
+      "who-10",
+      "who-11",
+    ]);
+    expect(authorBars([{ displayName: "", subject: "" }] as never)).toEqual([]);
+  });
+
+  it("categoryDonut：用契约里的中文标签、按条数降序、未知分类原样回", () => {
+    const posts = [
+      { category: "gift" },
+      { category: "other" },
+      { category: "gift" },
+      { category: "brand-new" },
+      { category: undefined },
+    ];
+    expect(categoryDonut(posts as never)).toEqual([
+      { name: "无料交换", value: 2 },
+      { name: "—", value: 1 },
+      { name: "brand-new", value: 1 },
+      { name: "其他", value: 1 },
+    ]);
   });
 });
