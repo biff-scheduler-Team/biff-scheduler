@@ -1,16 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
+  adminContentKindOf,
   adminRowsMetricOf,
   adminTabLabel,
   adminTabOf,
+  adminTrendFieldOf,
   adminTrendMetricOf,
   auditHeadline,
+  bodyExcerpt,
+  categoryLabel,
+  contentKindLabel,
   fillTrendDays,
   formatBytes,
   formatTime,
   formatWeight,
   metricLabel,
   nextDay,
+  reactionSummary,
+  shortDay,
+  trendBars,
+  trendFieldLabel,
 } from "../src/admin-view";
 import type { AdminAudit } from "../src/admin-api";
 
@@ -139,5 +148,75 @@ describe("格式化", () => {
     expect(formatWeight(1.75)).toBe("1.75");
     expect(formatWeight(1.7500000000000002)).toBe("1.75");
     expect(formatWeight(Number.NaN)).toBe("0");
+  });
+});
+
+describe("趋势视图（chart 契约的数据侧）", () => {
+  const points = [
+    { day: "2026-09-22", weight: 1.75, hits: 0 },
+    { day: "2026-09-23", weight: 0, hits: 3 },
+  ];
+
+  it("shortDay 只留月日；非标准长度原样回（不硬切）", () => {
+    expect(shortDay("2026-09-23")).toBe("09-23");
+    expect(shortDay("2026-09-23T00:00")).toBe("2026-09-23T00:00");
+  });
+
+  it("trendBars 按字段取值、标签用短日期（图上的横轴）", () => {
+    expect(trendBars(points)).toEqual([
+      { label: "09-22", value: 1.75 },
+      { label: "09-23", value: 0 },
+    ]);
+    expect(trendBars(points, "hits")).toEqual([
+      { label: "09-22", value: 0 },
+      { label: "09-23", value: 3 },
+    ]);
+  });
+
+  it("★ 补零后的每一天都要画进图里（图只画有值的天会让曲线假装连起来）", () => {
+    const filled = fillTrendDays([{ day: "2026-09-22", weight: 2, hits: 0 }], "2026-09-22", 3);
+    const bars = trendBars(filled);
+    expect(bars).toHaveLength(3);
+    // 中间那天是 0 也要在，否则横轴会少一格、看起来「那天不存在」
+    expect(bars.map((bar) => bar.value)).toEqual([2, 0, 0]);
+  });
+
+  it("字段与指标都有白名单兜底（手改 URL 落回默认值）", () => {
+    expect(adminTrendFieldOf("hits")).toBe("hits");
+    expect(adminTrendFieldOf("nope")).toBe("weight");
+    expect(adminTrendFieldOf(null)).toBe("weight");
+    expect(trendFieldLabel("hits")).toBe("次数");
+    expect(trendFieldLabel("weight")).toBe("加权和");
+  });
+});
+
+describe("内容视图", () => {
+  it("kind 白名单兜底", () => {
+    expect(adminContentKindOf("feedback")).toBe("feedback");
+    expect(adminContentKindOf("nope")).toBe("discussion");
+    expect(adminContentKindOf(null)).toBe("discussion");
+    expect(contentKindLabel("feedback")).toBe("反馈留言");
+    expect(contentKindLabel("discussion")).toBe("场次讨论");
+  });
+
+  it("reactionSummary：有反应给紧凑文案，没反应给破折号（不是空串）", () => {
+    expect(reactionSummary({ "👍": 2, "❤️": 1 })).toBe("👍 2 · ❤️ 1");
+    expect(reactionSummary({})).toBe("—");
+    expect(reactionSummary(undefined)).toBe("—");
+    // 0 计数的键不显示（反应被撤光后会留 0）
+    expect(reactionSummary({ "👍": 0 })).toBe("—");
+  });
+
+  it("★ categoryLabel 用契约里的唯一来源，未知 key 原样回（不自造映射）", () => {
+    expect(categoryLabel("gift")).toBe("无料交换");
+    expect(categoryLabel("other")).toBe("其他");
+    expect(categoryLabel("brand-new")).toBe("brand-new");
+    expect(categoryLabel(undefined)).toBe("—");
+  });
+
+  it("bodyExcerpt：折叠空白、超长截断（列表只给一眼能扫的量）", () => {
+    expect(bodyExcerpt("  很伟大的  一个网站\n谢谢  ")).toBe("很伟大的 一个网站 谢谢");
+    expect(bodyExcerpt("一二三四五", 3)).toBe("一二三…");
+    expect(bodyExcerpt("", 3)).toBe("");
   });
 });
