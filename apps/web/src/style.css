@@ -40,7 +40,18 @@
      而 `legend.ts` / `badges.ts` 另有一份 `cls` 死实现(`bg-rate-all-solid` 等 —— 零消费方,
      且这些类在新 `src` 根本没有定义)。同一外观两份定义,改哪份都不确定生效,故收成 token:
      **外观只此一处**,React 侧只负责 `data-badge` 形状。两套主题同值(官方色卡不随主题变)。 */
-  --badge-ink: #ffffff;
+  /* 徽标 ink 按**底色明度**分两档(2026-09-23,`PLAN-20260923122409` T1):旧版只有 `#ffffff` 一档,
+     而 12px 粗体**不适用** WCAG 大字号豁免(需 ≥18.66px 粗体),阈值就是 4.5:1 —— 实测白字压在
+     三个官方亮底上不合格:`rating-ALL` 3.30 / `rating-12` 1.86 / `rating-15` 2.84。
+     ⚠ 底色(`--badge-*`)**一个都不动**(官方色卡,见上一条注释);且徽标底色在两套主题下同值,
+     所以这两档 ink 也**不需要**暗色覆盖 —— 深底一律 6.30–14.41,只有亮底那三个要换深字。
+     实测值由 `tests/badge-contrast.test.ts` 从本文件解析后按相对亮度公式钉住。 */
+  --badge-ink-on-dark: #ffffff;  /* 压深底:最低一项 rating-19 = 6.44 */
+  --badge-ink-on-light: #1c1c1e; /* 压亮底:rating-all 5.16 / rating-12 9.13 / rating-15 5.98 */
+  /* CODE 是**描边款**(`background: transparent`),文字直接落在页面 / 卡片底色上 ——
+     与上面两档不是同一个变量:浅色最坏 `--page` 3.31(旧值 `#ff3030`),暗色最坏 `--surface` 4.16,
+     故必须按主题各给一档。下方 `:root[data-theme="dark"]` 覆盖暗色值。 */
+  --badge-code-ink: #c62828;     /* 浅色最坏 `--selected` = 4.87 */
   --badge-fallback: #2b292d;
   --badge-rating-all: #4b9f4e;
   --badge-rating-12: #f9b025;
@@ -76,6 +87,11 @@
   --conflict-line: #f28390;
   --tight: #433923;
   --tight-line: #dfbd63;
+  /* 唯一的徽标 token 暗色覆盖(2026-09-23,`PLAN-20260923122409` T1):CODE 描边款的文字色。
+     旧值 `#ff3030` 在这里最坏只有 3.09(`--tight`;页面 / 卡片底 4.16–4.82),故提亮到 `#ff8a80`
+     (最坏仍 `--tight` = 4.98)。PLAN 里登记的 `#ff6b6b` 实测 4.09 **不达标**,故改用留余量档。
+     边框 `--badge-code` 保持官方红不变:非文本对比只需 3:1,该红实测最坏也是 3.09(`--tight`)。 */
+  --badge-code-ink: #ff8a80;
 }
 * {
   box-sizing: border-box;
@@ -1626,10 +1642,12 @@ img {
   min-width: 32px; height: 18px; padding: 0 6px;
   /* 药丸这一档(2026-09-22,`PLAN-20260922105228`):CODE 徽章 / 计数章 / 概览 tag 共用一个 token */
   border: 1px solid transparent; border-radius: var(--radius-pill);
-  background: var(--badge-fallback); color: var(--badge-ink);
+  background: var(--badge-fallback); color: var(--badge-ink-on-dark);
   font-family: Arial, sans-serif; font-size: 12px; font-weight: 700;
   line-height: 1; white-space: nowrap; vertical-align: middle; flex-shrink: 0;
 }
+/* 底下 `rating-*` / `subs-*` / `gv` 这 9 条是**实心**款:底色不透明,故 ink 只由底色明度决定,
+   与主题无关(`--badge-*` 也没有暗色覆盖)。 */
 .film-badge[data-badge="rating-ALL"] { background: var(--badge-rating-all); }
 .film-badge[data-badge="rating-12"] { background: var(--badge-rating-12); }
 .film-badge[data-badge="rating-15"] { background: var(--badge-rating-15); }
@@ -1639,7 +1657,14 @@ img {
 .film-badge[data-badge="subs-KK"] { background: var(--badge-subs-kk); }
 .film-badge[data-badge="subs-NO"] { background: var(--badge-subs-no); }
 .film-badge[data-badge="gv"] { background: var(--badge-gv); }
-.film-badge[data-badge="code"] { background: transparent; border-color: var(--badge-code); color: var(--badge-code); }
+/* 这三个官方亮底必须走深字,否则白字只有 3.30 / 1.86 / 2.84(见 `:root` 的 ink 注释)。
+   三条同用一档,故合并写;不并进上面那三条背景规则,是为了让「底色」与「前景」各自成组更好读。 */
+.film-badge[data-badge="rating-ALL"],
+.film-badge[data-badge="rating-12"],
+.film-badge[data-badge="rating-15"] { color: var(--badge-ink-on-light); }
+/* 描边款:文字色与边框色**故意分开** —— 边框只需非文本对比 3:1(官方红实测最坏 3.09,达标),
+   文字要 4.5:1,故按主题各一档(`--badge-code-ink`)。 */
+.film-badge[data-badge="code"] { background: transparent; border-color: var(--badge-code); color: var(--badge-code-ink); }
 .vertical-schedule .gantt-film-text .badges { max-height: none; }
 
 .screening-info-popover { width: min(340px, calc(100vw - 24px)); max-height: min(480px, calc(100dvh - 24px)); overflow: auto; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 16px; box-shadow: 0 8px 32px #0003; z-index: 40; }
