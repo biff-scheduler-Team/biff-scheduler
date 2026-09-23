@@ -25,6 +25,34 @@ export interface FilmNode {
   block?: Screening;
 }
 
+/** `buildFilms` 的**带缓存**版本：只在「目录 / 映射版本 / P&I 开关」变化时才重建。
+ *
+ *  ★ 为什么需要（2026-09-23，`PLAN-20260923113659` T3）：`store.tsx::derive` 的 useMemo 依赖
+ *    `[cat, version]`，而 `version` 在**任何**一次变更（点一场片、改一个设置）后都会自增 ——
+ *    于是「点选一场」就要重算整届 `buildFilms`（795 场 → 影片节点）。
+ *    而 films 只依赖目录与豆瓣映射，**与选片无关**，本可整段跳过。
+ *
+ *  ⚠ 缓存键必须用 `state.ts::store.mappingRevision`（每次写 mappings 时自增），
+ *    **不能**用 `mappings.size`（映射若被覆盖重写，size 不变而内容已变 → 读到过期映射），
+ *    更**不能**只按 `cat` 缓存（同一个坑的更粗略版本）。
+ *  ⚠ 键用 `base`（稳定的那份目录）而不是 `effective`：`withPni()` 每次调用都返回**新对象**，
+ *    拿它当键会永远命中不了；P&I 是否并进来改用 `pni` 标记参与判定。 */
+const filmsCache = new WeakMap<Catalog, { revision: number; pni: boolean; films: FilmNode[] }>();
+
+export function buildFilmsCached(
+  base: Catalog,
+  effective: Catalog,
+  mappings: Map<string, Mapping>,
+  revision: number,
+): FilmNode[] {
+  const pni = effective !== base;
+  const cached = filmsCache.get(base);
+  if (cached && cached.revision === revision && cached.pni === pni) return cached.films;
+  const films = buildFilms(effective, mappings);
+  filmsCache.set(base, { revision, pni, films });
+  return films;
+}
+
 export function buildFilms(
   cat: Catalog,
   mappings: Map<string, Mapping>,

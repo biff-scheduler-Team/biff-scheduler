@@ -42,6 +42,10 @@ export const store = {
   /** 派生索引:全部已排场次 code。`allCodes()` O(1) 取用,避免每次全量遍历 picks */
   allIndex: [] as string[],
   mappings: new Map<string, Mapping>(),
+  /** 豆瓣映射的**版本号**：每次写 `mappings` 时自增（2026-09-23，`PLAN-20260923113659` T3）。
+   *  ⚠ 存在的理由：`mappings` 是**原地变更**的（引用不变），派生缓存（如 `model.ts::buildFilmsCached`）
+   *    拿不到「映射变了」的信号 —— 用 `size` 也不够（覆盖重写时 size 不变）。 */
+  mappingRevision: 0,
   settings: { alarmMin: 45, transitMin: 0, gvTalkOn: true, gvTalkMin: 25, showPni: false } as Settings,
 };
 
@@ -514,6 +518,8 @@ export async function loadMappings(): Promise<void> {
   for (const r of await loadDoubanMappings()) {
     store.mappings.set(r.code, r);
   }
+  // 版本号自增是**派生缓存失效的唯一信号**（见 `store.mappingRevision` 的说明）
+  store.mappingRevision += 1;
   notify("mappings");
 }
 
