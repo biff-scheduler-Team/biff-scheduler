@@ -177,13 +177,20 @@ export async function createScreeningPost(
   };
 }
 
-export async function deleteScreeningPost(db: Db, id: string, subject: string) {
-  const row = await db.select().from(screeningPost).where(eq(screeningPost.id, id)).get();
+/** 删帖。⚠ `code` 与路径里的 `:code` 必须一致（2026-09-23，PLAN-20260923111748，B2）：
+ *  此前只按 id + owner 删，语义上允许「用任意场次的路径删自己的帖」——
+ *  虽然删不到别人的帖（无越权），但路径与实际对象不一致，容易在被复用时变成越权的入口。 */
+export async function deleteScreeningPost(db: Db, input: { id: string; code: string; subject: string }) {
+  const row = await db
+    .select()
+    .from(screeningPost)
+    .where(and(eq(screeningPost.id, input.id), eq(screeningPost.code, input.code)))
+    .get();
   if (!row) return { status: "missing" as const };
-  if (row.subject !== subject) return { status: "forbidden" as const };
+  if (row.subject !== input.subject) return { status: "forbidden" as const };
   await db.batch([
-    db.delete(screeningReaction).where(eq(screeningReaction.post_id, id)),
-    db.delete(screeningPost).where(eq(screeningPost.id, id)),
+    db.delete(screeningReaction).where(eq(screeningReaction.post_id, input.id)),
+    db.delete(screeningPost).where(eq(screeningPost.id, input.id)),
   ]);
   return { status: "deleted" as const };
 }
@@ -232,6 +239,9 @@ export async function toggleScreeningReaction(
         emoji: input.emoji,
         created_at: Date.now(),
       })
+      // 与 `feedback-store.ts` 同一条：主键 (post_id, subject, emoji)，
+      // 并发同点一个 emoji 会撞唯一约束冒泡成 500，故幂等插入。
+      .onConflictDoNothing()
       .run();
   }
 

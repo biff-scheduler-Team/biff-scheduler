@@ -187,7 +187,8 @@ export async function sessionFor(
       // 登录时上游没给 refresh token 的会话,撑不过第一个 access token 窗口(15 分钟)——
       // 到点必然走到这里删行,用户只看到「登录已过期」而线上不留痕迹。打点是为了让这条
       // 路径可被观察,并与「上游拒绝刷新」区分开(PLAN-20260916104514 成因 A)。
-      console.warn("session_without_refresh_token", row.subject);
+      // 不再打 `subject`（账号 ID 属可识别信息，CF 日志里没必要留）——只留事件名。
+      console.warn("session_without_refresh_token");
       await db.delete(appSession).where(eq(appSession.token_hash, tokenHash)).run();
       return { session: null, failure: "SESSION_NO_REFRESH_TOKEN" };
     }
@@ -266,7 +267,7 @@ export async function sessionFor(
           .where(and(eq(appSession.token_hash, tokenHash), eq(appSession.payload, row.payload)))
           .run();
         if (removed.meta.changes) {
-          console.warn("session_invalid_grant", row.subject);
+          console.warn("session_invalid_grant");
           return { session: null, failure: "SESSION_REFRESH_REJECTED" };
         }
         console.warn("session_refresh_invalid_grant_superseded");
@@ -353,7 +354,14 @@ export async function resolveIdentity(
         .run();
     return { failure: response.status === 401 ? "IDENTITY_REJECTED" : "IDENTITY_UNAVAILABLE" };
   }
-  const profile = accountProfileSchema.parse(await response.json());
-  if (profile.userId !== current.row.subject) return { failure: "IDENTITY_MISMATCH" };
-  return { session: current, profile };
+  // ⚠ 用 `safeParse` 而不是 `parse`（2026-09-23，PLAN-20260923111748，B2）：
+  //   上游返回 200 但字段不合契约（或压根不是 JSON）时，`parse` / `json()` 抛出的异常会冒泡成
+  //   500 `INTERNAL_ERROR` —— 前端会当成「服务端 bug」而不是可重试的「身份服务暂时不可用」。
+  const parsed = accountProfileSchema.safeParse(await response.json().catch(() => null));
+  if (!parsed.success) {
+    console.warn("identity_profile_malformed");
+    return { failure: "IDENTITY_UNAVAILABLE" };
+  }
+  if (parsed.data.userId !== current.row.subject) return { failure: "IDENTITY_MISMATCH" };
+  return { session: current, profile: parsed.data };
 }

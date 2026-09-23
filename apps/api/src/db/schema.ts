@@ -122,6 +122,10 @@ export const screeningPost = sqliteTable("screening_post", {
   updated_at: integer().notNull(),
 }, (table) => [
   index("screening_post_code_created").on(table.code, table.created_at),
+  // 全站讨论墙（`code = null`）只按 edition 过滤 + 按 created_at 排序，
+  // 前导列是 code 的那条索引服务不了它（落到全表扫 + 文件排序）——
+  // 2026-09-23，PLAN-20260923111748，B2。
+  index("screening_post_edition_created").on(table.edition, table.created_at),
   index("screening_post_subject").on(table.subject),
 ]);
 

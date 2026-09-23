@@ -57,6 +57,13 @@
       "when": 1789898296524,
       "tag": "0008_telemetry",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1790133981460,
+      "tag": "0009_good_angel",
+      "breakpoints": true
     }
   ]
 }

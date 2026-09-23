@@ -3,11 +3,9 @@ import { isReactionEmoji } from "@biff/contracts/reactions";
 import { and, eq, lt, notExists, sql } from "drizzle-orm";
 import { database } from "./db";
 import { accountImport, appSession, festivalDocument, oauthPending } from "./db/schema";
-import {
-  DEFAULT_WANT_EDITION,
-  pickFilmKeysFromRecords,
-  wantWeightFor,
-} from "./want-stats";
+import { pickFilmKeysFromRecords, wantWeightFor } from "./want-stats";
+import { DEFAULT_EDITION, EDITIONS, isEdition } from "@biff/contracts/edition";
+import { LOOKUP_RATE_LIMIT, PING_RATE_LIMIT, createRateLimiter } from "./rate-limit";
 import { readWantCounts, replaceContributorWants } from "./want-store";
 import { MAX_VOTES_PER_PING, normalizeVotes } from "./film-vote-stats";
 import { readVoteCounts, replaceContributorVotes } from "./film-vote-store";
@@ -54,7 +52,7 @@ import {
   parseFeedbackLimit,
   toggleFeedbackReaction,
 } from "./feedback-store";
-import { Hono, type MiddlewareHandler } from "hono";
+import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { bodyLimit } from "hono/body-limit";
 import { HTTPException } from "hono/http-exception";
@@ -93,6 +91,54 @@ type AppEnv = {
   };
 };
 const app = new Hono<AppEnv>();
+
+/* ---------------- 通用闸门（2026-09-23，PLAN-20260923111748，B2） ---------------- */
+
+const pingLimiter = createRateLimiter(PING_RATE_LIMIT);
+const lookupLimiter = createRateLimiter(LOOKUP_RATE_LIMIT);
+
+/** 限流中间件。键 = 路径 + 来源 IP（`cf-connecting-ip` 由 Cloudflare 注入，客户端改不了）。
+ *  ⚠ 只是**第一道闸门**：计数器在 isolate 内存里，跨 isolate / 冷启动会重置，
+ *    不能替代 CF 的 Rate Limiting Rules —— 边界详见 `rate-limit.ts` 文件头。 */
+function limited(limiter: ReturnType<typeof createRateLimiter>): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    const decision = limiter.check(`${c.req.path}\u0000${c.req.header("cf-connecting-ip") ?? "unknown"}`);
+    if (!decision.allowed) {
+      c.header("Retry-After", String(decision.retryAfterSeconds));
+      return c.json({ error: "RATE_LIMITED" }, 429);
+    }
+    await next();
+  };
+}
+
+/** `edition` 收口为白名单枚举（此前只校验长度，任意 ≤64 的串都会被当成一个届次）。 */
+function editionParam(raw: string | undefined): string | null {
+  const edition = raw && raw.length > 0 ? raw : DEFAULT_EDITION;
+  return isEdition(edition) ? edition : null;
+}
+
+/**
+ * 公开读端点用的**可选**会话：身份服务出问题时降级成匿名继续返回内容。
+ *
+ * `sessionFor` 在 access token 临期且上游抖动 / 并发刷新抢不到租约时会抛 `HTTPException(503)`，
+ * 此前它会一路冒泡到 `onError` —— 于是 `/api/feedback`、`/api/discussions` 这类**纯公开**内容
+ * 会因为「账号系统暂时连不上」而整页打不开（最坏还要等满 `REFRESH_WAIT_MS`）。
+ * 公开内容不依赖会话，降级即可；只有 `requireIdentity` 那条路径才该让 503 冒泡。
+ */
+async function optionalSession(c: Context<AppEnv>) {
+  const config = configuration(c.env);
+  try {
+    const { session } = await sessionFor(
+      c.env,
+      getCookie(c, sessionCookieName(config)),
+      c.req.header("cf-connecting-ip"),
+    );
+    return session;
+  } catch (error) {
+    console.warn("public_read_session_degraded", error instanceof Error ? error.name : "UnknownError");
+    return null;
+  }
+}
 
 const recordsSchema = z
   .record(
@@ -388,7 +434,7 @@ app.put("/api/account/sync/biff-2026", async (c) => {
 
 const wantPingSchema = z
   .object({
-    edition: z.string().min(1).max(64).optional().default(DEFAULT_WANT_EDITION),
+    edition: z.enum(EDITIONS).optional().default(DEFAULT_EDITION),
     films: z.array(z.string().min(1).max(128)).max(500),
   })
   .strict();
@@ -414,12 +460,8 @@ async function applyWantFromRecords(
 
 
 app.get("/api/feedback", async (c) => {
-  const config = configuration(c.env);
-  const { session } = await sessionFor(
-    c.env,
-    getCookie(c, sessionCookieName(config)),
-    c.req.header("cf-connecting-ip"),
-  );
+  // 公开内容：会话拿不到（或刷新失败）就按匿名返回，不因为账号系统抖动而整页打不开
+  const session = await optionalSession(c);
   const result = await listFeedbackPosts(database(c.env.DB), {
     limit: parseFeedbackLimit(c.req.query("limit")),
     cursor: parseFeedbackCursor(c.req.query("cursor")),
@@ -467,12 +509,12 @@ app.post("/api/feedback/:id/reactions", requireIdentity, async (c) => {
 });
 
 app.get("/api/stats/want-counts", async (c) => {
-  const edition = c.req.query("edition") || DEFAULT_WANT_EDITION;
-  if (edition.length > 64) return c.json({ error: "INVALID_EDITION" }, 422);
+  const edition = editionParam(c.req.query("edition"));
+  if (!edition) return c.json({ error: "INVALID_EDITION" }, 422);
   const counts = await readWantCounts(database(c.env.DB), edition);
   return c.json({ edition, counts });
 });
-app.post("/api/stats/want-ping", async (c) => {
+app.post("/api/stats/want-ping", limited(pingLimiter), async (c) => {
   const parsed = wantPingSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "INVALID_WANT_PING" }, 422);
   const { edition, films } = parsed.data;
@@ -515,7 +557,7 @@ app.post("/api/stats/want-ping", async (c) => {
 
 const filmVotePingSchema = z
   .object({
-    edition: z.string().min(1).max(64).optional().default(DEFAULT_WANT_EDITION),
+    edition: z.enum(EDITIONS).optional().default(DEFAULT_EDITION),
     votes: z
       .array(z.object({ key: z.string().min(1).max(128), vote: z.enum(["red", "black"]) }).strict())
       .max(MAX_VOTES_PER_PING),
@@ -523,13 +565,13 @@ const filmVotePingSchema = z
   .strict();
 
 app.get("/api/stats/film-votes", async (c) => {
-  const edition = c.req.query("edition") || DEFAULT_WANT_EDITION;
-  if (edition.length > 64) return c.json({ error: "INVALID_EDITION" }, 422);
+  const edition = editionParam(c.req.query("edition"));
+  if (!edition) return c.json({ error: "INVALID_EDITION" }, 422);
   const votes = await readVoteCounts(database(c.env.DB), edition);
   return c.json({ edition, votes });
 });
 
-app.post("/api/stats/film-votes-ping", async (c) => {
+app.post("/api/stats/film-votes-ping", limited(pingLimiter), async (c) => {
   const parsed = filmVotePingSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "INVALID_FILM_VOTE_PING" }, 422);
   const { edition, votes } = parsed.data;
@@ -569,8 +611,8 @@ app.post("/api/stats/film-votes-ping", async (c) => {
  * (登录 1.0 / 匿名 0.75,见 want-stats.ts)。只回聚合数字,不回名单 —— 呼应「保护个人隐私」。 */
 
 app.get("/api/stats/screening-counts", async (c) => {
-  const edition = c.req.query("edition") || DEFAULT_WANT_EDITION;
-  if (edition.length > 64) return c.json({ error: "INVALID_EDITION" }, 422);
+  const edition = editionParam(c.req.query("edition"));
+  if (!edition) return c.json({ error: "INVALID_EDITION" }, 422);
   const db = database(c.env.DB);
   const [attendance, discussions] = await Promise.all([
     readScreeningCounts(db, edition),
@@ -581,12 +623,12 @@ app.get("/api/stats/screening-counts", async (c) => {
 
 const screeningPingSchema = z
   .object({
-    edition: z.string().min(1).max(64).optional().default(DEFAULT_WANT_EDITION),
+    edition: z.enum(EDITIONS).optional().default(DEFAULT_EDITION),
     codes: z.array(z.string().min(1).max(64)).max(MAX_SCREENING_CODES_PER_PING),
   })
   .strict();
 
-app.post("/api/stats/screening-attendance-ping", async (c) => {
+app.post("/api/stats/screening-attendance-ping", limited(pingLimiter), async (c) => {
   const parsed = screeningPingSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "INVALID_SCREENING_PING" }, 422);
   const { edition, codes } = parsed.data;
@@ -632,7 +674,7 @@ app.post("/api/stats/screening-attendance-ping", async (c) => {
 
 const ticketPingSchema = z
   .object({
-    edition: z.string().min(1).max(64).optional().default(DEFAULT_WANT_EDITION),
+    edition: z.enum(EDITIONS).optional().default(DEFAULT_EDITION),
     entries: z
       .array(
         z
@@ -648,13 +690,13 @@ const ticketPingSchema = z
   .strict();
 
 app.get("/api/stats/ticket-counts", async (c) => {
-  const edition = c.req.query("edition") || DEFAULT_WANT_EDITION;
-  if (edition.length > 64) return c.json({ error: "INVALID_EDITION" }, 422);
+  const edition = editionParam(c.req.query("edition"));
+  if (!edition) return c.json({ error: "INVALID_EDITION" }, 422);
   const tickets = await readTicketCounts(database(c.env.DB), edition);
   return c.json({ edition, tickets });
 });
 
-app.post("/api/stats/ticket-results-ping", async (c) => {
+app.post("/api/stats/ticket-results-ping", limited(pingLimiter), async (c) => {
   const parsed = ticketPingSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "INVALID_TICKET_PING" }, 422);
   const { edition, entries } = parsed.data;
@@ -709,7 +751,7 @@ app.post("/api/stats/ticket-results-ping", async (c) => {
 
 const telemetryPingSchema = z
   .object({
-    edition: z.string().min(1).max(64).optional().default(DEFAULT_WANT_EDITION),
+    edition: z.enum(EDITIONS).optional().default(DEFAULT_EDITION),
     events: z
       .array(
         z
@@ -725,13 +767,13 @@ const telemetryPingSchema = z
   .strict();
 
 app.get("/api/stats/telemetry-counts", async (c) => {
-  const edition = c.req.query("edition") || DEFAULT_WANT_EDITION;
-  if (edition.length > 64) return c.json({ error: "INVALID_EDITION" }, 422);
+  const edition = editionParam(c.req.query("edition"));
+  if (!edition) return c.json({ error: "INVALID_EDITION" }, 422);
   const counts = await readTelemetryCounts(database(c.env.DB), edition);
   return c.json({ edition, counts });
 });
 
-app.post("/api/stats/telemetry-ping", async (c) => {
+app.post("/api/stats/telemetry-ping", limited(pingLimiter), async (c) => {
   const parsed = telemetryPingSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "INVALID_TELEMETRY_PING" }, 422);
   const { edition, events } = parsed.data;
@@ -773,14 +815,9 @@ app.post("/api/stats/telemetry-ping", async (c) => {
 /* 讨论区聚合读(2026-09-15,PLAN-20260915233816):全站帖子墙 —— 与单场讨论同一套分页 / 反应口径,
  * 差别只在「不按场次 code 收窄」。公开读,登录时额外回自己的 myReactions。 */
 app.get("/api/discussions", async (c) => {
-  const edition = c.req.query("edition") || DEFAULT_WANT_EDITION;
-  if (edition.length > 64) return c.json({ error: "INVALID_EDITION" }, 422);
-  const config = configuration(c.env);
-  const { session } = await sessionFor(
-    c.env,
-    getCookie(c, sessionCookieName(config)),
-    c.req.header("cf-connecting-ip"),
-  );
+  const edition = editionParam(c.req.query("edition"));
+  if (!edition) return c.json({ error: "INVALID_EDITION" }, 422);
+  const session = await optionalSession(c);
   const result = await listDiscussionPosts(database(c.env.DB), {
     edition,
     limit: parseDiscussionLimit(c.req.query("limit")),
@@ -793,14 +830,9 @@ app.get("/api/discussions", async (c) => {
 app.get("/api/screenings/:code/discussion", async (c) => {
   const code = c.req.param("code");
   if (!code || code.length > 64) return c.json({ error: "INVALID_SCREENING" }, 422);
-  const edition = c.req.query("edition") || DEFAULT_WANT_EDITION;
-  if (edition.length > 64) return c.json({ error: "INVALID_EDITION" }, 422);
-  const config = configuration(c.env);
-  const { session } = await sessionFor(
-    c.env,
-    getCookie(c, sessionCookieName(config)),
-    c.req.header("cf-connecting-ip"),
-  );
+  const edition = editionParam(c.req.query("edition"));
+  if (!edition) return c.json({ error: "INVALID_EDITION" }, 422);
+  const session = await optionalSession(c);
   const result = await listScreeningPosts(database(c.env.DB), {
     edition,
     code,
@@ -819,10 +851,7 @@ app.post("/api/screenings/:code/discussion", requireIdentity, async (c) => {
   const post = normalizeDiscussionPost(payload);
   if (!post) return c.json({ error: "INVALID_POST" }, 422);
   const rawEdition = payload && typeof payload === "object" ? (payload as { edition?: unknown }).edition : null;
-  const edition =
-    typeof rawEdition === "string" && rawEdition.length > 0 && rawEdition.length <= 64
-      ? rawEdition
-      : DEFAULT_WANT_EDITION;
+  const edition = isEdition(rawEdition) ? rawEdition : DEFAULT_EDITION;
   const created = await createScreeningPost(database(c.env.DB), {
     edition,
     code,
@@ -835,11 +864,13 @@ app.post("/api/screenings/:code/discussion", requireIdentity, async (c) => {
 });
 
 app.delete("/api/screenings/:code/discussion/:id", requireIdentity, async (c) => {
-  const result = await deleteScreeningPost(
-    database(c.env.DB),
-    c.req.param("id"),
-    c.get("session").row.subject,
-  );
+  const code = c.req.param("code");
+  if (!code || code.length > 64) return c.json({ error: "INVALID_SCREENING" }, 422);
+  const result = await deleteScreeningPost(database(c.env.DB), {
+    id: c.req.param("id"),
+    code,
+    subject: c.get("session").row.subject,
+  });
   if (result.status === "missing") return c.json({ error: "NOT_FOUND" }, 404);
   if (result.status === "forbidden") return c.json({ error: "FORBIDDEN" }, 403);
   return c.json({ ok: true });
@@ -885,7 +916,7 @@ async function cachedLookup(key: string, run: () => Promise<PlaceHit | null>): P
   return hit;
 }
 
-app.get("/api/eats/lookup", async (c) => {
+app.get("/api/eats/lookup", limited(lookupLimiter), async (c) => {
   const name = (c.req.query("name") ?? "").trim();
   const address = (c.req.query("address") ?? "").trim();
   if (!name || name.length > 80 || address.length > 160)

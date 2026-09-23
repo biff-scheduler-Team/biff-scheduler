@@ -2,7 +2,9 @@
 
 export const WANT_WEIGHT_AUTH = 1;
 export const WANT_WEIGHT_ANON = 0.75;
-export const DEFAULT_WANT_EDITION = "biff-2026";
+/** 缺省届次 —— 改为从白名单的同一处取（2026-09-23，PLAN-20260923111748，B2）：
+ *  此前这里与 `apps/web/src/edition.ts` 各写一份 `"biff-2026"`，两处相同只是巧合。 */
+export { DEFAULT_EDITION as DEFAULT_WANT_EDITION } from "@biff/contracts/edition";
 
 export function roundWantCount(weightSum: number): number {
   return Math.round(weightSum);
