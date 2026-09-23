@@ -94,3 +94,12 @@
 .transfer-row-main { display: grid; gap: 2px; min-width: 0; }
 .transfer-row-main strong { font-size: 13px; }
 .transfer-row-main span { color: var(--muted); font-size: 12px; }
+
+/* 触控目标下限 44px(2026-09-23,`PLAN-20260923122500` T3):只在 `pointer: coarse` 下生效,
+   桌面(`pointer: fine`)的尺寸与观感**逐字节不变**。⚠ 用 `min-height` 而不是改 `height` ——
+   后者会把整个胶囊放大,而这里要的只是「手指够得着」。
+   ⚠ 同族的 `.ticket-transfer` **不加**:它是被动标签(`ScreeningTickets.tsx:46` 是 `<span>`),
+   不是指针目标,放大它只会白白撑高那一行。 */
+@media (pointer: coarse) {
+  .ticket-chip { min-height: 44px; }
+}
