@@ -419,6 +419,16 @@
   margin-top: 2px;
 }
 
+/* 「这枚要回到这儿」(2026-09-23,PLAN-20260923110401):拖着**已经贴着的那一枚**出界时,
+ * 点亮源片的暂存区 —— 亮的是**真的落点**,不是泛泛的提醒(文案在浮标那枚标签上)。
+ * ⚠ 只有「已贴的那枚」这条路会挂 `data-rb-target`:从暂存区拖出来的那枚松手是「什么也不做」,
+ *   给它的暂存区亮灯会读成「它会回到这儿」—— 可它本来就在那儿(见页面 `setOut`)。 */
+.rb-tray[data-rb-target] {
+  border-radius: 10px;
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+
 .rb-src {
   display: grid;
   place-items: center;
@@ -624,6 +634,39 @@
 
 .rb-ghost--black {
   background-color: var(--rb-black);
+}
+
+/* 落点**出界**(松手会收回暂存区 / 取消)时的浮标(2026-09-23,PLAN-20260923110401)。
+ * 为什么是「半透明 + 去饱和」而不是换一圈描边:品牌红 `#ce1e36` 与红贴纸 `--rb-red` `#cf3b52`
+ * 几乎同色(白边那次已实测),红环画在红贴上等于没画;白环在亮色卡片上同样等于没画 ——
+ * 灰度与贴纸颜色、主题都无关,一句就能读出「这枚现在不是活的」。
+ * ⚠ 「松开会发生什么」不靠颜色暗号,由下面那枚文字标签说清。 */
+.rb-ghost--out {
+  opacity: 0.5;
+  filter: grayscale(0.9);
+}
+
+/* 浮标下面那枚短标签:「松开 · 收回暂存区」/「松开 · 取消」。
+ * ⚠ 它挂在浮标**内部**(见页面 `beginDrag`):位移自动跟着浮标的 `transform` 走,
+ *   不用每帧同步第二个元素,也随浮标一起被 `remove()`。 */
+.rb-drag-hint {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+/* 在可张贴区内**不说话**:空标签既不占位也不显形(那时「能放」由画布亮灯说,见 `.rb-card[data-rb-hover]`) */
+.rb-drag-hint:empty {
+  display: none;
 }
 
 /* 窄屏:信息列收窄,画布还是占剩下的全部 */
