@@ -87,8 +87,9 @@ function Shell() {
   // ⚠ 白名单必须逐个列出:`rush-analysis` 与已下线的 `/rush` 曾经是两项(`rush` 后面跟的是
   //   `(?:\/|$)`),`/rush` 已于 2026-09-22 下线(`PLAN-20260922102751`),现在只剩 `rush-analysis`。
   //   漏加会让分析页被渲染进浮动面板布局(而不是整页)。
+  //   (2026-09-23 起 `admin` 也在这张名单里 —— 管理后台同样是整页布局。)
   const fullPage =
-    /^\/(library|feedback|rush-analysis|redblack|eats)(?:\/|$)/.test(location.pathname) ||
+    /^\/(library|feedback|rush-analysis|redblack|eats|admin)(?:\/|$)/.test(location.pathname) ||
     (viewingRoute && !panelOpen);
   // 查询串**口径唯一来源** = `app/nav-query.ts`:同名 key 不跨页(`q` 在影片库 / 红黑榜 / 吃喝
   // 各有一份语义),只有排片表的 `date` / `hour` 跟着走。原先这里只剔掉 `quick` 就整条搬过去,

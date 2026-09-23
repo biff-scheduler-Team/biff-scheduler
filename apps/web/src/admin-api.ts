@@ -96,7 +96,14 @@ export async function probeAdmin(): Promise<AdminProbe> {
     await api("/api/admin/whoami");
     return "admin";
   } catch (error) {
-    if (error instanceof ApiFailure) return error.status === 401 ? "guest" : "forbidden";
+    if (error instanceof ApiFailure) {
+      if (error.status === 401) return "guest";
+      if (error.status === 403) return "forbidden";
+      // ⚠ 5xx / 其它状态**必须原样抛**:只有 403 才叫「你不是管理员」。
+      //   原先写成「非 401 一律 forbidden」,于是服务端一挂(500)页面就说「你的账号不在名单里,
+      //   去切换账号吧」—— 这是把运维问题伪装成权限问题,正是「暂时问不到」那一态要防的事。
+      throw error;
+    }
     throw error;
   }
 }
