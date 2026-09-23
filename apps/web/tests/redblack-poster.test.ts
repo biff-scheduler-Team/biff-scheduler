@@ -168,7 +168,10 @@ describe("buildRbPosterModel:头部与署名", () => {
     const model = buildRbPosterModel(input({ films: [film("a"), film("b")] }));
     expect(model.eyebrow).toBe("BIFF 2026 · 观影红黑榜");
     expect(model.title).toBe("红黑榜");
-    expect(model.subtitle).toBe("2026-09-22 · 2 部有排期的影片");
+    // ⚠ 2026-09-23 口径变更（`PLAN-20260923113659` T6）：海报副标题此前直接印 `isoDate` 的
+    //   `2026-09-22`，与全站唯一日期口径（`util.ts::dateInfo().label` = 官方册子的 `SEP 22` 写法）相左。
+    //   本条断言随之改为新口径 —— 这是**有意改行为**，不是为让测试变绿而改实现。
+    expect(model.subtitle).toBe("SEP 22 · 2 部有排期的影片");
     expect(model.site.films).toBe(2);
   });
 

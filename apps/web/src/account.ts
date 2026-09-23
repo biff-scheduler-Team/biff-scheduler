@@ -15,14 +15,15 @@ import {
   downloadAccountBackup,
 } from "./account-sync";
 
+// ⚠ 全部走字面量 token / 刻度类，不留任意值（AGENTS 红线 9）：
+//   `text-16` 取自字阶 token；`min-h-11` = 11 × 4px = **44px**（触控目标最小值）——
+//   本仓 `account-ui.css` 的 `@theme` 把 `--spacing` 定为 4px，故 11 这一档恰好是 44px。
+//   2026-09-23，`PLAN-20260923113659` T1/T5。
 const buttonClass =
-  "min-h-[44px] border border-line rounded-6 px-3 py-2 text-14 font-semibold bg-card text-ink hover:opacity-90 disabled:opacity-50";
+  "min-h-11 border border-line rounded-6 px-3 py-2 text-14 font-semibold bg-card text-ink hover:opacity-90 disabled:opacity-50";
 const primaryClass = `${buttonClass} !bg-biff !text-on-brand !border-biff`;
-// ⚠ `text-16` 而不是 `text-[16px]`：字阶 token 是唯一来源（AGENTS 红线 9）。
-//   `min-h-[44px]` 暂时保留：本仓尚无高度 token（`--height-*`），44px 是触控目标最小值，
-//   换成猜的刻度会改掉实际点击区域 —— 已在后续 PLAN 登记「补高度 token 后再收口」。
 const inputClass =
-  "w-full min-h-[44px] rounded-6 border border-line bg-card px-3 py-2 text-16 text-ink focus:border-biff";
+  "w-full min-h-11 rounded-6 border border-line bg-card px-3 py-2 text-16 text-ink focus:border-biff";
 const statusLabels = {
   checking: "正在连接账号…",
   guest: "数据保存在这台设备",

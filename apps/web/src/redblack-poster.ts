@@ -29,6 +29,7 @@ import {
   roundRectPath,
 } from "./poster-brush";
 import { blobPath } from "./sticker-shape";
+import { dateInfo } from "./util";
 import {
   boardFilms,
   countsOf,
@@ -225,7 +226,8 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
   return {
     eyebrow: `${EDITION.replace("-", " ").toUpperCase()} · 观影红黑榜`,
     title: "红黑榜",
-    subtitle: `${isoDate(today)} · ${candidates.length} 部有排期的影片`,
+    // 日期走全站唯一口径（`OCT 8`），此前直接印 `isoDate` 的 `2026-10-08` —— 同一张海报两种写法
+    subtitle: `${dateInfo(isoDate(today)).label} · ${candidates.length} 部有排期的影片`,
     site: { ...site, films: candidates.length },
     mine,
     boards,
