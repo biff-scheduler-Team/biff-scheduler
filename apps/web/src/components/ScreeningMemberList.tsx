@@ -1,6 +1,7 @@
 import {useCatalog} from '../app/store';
 import {useFilmNavigation} from '../app/film-navigation';
 import {screeningMembers} from '../app/screening-members';
+import {fmtDuration} from '../util';
 import type {Screening} from '../types';
 
 export function ScreeningMemberList({screening, onOpen}: {screening: Screening; onOpen?: () => void}) {
@@ -15,7 +16,7 @@ export function ScreeningMemberList({screening, onOpen}: {screening: Screening; 
       <div>
         <strong>{name}</strong>
         {film?.title_zh && film.title_zh !== name && <span>{film.title_zh}</span>}
-        {film && <span className="muted">{[film.year, film.duration_min ? `${film.duration_min} 分钟` : '', film.director].filter(Boolean).join('，')}</span>}
+        {film && <span className="muted">{[film.year, film.duration_min ? fmtDuration(film.duration_min) : '', film.director].filter(Boolean).join('，')}</span>}
         {film && <button type="button" className="preview-full" aria-label={`查看 ${film.title_zh || name} 影片资料`} onClick={() => {onOpen?.();openFilm(`cat:${film.id}`);}}>影片资料</button>}
       </div>
     </div>)}

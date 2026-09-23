@@ -32,6 +32,7 @@ import {
   dateInfo,
   doubanScoreOf,
   filmInfoOf,
+  fmtDuration,
   fmtEndClock,
   hmsToMin,
   todayIsoLocal,
@@ -540,8 +541,8 @@ export function ScheduleGantt({
                       cardState.conflictTip,
                       tight.get(s.code),
                     ].filter(Boolean).join("\n");
-                    const bodyEnd =
-                      talk > 0 ? filmEndMin(s) : hmsToMin(s.end_time);
+                    // 正片末 = 有效结束的「弃映后」那一路（唯一来源 `gv.ts::effEndMin`）
+                    const bodyEnd = effEndMin(s, false);
                     const dim =
                       !matchesFilters(s, filters) ||
                       (hour !== null &&
@@ -603,7 +604,7 @@ export function ScheduleGantt({
                               {members.length ? members.map(member => <span key={member.name} className="gantt-member-title">{member.name}{member.film?.title_zh && member.film.title_zh !== member.name && <span>{member.film.title_zh}</span>}</span>) : [...new Set([info.en, info.zh].map(name => name?.trim()).filter(Boolean))].map(name => <span key={name}>{name}</span>)}
                             </strong>
                             <span className="gantt-details">
-                              {s.duration_min} 分钟
+                              {fmtDuration(s.duration_min)}
                               {score ? `，豆瓣 ${score.rating.toFixed(1)}` : ""}
                               {conflict ? "，时间重叠" : ""}
                             </span>

@@ -1,6 +1,6 @@
 import type {Catalog, Mapping, Screening} from './types';
-import {displayTitle, fmtEndClock, fmtMinRangeMin, hmsToMin} from './util';
-import {filmEndMin, gvTalkMin} from './gv';
+import {displayTitle, fmtEndClock, fmtMinRange, fmtMinRangeMin, hmsToMin} from './util';
+import {effEndMin, filmEndMin, gvTalkMin} from './gv';
 import {matchesFilters, type FilterState} from './filters';
 
 export const ROW_H = 92;
@@ -103,7 +103,7 @@ export function axisRangeOf(shows: readonly Screening[]): { start: number; end: 
     const st = hmsToMin(s.start_time);
     // 轴末取「官方槽位末」与「GV 含映后结束」的较大者 —— 映后时长可配置(gv.ts::gvTalkMin),
     // 调大后谈块会画到官方槽位之外,轴末不跟着外扩就会被右缘裁掉。
-    const en = Math.max(hmsToMin(s.end_time), filmEndMin(s) + gvTalkMin(s));
+    const en = Math.max(hmsToMin(s.end_time), effEndMin(s, true));
     if (st < first) first = st;
     if (en > last) last = en;
   }
@@ -188,7 +188,9 @@ function conflictTipOf(s: Screening, ctx: GridCtx, isConflict: boolean): string 
     const title = displayTitle(o, ctx.mappingOf(c)?.title_cn);
     const v = ctx.cat.venueById.get(o.venue_id);
     const vTxt = v ? v.code ?? v.id.toUpperCase() : o.venue_display;
-    return `${c}《${title}》${o.start_time.slice(0, 5)}–${o.end_time.slice(0, 5)} · ${vTxt}`;
+    // ⚠ 区间文案一律走 `fmtMinRange`：手拼 `slice(0,5)` 会在午夜场把 24+ 时制的原值
+    //   ("29:35")直接印给用户(2026-09-23,PLAN-20260923111748,R5 —— 这条也是本文件里的第二份实现)。
+    return `${c}《${title}》${fmtMinRange(o.start_time, o.end_time)} · ${vTxt}`;
   });
   return ["时间重叠 — 与下列场次无法同时观看", ...lines].join("\n");
 }
