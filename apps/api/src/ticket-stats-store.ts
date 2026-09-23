@@ -3,63 +3,61 @@
  *
  * 形状与 `screening-stats-store.ts` 完全同构 —— 那边按场次 code 记「在不在行程里」，
  * 这边按场次 code 记「最后抢到没有」。**唯一的差别是聚合表有四列**（got / transfer / missed /
- * dropped），故增删都要先读那一行再改对应的一列（不像那边只有一个 `weight_sum` 可以直接加减）。
+ * dropped），故增删都要先定位那一列（不像那边只有一个 `weight_sum` 可以直接加减）。
+ * ⚠ 聚合表的改法在 `stat-batch.ts`（SQL 端原子算术 + 一次分批 batch）——
+ *   此前是「读出来在 JS 里加减再写回」，两人同时标同一场会丢数且永不自愈。
  *
  * ⚠ 语义是**整份替换**而不是增量：前端每次都把「我标记过的那些场次」全量发上来，
  *   这样断网 / 换设备之后重新上报一次就能把服务端校正回一致，本地不需要「待同步队列」。
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { database } from "./db";
 import { screeningTicketContribution, screeningTicketStat } from "./db/schema";
 import { SCREENING_CODE_MAX_LENGTH } from "./screening-stats";
 import {
-  diffOutcomes,
-  formatTicketCounts,
-  isTicketOutcome,
-  type TicketOutcome,
-} from "./ticket-stats";
+  clampAddText,
+  flushStatBatch,
+  isNonPositiveText,
+  wouldGoNegativeText,
+  type StatWrite,
+} from "./stat-batch";
+import { diffOutcomes, formatTicketCounts, isTicketOutcome, type TicketOutcome } from "./ticket-stats";
 
 type Db = ReturnType<typeof database>;
+type TicketStatTable = typeof screeningTicketStat;
 
 function parseWeight(raw: string | number | null | undefined): number {
   const n = typeof raw === "number" ? raw : Number(raw);
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-/** 按一项增减聚合行；四项都归零时**删行**，免得表里堆一堆 0 行把读取撑大。 */
-async function adjustStat(
-  db: Db,
-  edition: string,
-  code: string,
-  outcome: TicketOutcome,
-  delta: number,
-  now: number,
-): Promise<void> {
-  const where = and(eq(screeningTicketStat.edition, edition), eq(screeningTicketStat.code, code));
-  const row = await db.select().from(screeningTicketStat).where(where).get();
-  const sums: Record<TicketOutcome, number> = {
-    got: parseWeight(row?.got_sum),
-    transfer: parseWeight(row?.transfer_sum),
-    missed: parseWeight(row?.missed_sum),
-    dropped: parseWeight(row?.dropped_sum),
-  };
-  sums[outcome] = Math.max(0, sums[outcome] + delta);
-  if (sums.got <= 0 && sums.transfer <= 0 && sums.missed <= 0 && sums.dropped <= 0) {
-    if (row) await db.delete(screeningTicketStat).where(where).run();
-    return;
+/** 「结果 → 聚合列」的唯一映射处（四列都靠它定位，避免各处手写列名漏改）。 */
+function statColumn(table: TicketStatTable, outcome: TicketOutcome) {
+  switch (outcome) {
+    case "got":
+      return table.got_sum;
+    case "transfer":
+      return table.transfer_sum;
+    case "missed":
+      return table.missed_sum;
+    case "dropped":
+      return table.dropped_sum;
   }
-  const values = {
-    got_sum: String(sums.got),
-    transfer_sum: String(sums.transfer),
-    missed_sum: String(sums.missed),
-    dropped_sum: String(sums.dropped),
-    updated_at: now,
-  };
-  if (row) {
-    await db.update(screeningTicketStat).set(values).where(where).run();
-  } else {
-    await db.insert(screeningTicketStat).values({ edition, code, ...values }).run();
+}
+
+/** 钳零写入的 SET 子句（显式 switch 展开：不用 computed key，避免 `as never` 那类类型逃逸）。 */
+function clampedSet(table: TicketStatTable, outcome: TicketOutcome, delta: number, now: number) {
+  const value = clampAddText(statColumn(table, outcome), delta);
+  switch (outcome) {
+    case "got":
+      return { got_sum: value, updated_at: now };
+    case "transfer":
+      return { transfer_sum: value, updated_at: now };
+    case "missed":
+      return { missed_sum: value, updated_at: now };
+    case "dropped":
+      return { dropped_sum: value, updated_at: now };
   }
 }
 
@@ -105,58 +103,119 @@ export async function replaceContributorTickets(
   const { removed, added } = diffOutcomes(previous, next);
   const now = Date.now();
   const weightLabel = String(weight);
+  const writes: StatWrite[] = [];
+
+  const statKey = (code: string) =>
+    and(eq(screeningTicketStat.edition, edition), eq(screeningTicketStat.code, code));
+
+  /** 四列全 ≤ 0 → 归零删行（不留 0 行把读取撑大）。 */
+  const zeroKey = (code: string) =>
+    and(
+      statKey(code),
+      isNonPositiveText(screeningTicketStat.got_sum),
+      isNonPositiveText(screeningTicketStat.transfer_sum),
+      isNonPositiveText(screeningTicketStat.missed_sum),
+      isNonPositiveText(screeningTicketStat.dropped_sum),
+    );
+
+  /** 一行插入用的初值：命中那一列 = delta，其余列 = "0"（与旧实现的 `if (row) … else insert` 同形）。 */
+  const initialValues = (code: string, outcome: TicketOutcome, delta: number) => ({
+    edition,
+    code,
+    got_sum: outcome === "got" ? String(delta) : "0",
+    transfer_sum: outcome === "transfer" ? String(delta) : "0",
+    missed_sum: outcome === "missed" ? String(delta) : "0",
+    dropped_sum: outcome === "dropped" ? String(delta) : "0",
+    updated_at: now,
+  });
+
+  /** 某一列 +delta：`delta > 0` 走「插入或原地加」，`delta < 0` 走三件套（探测 / 钳零 / 删行）。 */
+  const adjust = (code: string, outcome: TicketOutcome, delta: number) => {
+    if (delta === 0) return;
+    const key = statKey(code);
+    if (delta > 0) {
+      writes.push({
+        statement: db
+          .insert(screeningTicketStat)
+          .values(initialValues(code, outcome, delta))
+          // UPSERT 的 SET 里表名限定的列指**原行**：已存在就原地加，不存在就用上面的初值。
+          .onConflictDoUpdate({
+            target: [screeningTicketStat.edition, screeningTicketStat.code],
+            set: clampedSet(screeningTicketStat, outcome, delta, now),
+          }),
+      });
+      return;
+    }
+    writes.push({
+      statement: db
+        .update(screeningTicketStat)
+        .set({ updated_at: sql`${screeningTicketStat.updated_at}` })
+        .where(and(key, wouldGoNegativeText(statColumn(screeningTicketStat, outcome), delta))),
+      drift: `${edition}/${code}`,
+    });
+    writes.push({
+      statement: db.update(screeningTicketStat).set(clampedSet(screeningTicketStat, outcome, delta, now)).where(key),
+    });
+    writes.push({ statement: db.delete(screeningTicketStat).where(zeroKey(code)) });
+  };
 
   // 1) 贡献行落定（改结果同时进 removed / added，故这里 upsert 能正确处理「改状态」）
   for (const entry of removed) {
-    await db
-      .delete(screeningTicketContribution)
-      .where(
-        and(
-          eq(screeningTicketContribution.edition, edition),
-          eq(screeningTicketContribution.code, entry.code),
-          eq(screeningTicketContribution.contributor, contributor),
+    writes.push({
+      statement: db
+        .delete(screeningTicketContribution)
+        .where(
+          and(
+            eq(screeningTicketContribution.edition, edition),
+            eq(screeningTicketContribution.code, entry.code),
+            eq(screeningTicketContribution.contributor, contributor),
+          ),
         ),
-      )
-      .run();
+    });
   }
   for (const entry of added) {
-    await db
-      .insert(screeningTicketContribution)
-      .values({ edition, code: entry.code, contributor, outcome: entry.outcome, weight: weightLabel, updated_at: now })
-      .onConflictDoUpdate({
-        target: [
-          screeningTicketContribution.edition,
-          screeningTicketContribution.code,
-          screeningTicketContribution.contributor,
-        ],
-        set: { outcome: entry.outcome, weight: weightLabel, updated_at: now },
-      })
-      .run();
+    writes.push({
+      statement: db
+        .insert(screeningTicketContribution)
+        .values({ edition, code: entry.code, contributor, outcome: entry.outcome, weight: weightLabel, updated_at: now })
+        .onConflictDoUpdate({
+          target: [
+            screeningTicketContribution.edition,
+            screeningTicketContribution.code,
+            screeningTicketContribution.contributor,
+          ],
+          set: { outcome: entry.outcome, weight: weightLabel, updated_at: now },
+        }),
+    });
   }
 
   // 2) 聚合表：先撤旧的（按**旧权重**），再加新的
-  for (const entry of removed) await adjustStat(db, edition, entry.code, entry.outcome, -previousWeight, now);
-  for (const entry of added) await adjustStat(db, edition, entry.code, entry.outcome, weight, now);
+  for (const entry of removed) adjust(entry.code, entry.outcome, -previousWeight);
+  for (const entry of added) adjust(entry.code, entry.outcome, weight);
 
   // 3) 仍在集合里但权重变了（匿名 → 登录）：补一个差值，别重算全表
   if (existing.length && Math.abs(previousWeight - weight) > 1e-9) {
     const delta = weight - previousWeight;
     for (const [code, outcome] of next) {
       if (previous.get(code) !== outcome) continue;
-      await db
-        .update(screeningTicketContribution)
-        .set({ weight: weightLabel, updated_at: now })
-        .where(
-          and(
-            eq(screeningTicketContribution.edition, edition),
-            eq(screeningTicketContribution.code, code),
-            eq(screeningTicketContribution.contributor, contributor),
+      writes.push({
+        statement: db
+          .update(screeningTicketContribution)
+          .set({ weight: weightLabel, updated_at: now })
+          .where(
+            and(
+              eq(screeningTicketContribution.edition, edition),
+              eq(screeningTicketContribution.code, code),
+              eq(screeningTicketContribution.contributor, contributor),
+            ),
           ),
-        )
-        .run();
-      await adjustStat(db, edition, code, outcome, delta, now);
+      });
+      adjust(code, outcome, delta);
     }
   }
+
+  if (writes.length === 0) return;
+  await flushStatBatch(db, writes);
 }
 
 /** 撤掉这位贡献者的全部结果（登出、或匿名身份升级为登录身份时调用）。 */

@@ -14,11 +14,20 @@
  *
  * ⚠ 权重变化（匿名 0.75 → 登录 1.0）只可能发生在**同一浏览器**先后上报时：
  *   此时该贡献者的历史 hits 权重也要跟着改，否则「登录一次，历史访问就少算 25%」。
+ * ⚠ 聚合表的改法在 `stat-batch.ts`（SQL 端原子算术 + 一次分批 batch）——
+ *   此前是「读出来在 JS 里加减再写回」，并发下会丢计数且永不自愈。
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { database } from "./db";
 import { telemetryContribution, telemetryStat } from "./db/schema";
+import {
+  clampAddText,
+  flushStatBatch,
+  isNonPositiveText,
+  wouldGoNegativeText,
+  type StatWrite,
+} from "./stat-batch";
 import {
   isNormalizedTarget,
   isTelemetryKind,
@@ -40,37 +49,6 @@ function fmt(value: number): string {
 function parse(raw: string | number | null | undefined): number {
   const n = typeof raw === "number" ? raw : Number(raw);
   return Number.isFinite(n) && n > 0 ? n : 0;
-}
-
-/** 按一项增减聚合行；两个和都归零时**删行**（不留 0 行把读取撑大）。 */
-async function adjustStat(
-  db: Db,
-  edition: string,
-  kind: TelemetryKind,
-  target: string,
-  viewerDelta: number,
-  hitsDelta: number,
-  now: number,
-): Promise<void> {
-  const where = and(
-    eq(telemetryStat.edition, edition),
-    eq(telemetryStat.kind, kind),
-    eq(telemetryStat.target, target),
-  );
-  const row = await db.select().from(telemetryStat).where(where).get();
-  const viewers = parse(row?.viewer_weight_sum) + viewerDelta;
-  const hits = parse(row?.hits_weight_sum) + hitsDelta;
-  if (viewers <= 0 && hits <= 0) {
-    if (row) await db.delete(telemetryStat).where(where).run();
-    return;
-  }
-  const values = {
-    viewer_weight_sum: fmt(viewers),
-    hits_weight_sum: fmt(hits),
-    updated_at: now,
-  };
-  if (row) await db.update(telemetryStat).set(values).where(where).run();
-  else await db.insert(telemetryStat).values({ edition, kind, target, ...values }).run();
 }
 
 /** 落一批增量。`deltas` 的键是 `kind|target`（见 `normalizeTelemetryEntries`）。 */
@@ -106,6 +84,7 @@ export async function applyContributorTelemetry(
       .map((row) => [`${row.kind}|${row.target}`, row]),
   );
 
+  const writes: StatWrite[] = [];
   for (const [key, delta] of deltas) {
     const row = existing.get(key);
     // 三个数的算法在 `telemetry-stats.ts::planTelemetryDelta`（纯函数，含「权重变化」那一条
@@ -115,35 +94,36 @@ export async function applyContributorTelemetry(
       delta.hits,
       weight,
     );
-    await db
-      .insert(telemetryContribution)
-      .values({
-        edition,
-        kind: delta.kind,
-        target: delta.target,
-        contributor,
-        hits: plan.nextHits,
-        weight: weightLabel,
-        updated_at: now,
-      })
-      .onConflictDoUpdate({
-        target: [
-          telemetryContribution.edition,
-          telemetryContribution.kind,
-          telemetryContribution.target,
-          telemetryContribution.contributor,
-        ],
-        set: { hits: plan.nextHits, weight: weightLabel, updated_at: now },
-      })
-      .run();
-
-    await adjustStat(db, edition, delta.kind, delta.target, plan.viewerDelta, plan.hitsDelta, now);
+    writes.push({
+      statement: db
+        .insert(telemetryContribution)
+        .values({
+          edition,
+          kind: delta.kind,
+          target: delta.target,
+          contributor,
+          hits: plan.nextHits,
+          weight: weightLabel,
+          updated_at: now,
+        })
+        .onConflictDoUpdate({
+          target: [
+            telemetryContribution.edition,
+            telemetryContribution.kind,
+            telemetryContribution.target,
+            telemetryContribution.contributor,
+          ],
+          set: { hits: plan.nextHits, weight: weightLabel, updated_at: now },
+        }),
+    });
+    writes.push(...statWrites(db, edition, delta.kind, delta.target, plan.viewerDelta, plan.hitsDelta, now));
   }
+  await flushStatBatch(db, writes);
 }
 
 /** 撤掉这位贡献者的**全部**事件（登录时清匿名身份，或登出）。
  *
- *  ⚠ 必须先读贡献行再逐条减回去 —— 计数型数据没有「置空」这种操作，
+ *  ⚠ 必须先读贡献行再按行减回去 —— 计数型数据没有「置空」这种操作，
  *    直接删行会让聚合表永远留着那位贡献者贡献过的那部分数字。 */
 export async function clearContributorTelemetry(db: Db, edition: string, contributor: string): Promise<void> {
   const rows = await db
@@ -163,20 +143,110 @@ export async function clearContributorTelemetry(db: Db, edition: string, contrib
     .all();
   if (rows.length === 0) return;
   const now = Date.now();
+  const writes: StatWrite[] = [];
   for (const row of rows) {
     if (!isTelemetryKind(row.kind) || !isNormalizedTarget(row.kind, row.target)) continue;
     const weight = parse(row.weight);
-    await adjustStat(db, edition, row.kind, row.target, -weight, -weight * row.hits, now);
+    writes.push(...statWrites(db, edition, row.kind, row.target, -weight, -weight * row.hits, now));
   }
-  await db
-    .delete(telemetryContribution)
-    .where(
-      and(
-        eq(telemetryContribution.edition, edition),
-        eq(telemetryContribution.contributor, contributor),
+  writes.push({
+    statement: db
+      .delete(telemetryContribution)
+      .where(
+        and(
+          eq(telemetryContribution.edition, edition),
+          eq(telemetryContribution.contributor, contributor),
+        ),
       ),
-    )
-    .run();
+  });
+  await flushStatBatch(db, writes);
+}
+
+/**
+ * 一个 (kind, target) 的两个加权和怎么改。
+ *
+ * - 两个增量都 ≥ 0 → 「插入或原地加」一条：行不存在时用增量作初值（否则首次上报会丢）。
+ * - 任一为负 → 三件套：探测负漂移 → 钳零写入 → 两个和都归零时删行（顺序不可换：
+ *   探测必须在写入之前，钳零之后 `col + delta < 0` 恒真、每条都会误报）。
+ */
+function statWrites(
+  db: Db,
+  edition: string,
+  kind: TelemetryKind,
+  target: string,
+  viewerDelta: number,
+  hitsDelta: number,
+  now: number,
+): StatWrite[] {
+  if (viewerDelta === 0 && hitsDelta === 0) return [];
+  const key = and(
+    eq(telemetryStat.edition, edition),
+    eq(telemetryStat.kind, kind),
+    eq(telemetryStat.target, target),
+  );
+  if (viewerDelta >= 0 && hitsDelta >= 0) {
+    return [
+      {
+        statement: db
+          .insert(telemetryStat)
+          .values({
+            edition,
+            kind,
+            target,
+            viewer_weight_sum: fmt(viewerDelta),
+            hits_weight_sum: fmt(hitsDelta),
+            updated_at: now,
+          })
+          // UPSERT 的 SET 里表名限定的列指**原行**：已存在就原地加，不存在就用上面的初值。
+          .onConflictDoUpdate({
+            target: [telemetryStat.edition, telemetryStat.kind, telemetryStat.target],
+            set: {
+              viewer_weight_sum: clampAddText(telemetryStat.viewer_weight_sum, viewerDelta),
+              hits_weight_sum: clampAddText(telemetryStat.hits_weight_sum, hitsDelta),
+              updated_at: now,
+            },
+          }),
+      },
+    ];
+  }
+  return [
+    {
+      statement: db
+        .update(telemetryStat)
+        .set({ updated_at: sql`${telemetryStat.updated_at}` })
+        .where(
+          and(
+            key,
+            or(
+              wouldGoNegativeText(telemetryStat.viewer_weight_sum, viewerDelta),
+              wouldGoNegativeText(telemetryStat.hits_weight_sum, hitsDelta),
+            ),
+          ),
+        ),
+      drift: `${edition}/${kind}|${target}`,
+    },
+    {
+      statement: db
+        .update(telemetryStat)
+        .set({
+          viewer_weight_sum: clampAddText(telemetryStat.viewer_weight_sum, viewerDelta),
+          hits_weight_sum: clampAddText(telemetryStat.hits_weight_sum, hitsDelta),
+          updated_at: now,
+        })
+        .where(key),
+    },
+    {
+      statement: db
+        .delete(telemetryStat)
+        .where(
+          and(
+            key,
+            isNonPositiveText(telemetryStat.viewer_weight_sum),
+            isNonPositiveText(telemetryStat.hits_weight_sum),
+          ),
+        ),
+    },
+  ];
 }
 
 /** 读取：一次拿到这个 edition 下所有 (kind, target) 的两个加权和（≤ 页面数 + 入口数行）。 */

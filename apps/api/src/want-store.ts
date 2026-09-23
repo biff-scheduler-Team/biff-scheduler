@@ -1,6 +1,13 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { database } from "./db";
 import { filmWantContribution, filmWantStat } from "./db/schema";
+import {
+  clampAddText,
+  flushStatBatch,
+  isNonPositiveText,
+  wouldGoNegativeText,
+  type StatWrite,
+} from "./stat-batch";
 import { diffFilmKeys, formatWantCounts } from "./want-stats";
 
 type Db = ReturnType<typeof database>;
@@ -10,7 +17,11 @@ function parseWeight(raw: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Replace one contributor's want films; adjusts aggregated weight_sum. */
+/** Replace one contributor's want films; adjusts aggregated weight_sum.
+ *
+ *  ⚠ 聚合表的改法在 `stat-batch.ts`（SQL 端原子算术 + 一次批量的往返）。
+ *    此前是「读出来在 JS 里加减再写回」，并发上报同一部片会丢更新且永不自愈 —— 见该文件头。
+ */
 export async function replaceContributorWants(
   db: Db,
   edition: string,
@@ -31,99 +42,94 @@ export async function replaceContributorWants(
   const { removed, added } = diffFilmKeys(previousKeys, next);
   const now = Date.now();
   const weightLabel = String(weight);
+  const writes: StatWrite[] = [];
 
-  for (const filmKey of removed) {
-    await db
-      .delete(filmWantContribution)
-      .where(
-        and(
-          eq(filmWantContribution.edition, edition),
-          eq(filmWantContribution.film_key, filmKey),
-          eq(filmWantContribution.contributor, contributor),
-        ),
-      )
-      .run();
-    const row = await db
-      .select()
-      .from(filmWantStat)
-      .where(and(eq(filmWantStat.edition, edition), eq(filmWantStat.film_key, filmKey)))
-      .get();
-    if (!row) continue;
-    const nextSum = Math.max(0, parseWeight(row.weight_sum) - previousWeight);
-    if (nextSum <= 1e-9) {
-      await db
-        .delete(filmWantStat)
-        .where(and(eq(filmWantStat.edition, edition), eq(filmWantStat.film_key, filmKey)))
-        .run();
-    } else {
-      await db
-        .update(filmWantStat)
-        .set({ weight_sum: String(nextSum), updated_at: now })
-        .where(and(eq(filmWantStat.edition, edition), eq(filmWantStat.film_key, filmKey)))
-        .run();
-    }
-  }
+  const statKey = (filmKey: string) =>
+    and(eq(filmWantStat.edition, edition), eq(filmWantStat.film_key, filmKey));
 
-  for (const filmKey of added) {
-    await db
-      .insert(filmWantContribution)
-      .values({
-        edition,
-        film_key: filmKey,
-        contributor,
-        weight: weightLabel,
-        updated_at: now,
-      })
-      .onConflictDoNothing()
-      .run();
-    const row = await db
-      .select()
-      .from(filmWantStat)
-      .where(and(eq(filmWantStat.edition, edition), eq(filmWantStat.film_key, filmKey)))
-      .get();
-    if (row) {
-      await db
+  /** 「按增量改这一部片的聚合」的三件套：探测负漂移 → 钳零写入 → 归零删行。
+   *  ⚠ 顺序不可换：探测必须在写入**之前**（钳零之后 `col + delta < 0` 恒真，每条都会误报）。 */
+  const adjust = (filmKey: string, delta: number) => {
+    const key = statKey(filmKey);
+    writes.push({
+      statement: db
         .update(filmWantStat)
-        .set({ weight_sum: String(parseWeight(row.weight_sum) + weight), updated_at: now })
-        .where(and(eq(filmWantStat.edition, edition), eq(filmWantStat.film_key, filmKey)))
-        .run();
-    } else {
-      await db
+        .set({ updated_at: sql`${filmWantStat.updated_at}` })
+        .where(and(key, wouldGoNegativeText(filmWantStat.weight_sum, delta))),
+      drift: `${edition}/${filmKey}`,
+    });
+    writes.push({
+      statement: db
+        .update(filmWantStat)
+        .set({ weight_sum: clampAddText(filmWantStat.weight_sum, delta), updated_at: now })
+        .where(key),
+    });
+    writes.push({
+      statement: db.delete(filmWantStat).where(and(key, isNonPositiveText(filmWantStat.weight_sum))),
+    });
+  };
+
+  /** 认领一部新片：贡献行落定 + 聚合行「插入或原地加」。 */
+  const claim = (filmKey: string) => {
+    writes.push({
+      statement: db
+        .insert(filmWantContribution)
+        .values({ edition, film_key: filmKey, contributor, weight: weightLabel, updated_at: now })
+        .onConflictDoNothing(),
+    });
+    writes.push({
+      statement: db
         .insert(filmWantStat)
         .values({ edition, film_key: filmKey, weight_sum: weightLabel, updated_at: now })
-        .run();
-    }
-  }
+        .onConflictDoUpdate({
+          target: [filmWantStat.edition, filmWantStat.film_key],
+          // UPSERT 的 SET 里，表名限定的列指的是**原行**（`excluded.` 才是待插入行）——
+          // 所以这一条同时覆盖了「行已存在 → 原地加」与「行不存在 → 用上面的初值」。
+          set: { weight_sum: clampAddText(filmWantStat.weight_sum, weight), updated_at: now },
+        }),
+    });
+  };
 
-  // Weight changed for still-present films (e.g. anon→auth upgrade): adjust delta.
-  if (existing.length && Math.abs(previousWeight - weight) > 1e-9) {
-    const kept = previousKeys.filter((key) => next.has(key));
-    const delta = weight - previousWeight;
-    for (const filmKey of kept) {
-      await db
-        .update(filmWantContribution)
-        .set({ weight: weightLabel, updated_at: now })
+  for (const filmKey of removed) {
+    writes.push({
+      statement: db
+        .delete(filmWantContribution)
         .where(
           and(
             eq(filmWantContribution.edition, edition),
             eq(filmWantContribution.film_key, filmKey),
             eq(filmWantContribution.contributor, contributor),
           ),
-        )
-        .run();
-      const row = await db
-        .select()
-        .from(filmWantStat)
-        .where(and(eq(filmWantStat.edition, edition), eq(filmWantStat.film_key, filmKey)))
-        .get();
-      if (!row) continue;
-      await db
-        .update(filmWantStat)
-        .set({ weight_sum: String(Math.max(0, parseWeight(row.weight_sum) + delta)), updated_at: now })
-        .where(and(eq(filmWantStat.edition, edition), eq(filmWantStat.film_key, filmKey)))
-        .run();
+        ),
+    });
+    adjust(filmKey, -previousWeight);
+  }
+
+  for (const filmKey of added) claim(filmKey);
+
+  // Weight changed for still-present films (e.g. anon→auth upgrade): adjust delta.
+  if (existing.length && Math.abs(previousWeight - weight) > 1e-9) {
+    const delta = weight - previousWeight;
+    for (const filmKey of previousKeys) {
+      if (!next.has(filmKey)) continue;
+      writes.push({
+        statement: db
+          .update(filmWantContribution)
+          .set({ weight: weightLabel, updated_at: now })
+          .where(
+            and(
+              eq(filmWantContribution.edition, edition),
+              eq(filmWantContribution.film_key, filmKey),
+              eq(filmWantContribution.contributor, contributor),
+            ),
+          ),
+      });
+      adjust(filmKey, delta);
     }
   }
+
+  if (writes.length === 0) return;
+  await flushStatBatch(db, writes);
 }
 
 export async function clearContributorWants(db: Db, edition: string, contributor: string) {

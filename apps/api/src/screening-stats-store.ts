@@ -3,12 +3,20 @@
  *
  * 形状与 `want-store.ts` 完全同构 —— 那里按 `film_key`,这里按场次 `code`;
  * **唯一的差别是键**,算法刻意保持一致,便于两处对照排查。
+ * ⚠ 聚合表的改法同样在 `stat-batch.ts`(SQL 端原子算术 + 一次分批 batch),别再改回读-改-写。
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { database } from "./db";
 import { screeningAttendanceContribution, screeningAttendanceStat } from "./db/schema";
 import { formatAttendanceCounts, SCREENING_CODE_MAX_LENGTH } from "./screening-stats";
+import {
+  clampAddText,
+  flushStatBatch,
+  isNonPositiveText,
+  wouldGoNegativeText,
+  type StatWrite,
+} from "./stat-batch";
 import { diffFilmKeys } from "./want-stats";
 import { clearContributorWants } from "./want-store";
 import { clearContributorVotes } from "./film-vote-store";
@@ -54,93 +62,94 @@ export async function replaceContributorScreenings(
   const { removed, added } = diffFilmKeys(previousCodes, next);
   const now = Date.now();
   const weightLabel = String(weight);
+  const writes: StatWrite[] = [];
 
-  for (const code of removed) {
-    await db
-      .delete(screeningAttendanceContribution)
-      .where(
-        and(
-          eq(screeningAttendanceContribution.edition, edition),
-          eq(screeningAttendanceContribution.code, code),
-          eq(screeningAttendanceContribution.contributor, contributor),
-        ),
-      )
-      .run();
-    const row = await db
-      .select()
-      .from(screeningAttendanceStat)
-      .where(and(eq(screeningAttendanceStat.edition, edition), eq(screeningAttendanceStat.code, code)))
-      .get();
-    if (!row) continue;
-    const nextSum = Math.max(0, parseWeight(row.weight_sum) - previousWeight);
-    if (nextSum <= 1e-9) {
-      await db
+  const statKey = (code: string) =>
+    and(eq(screeningAttendanceStat.edition, edition), eq(screeningAttendanceStat.code, code));
+
+  /** 「按增量改这一场次的聚合」的三件套(顺序不可换:探测必须在写入之前)。 */
+  const adjust = (code: string, delta: number) => {
+    const key = statKey(code);
+    writes.push({
+      statement: db
+        .update(screeningAttendanceStat)
+        .set({ updated_at: sql`${screeningAttendanceStat.updated_at}` })
+        .where(and(key, wouldGoNegativeText(screeningAttendanceStat.weight_sum, delta))),
+      drift: `${edition}/${code}`,
+    });
+    writes.push({
+      statement: db
+        .update(screeningAttendanceStat)
+        .set({ weight_sum: clampAddText(screeningAttendanceStat.weight_sum, delta), updated_at: now })
+        .where(key),
+    });
+    writes.push({
+      statement: db
         .delete(screeningAttendanceStat)
-        .where(and(eq(screeningAttendanceStat.edition, edition), eq(screeningAttendanceStat.code, code)))
-        .run();
-    } else {
-      await db
-        .update(screeningAttendanceStat)
-        .set({ weight_sum: String(nextSum), updated_at: now })
-        .where(and(eq(screeningAttendanceStat.edition, edition), eq(screeningAttendanceStat.code, code)))
-        .run();
-    }
-  }
+        .where(and(key, isNonPositiveText(screeningAttendanceStat.weight_sum))),
+    });
+  };
 
-  for (const code of added) {
-    await db
-      .insert(screeningAttendanceContribution)
-      .values({ edition, code, contributor, weight: weightLabel, updated_at: now })
-      .onConflictDoNothing()
-      .run();
-    const row = await db
-      .select()
-      .from(screeningAttendanceStat)
-      .where(and(eq(screeningAttendanceStat.edition, edition), eq(screeningAttendanceStat.code, code)))
-      .get();
-    if (row) {
-      await db
-        .update(screeningAttendanceStat)
-        .set({ weight_sum: String(parseWeight(row.weight_sum) + weight), updated_at: now })
-        .where(and(eq(screeningAttendanceStat.edition, edition), eq(screeningAttendanceStat.code, code)))
-        .run();
-    } else {
-      await db
+  /** 认领一个新场次:贡献行落定 + 聚合行「插入或原地加」。 */
+  const claim = (code: string) => {
+    writes.push({
+      statement: db
+        .insert(screeningAttendanceContribution)
+        .values({ edition, code, contributor, weight: weightLabel, updated_at: now })
+        .onConflictDoNothing(),
+    });
+    writes.push({
+      statement: db
         .insert(screeningAttendanceStat)
         .values({ edition, code, weight_sum: weightLabel, updated_at: now })
-        .run();
-    }
-  }
+        .onConflictDoUpdate({
+          target: [screeningAttendanceStat.edition, screeningAttendanceStat.code],
+          // UPSERT 的 SET 里表名限定的列指**原行**,所以这一条同时覆盖「已存在 → 原地加」。
+          set: { weight_sum: clampAddText(screeningAttendanceStat.weight_sum, weight), updated_at: now },
+        }),
+    });
+  };
 
-  // 仍在集合里但权重变了(匿名 → 登录):补一个差值,别重算全表
-  if (existing.length && Math.abs(previousWeight - weight) > 1e-9) {
-    const kept = previousCodes.filter((code) => next.has(code));
-    const delta = weight - previousWeight;
-    for (const code of kept) {
-      await db
-        .update(screeningAttendanceContribution)
-        .set({ weight: weightLabel, updated_at: now })
+  for (const code of removed) {
+    writes.push({
+      statement: db
+        .delete(screeningAttendanceContribution)
         .where(
           and(
             eq(screeningAttendanceContribution.edition, edition),
             eq(screeningAttendanceContribution.code, code),
             eq(screeningAttendanceContribution.contributor, contributor),
           ),
-        )
-        .run();
-      const row = await db
-        .select()
-        .from(screeningAttendanceStat)
-        .where(and(eq(screeningAttendanceStat.edition, edition), eq(screeningAttendanceStat.code, code)))
-        .get();
-      if (!row) continue;
-      await db
-        .update(screeningAttendanceStat)
-        .set({ weight_sum: String(Math.max(0, parseWeight(row.weight_sum) + delta)), updated_at: now })
-        .where(and(eq(screeningAttendanceStat.edition, edition), eq(screeningAttendanceStat.code, code)))
-        .run();
+        ),
+    });
+    adjust(code, -previousWeight);
+  }
+
+  for (const code of added) claim(code);
+
+  // 仍在集合里但权重变了(匿名 → 登录):补一个差值,别重算全表
+  if (existing.length && Math.abs(previousWeight - weight) > 1e-9) {
+    const delta = weight - previousWeight;
+    for (const code of previousCodes) {
+      if (!next.has(code)) continue;
+      writes.push({
+        statement: db
+          .update(screeningAttendanceContribution)
+          .set({ weight: weightLabel, updated_at: now })
+          .where(
+            and(
+              eq(screeningAttendanceContribution.edition, edition),
+              eq(screeningAttendanceContribution.code, code),
+              eq(screeningAttendanceContribution.contributor, contributor),
+            ),
+          ),
+      });
+      adjust(code, delta);
     }
   }
+
+  if (writes.length === 0) return;
+  await flushStatBatch(db, writes);
 }
 
 export async function clearContributorScreenings(db: Db, edition: string, contributor: string) {
