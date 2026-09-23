@@ -7,15 +7,19 @@ import { pickFilmKeysFromRecords, wantWeightFor } from "./want-stats";
 import { DEFAULT_EDITION, EDITIONS, isEdition } from "@biff/contracts/edition";
 import { LOOKUP_RATE_LIMIT, PING_RATE_LIMIT, createRateLimiter } from "./rate-limit";
 import { readWantCounts, replaceContributorWants } from "./want-store";
-import { MAX_VOTES_PER_PING, normalizeVotes } from "./film-vote-stats";
+import { MAX_FILM_KEY_LENGTH, MAX_VOTES_PER_PING, normalizeVotes } from "./film-vote-stats";
 import {
   ANON_PREFIX,
   auditVoteRows,
+  claimContributorVotes,
+  exposeVoteRows,
   MAX_VOTE_ROWS,
   readVoteCounts,
   readVoteRows,
+  removeContributorVote,
   replaceContributorVotes,
 } from "./film-vote-store";
+import { isAdminSubject } from "./admin";
 import {
   normalizeFeedbackBody,
   writeAuthError,
@@ -637,6 +641,71 @@ app.get("/api/account/film-vote-contributions", async (c) => {
       anonContributor: cookie ? `${ANON_PREFIX}${await hash(cookie)}` : null,
     }),
   });
+});
+
+/* ---------------- 管理端(2026-09-23,PLAN-20260923140943) ----------------
+ * 由来:上面那条自查接口**刻意不回 `contributor`**,于是「这两枚匿名死贴纸到底是谁的」查不出来;
+ * 而本服务原本**没有任何管理员概念**(`accountProfileSchema` 里没有角色字段,见 PLAN)。
+ * 这里补上两层门禁 + 读 / 删 / 认领迁移。
+ *
+ * ⚠ 门禁是**两层**,少一层就等于把全站「谁投了什么」的名单挂到公网上:
+ *   ① `requireIdentity`(未登录 401)② subject ∈ `admin.ts::ADMIN_SUBJECTS`(否则 403)。
+ * ⚠ 白名单校验的是**已登录会话的身份**,不是凭据 —— 见 `admin.ts` 的说明。 */
+app.use("/api/admin/*", requireIdentity);
+app.use("/api/admin/*", async (c, next) => {
+  if (!isAdminSubject(c.get("session").row.subject)) return c.json({ error: "FORBIDDEN" }, 403);
+  await next();
+});
+
+/** 管理端读:列出该 edition 的**全部**投票行,含 `contributor` 原文。 */
+app.get("/api/admin/film-vote-contributions", async (c) => {
+  const edition = editionParam(c.req.query("edition"));
+  if (!edition) return c.json({ error: "INVALID_EDITION" }, 422);
+  const rows = await readVoteRows(database(c.env.DB), edition);
+  return c.json({
+    edition,
+    // 与自查接口同一条:静默截断会让人把「没看到」读成「不存在」
+    truncated: rows.length >= MAX_VOTE_ROWS,
+    rows: exposeVoteRows(rows),
+  });
+});
+
+/** 管理端删除:`?contributor=…&filmKey=…` 精确删掉一行(匿名死贴纸的出口)。
+ *  命中 200、未命中 404 —— 不静默成功,否则「我删了」可能只是参数写错。 */
+const adminVoteRowQuerySchema = z
+  .object({
+    edition: z.enum(EDITIONS).optional().default(DEFAULT_EDITION),
+    contributor: z.string().min(1).max(200),
+    filmKey: z.string().min(1).max(MAX_FILM_KEY_LENGTH),
+  })
+  .strict();
+
+app.delete("/api/admin/film-vote-contributions", async (c) => {
+  const parsed = adminVoteRowQuerySchema.safeParse(c.req.query());
+  if (!parsed.success) return c.json({ error: "INVALID_ADMIN_QUERY" }, 422);
+  const { edition, contributor, filmKey } = parsed.data;
+  const removed = await removeContributorVote(database(c.env.DB), edition, contributor, filmKey);
+  if (!removed) return c.json({ error: "NOT_FOUND" }, 404);
+  return c.json({ ok: true, edition, contributor, filmKey, removed: 1 });
+});
+
+/** 管理端认领迁移:把某个匿名身份的票整份并到指定账号名下。
+ *  ⚠ `from` 限 `anon:` 前缀:本轮只做「匿名 → 账号」;账号间合并是新语义,不在范围里(见 PLAN)。
+ *    `to` 用共享契约的 `accountUserIdSchema` 校验,免得把票并到一个拼错的 subject 上。 */
+const claimVotesSchema = z
+  .object({
+    edition: z.enum(EDITIONS).optional().default(DEFAULT_EDITION),
+    from: z.string().min(1).max(200).startsWith(ANON_PREFIX),
+    to: accountUserIdSchema,
+    dryRun: z.boolean().optional().default(false),
+  })
+  .strict();
+
+app.post("/api/admin/film-vote-contributions/claim", async (c) => {
+  const parsed = claimVotesSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: "INVALID_CLAIM" }, 422);
+  const { edition, from, to, dryRun } = parsed.data;
+  return c.json(await claimContributorVotes(database(c.env.DB), edition, from, to, { dryRun }));
 });
 
 /* ---------------- 同场观影人数(2026-09-14,PLAN-20260914164050) ----------------

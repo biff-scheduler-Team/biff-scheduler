@@ -74,6 +74,41 @@ export function diffVotes(
   return { removed, added };
 }
 
+/** 把「源身份」的票并进「目标身份」（管理端的认领迁移，2026-09-23，PLAN-20260923140943）。
+ *
+ *  **冲突口径：同一部片两票不同色时保留目标那一票**，并把冲突原样报出来让人核对。
+ *  为什么是保留目标：目标是正式账号（长期身份），源是匿名 / 临时身份（丢登录态的那一侧）——
+ *  「账号投的」比「匿名投的」更接近用户的本意。
+ *  同色重复计入 `alreadyHad`（无信息量的重合，不必逐条报）。
+ *
+ *  ⚠ 纯函数，不碰库：真正的写入在 `film-vote-store.ts::claimContributorVotes`。 */
+export function mergeVoteBoards(
+  target: ReadonlyMap<string, FilmVote>,
+  source: ReadonlyMap<string, FilmVote>,
+): {
+  merged: Map<string, FilmVote>;
+  moved: number;
+  alreadyHad: number;
+  conflicts: Array<{ key: string; source: FilmVote; target: FilmVote }>;
+} {
+  const merged = new Map(target);
+  let moved = 0;
+  let alreadyHad = 0;
+  const conflicts: Array<{ key: string; source: FilmVote; target: FilmVote }> = [];
+  for (const [key, vote] of source) {
+    const existing = merged.get(key);
+    if (existing === undefined) {
+      merged.set(key, vote);
+      moved += 1;
+    } else if (existing === vote) {
+      alreadyHad += 1;
+    } else {
+      conflicts.push({ key, source: vote, target: existing });
+    }
+  }
+  return { merged, moved, alreadyHad, conflicts };
+}
+
 /** 红黑榜评分 = 红票占比折算成 0–10 分（一位小数）；一票没有时 `null`（不显示，而不是 0）。
  *  ⚠ 与前端 `redblack.ts::scoreOf` 同口径 —— 前端算的是「含我自己那一票」的合并计数。 */
 export function voteScore(counts: VoteCounts): number | null {

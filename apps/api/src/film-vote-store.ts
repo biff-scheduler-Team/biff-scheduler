@@ -10,7 +10,13 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { database } from "./db";
 import { filmVoteContribution, filmVoteStat } from "./db/schema";
-import { diffVotes, formatVoteCounts, isFilmVote, type FilmVote } from "./film-vote-stats";
+import {
+  diffVotes,
+  formatVoteCounts,
+  isFilmVote,
+  mergeVoteBoards,
+  type FilmVote,
+} from "./film-vote-stats";
 import {
   clampAddInt,
   flushStatBatch,
@@ -234,6 +240,134 @@ export function auditVoteRows(
     mine,
     others,
     thisBrowser: { hasAnonCookie: Boolean(viewer.anonContributor), matched },
+  };
+}
+
+/* ---------------- 管理端(2026-09-23,PLAN-20260923140943) ----------------
+ * 门禁在 `index.ts`(`/api/admin/*` 两层:requireIdentity + subject 白名单),这里只管数据。 */
+
+/** 管理端回给浏览器的一行 —— **含 `contributor` 原文**。
+ *  ⚠ 全站唯一一处会把它回出去的地方:公开统计只回聚合,自查接口只回「是不是我的」。
+ *    要给它加调用点,先确认门禁(见 `admin.ts`)。 */
+export interface VoteAdminRow {
+  filmKey: string;
+  vote: FilmVote;
+  contributor: string;
+  anonymous: boolean;
+  updatedAt: number;
+}
+
+/** 贡献行 → 管理端 DTO。白名单外的坏 vote 行仍然丢弃(与其它读路径同一道收口)。 */
+export function exposeVoteRows(rows: readonly VoteRow[]): VoteAdminRow[] {
+  const out: VoteAdminRow[] = [];
+  for (const row of rows) {
+    if (!isFilmVote(row.vote)) continue;
+    out.push({
+      filmKey: row.film_key,
+      vote: row.vote,
+      contributor: row.contributor,
+      anonymous: row.contributor.startsWith(ANON_PREFIX),
+      updatedAt: row.updated_at,
+    });
+  }
+  return out;
+}
+
+/** 只读某个身份在这个 edition 下的票(走 `(edition, contributor)` 索引)。
+ *  ⚠ 不做 `MAX_VOTE_ROWS` 截断:这是写路径的前置读(删 / 迁移都按它算整份),
+ *    截断会让「整份替换」把没读到的那部分**当成撤票删掉**。 */
+export async function readContributorVotes(
+  db: Db,
+  edition: string,
+  contributor: string,
+): Promise<VoteRow[]> {
+  return db
+    .select({
+      film_key: filmVoteContribution.film_key,
+      contributor: filmVoteContribution.contributor,
+      vote: filmVoteContribution.vote,
+      updated_at: filmVoteContribution.updated_at,
+    })
+    .from(filmVoteContribution)
+    .where(
+      and(eq(filmVoteContribution.edition, edition), eq(filmVoteContribution.contributor, contributor)),
+    )
+    .all();
+}
+
+/** 贡献行 → votes Map(白名单外的坏行丢弃 —— 与 `replaceContributorVotes` 的读侧同一道收口)。 */
+function votesMapOf(rows: readonly VoteRow[]): Map<string, FilmVote> {
+  const out = new Map<string, FilmVote>();
+  for (const row of rows) if (isFilmVote(row.vote)) out.set(row.film_key, row.vote);
+  return out;
+}
+
+/** 删掉某身份下的一票(管理端)。返回是否真的删掉了一行。
+ *  复用 `replaceContributorVotes` 的**整份替换**:贡献行与聚合计数在同一个 batch 里改,
+ *  不写第二份「减一票」实现(否则就是同一口径两份,见红线 5)。 */
+export async function removeContributorVote(
+  db: Db,
+  edition: string,
+  contributor: string,
+  filmKey: string,
+): Promise<boolean> {
+  const rows = await readContributorVotes(db, edition, contributor);
+  if (!rows.some((row) => row.film_key === filmKey)) return false;
+  const next = votesMapOf(rows);
+  next.delete(filmKey);
+  await replaceContributorVotes(db, edition, contributor, next);
+  return true;
+}
+
+/** 认领迁移的结果。 */
+export interface ClaimOutcome {
+  from: string;
+  to: string;
+  /** 并过去了几票(目标原本没有的片) */
+  moved: number;
+  /** 目标本来就有同一部片的同一颜色 —— 无事发生 */
+  alreadyHad: number;
+  /** 同一部片两色冲突:保留**目标**那票,这里逐条报出来给人核对 */
+  conflicts: Array<{ key: string; source: FilmVote; target: FilmVote }>;
+  dryRun: boolean;
+  /** 源身份这次被撤掉的票数 */
+  cleared: number;
+  /** 目标身份迁移后的票数 */
+  targetTotal: number;
+}
+
+/** 把 `from` 的票整份并到 `to`(管理端;典型场景:丢登录态后匿名贴的票并回账号)。
+ *
+ *  ⚠ **写入顺序不可换**:先并到目标、再清源。
+ *    中途失败时留下的是「两边都在」(重复计数,可见且可自愈);反序会**丢票且不可恢复**。
+ *    也正因为可自愈,这个操作是**幂等**的 —— 重跑一次就收敛。 */
+export async function claimContributorVotes(
+  db: Db,
+  edition: string,
+  from: string,
+  to: string,
+  options: { dryRun?: boolean } = {},
+): Promise<ClaimOutcome> {
+  const [fromRows, toRows] = await Promise.all([
+    readContributorVotes(db, edition, from),
+    readContributorVotes(db, edition, to),
+  ]);
+  const source = votesMapOf(fromRows);
+  const { merged, moved, alreadyHad, conflicts } = mergeVoteBoards(votesMapOf(toRows), source);
+  const dryRun = options.dryRun === true;
+  if (!dryRun) {
+    await replaceContributorVotes(db, edition, to, merged);
+    await replaceContributorVotes(db, edition, from, new Map());
+  }
+  return {
+    from,
+    to,
+    moved,
+    alreadyHad,
+    conflicts,
+    dryRun,
+    cleared: source.size,
+    targetTotal: merged.size,
   };
 }
 
