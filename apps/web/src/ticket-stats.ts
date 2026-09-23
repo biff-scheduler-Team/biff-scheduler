@@ -11,6 +11,7 @@
  */
 
 import { EDITION } from "./edition";
+import { wholeCount } from "./util";
 import type { TicketState, TicketVia } from "./types";
 
 /** 一场的四项计数（与 api 侧 `ticket-stats.ts::TicketCounts` 同形）。 */
@@ -63,26 +64,23 @@ export function peekTicketCounts(): TicketOutcomeCounts {
 
 /** 读取端白名单：服务端固然不会发坏数据，但客户端缓存**不能假设上游永远正确**
  *  （旧版本 API、代理改写、半截响应）—— 非法条目一律丢弃，四项全 0 的行也丢弃，
- *  与 `film-votes.ts::parseVotes` 同一条原则。 */
+ *  与 `film-votes.ts::parseVotes` 同一条原则。
+ *  ⚠ 取整走 `util.ts::wholeCount`（全站唯一取整口径，与 want / screening / film-votes
+ *    三个同构模块同一份实现）—— 此前这里自己写了一份 `Math.trunc`（2026-09-23 收口）。 */
 export function parseTicketCounts(raw: unknown): TicketOutcomeCounts {
   const out = emptyCounts();
   if (!raw || typeof raw !== "object") return out;
   for (const [code, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!code || !value || typeof value !== "object") continue;
     const row = value as Partial<Record<keyof TicketCounts, unknown>>;
-    const got = count(row.got);
-    const transfer = count(row.transfer);
-    const missed = count(row.missed);
-    const dropped = count(row.dropped);
+    const got = wholeCount(row.got);
+    const transfer = wholeCount(row.transfer);
+    const missed = wholeCount(row.missed);
+    const dropped = wholeCount(row.dropped);
     if (got <= 0 && transfer <= 0 && missed <= 0 && dropped <= 0) continue;
     out[code] = { got, transfer, missed, dropped };
   }
   return out;
-}
-
-function count(raw: unknown): number {
-  const n = Math.trunc(Number(raw) || 0);
-  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 export async function loadTicketCounts(force = false): Promise<TicketOutcomeCounts> {

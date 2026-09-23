@@ -9,6 +9,26 @@ const okJson = (body: unknown) =>
   Promise.resolve({ ok: true, json: async () => body } as unknown as Response);
 const fail = (status = 404) => Promise.resolve({ ok: false, status } as unknown as Response);
 
+/* 取整口径：全站唯一来源是 `util.ts::wholeCount`（want / screening / film-votes 三个同构模块都走它）。
+ * api 侧 `formatTicketCounts` 每个端点都 `Math.round` 过，故第一条钉的是**真实形状行为不变**；
+ * 第二条钉的是「万一上游漏了取整」时仍与另外三个模块同口径（round，而不是 trunc）。
+ * 2026-09-23，PLAN-20260923113659 T7。 */
+describe("取整口径（与三个同构模块同一份 wholeCount）", () => {
+  it("上游真实形状（服务端已 Math.round 的整数）原样通过", async () => {
+    const { parseTicketCounts } = await import("../src/ticket-stats");
+    expect(parseTicketCounts({ "001": { got: 3, transfer: 1, missed: 0, dropped: 0 } })).toEqual({
+      "001": { got: 3, transfer: 1, missed: 0, dropped: 0 },
+    });
+  });
+
+  it("上游漏了取整时（加权和 2.75）→ 四舍五入成 3，而不是截断成 2", async () => {
+    const { parseTicketCounts } = await import("../src/ticket-stats");
+    expect(parseTicketCounts({ "001": { got: 2.75 } })).toEqual({
+      "001": { got: 3, transfer: 0, missed: 0, dropped: 0 },
+    });
+  });
+});
+
 describe("parseTicketCounts 白名单", () => {
   it("丢弃非法条目、四项全 0 不输出、负数夹回 0、字符串数字认", async () => {
     const { parseTicketCounts } = await import("../src/ticket-stats");
