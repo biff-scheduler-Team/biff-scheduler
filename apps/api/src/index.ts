@@ -359,7 +359,7 @@ app.get("/api/account/sync/biff-2026", async (c) => {
       : { subject, importedAt: imported?.imported_at ?? null, revision: 0, records: {}, updatedAt: 0 },
   );
 });
-// Atomically save the merged workspace and mark the account imported. D1 batch is transactional.
+// 原子地保存合并后的工作区并标记账号已导入 —— D1 的 batch 是事务性的。
 app.post("/api/account/import", async (c) => {
   const parsed = syncSchema.extend({ sourceRecords: recordsSchema }).safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "INVALID_SYNC_DOCUMENT" }, 422);
