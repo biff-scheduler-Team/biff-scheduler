@@ -23,6 +23,8 @@
  */
 
 import { MIN_VOTES_FOR_VERDICT, medianOf } from "./rush-analysis";
+// 取整口径的唯一来源（此前本文件另写了一份 `whole`，见 util.ts 的说明）
+import { wholeCount as whole } from "./util";
 
 /* ---------------- 想看人数（意愿） ---------------- */
 
@@ -160,8 +162,4 @@ export function myCrowdOverlap(myFilmKeys: string[], rows: WantRow[]): Overlap {
   return { mine: unique.length, hot, cold, median: board?.median ?? null };
 }
 
-/** 加权和 / 脏值 → 非负整数（与 `rush-analysis.ts::whole` 同一取整口径）。 */
-function whole(raw: unknown): number {
-  const n = Math.round(Number(raw) || 0);
-  return Number.isFinite(n) && n > 0 ? n : 0;
-}
+

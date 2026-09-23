@@ -3,7 +3,7 @@
 import type { Catalog, Mapping, PickEntry, Screening } from "./types";
 import type { TicketOpen } from "./extras";
 import { effEndHms, gvTalkMin } from "./gv";
-import { displayTitle, fmtMinRange } from "./util";
+import { displayTitle, fmtDuration, fmtMinRange } from "./util";
 
 /** 导出用的「一场已选」行:场次来自场次级,备注来自影片级(唯一数据源的投影) */
 export interface PickRow {
@@ -87,7 +87,7 @@ export function buildIcs(
     const desc: string[] = [];
     desc.push(`${s.title_en}${s.title_kr ? " / " + s.title_kr : ""}`);
     const timeNote = talk > 0 ? (talkOn ? ` · 含映后 ${talk}min` : ` · 已放弃映后谈(仅正片)`) : "";
-    desc.push(`时间(KST):${fmtMinRange(s.start_time, endHms)} · ${s.duration_min}min${timeNote}`);
+    desc.push(`时间(KST):${fmtMinRange(s.start_time, endHms)} · ${fmtDuration(s.duration_min, "short")}${timeNote}`);
     desc.push(`场馆:${s.venue_display}`);
     if (map?.douban_url) desc.push(`豆瓣:${map.douban_url}`);
     if (e.note) desc.push(`备注:${e.note}`);

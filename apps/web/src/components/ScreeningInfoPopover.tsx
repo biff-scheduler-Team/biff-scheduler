@@ -5,7 +5,7 @@ import {useMedia} from '../app/hooks';
 import {useCatalog} from '../app/store';
 import {useFilmNavigation} from '../app/film-navigation';
 import {Badges} from './ScreeningCard';
-import {doubanMappingOf, doubanUrlOf, filmInfoOf, filmNodeKey, fmtEndClock} from '../util';
+import {doubanMappingOf, doubanUrlOf, filmInfoOf, filmNodeKey, fmtDuration, fmtEndClock} from '../util';
 import {effEndMin, talkOnOf} from '../gv';
 import {introOf} from '../intros';
 import {mapsUrl, regionLabel, venuePlace} from '../legend';
@@ -84,7 +84,7 @@ export function ScreeningInfoPopover({screening: s}: {screening: Screening}) {
           </div>
         </div>
         <p className="muted">{s.date} {s.start_time.slice(0,5)}-{fmtEndClock(effEndMin(s,talkOnOf(s.code)))} KST</p>
-        <p>{venue?.name}　{s.duration_min} 分钟</p>
+        <p>{venue?.name}　{fmtDuration(s.duration_min)}</p>
         {place && <p className="muted preview-venue">{regionLabel(place.region)} · {place.location}<br />{place.address}<br /><a href={mapsUrl(place)} target="_blank" rel="noopener noreferrer">在 Google 地图打开</a></p>}
         <Badges screening={s} />
         <ScreeningMemberList screening={s} onOpen={() => {cancel();setMode('closed');}} />

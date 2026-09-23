@@ -28,6 +28,8 @@ import {
   type TelemetryKind,
 } from "@biff/contracts/telemetry";
 import { EDITION } from "./edition";
+// 取整口径的唯一来源（此前本文件另写了一份 `whole`，见 util.ts 的说明）
+import { wholeCount as whole } from "./util";
 
 /** 白名单 / 上限全部来自 `@biff/contracts/telemetry` —— **前后端同一份**：
  *  客户端用它过滤 DOM 上的 `data-track`（手写的，写错宁可不发），服务端用它挡伪造请求。 */
@@ -96,10 +98,6 @@ export function parseTelemetryCounts(raw: unknown): TelemetryCounts {
   return out;
 }
 
-function whole(raw: unknown): number {
-  const n = Math.round(Number(raw) || 0);
-  return Number.isFinite(n) && n > 0 ? n : 0;
-}
 
 export async function loadTelemetryCounts(force = false): Promise<TelemetryCounts> {
   if (cache && !force) return cache;

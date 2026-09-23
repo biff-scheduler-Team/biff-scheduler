@@ -23,6 +23,7 @@
 
 import { capacityOf, difficultyOf, percentileOf, type DifficultyLevel } from "./capacity";
 import type { Catalog, Screening } from "./types";
+import { wholeCount as whole } from "./util";
 import type { TicketCounts } from "./ticket-stats";
 
 /** 抢到率的分母下限：低于它就不给率值（见文件头）。 */
@@ -326,11 +327,8 @@ export function ticketOutcomeStats(counts: Record<string, TicketCounts>): Ticket
   };
 }
 
-/** 加权和 → 「人」。用 `Math.round` 而不是 `trunc`：匿名权重是 0.75，截断会把 0.75 直接吃掉。 */
-function whole(raw: unknown): number {
-  const n = Math.round(Number(raw) || 0);
-  return Number.isFinite(n) && n > 0 ? n : 0;
-}
+/* 取整口径已收口到 `util.ts::wholeCount`（2026-09-23，PLAN-20260923111748，B3）——
+ * 此前 `rush-analysis` / `rush-crowd` / `telemetry` 各写一份，注释还互相声明「同一口径」。 */
 
 /* ---------------- 五、热度与口碑关联 ---------------- */
 

@@ -1,7 +1,8 @@
 import type { Catalog, Screening } from "../types";
 import { axisRangeOf, clampZoom } from "../grid";
 import { hmsToMin } from "../util";
-import { filmEndMin, gvTalkMin } from "../gv";
+// 有效结束只在 `gv.ts` 有一份实现：这里此前有个等价的 `visualEnd`（第二份实现，已删）
+import { effEndMin } from "../gv";
 
 export const TIME_RAIL_WIDTH = 72;
 export const VENUE_COLUMN_WIDTH = 260;
@@ -51,9 +52,6 @@ export function fitVerticalZoom(venueCount: number, viewportWidth: number) {
   return clampZoom(available / (columns * VENUE_COLUMN_WIDTH));
 }
 
-export function visualEnd(s: Screening) {
-  return gvTalkMin(s) > 0 ? filmEndMin(s) + gvTalkMin(s) : hmsToMin(s.end_time);
-}
 
 /** Only overlapping intervals in the same venue share its column width. */
 export function screeningLanes(shows: Screening[]) {
@@ -66,7 +64,7 @@ export function screeningLanes(shows: Screening[]) {
       const start = hmsToMin(s.start_time);
       let lane = ends.findIndex(end => end <= start);
       if (lane < 0) lane = ends.length;
-      ends[lane] = visualEnd(s);
+      ends[lane] = effEndMin(s, true);
       return {code: s.code, lane};
     });
     lanes.forEach(({code, lane}) => result.set(code, {lane, count: ends.length}));
@@ -76,7 +74,7 @@ export function screeningLanes(shows: Screening[]) {
     const start = hmsToMin(s.start_time);
     if (group.length && start >= groupEnd) flush();
     if (!group.length) groupEnd = -Infinity;
-    group.push(s); groupEnd = Math.max(groupEnd, visualEnd(s));
+    group.push(s); groupEnd = Math.max(groupEnd, effEndMin(s, true));
   }
   flush();
   return result;

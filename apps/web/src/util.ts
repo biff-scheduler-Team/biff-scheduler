@@ -24,6 +24,21 @@ export function fmtEndClock(min: number): string {
   return nextDayTag(min) + minToClock(min);
 }
 
+/** 时长文案的唯一来源(90 → "90 分钟";`short` 给 .ics 用 → "90min")。
+ *  此前 `ScreeningCard` / `ScreeningInfoPopover` / `ScheduleGantt` / `ScreeningMemberList`
+ *  各写一份 `{n} 分钟`、`ics` 又写 `{n}min` —— 单位与空格四处不一(2026-09-23,PLAN-20260923111748,B3)。 */
+export function fmtDuration(min: number, style: "zh" | "short" = "zh"): string {
+  const value = Math.round(Number(min) || 0);
+  return style === "short" ? `${value}min` : `${value} 分钟`;
+}
+
+/** 加权和 / 上游计数 → 非负整数(**全站唯一取整口径**)。 */
+export function wholeCount(raw: unknown): number {
+  // 用 round 而不是 trunc:匿名权重是 0.75,截断会把这 0.75 直接吃掉(3 人 → 2)。
+  const n = Math.round(Number(raw) || 0);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 /** 本地时区 'YYYY-MM-DD'(与 dateInfo 同用本地时间,避免 UTC 解析偏移) */
 export function todayIsoLocal(): string {
   const d = new Date();

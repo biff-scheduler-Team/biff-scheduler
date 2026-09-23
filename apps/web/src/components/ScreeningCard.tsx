@@ -21,6 +21,7 @@ import { useCatalog } from "../app/store";
 import {
   filmNodeKey,
   filmInfoOf,
+  fmtDuration,
   fmtEndClock,
   doubanMappingOf,
   doubanScoreOf,
@@ -320,7 +321,7 @@ export function ScreeningCard({
           </div>
         )}
         <div className="screening-meta">
-          <span>{s.duration_min} 分钟</span>
+          <span>{fmtDuration(s.duration_min)}</span>
           <span className="screening-price" title="票价以 BIFF 官方价目表为准">
             {formatKrw(priceOf(s))}
           </span>

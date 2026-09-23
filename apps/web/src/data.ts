@@ -77,7 +77,11 @@ export async function loadCatalog(): Promise<Catalog> {
     const st = hmsToMin(s.start_time);
     const en = hmsToMin(s.end_time);
     if (!Number.isFinite(st) || !Number.isFinite(en)) continue; // 脏数据:不写回 "NaN:NaN",交由下游原样暴露
-    if (en <= st) s.end_time = minToHms(en + 24 * 60);
+    // 判据是 `en < st`（真跨午夜），不是 `en <= st`：`en === st` 属零长度 / 占位场次（脏数据），
+    // 补 24h 会造出一个 24 小时长的槽位，把轴界与卡片宽度一起撑爆 —— 让脏数据保持原样暴露，
+    // 而不是伪装成一个「超长场次」。（2026-09-23，PLAN-20260923111748，B3）
+    // 实测本届 795 场：start === end 0 场、end < start 0 场、end ≥ 24:00 21 场 → 本行对现有数据零影响。
+    if (en < st) s.end_time = minToHms(en + 24 * 60);
   }
 
   // 原册有一部分场次**只印韩文片名**(2025 版 M1–M4 南浦洞共 41 场),title_en 为空 →
