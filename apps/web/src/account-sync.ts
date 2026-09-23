@@ -48,9 +48,40 @@ const emptyCache = (): Cache => ({
   account: null,
   lastSyncAt: 0,
 });
+/** 缓存损坏时把原文另存的键（`owner` 维度，与 cache 键同构）。 */
+function cacheCorruptKey(owner: string) {
+  return `iffday.workspace.cache.corrupt.v1:${owner}`;
+}
+
+/**
+ * localStorage 里的缓存原文 → `Cache`（**纯函数**，故可被单测钉住）。
+ *
+ * ⚠ 损坏 / 半截 JSON 一律降级成空缓存，并把原文交回调用方另存 —— 不能让解析异常冒出去：
+ *   抛点此前落在 `initAccountSync` 的 `try` **之外**，异常会冲出整个初始化，
+ *   于是 `iffday:workspace-change` / `online` / `focus` / `storage` 监听与 20s 定时同步
+ *   **全都还没挂上** —— 此后用户任何改动都不会再同步，只能手动清 localStorage 才能恢复。
+ */
+export function parseStoredCache(raw: string | null): { cache: Cache; corruptRaw: string | null } {
+  if (!raw) return { cache: emptyCache(), corruptRaw: null };
+  try {
+    return { cache: cacheSchema.parse(JSON.parse(raw)), corruptRaw: null };
+  } catch {
+    return { cache: emptyCache(), corruptRaw: raw };
+  }
+}
+
 function cacheFor(owner: string): Cache {
-  const raw = localStorage.getItem(cacheKey(owner));
-  return raw ? cacheSchema.parse(JSON.parse(raw)) : emptyCache();
+  const { cache: stored, corruptRaw } = parseStoredCache(localStorage.getItem(cacheKey(owner)));
+  if (corruptRaw) {
+    console.warn("workspace_cache_corrupt", owner);
+    // 另存原文（排障 / 恢复有据可查），但**绝不让写失败影响同步**：配额满等异常直接忽略。
+    try {
+      localStorage.setItem(cacheCorruptKey(owner), corruptRaw);
+    } catch {
+      // 忽略：连原文都存不下时，功能正确性优先于留证
+    }
+  }
+  return stored;
 }
 export class ApiFailure extends Error {
   constructor(
@@ -250,7 +281,16 @@ export async function initAccountSync(onWorkspaceChanged: () => void) {
   window.addEventListener("iffday:workspace-change", schedule);
   window.addEventListener("online", () => void syncAccount());
   window.addEventListener("focus", () => void syncAccount());
-  window.addEventListener("pagehide", remember);
+  // pagehide 这条路径此前没有 try/catch（`schedule()` 那条有）——
+  // 存储配额满时「最后一次改动」会静默丢失，只在控制台留一个未捕获异常。
+  window.addEventListener("pagehide", () => {
+    try {
+      remember();
+    } catch {
+      // 最后一次保存失败：此时页面已在卸载，无法再提示用户，只能留痕。
+      console.warn("workspace_pagehide_persist_failed");
+    }
+  });
   window.addEventListener("storage", (event) => {
     if (event.key === OWNER && (event.newValue ?? "guest") !== owner) {
       window.location.reload();
@@ -459,6 +499,12 @@ export async function resolveSyncConflicts(choices: Record<string, "local" | "re
 }
 export async function signOutAccount() {
   remember();
+  // ⚠ 本地清理与网络调用**解耦**（2026-09-23，PLAN-20260923111748，B4）：
+  //   此前 `api()` 抛错（断网 / 12s 超时 / 非 401）会直接 throw，`activate(null)` 根本执行不到 ——
+  //   于是「断网时无法登出」，共享设备上 A 的 `biff.*` 数据（片单 / 想看的片）原样留着，B 打开就能看到。
+  //   登出是共享设备上切断他人访问的主要手段，不该被网络可用性绑死；
+  //   服务端会话让它自然过期即可（cookie 已被 activate(null) 清掉的本地归属抵消不了，但会话本身有时效）。
+  let failure: unknown = null;
   try {
     await api("/api/account/logout", {
       method: "POST",
@@ -466,10 +512,11 @@ export async function signOutAccount() {
       body: "{}",
     });
   } catch (error) {
-    if (!(error instanceof ApiFailure && error.status === 401)) throw error;
+    if (!(error instanceof ApiFailure && error.status === 401)) failure = error;
   }
   activate(null);
   setStatus("guest");
+  if (failure) console.warn("signout_network_failed", failure instanceof Error ? failure.name : "UnknownError");
 }
 export async function refreshAccountProfile() {
   const { account } = await identify();
