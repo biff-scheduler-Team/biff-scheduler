@@ -17,6 +17,8 @@ import {
   mergeVoteBoards,
   type FilmVote,
 } from "./film-vote-stats";
+import { kstDay } from "./day";
+import { dailyBucketWrites, voteDailyMetric } from "./stat-daily";
 import {
   clampAddInt,
   flushStatBatch,
@@ -51,6 +53,8 @@ export async function replaceContributorVotes(
   const { removed, added } = diffVotes(previous, votes);
   if (!removed.length && !added.length) return;
   const now = Date.now();
+  // 日桶用同一时刻算日界（`day.ts`：KST，只能服务端算）
+  const day = kstDay(now);
   const writes: StatWrite[] = [];
 
   const statKey = (filmKey: string) =>
@@ -77,6 +81,15 @@ export async function replaceContributorVotes(
               : { black_count: clampAddInt(filmVoteStat.black_count, delta), updated_at: now },
         }),
     });
+    // 日账本按**颜色**分桶（见 `stat-daily.ts` 白名单里的说明：合成一个桶会让改票当天互相抵消）。
+    // ⚠ 并进同一个 batch，理由见 `stat-daily.ts` 文件头。
+    writes.push(
+      ...dailyBucketWrites(
+        db,
+        { edition, day, metric: voteDailyMetric(vote), target: filmKey, weightDelta: delta },
+        now,
+      ),
+    );
   };
 
   /** 撤一票：探测负漂移 → 钳零写入 → 两色都归零时删行（顺序不可换）。 */
@@ -107,6 +120,13 @@ export async function replaceContributorVotes(
           and(key, isNonPositiveInt(filmVoteStat.red_count), isNonPositiveInt(filmVoteStat.black_count)),
         ),
     });
+    writes.push(
+      ...dailyBucketWrites(
+        db,
+        { edition, day, metric: voteDailyMetric(vote), target: filmKey, weightDelta: delta },
+        now,
+      ),
+    );
   };
 
   // 顺序要紧：先把贡献行落定，再动聚合 —— 中途失败时聚合顶多短暂偏小，不会多算。

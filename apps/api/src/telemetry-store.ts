@@ -38,6 +38,8 @@ import {
   type TelemetryDelta,
   type TelemetryKind,
 } from "./telemetry-stats";
+import { kstDay } from "./day";
+import { dailyBucketWrites, telemetryDailyMetric } from "./stat-daily";
 
 type Db = ReturnType<typeof database>;
 
@@ -111,6 +113,7 @@ export async function applyContributorTelemetry(
           set: { hits: plan.nextHits, weight: weightLabel, updated_at: now },
         }),
     });
+    // 日账本由 `statWrites` 内部一并给出（唯一注入点，见 `dailyWritesFor` 的说明）
     writes.push(...statWrites(db, edition, delta.kind, delta.target, plan.viewerDelta, plan.hitsDelta, now));
   }
   await flushStatBatch(db, writes);
@@ -158,6 +161,37 @@ export async function clearContributorTelemetry(db: Db, edition: string, contrib
 }
 
 /**
+ * 日账本的一条（telemetry 的**唯一**注入点）。
+ *
+ * ⚠ 放这里而不是放在调用点：telemetry 有两条改聚合的路径 —— `applyContributorTelemetry`（上报）
+ *   与 `clearContributorTelemetry`（登录去重 / 登出时把匿名期整份减回去）—— 它们都经 `statWrites`。
+ *   只给上报那条加日账本，登出时减掉的部分就永远留在趋势里（趋势虚高且不可自愈）。
+ * ⚠ 日界只能服务端算（见 `day.ts`），这里复用调用方已有的 `now`。
+ */
+function dailyWritesFor(
+  db: Db,
+  edition: string,
+  kind: TelemetryKind,
+  target: string,
+  viewerDelta: number,
+  hitsDelta: number,
+  now: number,
+): StatWrite[] {
+  return dailyBucketWrites(
+    db,
+    {
+      edition,
+      day: kstDay(now),
+      metric: telemetryDailyMetric(kind),
+      target,
+      weightDelta: viewerDelta,
+      hitsDelta,
+    },
+    now,
+  );
+}
+
+/**
  * 一个 (kind, target) 的两个加权和怎么改。
  *
  * - 两个增量都 ≥ 0 → 「插入或原地加」一条：行不存在时用增量作初值（否则首次上报会丢）。
@@ -202,6 +236,7 @@ function statWrites(
             },
           }),
       },
+      ...dailyWritesFor(db, edition, kind, target, viewerDelta, hitsDelta, now),
     ];
   }
   return [
@@ -241,6 +276,7 @@ function statWrites(
           ),
         ),
     },
+    ...dailyWritesFor(db, edition, kind, target, viewerDelta, hitsDelta, now),
   ];
 }
 

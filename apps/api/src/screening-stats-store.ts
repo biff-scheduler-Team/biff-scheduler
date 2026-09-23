@@ -19,6 +19,8 @@ import {
 } from "./stat-batch";
 import { diffFilmKeys } from "./want-stats";
 import { clearContributorWants } from "./want-store";
+import { kstDay } from "./day";
+import { dailyBucketWrites } from "./stat-daily";
 import { clearContributorVotes } from "./film-vote-store";
 import { clearContributorTickets } from "./ticket-stats-store";
 import { clearContributorTelemetry } from "./telemetry-store";
@@ -61,6 +63,8 @@ export async function replaceContributorScreenings(
   // 复用 want-store 的同一份字符串集合差分(纯逻辑,与 film / code 无关),不写第二份
   const { removed, added } = diffFilmKeys(previousCodes, next);
   const now = Date.now();
+  // 日桶用同一时刻算日界（`day.ts`：KST，只能服务端算）
+  const day = kstDay(now);
   const weightLabel = String(weight);
   const writes: StatWrite[] = [];
 
@@ -88,6 +92,14 @@ export async function replaceContributorScreenings(
         .delete(screeningAttendanceStat)
         .where(and(key, isNonPositiveText(screeningAttendanceStat.weight_sum))),
     });
+    // 日账本记同一个 delta（趋势用）。⚠ 并进**同一个** batch，理由见 `stat-daily.ts` 文件头。
+    writes.push(
+      ...dailyBucketWrites(
+        db,
+        { edition, day, metric: "screening", target: code, weightDelta: delta },
+        now,
+      ),
+    );
   };
 
   /** 认领一个新场次:贡献行落定 + 聚合行「插入或原地加」。 */
@@ -108,6 +120,13 @@ export async function replaceContributorScreenings(
           set: { weight_sum: clampAddText(screeningAttendanceStat.weight_sum, weight), updated_at: now },
         }),
     });
+    writes.push(
+      ...dailyBucketWrites(
+        db,
+        { edition, day, metric: "screening", target: code, weightDelta: weight },
+        now,
+      ),
+    );
   };
 
   for (const code of removed) {

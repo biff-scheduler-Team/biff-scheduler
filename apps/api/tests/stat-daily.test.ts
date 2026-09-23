@@ -2,11 +2,16 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { database } from "../src/db";
 import {
+  DAILY_METRICS,
   dailyBucketWrites,
+  dailyMetricFamily,
   isDailyMetric,
   readDailyBucket,
   readDailySeries,
   readEarliestDay,
+  telemetryDailyMetric,
+  ticketDailyMetric,
+  voteDailyMetric,
 } from "../src/stat-daily";
 import { flushStatBatch } from "../src/stat-batch";
 import { createD1, createStatSchema } from "./d1-shim";
@@ -93,42 +98,49 @@ describe("stat-daily（d1 垫片，跑真 SQL）", () => {
     expect(await readDailyBucket(db, EDITION, DAY, "want", "cat:f001")).toBeNull();
   });
 
-  it("红黑票用 weightDelta = ±1（一人一票，不加权）", async () => {
-    await bump({ edition: EDITION, day: DAY, metric: "vote", target: "cat:f001", weightDelta: 1 });
-    await bump({ edition: EDITION, day: DAY, metric: "vote", target: "cat:f002", weightDelta: 1 });
-    await bump({ edition: EDITION, day: DAY, metric: "vote", target: "cat:f002", weightDelta: -1 });
-    const series = await readDailySeries(db, { edition: EDITION, metric: "vote", fromDay: DAY });
-    expect(series).toEqual([{ day: DAY, weight: 1, hits: 0 }]);
+  it("★ 红黑票按**颜色**分桶：改票当天红 −1、黑 +1，两个桶都看得见", async () => {
+    await bump({ edition: EDITION, day: DAY, metric: "vote:red", target: "cat:f001", weightDelta: 1 });
+    await bump({ edition: EDITION, day: DAY, metric: "vote:black", target: "cat:f001", weightDelta: 1 });
+    // 改票：红撤掉、黑补上
+    await bump({ edition: EDITION, day: DAY, metric: "vote:red", target: "cat:f001", weightDelta: -1 });
+    expect(await readDailyBucket(db, EDITION, DAY, "vote:red", "cat:f001")).toBeNull();
+    expect(await readDailyBucket(db, EDITION, DAY, "vote:black", "cat:f001")).toEqual({
+      weight: 1,
+      hits: 0,
+    });
+    // 若合成一个 "vote" 桶，这一对 −1/+1 会互相抵消 —— 那正是分开的理由
   });
 
   it("telemetry 的 hits_sum 单独记（「用了多少次」）", async () => {
     await bump({
       edition: EDITION,
       day: DAY,
-      metric: "telemetry",
-      target: "page:/redblack",
+      metric: "telemetry:page",
+      target: "/redblack",
       weightDelta: 0.75,
       hitsDelta: 3,
     });
-    expect(await readDailyBucket(db, EDITION, DAY, "telemetry", "page:/redblack")).toEqual({
+    expect(await readDailyBucket(db, EDITION, DAY, "telemetry:page", "/redblack")).toEqual({
       weight: 0.75,
       hits: 3,
     });
   });
 
   it("★ 序列：按天聚合、升序、只取 fromDay 之后，且不跨天串味", async () => {
-    await bump({ edition: EDITION, day: "2026-09-21", metric: "vote", target: "cat:f001", weightDelta: 1 });
-    await bump({ edition: EDITION, day: "2026-09-23", metric: "vote", target: "cat:f001", weightDelta: 1 });
-    await bump({ edition: EDITION, day: "2026-09-23", metric: "vote", target: "cat:f002", weightDelta: 1 });
+    await bump({ edition: EDITION, day: "2026-09-21", metric: "vote:red", target: "cat:f001", weightDelta: 1 });
+    await bump({ edition: EDITION, day: "2026-09-23", metric: "vote:red", target: "cat:f001", weightDelta: 1 });
+    await bump({ edition: EDITION, day: "2026-09-23", metric: "vote:red", target: "cat:f002", weightDelta: 1 });
     // 别的 edition 不得串进来
-    await bump({ edition: "biff-2027", day: "2026-09-23", metric: "vote", target: "cat:f001", weightDelta: 5 });
+    await bump({ edition: "biff-2027", day: "2026-09-23", metric: "vote:red", target: "cat:f001", weightDelta: 5 });
     // 别的 metric 不得串进来
     await bump({ edition: EDITION, day: "2026-09-23", metric: "want", target: "cat:f001", weightDelta: 3 });
+    // 同一族的另一个子类型也不得串进来（红 ≠ 黑）
+    await bump({ edition: EDITION, day: "2026-09-23", metric: "vote:black", target: "cat:f001", weightDelta: 9 });
 
-    const series = await readDailySeries(db, { edition: EDITION, metric: "vote", fromDay: "2026-09-22" });
+    const series = await readDailySeries(db, { edition: EDITION, metric: "vote:red", fromDay: "2026-09-22" });
     expect(series).toEqual([{ day: "2026-09-23", weight: 2, hits: 0 }]);
 
-    const all = await readDailySeries(db, { edition: EDITION, metric: "vote", fromDay: "2026-09-01" });
+    const all = await readDailySeries(db, { edition: EDITION, metric: "vote:red", fromDay: "2026-09-01" });
     expect(all).toEqual([
       { day: "2026-09-21", weight: 1, hits: 0 },
       { day: "2026-09-23", weight: 2, hits: 0 },
@@ -136,28 +148,52 @@ describe("stat-daily（d1 垫片，跑真 SQL）", () => {
   });
 
   it("序列可以按单个 target 收窄（某部片的日趋势）", async () => {
-    await bump({ edition: EDITION, day: DAY, metric: "vote", target: "cat:f001", weightDelta: 1 });
-    await bump({ edition: EDITION, day: DAY, metric: "vote", target: "cat:f002", weightDelta: 4 });
+    await bump({ edition: EDITION, day: DAY, metric: "vote:red", target: "cat:f001", weightDelta: 1 });
+    await bump({ edition: EDITION, day: DAY, metric: "vote:red", target: "cat:f002", weightDelta: 4 });
     const series = await readDailySeries(db, {
       edition: EDITION,
-      metric: "vote",
+      metric: "vote:red",
       fromDay: DAY,
       target: "cat:f002",
     });
     expect(series).toEqual([{ day: DAY, weight: 4, hits: 0 }]);
   });
 
+  it("一族的子类型可以一起读（抢票四项、事件两类）", async () => {
+    await bump({ edition: EDITION, day: DAY, metric: "ticket:got", target: "S001", weightDelta: 1 });
+    await bump({ edition: EDITION, day: DAY, metric: "ticket:transfer", target: "S001", weightDelta: 0.75 });
+    await bump({ edition: EDITION, day: DAY, metric: "ticket:missed", target: "S002", weightDelta: 1 });
+    const series = await readDailySeries(db, {
+      edition: EDITION,
+      metric: dailyMetricFamily("ticket"),
+      fromDay: DAY,
+    });
+    expect(series).toEqual([{ day: DAY, weight: 2.75, hits: 0 }]);
+  });
+
   it("★ earliestDay 是「趋势从哪天开始」的唯一口径（历史不回填）", async () => {
     expect(await readEarliestDay(db, EDITION)).toBeNull();
-    await bump({ edition: EDITION, day: "2026-09-25", metric: "vote", target: "cat:f001", weightDelta: 1 });
-    await bump({ edition: EDITION, day: "2026-09-23", metric: "vote", target: "cat:f001", weightDelta: 1 });
+    await bump({ edition: EDITION, day: "2026-09-25", metric: "vote:red", target: "cat:f001", weightDelta: 1 });
+    await bump({ edition: EDITION, day: "2026-09-23", metric: "vote:red", target: "cat:f001", weightDelta: 1 });
     expect(await readEarliestDay(db, EDITION)).toBe("2026-09-23");
   });
 
-  it("metric 白名单收口（未知指标一律拒，避免读侧被任意字符串撑开）", () => {
+  it("metric 白名单与子类型构造函数收口", () => {
+    expect(DAILY_METRICS).toContain(voteDailyMetric("red"));
+    expect(DAILY_METRICS).toContain(voteDailyMetric("black"));
+    expect(DAILY_METRICS).toContain(ticketDailyMetric("dropped"));
+    expect(DAILY_METRICS).toContain(telemetryDailyMetric("click"));
+    // 没有子类型的指标才允许裸名；「投票」「事件」必须显式带子类型（否则又出一个合成桶）
     expect(isDailyMetric("want")).toBe(true);
-    expect(isDailyMetric("telemetry")).toBe(true);
+    expect(isDailyMetric("vote")).toBe(false);
+    expect(isDailyMetric("telemetry")).toBe(false);
     expect(isDailyMetric("whatever")).toBe(false);
     expect(isDailyMetric(undefined)).toBe(false);
+    expect(dailyMetricFamily("ticket")).toEqual([
+      "ticket:got",
+      "ticket:transfer",
+      "ticket:missed",
+      "ticket:dropped",
+    ]);
   });
 });
