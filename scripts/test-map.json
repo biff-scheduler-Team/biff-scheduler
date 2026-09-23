@@ -371,6 +371,24 @@
         "settings-pni",
         "data-update"
       ]
+    },
+    {
+      "id": "admin-console",
+      "note": "管理后台（`/admin` 暗门页，2026-09-23 PLAN-20260923142546 批 2）：门禁三态（未登录 / 非管理员 / 问不到，三者互不混淆）+ 概览、明细、趋势、内容四个视图；趋势图复用 components/charts/* 的 ChartFrame 契约（`data-chart`/`data-points`），内容视图复用**公开**接口不另造副本。⚠ main.tsx 决定本页是否懒加载（它带 ECharts，必须 lazy，否则拖进首屏主包），App.tsx 的 fullPage 正则决定它是整页布局而不是浮动面板 —— 改这两处都要跑本 spec",
+      "paths": [
+        "apps/web/src/pages/AdminPage.tsx",
+        "apps/web/src/pages/admin.css",
+        "apps/web/src/admin-api.ts",
+        "apps/web/src/admin-view.ts",
+        "apps/web/src/app/App.tsx",
+        "apps/web/src/main.tsx",
+        "apps/api/src/admin.ts",
+        "apps/api/src/admin-read.ts",
+        "apps/api/src/stat-audit.ts"
+      ],
+      "specs": [
+        "admin"
+      ]
     }
   ]
 }
