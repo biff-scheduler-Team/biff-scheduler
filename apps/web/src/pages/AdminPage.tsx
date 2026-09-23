@@ -16,6 +16,7 @@
  * ⚠ 渲染一律按「字段可能缺」写（`?? []`）：`admin-api.ts` 刻意不做逐字段白名单，理由见那里。
  */
 
+import { DISCUSSION_CATEGORIES } from "@biff/contracts/screening";
 import { useCallback, useEffect, useState } from "react";
 import { openAccountPanel } from "../account";
 import { onAccountChange } from "../account-sync";
@@ -44,19 +45,23 @@ import {
   adminTrendFieldOf,
   adminTrendMetricOf,
   auditHeadline,
+  authorBars,
   bodyExcerpt,
+  categoryDonut,
   categoryLabel,
+  contentDonut,
   contentKindLabel,
   fillTrendDays,
   formatBytes,
   formatTime,
   formatWeight,
+  metricBars,
   metricLabel,
   reactionSummary,
   trendBars,
   trendFieldLabel,
 } from "../admin-view";
-import { CountBarChart } from "../components/charts/bars";
+import { CountBarChart, DonutChart, RankBarChart } from "../components/charts/bars";
 import { useChartTokens } from "../chart-theme";
 import { ActionButton, TextField } from "../components/spectrum";
 import { useQuery } from "../app/hooks";
@@ -167,6 +172,10 @@ function AdminOverviewView() {
   const [data, setData] = useState<AdminOverview | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  // ⚠ 必须和别的 Hook 一起放在**提前 return 之前**：放到 `if (!data) return …` 之后就是条件调用
+  //   Hook —— 加载态与成功态之间切换时 React 会报「rendered more hooks than during the previous
+  //   render」（本轮 lint 当场抓到）。
+  const tokens = useChartTokens();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -195,8 +204,43 @@ function AdminOverviewView() {
   }
 
   const audit = data.audit;
+  const users = metricBars(data.metrics);
+  const mix = contentDonut(data.content);
   return (
     <div className="admin-grid">
+      {/* 规模先给一眼能扫的图，明细表在下面 —— 与数据分析页同一个先后顺序。
+       *  ⚠ 空态**不画空图**：全 0 的图看着像坏了，而「还没有人发过内容」是一句话就能说清的状态。 */}
+      <section className="admin-panel">
+        <h2 className="admin-panel-title">规模</h2>
+        <div className="ra-grid">
+          <RankBarChart
+            chart="admin-metric-users"
+            label="各模块参与人数"
+            valueName="参与人数"
+            data={users}
+            tokens={tokens}
+            footnote={
+              <>
+                <b>参与人数</b>按身份去重：登录算一人、匿名按浏览器哈希算一人。
+                同一个人若既登录过又匿名投过，会各算一次 —— 这正是红黑榜「死贴纸」那条欠账的口径。
+                数字与下面「数据总览」表的同一列一致。
+              </>
+            }
+          />
+          {mix.length > 0 ? (
+            <DonutChart
+              chart="admin-content-mix"
+              label="内容构成"
+              data={mix}
+              tokens={tokens}
+              footnote="场次讨论与反馈留言的条数（只算未删除的）。"
+            />
+          ) : (
+            <p className="ra-chart-empty">还没有人发过讨论或反馈。</p>
+          )}
+        </div>
+      </section>
+
       <section className="admin-panel">
         <h2 className="admin-panel-title">数据总览（{data.edition}）</h2>
         <p className="admin-note text-12">
@@ -527,37 +571,40 @@ function AdminTrendsView() {
 
       {error && <p className="admin-note admin-error">加载失败：{error}</p>}
 
-      {bars.length > 0 && (
-        <CountBarChart
-          chart="admin-trend"
-          // 无障碍名把口径说全：图对读屏用户等于不存在，至少给一句它在画什么
-          label={`${metricLabel(metric)} 近 ${days} 天的${trendFieldLabel(field)}`}
-          data={bars}
-          tokens={tokens}
-          valueName={trendFieldLabel(field)}
-          // 天数一多横轴标签必须转 30°，否则 30 / 90 天会糊成一片（该 prop 就是为此存在）
-          rotate={days > 14}
-          footnote={
-            <>
-              <b>数据来源</b>：按天分桶的日账本，记的是<b>每天的变化量</b>（不是快照）。
-              {data?.earliestDay
-                ? ` 趋势自 ${data.earliestDay} 起 —— 历史不回填，更早的天不是 0 而是没有数据。`
-                : " 日账本还没有数据：它从这次部署开始积累。"}
-              <br />
-              <b>缺的天在图上是 0</b>：「那天没人用」与「用了但被撤光」在数据上是两回事，
-              这一屏按 0 画（要看区别得查明细）。
-            </>
-          }
-        />
+      {/* ⚠ 账本一行都没有时**不画图**：全是 0 的柱子看着像图坏了，而「日账本从部署那一刻才开始
+       *   积累」是一句话能说清的状态 —— 与数据分析页的空态口径一致（`.ra-chart-empty`）。 */}
+      {data && !data.earliestDay ? (
+        <p className="ra-chart-empty">
+          日账本还没有数据 —— 它从这次部署开始积累，更早的日期不是 0，而是还不存在。
+        </p>
+      ) : (
+        bars.length > 0 && (
+          <CountBarChart
+            chart="admin-trend"
+            // 无障碍名把口径说全：图对读屏用户等于不存在，至少给一句它在画什么
+            label={`${metricLabel(metric)} 近 ${days} 天的${trendFieldLabel(field)}`}
+            data={bars}
+            tokens={tokens}
+            valueName={trendFieldLabel(field)}
+            // 天数一多横轴标签必须转 30°，否则 30 / 90 天会糊成一片（该 prop 就是为此存在）
+            rotate={days > 14}
+            footnote={
+              <>
+                <b>数据来源</b>：按天分桶的日账本，记的是<b>每天的变化量</b>（不是快照）。
+                {data?.earliestDay ? ` 趋势自 ${data.earliestDay} 起 —— 历史不回填。` : ""}
+                <br />
+                <b>缺的天在图上是 0</b>：「那天没人用」与「用了但被撤光」在数据上是两回事，
+                这一屏按 0 画（要看区别得查明细）。
+              </>
+            }
+          />
+        )
       )}
 
       <p className="admin-note text-12">
         {loading ? "正在加载…" : `近 ${days} 天共 ${filled.length} 个数据点，合计 ${formatWeight(total)}。`}
         {data ? ` 判定用的指标：${(data.metrics ?? []).join(" + ")}。` : ""}
       </p>
-      {!loading && bars.length === 0 && (
-        <p className="admin-note">这个指标还没有任何日账本数据。</p>
-      )}
       <div className="admin-row-tools">
         <ActionButton onPress={load}>刷新</ActionButton>
       </div>
@@ -570,6 +617,7 @@ function AdminTrendsView() {
 function AdminContentView() {
   const { params, update } = useQuery();
   const kind = adminContentKindOf(params.get("kind"));
+  const tokens = useChartTokens();
   const [posts, setPosts] = useState<AdminContentPost[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -611,6 +659,34 @@ function AdminContentView() {
       </div>
 
       {error && <p className="admin-note admin-error">加载失败：{error}</p>}
+
+      {/* 图在表前面：先看构成（谁发得多 / 都发哪类），再逐条读 —— 与数据分析页同一个顺序。
+       *  ⚠ 两张图只统计**这一屏已加载的帖子**（上限 100 条），口径写在图的 ⓘ 里：运维看图下结论，
+       *    把「已加载」当成「全量」是会出错的，所以不能省这句话。 */}
+      {posts.length === 0 ? (
+        <p className="ra-chart-empty">还没有内容。</p>
+      ) : (
+        <div className="ra-grid">
+          {kind === "discussion" && (
+            <DonutChart
+              chart="admin-content-categories"
+              label="讨论分类构成"
+              data={categoryDonut(posts)}
+              tokens={tokens}
+              footnote={`分类口径同讨论区（${DISCUSSION_CATEGORIES.map((category) => category.label).join(" / ")}）。只统计已加载的 ${posts.length} 条。`}
+            />
+          )}
+          <RankBarChart
+            chart="admin-content-authors"
+            label="发帖最多的作者"
+            valueName="帖子数"
+            data={authorBars(posts)}
+            tokens={tokens}
+            color={tokens.brand}
+            footnote={`按显示名合并（同名的登录与匿名身份会算在一起）。只统计已加载的 ${posts.length} 条。`}
+          />
+        </div>
+      )}
 
       <div className="admin-table-wrap">
         <table className="admin-table">
