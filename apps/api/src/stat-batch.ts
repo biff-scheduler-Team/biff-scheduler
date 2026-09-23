@@ -54,6 +54,17 @@ function normalizedText(expr: SQL): SQL {
 }
 
 /**
+ * 数值 → 加权和列的**文本**形态（整数不带 `.0`），并把负值钳到 0。
+ *
+ * ⚠ 这是 `normalizedText()` 的 **JS 侧对应实现**，两者必须同口径：前者管「SQL 算出来的结果
+ *   怎么写回文本」，后者管「JS 算出来的初值怎么写进去」。`telemetry-store.ts` 与
+ *   `stat-daily.ts` 都用它 —— 别再各写一份 `String(Number(x.toFixed(2)))`。
+ */
+export function weightText(value: number): string {
+  return String(Number(Math.max(0, value).toFixed(2)));
+}
+
+/**
  * 文本列上的原子加减，结果钳到非负并规范成文本。
  *
  * ⚠ 必须先 `CAST` 成 REAL 再算、算完再写回文本：这几个列以文本存 `"0.75"` / `"1"`

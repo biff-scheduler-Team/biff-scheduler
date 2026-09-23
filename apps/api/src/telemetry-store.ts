@@ -25,6 +25,7 @@ import {
   clampAddText,
   flushStatBatch,
   isNonPositiveText,
+  weightText,
   wouldGoNegativeText,
   type StatWrite,
 } from "./stat-batch";
@@ -39,12 +40,6 @@ import {
 } from "./telemetry-stats";
 
 type Db = ReturnType<typeof database>;
-
-/** 加权和存成文本（与 `film_want_contribution` 的 `"0.75"` 同口径）。
- *  截到 2 位小数：0.75 的整数倍最多两位，多余的小数只可能是浮点误差。 */
-function fmt(value: number): string {
-  return String(Number(Math.max(0, value).toFixed(2)));
-}
 
 function parse(raw: string | number | null | undefined): number {
   const n = typeof raw === "number" ? raw : Number(raw);
@@ -193,8 +188,8 @@ function statWrites(
             edition,
             kind,
             target,
-            viewer_weight_sum: fmt(viewerDelta),
-            hits_weight_sum: fmt(hitsDelta),
+            viewer_weight_sum: weightText(viewerDelta),
+            hits_weight_sum: weightText(hitsDelta),
             updated_at: now,
           })
           // UPSERT 的 SET 里表名限定的列指**原行**：已存在就原地加，不存在就用上面的初值。
