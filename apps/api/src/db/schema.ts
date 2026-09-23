@@ -232,3 +232,31 @@ export const telemetryStat = sqliteTable("telemetry_stat", {
 }, (table) => [
   primaryKey({ columns: [table.edition, table.kind, table.target] }),
 ]);
+
+/**
+ * **按天分桶**的增量账本（2026-09-23，PLAN-20260923142546，批 1）。
+ *
+ * 为什么要单独一张表：前面五张 `*_stat` 都只记「当前累计」，**没有时间维度** ——
+ * 于是「今天有多少人想看」这类问题根本无法回答。要给趋势就得有人记「每天变了多少」。
+ *
+ * ⚠ 记的是**增量**（每次上报的差分），不是快照。所以它只能加，不能「覆盖」：
+ *   把整份状态写进来等于同一天重复计数（写入侧的口径在 `stat-daily.ts`）。
+ * ⚠ 日界是 **KST**，由服务端算（`day.ts`）—— 客户端传日期可伪造。
+ * ⚠ **不记 contributor**：那是「谁在哪天做了什么」的长期留痕，体积与隐私都远超收益；
+ *   要查身份走各自贡献表（它们本来就有）。
+ * ⚠ 历史**不回填**：现有累计值拆不到天，硬拆就是编造数据（接口会回 `earliestDay` 让 UI 标注）。
+ * ⚠ 两个加权和都是 TEXT：与其它表同口径（文本存 `"0.75"` / `"1"`，避开 SQLite 浮点漂移）。
+ *   `hits_sum` 目前**只有 telemetry 用**（「总共用了多少次」），其余 metric 恒 `"0"` ——
+ *   保留成 TEXT 而不是 INTEGER，是为了不丢匿名 0.75 的权重。
+ */
+export const statDaily = sqliteTable("stat_daily", {
+  edition: text().notNull(),
+  day: text().notNull(), // 'YYYY-MM-DD'（KST）
+  metric: text().notNull(), // "want" | "vote" | "screening" | "ticket" | "telemetry"；白名单在 stat-daily.ts
+  target: text().notNull(), // film key / 场次 code / `kind:target`
+  weight_sum: text().notNull(),
+  hits_sum: text().notNull(),
+  updated_at: integer().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.edition, table.day, table.metric, table.target] }),
+]);

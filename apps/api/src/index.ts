@@ -21,6 +21,14 @@ import {
 } from "./film-vote-store";
 import { isAdminSubject } from "./admin";
 import {
+  ADMIN_METRICS,
+  ADMIN_ROWS_MAX_LIMIT,
+  readContributionRows,
+  readOverview,
+} from "./admin-read";
+import { dailyMetricFamily, isDailyMetric, readDailySeries, readEarliestDay } from "./stat-daily";
+import { kstDayMinus } from "./day";
+import {
   normalizeFeedbackBody,
   writeAuthError,
 } from "./feedback";
@@ -706,6 +714,71 @@ app.post("/api/admin/film-vote-contributions/claim", async (c) => {
   if (!parsed.success) return c.json({ error: "INVALID_CLAIM" }, 422);
   const { edition, from, to, dryRun } = parsed.data;
   return c.json(await claimContributorVotes(database(c.env.DB), edition, from, to, { dryRun }));
+});
+
+/** 管理端「我是不是管理员」：前端据此决定渲染什么。
+ *  ⚠ 不在前端抄一份白名单 —— 那既是第二份口径，又把名单泄露给了所有人。403 就是「不是」。 */
+app.get("/api/admin/whoami", (c) =>
+  c.json({ subject: c.get("session").row.subject, admin: true }),
+);
+
+/** 管理端概览：五个模块的总量 / 去重人数 / 今日增量 + 对账结论 + 账号概况 + 内容条数。
+ *  ⚠ 账号那块**只回统计量**，永不回片单内容。 */
+app.get("/api/admin/overview", async (c) => {
+  const edition = editionParam(c.req.query("edition"));
+  if (!edition) return c.json({ error: "INVALID_EDITION" }, 422);
+  return c.json(await readOverview(database(c.env.DB), edition));
+});
+
+/** 管理端明细：四张同形的贡献表 + 事件流水收成一条读路径（`metric` 决定读哪张）。 */
+const adminRowsQuerySchema = z
+  .object({
+    edition: z.enum(EDITIONS).optional().default(DEFAULT_EDITION),
+    metric: z.enum(ADMIN_METRICS),
+    limit: z.coerce.number().int().min(1).max(ADMIN_ROWS_MAX_LIMIT).optional(),
+    cursor: z.string().max(200).optional(),
+    q: z.string().max(64).optional(),
+  })
+  .strict();
+
+app.get("/api/admin/rows", async (c) => {
+  const parsed = adminRowsQuerySchema.safeParse(c.req.query());
+  if (!parsed.success) return c.json({ error: "INVALID_ADMIN_QUERY" }, 422);
+  const { edition, metric, limit, cursor, q } = parsed.data;
+  const page = await readContributionRows(database(c.env.DB), { edition, metric, limit, cursor, q });
+  return c.json({ edition, ...page });
+});
+
+/** 管理端趋势：按天序列（数据从日账本上线那天开始，**不回填历史**，故一并回 `earliestDay`）。 */
+const ADMIN_TREND_FAMILIES = ["vote", "ticket", "telemetry"] as const;
+
+const adminTrendsQuerySchema = z
+  .object({
+    edition: z.enum(EDITIONS).optional().default(DEFAULT_EDITION),
+    metric: z.string().min(1).max(32),
+    days: z.coerce.number().int().min(1).max(90).optional().default(30),
+  })
+  .strict();
+
+app.get("/api/admin/trends", async (c) => {
+  const parsed = adminTrendsQuerySchema.safeParse(c.req.query());
+  if (!parsed.success) return c.json({ error: "INVALID_ADMIN_QUERY" }, 422);
+  const { edition, metric: requested, days } = parsed.data;
+  // `metric` 可以是精确指标（vote:red），也可以是一族的裸名（vote → 红黑加起来）
+  const family = ADMIN_TREND_FAMILIES.find((name) => name === requested);
+  const metrics = isDailyMetric(requested)
+    ? [requested]
+    : family
+      ? dailyMetricFamily(family)
+      : null;
+  if (!metrics?.length) return c.json({ error: "INVALID_METRIC" }, 422);
+  const db = database(c.env.DB);
+  const fromDay = kstDayMinus(days - 1, Date.now());
+  const [points, earliestDay] = await Promise.all([
+    readDailySeries(db, { edition, metric: metrics, fromDay }),
+    readEarliestDay(db, edition),
+  ]);
+  return c.json({ edition, metric: requested, metrics, fromDay, days, earliestDay, points });
 });
 
 /* ---------------- 同场观影人数(2026-09-14,PLAN-20260914164050) ----------------
