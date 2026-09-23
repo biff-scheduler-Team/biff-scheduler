@@ -396,7 +396,7 @@ describe("countsSignature:一部片的票数签名", () => {
   });
 });
 
-describe("贴纸变更:不可变 + 红黑各一枚 + 拖动改坐标", () => {
+describe("贴纸变更:不可变 + 红黑各一枚 + 拖动只在本片改坐标", () => {
   it("placeSticker 不改原 board;一部一枚:第二枚(任何颜色)都被拦下", () => {
     const board: StickerBoard = new Map();
     const once = placeSticker(board, "a", sticker("s1", "red"));
@@ -412,28 +412,27 @@ describe("贴纸变更:不可变 + 红黑各一枚 + 拖动改坐标", () => {
     expect(takeSticker(board, "a", "s1").has("a")).toBe(false);
   });
 
-  it("同卡拖动 → 只改坐标,并钳进安全区", () => {
+  it("挪位置 → 只改坐标,并钳进安全区", () => {
     const board = placeSticker(new Map(), "a", sticker("s1", "red", 0.5, 0.5));
-    const moved = moveSticker(board, "a", "s1", "a", 2, -1);
+    const moved = moveSticker(board, "a", "s1", 2, -1);
     expect(moved.get("a")![0]).toMatchObject({ id: "s1", posX: 0.92, posY: 0.08 });
   });
 
-  it("跨卡拖动:目标空则落位,来源空了就删记录", () => {
-    const board = placeSticker(new Map(), "a", sticker("s1", "red"));
-    const moved = moveSticker(board, "a", "s1", "b", 0.3, 0.4);
-    expect(moved.has("a")).toBe(false);
-    expect(moved.get("b")![0]).toMatchObject({ id: "s1", posX: 0.3, posY: 0.4 });
-  });
-
-  it("跨卡拖动:目标卡已经有贴纸 → 原样返回(调用方据此提示)", () => {
-    let board = placeSticker(new Map(), "a", sticker("s1", "red"));
-    board = placeSticker(board, "b", sticker("s2", "black"));
-    expect(moveSticker(board, "a", "s1", "b", 0.2, 0.2)).toBe(board);
+  // 张贴区**按片独立**(2026-09-23 用户:「贴纸张贴区应该是电影之间独立的」)。
+  // 旧版 `moveSticker` 收一个 `toKey`:拖到别片的画布上就把这一票**直接改记到别片头上** ——
+  // 那条路径已删,现在它连参数都不接受跨片(所以这里只能断言「挪自己那枚不会动别片」);
+  // 「跨片拖拽不落到别片」由 E2E 守:`e2e/react/redblack.spec.ts`。
+  it("挪位置只动本片这一枚:别片的记录原封不动", () => {
+    let board = placeSticker(new Map(), "a", sticker("s1", "red", 0.5, 0.5));
+    board = placeSticker(board, "b", sticker("s2", "black", 0.5, 0.5));
+    const moved = moveSticker(board, "a", "s1", 0.9, 0.1);
+    expect(moved.get("a")).toEqual([{ id: "s1", type: "red", posX: 0.9, posY: 0.1 }]);
+    expect(moved.get("b")).toEqual([{ id: "s2", type: "black", posX: 0.5, posY: 0.5 }]);
   });
 
   it("来源没有这枚 → 原样返回", () => {
     const board = placeSticker(new Map(), "a", sticker("s1", "red"));
-    expect(moveSticker(board, "a", "不存在", "b", 0.2, 0.2)).toBe(board);
+    expect(moveSticker(board, "a", "不存在", 0.2, 0.2)).toBe(board);
   });
 });
 

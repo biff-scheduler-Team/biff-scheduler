@@ -3,13 +3,17 @@
 // 交互口径(用户当天三轮修订后的最终形态):
 //   · 卡片**左**边是海报与影片信息,**右**边一大片留白就是贴纸画布;
 //   · 在左侧标记「看过」解锁,点红 / 黑按钮 → 画布上**随机位置生成**一枚(允许重叠、±15° 歪斜);
-//   · 已贴的贴纸可以拖动微调(也能拖到另一张卡上);**单击**它、或把它拖出画布,都收回暂存区;
+//   · 已贴的贴纸可以在**这一部自己的**张贴区里拖动微调 —— 张贴区**按片独立**(2026-09-23:
+//     「贴纸张贴区应该是电影之间独立的」),别片的画布不是落点;拖出这张画布、或**单击**它,都收回暂存区;
 //   · 一部片**只有一枚**(2026-09-16 用户:「标记看过只能选一个贴纸」)—— 红 / 黑 是同一个名额的
 //     两种取舍,不是可以并存的两色(旧版「红黑各一枚、同框双色并存」的口径已作废);
-//   · 刚贴下的那一枚会**闪一下描边**告诉用户它落在哪(票多时否则根本找不着),之后与别人的完全一致。
+//   · 刚贴下的那一枚会**闪一下描边**告诉用户它落在哪(票多时否则根本找不着);闪完仍留一圈
+//     **常驻纸白边**(2026-09-23,见 `redblack-parity.css` 的 `.rb-dot`)—— 一片同色同尺寸的群点里,
+//     得先找得到自己那枚,「自己贴的贴纸始终能被自己拖动」才成立。
 //
 // ⚠ 拖拽手写 Pointer Events(仓库无 dnd 依赖,范式见 `pages/AgendaPage.tsx::startDrag`);
-//   ghost 用 DOM 直接操作而不是每帧 setState —— 一次拖拽只重渲染「目标卡高亮」变化的那几帧。
+//   ghost 与「落点高亮」都用 DOM 直接操作:一次拖拽**一次 React 渲染都不做**;
+//   监听器在 pointerdown 里**同步挂上**、`pointermove` 合并到一帧一次(见 `beginDrag`)。
 
 import {
   memo,
@@ -78,8 +82,10 @@ const GHOST_TILT = "rotate(-5deg)";
 
 interface RbDrag {
   type: StickerType;
-  /** null = 从**暂存区**(海报下方那两枚)拖出;有值 = 拖动已经贴在画布上的那一枚 */
-  fromKey: string | null;
+  /** 这枚贴纸**属于**哪一部电影 —— 张贴区按片独立,落点不是它的画布就只能算「出界」。
+   *  ⚠ 暂存区那两枚也带自己的 `film.key`:否则「《A》的暂存区拖到《B》的画布」会当场复现同一个 bug。 */
+  srcKey: string;
+  /** 已经贴在画布上那一枚的 id;`null` = 从**暂存区**(海报下方那两枚)拖出 */
   fromId: string | null;
 }
 
@@ -111,7 +117,8 @@ interface RbCardProps {
   placed: readonly Sticker[] | undefined;
   /** 这一部的**全体**票数(已含我自己那一票) */
   counts: StickerCounts;
-  /** 这一部是不是「刚贴下那一枚」的持有者 —— 只有它闪描边,之后与别人的完全一致 */
+  /** 这一部是不是「刚贴下那一枚」的持有者 —— 只有它**多一圈会起伏的亮描边**;
+   *  ⚠ 与「常驻纸白边」是两回事:后者在 `.rb-dot` 上恒有,不靠这个 prop(见 CSS 里的说明) */
   fresh: boolean;
   /** 回调都必须是**稳定引用**(见 `RedBlackPage` 里 `latest` 那段注释) */
   onToggleWatched: (film: FilmNode) => void;
@@ -119,11 +126,13 @@ interface RbCardProps {
   onBeginDrag: (
     event: ReactPointerEvent<HTMLElement>,
     type: StickerType,
-    fromKey: string | null,
+    srcKey: string,
     fromId: string | null,
   ) => void;
-  /** 单击「我贴的那一枚」→ 收回暂存区(拖出画布是同一个出口,见 `takeBack`) */
-  onTakeBack: (filmKey: string, stickerId: string) => void;
+  /** 单击「我贴的那一枚」→ 收回暂存区(拖出画布是同一个出口,见 `takeBack`)。
+   *  `detail` 直接透传 `MouseEvent.detail` —— 调用方靠它区分「指针来的 click」与
+   *  键盘 / `element.click()`(后者恒为 0),见 `takeBackByTap`。 */
+  onTakeBack: (filmKey: string, stickerId: string, detail: number) => void;
 }
 
 export function RedBlackPage() {
@@ -141,7 +150,6 @@ export function RedBlackPage() {
   const [boot] = useState(() => purgeDemoLeavings());
   const [board, setBoard] = useState<StickerBoard>(boot.board);
   const [watched, setWatched] = useState(boot.watched);
-  const [drag, setDrag] = useState<RbDrag | null>(null);
   // 「生成分享图」弹层。⚠ 焦点归还必须在弹层**真正卸载之后**再做(S2 `DialogContainer`
   // 自己也会 restoreFocus,而 WebKit 上点按钮不会让按钮获得焦点、它记下的原焦点是 body)——
   // 所以放 `useEffect` 而不是写在 onDismiss 里,与卡片上的「放大看全部」同一手法。
@@ -204,8 +212,20 @@ export function RedBlackPage() {
   const actedRef = useRef(false);
   /** 本次手势**是不是一次拖**(而不是点)。
    *  ⚠ 浏览器在 `pointerup` 之后仍会补派发一次 `click`,所以「我贴的那一枚」上
-   *    「单击=收回」与「拖动=挪位置」必须靠它区分,否则拖完顺手把贴纸收走了。 */
+   *    「单击=收回」与「拖动=挪位置」必须靠它区分,否则拖完顺手把贴纸收走了。
+   *  ⚠ 它只回答「刚刚那一次指针手势是不是拖」,所以**只有指针来的 click 才该问它** ——
+   *    键盘 / `element.click()` 不经过 `pointerdown`,问它等于让上一次拖拽把后来的一次收回吞掉
+   *    (判据见 `takeBackByTap`)。 */
   const movedRef = useRef(false);
+  /** **当前正在进行的拖拽手势**(同一时刻最多一个)。
+   *  ⚠ 监听器是**同步**挂在 `window` 上的(`beginDrag` 里挂),所以旧实现那层「`useEffect`
+   *    cleanup 会先摘掉上一套监听」的保护没有了,两种收尾都得自己管:
+   *    ① 指针抬起 / 取消 —— 必须按 `pointerId` 过滤,否则两指的 `pointerup` 会各跑一遍
+   *       自己的 `onUp`,**一次松手结算两次落点**;
+   *    ② 组件卸载 —— 手势进行到一半就换页时,监听器会永久留在 `window` 上,
+   *       而 `finishRef` 还指着已卸载那棵树的闭包(它仍会写 localStorage)。 */
+  const gestureRef = useRef<{ pointerId: number; end: () => void } | null>(null);
+  useEffect(() => () => gestureRef.current?.end(), []);
   useEffect(() => {
     if (!actedRef.current) return;
     scheduleFilmVotesPing(votesOf(board));
@@ -317,10 +337,13 @@ export function RedBlackPage() {
 
   /** 卡片上那枚贴纸的**单击**入口。
    *  ⚠ 必须吃掉「拖完之后浏览器补的那一次 click」:否则拖一下微调位置会顺手把贴纸收走 ——
-   *    `movedRef` 在 `pointermove` 越过阈值那一刻置位,下一次 `pointerdown` 才复位。 */
+   *    `movedRef` 在 `pointermove` 越过阈值那一刻置位,下一次 `pointerdown` 才复位。
+   *  ⚠ 但**只吞指针来的那一次**(`detail > 0`):键盘 `Enter` / 空格与 `element.click()`
+   *    的 `event.detail` 恒为 0,它们不经过 `pointerdown`、也就谈不上「刚刚那次是拖」——
+   *    拿 `movedRef` 一刀切的话,「拖一次 → 再按回车收回」会被静默吞掉(2026-09-23 review 发现)。 */
   const takeBackByTap = useCallback(
-    (filmKey: string, stickerId: string) => {
-      if (movedRef.current) return;
+    (filmKey: string, stickerId: string, detail: number) => {
+      if (detail > 0 && movedRef.current) return;
       takeBack(filmKey, stickerId);
     },
     [takeBack],
@@ -379,111 +402,167 @@ export function RedBlackPage() {
   finishRef.current = (meta, canvas, x, y) => {
     const key = canvas?.dataset.rbCanvas ?? null;
 
-    // ① 从画布上拖出去 → **收回暂存区**(用户口径:「贴纸拖到外面就需要取消」)
-    //    与「单击那枚贴纸」共用 `takeBack`(文案与落库口径只此一处)
-    if (meta.fromKey && !key) {
-      takeBack(meta.fromKey, meta.fromId!);
+    // ① 落点**不是这枚贴纸自己的张贴区** → 出界。
+    //    ⚠ 「出界」从「不在任何画布上」扩到「不在**本片**画布上」(2026-09-23 用户:
+    //      「贴纸张贴区应该是电影之间独立的」)—— 旧口径会把《A》的票**直接改记到《B》头上**
+    //      (`moveSticker` 的跨片分支,已删)。所以别片的画布与页面空白是同一类:都算出去。
+    if (key !== meta.srcKey || !canvas) {
+      // 已经贴着的那一枚 → 出界就是收回(用户口径:「贴纸拖到外面就需要取消」),
+      //   与「单击那枚贴纸」共用 `takeBack`(文案与落库口径只此一处)
+      if (meta.fromId) takeBack(meta.srcKey, meta.fromId);
+      else if (key) {
+        // 从暂存区拖出来、却落在别片的画布上 → 什么都不做(它本来就在暂存区),但要讲清为什么
+        const name = filmByKey.get(meta.srcKey)?.zh ?? "这部";
+        ToastQueue.neutral(`这枚是《${name}》的贴纸，只能贴到《${name}》自己的张贴区里。`, {
+          timeout: 3500,
+        });
+      }
       return;
     }
-    if (!key || !canvas) return;
 
     const rect = canvas.getBoundingClientRect();
     const posX = (x - rect.left) / rect.width;
     const posY = (y - rect.top) / rect.height;
 
-    // ② 已经贴着的 → 挪位置(也能挪到另一张卡上)
-    if (meta.fromKey) {
-      const next = moveSticker(board, meta.fromKey, meta.fromId!, key, posX, posY);
-      if (next === board && key !== meta.fromKey) {
-        ToastQueue.neutral(`《${filmByKey.get(key)?.zh ?? "这部"}》已经有贴纸了。`, { timeout: 3500 });
-        return;
-      }
-      commitBoard(next);
+    // ② 已经贴着的那一枚 → 在**本片画布内**挪位置
+    if (meta.fromId) {
+      commitBoard(moveSticker(board, meta.srcKey, meta.fromId, posX, posY));
       return;
     }
 
     // ③ 从暂存区拖进来 → 落在松手那一点
-    place(key, meta.type, { posX, posY });
+    place(meta.srcKey, meta.type, { posX, posY });
   };
 
-  const dragMeta = useRef({ startX: 0, startY: 0, slop: DRAG_SLOP_MOUSE });
-
-  /** ⚠ 这里**不 preventDefault**:暂存区那两枚贴纸既要能拖、也要能点(点一下随机贴),
-   *  在 pointerdown 上拦掉默认行为会把 click 一起吃掉。 */
+  /** 开始一次拖拽。
+   *  ⚠ 监听器在 pointerdown 里**同步挂上**(不再经 `drag` state + `useEffect`):后者要等这次
+   *    `setDrag` 渲染提交、副作用跑完才生效,起手那几帧的 `pointermove` 会被丢掉 ——
+   *    表现一是「拖起来慢半拍」,二是**松手时被判成一次「单击」,那枚贴纸被收回**(`takeBackByTap`)。
+   *  ⚠ 顺带把 `drag` state 一起去掉了:它只被那个 effect 用、JSX 里根本没用,而那次 `setState`
+   *    换来的只是「父组件跑一遍 + 300 次 `memo` 浅比较」—— 卡片**不会**重渲染(见 `RbCard` 的
+   *    memo 说明;`placed` / `counts` / `marked` / `canPlace` / `fresh` 在拖拽起手时都没变),
+   *    所以起手那一拍纯属白做。
+   *  ⚠ `pointermove` 只记**最后一个点**,ghost 位移与落点命中测试合并到一帧一次(rAF):
+   *    每个 `pointermove` 各做一次 `elementFromPoint` 在高刷鼠标 + 近 300 张卡上拖不动指针。
+   *  ⚠ 这里**不 preventDefault**:暂存区那两枚贴纸既要能拖、也要能点(点一下随机贴),
+   *    在 pointerdown 上拦掉默认行为会把 click 一起吃掉。
+   *  ⚠ **同一时刻只允许一个手势**(`gestureRef`):两指各按住一张卡的贴纸时,两套监听都在
+   *    `window` 上,而 `pointerup` 会发给**两套** `onUp` —— 一次松手结算两次落点
+   *    (第二套用的是第一根手指的坐标)。第二个指针按下时直接忽略,与旧实现「任意时刻只有一套
+   *    监听」等价;顺带在卸载时跑一次收尾(见 `gestureRef` 的说明)。 */
   const beginDrag = useCallback(
     (
       event: ReactPointerEvent<HTMLElement>,
       type: StickerType,
-      fromKey: string | null,
+      srcKey: string,
       fromId: string | null,
     ) => {
       if (event.pointerType === "mouse" && event.button !== 0) return;
+      // 已经有手势在跑 → 第二个指针一律忽略。⚠ 必须**在复位 `movedRef` 之前**返回:
+      // 那一位属于正在进行的那次手势,动它会让「拖完补发的那次 click」失去抑制。
+      if (gestureRef.current) return;
+      const pointerId = event.pointerId;
       // 本次手势还算不算「点」——只有 `pointermove` 越过阈值才会翻成 true,见 `takeBackByTap`
       movedRef.current = false;
-      dragMeta.current = {
-        startX: event.clientX,
-        startY: event.clientY,
-        slop: event.pointerType === "touch" ? DRAG_SLOP_TOUCH : DRAG_SLOP_MOUSE,
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const slop = event.pointerType === "touch" ? DRAG_SLOP_TOUCH : DRAG_SLOP_MOUSE;
+      const meta: RbDrag = { type, srcKey, fromId };
+
+      // ghost 只在**真的开始移动**之后才创建:「点一下贴纸」是合法操作(随机贴),
+      //   在 pointerdown 就造浮标会让每次点击都闪一下。
+      let ghost: HTMLElement | null = null;
+      // ⚠ 落点高亮**直接改 DOM 属性**而不走 state:榜单有近 300 张卡,
+      //   每跨一张卡就 setState 会整页重渲染一次,贴纸立刻跟不上指针。
+      let hoverCard: HTMLElement | null = null;
+      let moved = false;
+      let frame = 0;
+      let lastX = startX;
+      let lastY = startY;
+
+      const setHover = (card: HTMLElement | null) => {
+        if (card === hoverCard) return;
+        hoverCard?.removeAttribute("data-rb-hover");
+        card?.setAttribute("data-rb-hover", "");
+        hoverCard = card;
       };
-      setDrag({ type, fromKey, fromId });
+      /** 一帧只做一次:浮标跟上指针 + 重新判定落点 */
+      const flush = () => {
+        frame = 0;
+        if (!ghost) return;
+        ghost.style.transform = `translate3d(${lastX}px, ${lastY}px, 0) ${GHOST_TILT}`;
+        // ⚠ 只有**本片**卡片能亮成落点:张贴区按片独立,给别片亮灯等于承诺一个不会兑现的落点
+        const card = cardAt(lastX, lastY);
+        setHover(card?.dataset.filmKey === srcKey ? card : null);
+      };
+      const onMove = (event: PointerEvent) => {
+        // 只认发起这次手势的那根手指:另一指的移动不该驱动这个浮标 / 命中测试
+        if (event.pointerId !== pointerId) return;
+        // ⚠ **丢了 `pointerup` 的兜底**(起因见 `gestureRef` 的说明):鼠标在浏览器窗口外松手时,
+        //   抬手那一刻可能根本没送到页面上,`end()` 就永远不会跑 —— `gestureRef` 一直占着,
+        //   之后**每一次** `beginDrag` 都在第一行被挡掉,ghost 还粘在鼠标上跟着跑,只有换页才能恢复。
+        //   旧实现(监听挂在 `useEffect([drag])` 上)没有这个问题:下一次 `pointerdown` 会顶掉旧监听,
+        //   同步挂之后这层自愈没有了,只能自己判「按键已经松开却还在收 move」。
+        //   ⚠ 这里**只收尾、不结算**:这个事件可能已经是鼠标**重新进入窗口**时的那一帧
+        //   (窗口外期间浏览器不派发 move),拿它的坐标当「松手点」会把贴纸丢到一个用户没选过的位置,
+        //   甚至判成出界而**静默收回** —— 保持原样是这里唯一不会误伤的选择。
+        //   触屏不走这条:手指抬起后那个 pointer 就不存在了,不会再送 move 过来。
+        if (event.pointerType !== "touch" && event.buttons === 0) {
+          end();
+          return;
+        }
+        if (!moved) {
+          if (
+            Math.abs(event.clientX - startX) <= slop &&
+            Math.abs(event.clientY - startY) <= slop
+          ) {
+            return;
+          }
+          moved = true;
+          // 越线即定案「这是一次拖」:后面的 click 会被 `takeBackByTap` 吃掉
+          movedRef.current = true;
+          event.preventDefault();
+          ghost = document.createElement("span");
+          ghost.className = `rb-ghost rb-ghost--${type}`;
+          // ⚠ 就地摆正,**不能**等下面那一帧 rAF:新元素没有 transform 就挂在 (0,0),
+          //   会先在视口左上角闪一帧。后面才开始按帧合并。
+          ghost.style.transform = `translate3d(${event.clientX}px, ${event.clientY}px, 0) ${GHOST_TILT}`;
+          document.body.appendChild(ghost);
+        }
+        lastX = event.clientX;
+        lastY = event.clientY;
+        if (!frame) frame = requestAnimationFrame(flush);
+      };
+      const onUp = (event: PointerEvent) => {
+        // ⚠ 另一指的抬起 / 取消**不能**结束这次手势:否则会拿它的坐标结算一次落点
+        //   (`gestureRef` 只让第一个指针进来,所以这里挡的就是那根后来的手指)。
+        if (event.pointerId !== pointerId) return;
+        end();
+        // 没移动 = 一次单击(交给元素自己的 onClick),不要误当成一次拖动
+        if (moved) {
+          finishRef.current(meta, canvasAt(event.clientX, event.clientY), event.clientX, event.clientY);
+        }
+      };
+      /** 收尾:摘监听、撤浮标与高亮、把手势单例让出来。
+       *  **幂等** —— `onUp` 与卸载(见 `gestureRef` 的说明)都可能调它。 */
+      const end = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+        if (frame) cancelAnimationFrame(frame);
+        frame = 0;
+        ghost?.remove();
+        ghost = null;
+        setHover(null);
+        if (gestureRef.current?.pointerId === pointerId) gestureRef.current = null;
+      };
+      gestureRef.current = { pointerId, end };
+      window.addEventListener("pointermove", onMove, { passive: false });
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
     },
     [],
   );
-
-  useEffect(() => {
-    if (!drag) return;
-    const { startX, startY, slop } = dragMeta.current;
-    // ⚠ ghost 只在**真的开始移动**之后才创建:「点一下贴纸」是合法操作(随机贴),
-    //   在 pointerdown 就造浮标会让每次点击都闪一下。
-    let ghost: HTMLElement | null = null;
-    // ⚠ 目标卡高亮**直接改 DOM 属性**而不走 state:榜单有近 300 张卡,
-    //   每跨一张卡就 setState 会整页重渲染一次,贴纸立刻跟不上指针。
-    let hoverCard: HTMLElement | null = null;
-    const setHover = (card: HTMLElement | null) => {
-      if (card === hoverCard) return;
-      hoverCard?.removeAttribute("data-rb-hover");
-      card?.setAttribute("data-rb-hover", "");
-      hoverCard = card;
-    };
-    let moved = false;
-
-    const onMove = (event: PointerEvent) => {
-      if (!moved) {
-        if (
-          Math.abs(event.clientX - startX) <= slop &&
-          Math.abs(event.clientY - startY) <= slop
-        ) {
-          return;
-        }
-        moved = true;
-        // 越线即定案「这是一次拖」:后面的 click 会被 `takeBackByTap` 吃掉
-        movedRef.current = true;
-        event.preventDefault();
-        ghost = document.createElement("span");
-        ghost.className = `rb-ghost rb-ghost--${drag.type}`;
-        document.body.appendChild(ghost);
-      }
-      ghost!.style.transform = `translate3d(${event.clientX}px, ${event.clientY}px, 0) ${GHOST_TILT}`;
-      setHover(cardAt(event.clientX, event.clientY));
-    };
-    const onUp = (event: PointerEvent) => {
-      // 没移动 = 一次单击(交给元素自己的 onClick),不要误当成一次拖动
-      if (moved) {
-        finishRef.current(drag, canvasAt(event.clientX, event.clientY), event.clientX, event.clientY);
-      }
-      setDrag(null);
-    };
-    window.addEventListener("pointermove", onMove, { passive: false });
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
-      ghost?.remove();
-      setHover(null);
-    };
-  }, [drag]);
 
   return (
     <section className="rb-page" aria-label="红黑榜">
@@ -562,7 +641,12 @@ export function RedBlackPage() {
         </button>
       </div>
 
-      {totals.marked === 0 && totals.total === 0 && (
+      {/* 空榜引导。⚠ 条件**只能**看全站票数(`totals.total`),**不能**掺「我标记了几片」
+          (`totals.marked`):这条就挂在**栅格上方**,一收一放会把整页内容顶上去 53px ——
+          用户点一下「标记看过」,看到的却是「整个页面闪了一下」(2026-09-23 报的)。
+          而且它本来就是同一个口径的事:文案说的是「**榜**还是空的」,榜 = 全站票数;
+          `marked` 是本地的「我看过」状态,与榜无关 —— 混进来是口径错误,不只是性能问题。 */}
+      {totals.total === 0 && (
         <p className="rb-hint" role="status">
           榜还是空的。在卡片上点「标记看过」，再挑一枚红或黑贴上去 —— 这是你自己的榜。
         </p>
@@ -622,7 +706,13 @@ export function RedBlackPage() {
  *    榜单有近 300 张卡,不 memo 的话「贴一枚贴纸」会让 299 张卡全部重算重渲染 ——
  *    那才是「贴一下卡一下」的主因,比「一张卡画了几枚贴纸」重要得多。
  *    所以传进来的必须是**稳定引用或值**:回调一律 `useCallback`,我贴的贴纸直接取
- *    `board.get(key)`(不要 `?? []`),没有票的影片共用 `EMPTY_COUNTS`。 */
+ *    `board.get(key)`(不要 `?? []`),没有票的影片共用 `EMPTY_COUNTS`。
+ *
+ *  ✅ **实测**(2026-09-23 用户问「只重新渲染单独那个电影可以吗」,299 张卡挂载):
+ *    点「标记看过」→ 重渲染 **1 张**;点「贴一枚」→ 重渲染 **1 张**;2.4s 后「刚贴」描边撤掉
+ *    那一拍 → 也只动**同一张**。口径:临时的 `data-rb-renders` 计数器 + `dispatchEvent("click")`
+ *    —— ⚠ 用 `.click()` 量会凭空多出 6 张:它先把按钮滚进视口,那次滚动让预取边界上的卡触发
+ *    `IntersectionObserver`,混进了计数(踩过)。 */
 const RbCard = memo(function RbCard({
   film,
   marked,
@@ -748,7 +838,7 @@ const RbCard = memo(function RbCard({
             data-rb-spent={!canPlace || undefined}
             aria-label={`给《${film.zh}》贴红贴纸（点一下随机贴，也可以拖到右边画布上）`}
             onClick={() => onPlace(film.key, "red")}
-            onPointerDown={(event) => onBeginDrag(event, "red", null, null)}
+            onPointerDown={(event) => onBeginDrag(event, "red", film.key, null)}
           >
             红
           </button>
@@ -758,7 +848,7 @@ const RbCard = memo(function RbCard({
             data-rb-spent={!canPlace || undefined}
             aria-label={`给《${film.zh}》贴黑贴纸（点一下随机贴，也可以拖到右边画布上）`}
             onClick={() => onPlace(film.key, "black")}
-            onPointerDown={(event) => onBeginDrag(event, "black", null, null)}
+            onPointerDown={(event) => onBeginDrag(event, "black", film.key, null)}
           >
             黑
           </button>
@@ -794,9 +884,9 @@ const RbCard = memo(function RbCard({
                 "--rb-tilt": `${tiltOf(sticker.id)}deg`,
               } as CSSProperties
             }
-            aria-label={`${sticker.type === "red" ? "红" : "黑"}贴纸；单击收回暂存区，拖动可挪位置或挪到别的片，拖到画布外也是收回`}
+            aria-label={`${sticker.type === "red" ? "红" : "黑"}贴纸；单击收回暂存区，拖动可在《${film.zh}》自己的张贴区里挪位置，拖出这张画布也是收回`}
             onPointerDown={(event) => onBeginDrag(event, sticker.type, film.key, sticker.id)}
-            onClick={() => onTakeBack(film.key, sticker.id)}
+            onClick={(event) => onTakeBack(film.key, sticker.id, event.detail)}
           />
         ))}
         {myStickers.length === 0 && others.total === 0 && (
@@ -807,7 +897,14 @@ const RbCard = memo(function RbCard({
       </div>
 
       {zoomOpen && (
-        <StickerZoomDialog film={film} counts={all} onDismiss={() => setZoomOpen(false)} />
+        // ⚠ `mine` 必须传:弹层里我那一枚是**独立的只读 DOM 元素**(与卡片同一组成,见该组件),
+        //   不传的话它只会以「别人的点」的身份出现,既没有那圈白边、也不是它的真实位置。
+        <StickerZoomDialog
+          film={film}
+          counts={all}
+          mine={myStickers[0]}
+          onDismiss={() => setZoomOpen(false)}
+        />
       )}
     </article>
   );
