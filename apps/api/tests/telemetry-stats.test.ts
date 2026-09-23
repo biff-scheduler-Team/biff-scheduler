@@ -111,6 +111,16 @@ describe("normalizeTelemetryEntries", () => {
     expect([...deltas.values()][0].hits).toBe(MAX_HITS_PER_TARGET);
   });
 
+  it("★ 累加后的总量也被钳到上限 —— 200 条同 key × 每条 100 次不能灌成 20000", () => {
+    // 单条上限只挡「一条报十万次」，挡不住「200 条同 key 各报 100 次」——
+    // 那正是同一个伪造特征（2026-09-23，PLAN-20260923111748，B2）
+    const events = Array.from({ length: 200 }, () => ({ kind: "page", target: "/eats", hits: 100 }));
+    const deltas = normalizeTelemetryEntries(events);
+    expect([...deltas.values()]).toEqual([
+      { kind: "page", target: "/eats", hits: MAX_HITS_PER_TARGET },
+    ]);
+  });
+
   it("非法条目静默丢弃：0 / 负 / 非数字 hits、缺字段、非对象", () => {
     const deltas = normalizeTelemetryEntries([
       { kind: "page", target: "/eats", hits: 0 },

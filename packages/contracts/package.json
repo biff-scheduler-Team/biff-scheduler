@@ -6,6 +6,7 @@
   "exports": {
     "./account": "./src/account.ts",
     "./canonical": "./src/canonical.ts",
+    "./edition": "./src/edition.ts",
     "./import": "./src/import.ts",
     "./reactions": "./src/reactions.ts",
     "./screening": "./src/screening.ts",

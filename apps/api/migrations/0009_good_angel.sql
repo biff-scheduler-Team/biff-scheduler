@@ -1,0 +1,1 @@
+CREATE INDEX `screening_post_edition_created` ON `screening_post` (`edition`,`created_at`);

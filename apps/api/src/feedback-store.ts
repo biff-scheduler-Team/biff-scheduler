@@ -177,6 +177,10 @@ export async function toggleFeedbackReaction(
         emoji: input.emoji,
         created_at: Date.now(),
       })
+      // 主键是 (post_id, subject, emoji)：快速双击 / 双开标签同时点同一个 emoji 时，
+      // 两个请求都会读到「不存在」，第二个 insert 会撞唯一约束冒泡成 500。
+      // 幂等插入后按 `changes` 判断实际动作即可（这里只需不 500，语义仍以最终态为准）。
+      .onConflictDoNothing()
       .run();
   }
 

@@ -108,6 +108,9 @@ export function normalizePath(path: string): string | null {
  *   这正与其它 ping 相反（那边是整份状态，重发就该覆盖）。计数型数据重发必须累加，
  *   因为客户端只发增量：「打开这一页 3 次」和「打开 1 次」是两条不同的信息。
  * ★ 非法条目**静默丢弃**（与其他 ping 同一条原则：宁少勿错）。
+ * ★ **累加之后还要对总量封顶**（2026-09-23，PLAN-20260923111748，B2）：`hits` 的单条上限只挡得住
+ *   「一条报十万次」，挡不住「200 条同 key 各报 100 次」—— 那是一次请求灌 20000 次的伪造特征，
+ *   正是这个上限想防的东西。故最终值钳到 `MAX_HITS_PER_TARGET`。
  */
 export function normalizeTelemetryEntries(input: Iterable<unknown>): Map<string, TelemetryDelta> {
   const out = new Map<string, TelemetryDelta>();
@@ -132,7 +135,7 @@ export function normalizeTelemetryEntries(input: Iterable<unknown>): Map<string,
     const count = Math.min(raw, MAX_HITS_PER_TARGET);
     const key = `${kind}|${normalized}`;
     const existing = out.get(key);
-    if (existing) existing.hits += count;
+    if (existing) existing.hits = Math.min(existing.hits + count, MAX_HITS_PER_TARGET);
     else out.set(key, { kind, target: normalized, hits: count });
     if (out.size >= MAX_TELEMETRY_ENTRIES_PER_PING) break;
   }
