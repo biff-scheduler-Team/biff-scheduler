@@ -30,6 +30,15 @@ function emptyCounts(): FilmVoteCounts {
   return Object.create(null);
 }
 
+/** 服务端**已经收下**的那份我的票（影片 key → 红 / 黑；一人一部一票，故每片恒 1 枚）。
+ *
+ * ⚠ 它与本地 board **不是一回事**，两者在「本地已改、服务端还没更新」的窗口里会不一致 ——
+ *    那正是「收回贴纸后画布仍残留」的成因：卡片要扣掉的是**服务端那份 counts 里属于我的部分**
+ *    （= 这一份），而不是「我现在贴了几枚」（本地 board）。口径落在 `redblack.ts::reconcile`，
+ *    卡片 / hero / 分享图共用。
+ * ⚠ 只在**上报成功**那一刻切换（见 `scheduleFilmVotesPing`），乱切会造出「贴纸先涨回来再降下去」。 */
+let synced: FilmVoteCounts = emptyCounts();
+
 export function onFilmVotesChange(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
@@ -44,6 +53,25 @@ function emit(): void {
 /** 已缓存的票数（同步读，未加载过则为空表） */
 export function peekFilmVotes(): FilmVoteCounts {
   return cache ?? emptyCounts();
+}
+
+/** 服务端已确认含我的那份票（同步读，见 `synced` 的说明）。 */
+export function peekSyncedVotes(): FilmVoteCounts {
+  return synced;
+}
+
+/** 采纳一份「服务端已确认含我」的票。
+ *
+ * ⚠ **不广播** —— 调用方负责在同一拍里把新的 `counts` 也刷出来（见 `scheduleFilmVotesPing`：
+ *    「先采纳、再重拉」），否则两次广播之间会出现「贴纸先涨回来一枚、再降下去」的跳动。
+ * ⚠ 空表也是合法输入（我撤回全部票）—— 它表达的是「服务端那份里现在已经没有我了」。 */
+export function adoptSyncedVotes(votes: Iterable<{ key: string; vote: "red" | "black" }>): void {
+  const next = emptyCounts();
+  for (const { key, vote } of votes) {
+    if (!key) continue;
+    next[key] = vote === "red" ? { red: 1, black: 0 } : { red: 0, black: 1 };
+  }
+  synced = next;
 }
 
 /** 读取端白名单：服务端固然不会发坏数据，但客户端缓存**不能假设上游永远正确**
@@ -111,8 +139,13 @@ export function scheduleFilmVotesPing(
       signal: AbortSignal.timeout(12_000),
     })
       .then((response) => {
+        if (!response.ok) return;
+        // 服务端已收下这份票 → 它现在**含我**，扣减基准跟着切过去。
+        // ⚠ 顺序不能倒：先采纳（不广播）、再重拉 —— 重拉内部那次 `emit` 会把新的 counts 与新的
+        //   synced 一起送到页面，中间不留「服务端仍算我旧票」的那一帧。
+        adoptSyncedVotes(list);
         // 上报成功后再拉一次，让自己这一票立刻体现在榜单上
-        if (response.ok) return loadFilmVotes(true);
+        return loadFilmVotes(true);
       })
       .catch(() => undefined);
   }, 1200);

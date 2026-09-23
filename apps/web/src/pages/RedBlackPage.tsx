@@ -37,6 +37,7 @@ import { useCatalog } from "../app/store";
 import {
   boardFilms,
   countsOf,
+  countsSignature,
   crowdOf,
   crowdSignature,
   makeSticker,
@@ -44,6 +45,7 @@ import {
   othersOf,
   placeSticker,
   purgeDemoLeavings,
+  reconcile,
   saveStickers,
   saveWatched,
   scoreOf,
@@ -60,9 +62,11 @@ import {
   type StickerType,
 } from "../redblack";
 import {
+  adoptSyncedVotes,
   loadFilmVotes,
   onFilmVotesChange,
   peekFilmVotes,
+  peekSyncedVotes,
   scheduleFilmVotesPing,
   type FilmVoteCounts,
 } from "../film-votes";
@@ -115,7 +119,9 @@ interface RbCardProps {
   canPlace: boolean;
   /** 我贴的那几枚。⚠ 直接传 `board.get(key)`,**不要** `?? []` —— 那会每次造个新数组,`memo` 失效 */
   placed: readonly Sticker[] | undefined;
-  /** 这一部的**全体**票数(已含我自己那一票) */
+  /** 这一部的**全站**票数,但已按本地视角修正 —— **恒含我自己那一枚**(口径见 `reconcile`)。
+   *  ⚠ 不要直接传服务端那份原始 counts:那样在「我刚收回、服务端还没撤」的窗口里,
+   *    卡片内的 `othersOf` 会把我那一票当成别人的票画出来(用户 2026-09-23 报的「仍残留」)。 */
   counts: StickerCounts;
   /** 这一部是不是「刚贴下那一枚」的持有者 —— 只有它**多一圈会起伏的亮描边**;
    *  ⚠ 与「常驻纸白边」是两回事:后者在 `.rb-dot` 上恒有,不靠这个 prop(见 CSS 里的说明) */
@@ -162,19 +168,39 @@ export function RedBlackPage() {
   }, [shareOpen]);
 
   // 全体票数(服务端聚合,见 `film-votes.ts`)。节奏与「想看人数」完全一致:
-  // 拉一次 → 我贴完 1200ms 防抖上报 → 上报成功后再拉一次,所以「我自己这一票」
-  // 大约一秒后才出现在数字里(画布上那一枚是立刻可见的,不会让人觉得没反应)。
+  // 拉一次 → 我贴 / 收之后 1200ms 防抖上报 → 上报成功后再拉一次。
+  // ⚠ 数字**不再**等这一秒(2026-09-23):页面拿 `reconcile` 把「我这一票」当场算进去 / 减出来,
+  //   所以贴一枚立刻 +1、收回立刻 −1;那一秒只是把本地视角换成服务端确认过的真值,画面不跳。
   const [votes, setVotes] = useState<FilmVoteCounts>(() => peekFilmVotes());
+  // 「服务端那份 counts 里属于我的那部分」(见 `film-votes.ts::synced`)。卡片 / hero / 分享图
+  // 扣减它来得到「以本地视角修正过的全站票数」(`redblack.ts::reconcile`)。
+  //
+  // ⚠ 基准必须在**首帧**就正确,所以在惰性初值里认领(幂等,严格模式双调用无副作用):
+  //   ① 同一台设备早先贴的那些票,服务端那份 counts **本来就含它们**(历史上报已落地)——
+  //      不认领的话首屏会把我自己贴的几枚当成「别人的票」在画布上多画一遍;
+  //   ② 模块里的 `synced` 还会留着**上一次进入本页**的快照,拿它渲染会在换页往返时闪一下。
+  // ⚠ 与「载入时本地为空」(换设备 / 清过缓存,不是「我撤票了」)并不矛盾:那份快照此时也是空的,
+  //   服务端若真含我,我也只是**没在本地认领**它 —— 与改前行为逐字一致。
+  const [syncedVotes, setSyncedVotes] = useState<FilmVoteCounts>(() => {
+    adoptSyncedVotes(votesOf(boot.board));
+    return peekSyncedVotes();
+  });
   // 票数**结算**了没有(成功、失败、空表都算结算)—— 首屏那次排序发生在它之前,见下面的补排
   const [votesSettled, setVotesSettled] = useState(false);
   useEffect(() => {
     void loadFilmVotes().then((next) => {
       setVotes(next);
+      setSyncedVotes(peekSyncedVotes());
       setVotesSettled(true);
     });
-    return onFilmVotesChange(() => setVotes(peekFilmVotes()));
+    return onFilmVotesChange(() => {
+      setVotes(peekFilmVotes());
+      setSyncedVotes(peekSyncedVotes());
+    });
   }, []);
   const crowd: CrowdCounts = useMemo(() => crowdOf(votes), [votes]);
+  /** 服务端已确认含我的那份票,与 `crowd` 同形状(每片恒 1 枚) */
+  const syncedCrowd: CrowdCounts = useMemo(() => crowdOf(syncedVotes), [syncedVotes]);
   /** 重排触发器 —— 每 +1 就重排一次(见下面 `sorted` 的依赖)。
    *  声明在这里而不是紧跟 `sorted`,是因为「票数落定后自动补排一次」也要用它。 */
   const [sortTick, setSortTick] = useState(0);
@@ -262,12 +288,36 @@ export function RedBlackPage() {
     () => new Map(sorted.map((film) => [film.key, tallyOf(film.key, watched.has(film.key), board)])),
     [sorted, watched, board],
   );
-  // 每一部的**全体票数**(服务端聚合)。⚠ 它**已经含我自己那一票**(上报成功后),
-  //   所以不能再拿它跟本地贴纸相加 —— 会把我算两次。
+  // 「以本地视角修正过的全站票数」——卡片 / hero / 分享图共用这一份(`redblack.ts::reconcile`)。
+  // ⚠ 换基准的理由就是那条用户反馈(「收回贴纸之后 贴纸仍残留」):服务端要等防抖上报 + 重拉
+  //   才不含我这一票,那段时间里「全站 − 我的」会把撤下的那一票错认成别人的票。
+  // ⚠ 覆盖 `crowd ∪ board` 的**全部** key,而不是只有榜单上那几部:搜索过滤后 `sorted` 会变小,
+  //   而分享图拿的是**整份**影片库的数字(它自己再筛)——只算 `sorted` 会让没命中搜索的片在图上变 0 票。
+  // ⚠ 值没变就**沿用旧对象**:`RbCard` 是 `memo` 的,每次重算都造新对象会让近 300 张卡白渲染一遍
+  //   (PLAN-20260922145815 的性能前提;与 `EMPTY_COUNTS` 同一个手法)。
+  const filmCountCache = useRef(new Map<string, StickerCounts>());
+  const reconciledCrowd: CrowdCounts = useMemo(() => {
+    const cache = filmCountCache.current;
+    const next = new Map<string, StickerCounts>();
+    for (const key of new Set([...crowd.keys(), ...board.keys()])) {
+      const value = reconcile(
+        crowd.get(key) ?? EMPTY_COUNTS,
+        syncedCrowd.get(key) ?? EMPTY_COUNTS,
+        countsOf(board.get(key)),
+      );
+      const prev = cache.get(key);
+      next.set(key, prev && countsSignature(prev) === countsSignature(value) ? prev : value);
+    }
+    filmCountCache.current = next;
+    return next;
+  }, [crowd, syncedCrowd, board]);
+  /** 卡片要的那几部 —— 只从上面那份里取(口径单一来源,不在这里再算一遍) */
   const filmCounts = useMemo(
     () =>
-      new Map(sorted.map((film) => [film.key, crowd.get(film.key) ?? EMPTY_COUNTS] as const)),
-    [sorted, crowd],
+      new Map(
+        sorted.map((film) => [film.key, reconciledCrowd.get(film.key) ?? EMPTY_COUNTS] as const),
+      ),
+    [sorted, reconciledCrowd],
   );
   const totals = useMemo(() => {
     // 「我的」那份:只回答「标记了几部 / 贴了几枚 / 还能贴几枚」(hero 里那行小字)
@@ -724,7 +774,11 @@ export function RedBlackPage() {
       {shareOpen && (
         <RedBlackShareDialog
           films={films}
-          crowd={crowd}
+          /* ⚠ 传**修正过**的那份(与卡片 / hero 同源):否则「我贴了一枚还没上报」时,
+             图上会把别人的票少画一枚,与卡片当场对不上。
+             ⚠ 给它的是 `reconciledCrowd`(全量)而不是 `filmCounts`(只有当前榜单那几部)——
+             搜索过滤后 `sorted` 会变小,而分享图要画的是**整份**影片库 */
+          crowd={reconciledCrowd}
           board={board}
           site={{ total: totals.total, red: totals.red, black: totals.black }}
           mine={{ marked: totals.marked, placed: totals.placed, quota: totals.quota }}
@@ -768,15 +822,17 @@ const RbCard = memo(function RbCard({
   // 没有独立元素(何况「别人的贴纸」本来也不该有个体身份,2026-09-22 拉平口径)
   const freshRef = useRef<HTMLButtonElement | null>(null);
   const mine = countsOf(placed);
-  // 「别人的贴纸」= 全体票数 − 我自己那几枚(口径在 `redblack.ts::othersOf`,分享图同用)
+  // 「别人的贴纸」= 修正过的全站票数 − 我自己那几枚(口径在 `redblack.ts::othersOf`,分享图同用)。
+  // ⚠ 传进来的 `counts` 已由页面 `reconcile`(扣掉「服务端已确认含我」的那份、加回我当前的票),
+  //   所以这里减掉 `mine` 得到的正是「服务端 counts − 服务端那份里的我」—— 撤票那一拍就少一枚。
   const others = othersOf(counts, mine);
   // 这一部**自己的**评分(红票占比折算 0–10);还没有人贴过 → null(显示成「—」)
   const filmScore = scoreOf(counts);
   const myStickers = placed ?? EMPTY_STICKERS;
   // 「放大看全部」画的是**全部**(群点 + 我贴的那一枚),不是卡片上那份「别人的」——
   // 点进来看全部却少了自己那一枚,数字会跟卡片对不上。
-  // ⚠ 相加不会重复计数:服务端那份在**上报落地后已含我**,此时 `others` 已经把我减掉;
-  //   上报还没落地时 `others` 被夹到 0,加回来正好是我这一枚 —— 两个方向都对。
+  // ⚠ 相加不会重复计数:页面给的 `counts` 已按本地视角修正(`reconcile`)**恒含我这一枚**,
+  //   而 `others` 就是它减掉 `mine` —— 加回来正好是那份全站数,上报前后都不多不少。
   const all: StickerCounts = {
     total: others.total + mine.total,
     red: others.red + mine.red,
