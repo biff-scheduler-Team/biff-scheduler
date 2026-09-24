@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   TICKET_COUNT_MAX,
+  migrateTicketInfoV1,
+  normalizeSeats,
   normalizeTicketInfo,
   ticketBadgeText,
   ticketCountOf,
@@ -10,87 +12,107 @@ import {
 import type { TicketInfo } from "../src/types";
 
 // 票据明细(2026-09-24,PLAN-20260924141442)。纯逻辑,不碰 DOM / localStorage。
-// ⚠ 断言写「当前实际行为」:本模块刻意的取舍是「非法 = 没填」,不是「非法 = 兜底成 1」。
+// ★ 本文件守的核心口径:**座位行数 = 票数**(用户「用添加的座位数作为票数」)——
+//   所以「空行」不是噪声,它本身就是一张票,任何归一化都不许把它收掉。
 
-describe("normalizeTicketInfo", () => {
-  it("不是对象 / 三个字段都没落下有效值 → 整条丢弃(不留空壳记录)", () => {
-    expect(normalizeTicketInfo(null)).toBeNull();
-    expect(normalizeTicketInfo("2")).toBeNull();
-    expect(normalizeTicketInfo({})).toBeNull();
-    expect(normalizeTicketInfo({ count: 0 })).toBeNull();
-    expect(normalizeTicketInfo({ count: -3 })).toBeNull();
-    expect(normalizeTicketInfo({ count: TICKET_COUNT_MAX + 1 })).toBeNull();
-    expect(normalizeTicketInfo({ count: "2" })).toBeNull();
-    expect(normalizeTicketInfo({ accountId: "" })).toBeNull();
-    expect(normalizeTicketInfo({ seats: [] })).toBeNull();
+describe("normalizeSeats", () => {
+  it("★ 保位:空行留下(空行也是一张票),只截长度与行数", () => {
+    expect(normalizeSeats(["F12"])).toEqual(["F12"]);
+    // 尾部空行**必须**保留 —— 收掉它票数就从 2 变 1
+    expect(normalizeSeats(["F12", ""])).toEqual(["F12", ""]);
+    expect(normalizeSeats(["", "", ""])).toEqual(["", "", ""]);
+    // 中间的空行同样保留(下标 = 第几张票)
+    expect(normalizeSeats(["F12", "", "F14"])).toEqual(["F12", "", "F14"]);
   });
 
-  it("张数只认 1..上限 的整数;越界一律按「没填」处理(不是 1,也不是 0)", () => {
-    expect(normalizeTicketInfo({ count: 2 })).toEqual({ count: 2 });
-    expect(normalizeTicketInfo({ count: TICKET_COUNT_MAX })).toEqual({ count: TICKET_COUNT_MAX });
-    // 小数四舍五入到整数后再判:1.4 → 1 合法,0.4 → 0 不合法
-    expect(normalizeTicketInfo({ count: 1.4 })).toEqual({ count: 1 });
-    expect(normalizeTicketInfo({ count: 0.4 })).toBeNull();
+  it("逐项去首尾空白、超长截断", () => {
+    expect(normalizeSeats(["  F12  "])).toEqual(["F12"]);
+    expect(normalizeSeats(["A".repeat(40)])).toEqual(["A".repeat(12)]);
   });
 
-  it("座位按张数截断,单个座位号超长会被截", () => {
-    const long = "A".repeat(40);
-    expect(normalizeTicketInfo({ count: 1, seats: ["F12", "F13"] })).toEqual({
-      count: 1,
-      seats: ["F12"],
-    });
-    expect(normalizeTicketInfo({ count: 2, seats: [long] })).toEqual({
-      count: 2,
-      seats: [long.slice(0, 12)],
-    });
+  it("行数封顶,空表 → undefined", () => {
+    const many = Array.from({ length: TICKET_COUNT_MAX + 5 }, () => "x");
+    expect(normalizeSeats(many)).toHaveLength(TICKET_COUNT_MAX);
+    expect(normalizeSeats([])).toBeUndefined();
+    expect(normalizeSeats("F12")).toBeUndefined();
+    expect(normalizeSeats(null)).toBeUndefined();
   });
 
-  it("★ 座位数组保位对齐:中间的空项留下,尾部的空项收掉", () => {
-    // 下标 = 第几张票。丢掉中间那一项会把「第 3 张是 14」读成「第 2 张是 14」
-    expect(normalizeTicketInfo({ count: 3, seats: ["12", "", "14"] })).toEqual({
-      count: 3,
-      seats: ["12", "", "14"],
-    });
-    expect(normalizeTicketInfo({ count: 3, seats: ["12", "", ""] })).toEqual({
-      count: 3,
-      seats: ["12"],
-    });
-    // 座位数超过张数:按张数截断
-    expect(normalizeTicketInfo({ count: 1, seats: ["12", "", "14"] })).toEqual({
-      count: 1,
-      seats: ["12"],
-    });
-  });
-
-  it("只填座位 / 只填账号也能成立(张数可以缺省)", () => {
-    expect(normalizeTicketInfo({ seats: ["F12"] })).toEqual({ seats: ["F12"] });
-    expect(normalizeTicketInfo({ accountId: "a1" })).toEqual({ accountId: "a1" });
+  it("非字符串项按空行处理(不静默丢位置)", () => {
+    expect(normalizeSeats(["F12", 3, null])).toEqual(["F12", "", ""]);
   });
 });
 
-describe("ticketCountOf / ticketBadgeText", () => {
-  it("没填张数 → undefined(与「1 张」区分开)", () => {
-    expect(ticketCountOf(undefined)).toBeUndefined();
-    expect(ticketCountOf({})).toBeUndefined();
-    expect(ticketCountOf({ seats: ["A1"] })).toBeUndefined();
-    expect(ticketCountOf({ count: 3 })).toBe(3);
+describe("normalizeTicketInfo", () => {
+  it("结构不对 / 没有座位行 → 整条丢弃(不留空壳记录)", () => {
+    expect(normalizeTicketInfo(null)).toBeNull();
+    expect(normalizeTicketInfo("F12")).toBeNull();
+    expect(normalizeTicketInfo({})).toBeNull();
+    expect(normalizeTicketInfo({ seats: [] })).toBeNull();
+    expect(normalizeTicketInfo({ count: 3 })).toBeNull(); // 旧字段不再产生新记录
   });
 
-  it("徽章只在显式填过张数时给文案 —— 没填就不渲染,否则整张画布都是「1 张」", () => {
+  it("★ 全空行也是合法明细:两张票、座位都还没填", () => {
+    expect(normalizeTicketInfo({ seats: ["", ""] })).toEqual({ seats: ["", ""] });
+  });
+});
+
+describe("migrateTicketInfoV1(旧结构 → 新结构)", () => {
+  it("★ 按旧的 count 把座位行补齐到那么长(迁移的唯一语义)", () => {
+    expect(migrateTicketInfoV1({ count: 3, seats: ["F12"] })).toEqual({
+      seats: ["F12", "", ""],
+    });
+    expect(migrateTicketInfoV1({ count: 2 })).toEqual({ seats: ["", ""] });
+  });
+
+  it("座位行比 count 多时按行数走(不截断用户已经填过的东西)", () => {
+    expect(migrateTicketInfoV1({ count: 1, seats: ["A", "B"] })).toEqual({ seats: ["A", "B"] });
+  });
+
+  it("★ 已撤销的账号方案:accountId 直接丢弃,不参与换算", () => {
+    expect(migrateTicketInfoV1({ count: 1, accountId: "a1" })).toEqual({ seats: [""] });
+  });
+
+  it("没有可用信息 → null(count 非法且没有座位行)", () => {
+    expect(migrateTicketInfoV1(null)).toBeNull();
+    expect(migrateTicketInfoV1({})).toBeNull();
+    expect(migrateTicketInfoV1({ count: 0 })).toBeNull();
+    expect(migrateTicketInfoV1({ count: "2" })).toBeNull();
+  });
+
+  it("count 超上限 → 行数封顶", () => {
+    expect(migrateTicketInfoV1({ count: 999 })?.seats).toHaveLength(TICKET_COUNT_MAX);
+  });
+});
+
+describe("ticketCountOf / ticketBadgeText(票数 = 行数)", () => {
+  it("没明细 → undefined(与「0 张」区分开)", () => {
+    expect(ticketCountOf(undefined)).toBeUndefined();
+    expect(ticketCountOf({})).toBeUndefined();
+    expect(ticketCountOf({ seats: [] })).toBeUndefined();
+  });
+
+  it("行数即张数,空行照样算", () => {
+    expect(ticketCountOf({ seats: ["F12"] })).toBe(1);
+    expect(ticketCountOf({ seats: ["F12", ""] })).toBe(2);
+    expect(ticketCountOf({ seats: ["", "", ""] })).toBe(3);
+  });
+
+  it("徽章只在有明细时给文案 —— 没明细就不渲染", () => {
     expect(ticketBadgeText(undefined)).toBeNull();
     expect(ticketBadgeText({})).toBeNull();
-    expect(ticketBadgeText({ count: 2 })).toBe("2 张");
+    expect(ticketBadgeText({ seats: ["", ""] })).toBe("2 张");
   });
 });
 
 describe("totalTicketCount(「共 N 张票」的唯一口径)", () => {
-  it("已抢到的场次 ∪ 有明细的场次;没填张数的按 1 张", () => {
+  it("已抢到的场次 ∪ 有明细的场次;没明细的按 1 张", () => {
     const got = new Set(["001", "002"]);
     const info = new Map<string, TicketInfo>([
-      ["002", { count: 3 }],
-      ["003", { count: 2 }],
+      ["002", { seats: ["", "", ""] }],
+      ["003", { seats: ["F12", ""] }],
     ]);
-    // 001 → 1(已抢到,没填);002 → 3(填了);003 → 2(没标已抢到,但填了)
+    // 001 → 1(已抢到,没明细);002 → 3(三行);003 → 2(没标已抢到,但加过行)
     expect(totalTicketCount(got, info)).toBe(6);
   });
 
@@ -101,21 +123,18 @@ describe("totalTicketCount(「共 N 张票」的唯一口径)", () => {
   it("什么都没有 → 0", () => {
     expect(totalTicketCount(new Set(), new Map())).toBe(0);
   });
-
-  it("只有账号覆盖、没填张数的场次按 1 张", () => {
-    const info = new Map<string, TicketInfo>([["007", { accountId: "a1" }]]);
-    expect(totalTicketCount(new Set(), info)).toBe(1);
-  });
 });
 
 describe("ticketInfoTitle", () => {
-  it("把张数 / 座位 / 账号拼成一句;座位带上「第几张」,中间空档跳过", () => {
-    expect(
-      ticketInfoTitle({ count: 3, seats: ["12", "", "14"] }, "主号"),
-    ).toBe("3 张，座位 第 1 张 12 / 第 3 张 14，账号 主号");
+  it("按「几张 / 坐哪」印;没填座位的那些跳过,不印一串占位符", () => {
+    expect(ticketInfoTitle({ seats: ["12", "", "14"] })).toBe("3 张，座位 第 1 张 12 / 第 3 张 14");
   });
 
-  it("没有账号时明说「未指定账号」,不静默省略", () => {
-    expect(ticketInfoTitle(undefined, null)).toBe("未指定账号");
+  it("一个座位都没填时只报张数", () => {
+    expect(ticketInfoTitle({ seats: ["", ""] })).toBe("2 张");
+  });
+
+  it("没有明细 → 明说,而不是空字符串", () => {
+    expect(ticketInfoTitle(undefined)).toBe("还没有填写票务信息");
   });
 });
