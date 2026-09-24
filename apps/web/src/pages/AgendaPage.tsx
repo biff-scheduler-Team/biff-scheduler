@@ -30,10 +30,12 @@ import {
   isAgendaFolded,
   setRanks,
   store,
+  ticketInfo,
   tickets,
   toggleAgendaFold,
 } from "../state";
 import { actualCodeSet } from "../tickets";
+import { totalTicketCount } from "../ticket-info";
 import {
   dateInfo,
   fmtEndClock,
@@ -281,6 +283,9 @@ export function AgendaPage() {
     setView(next);
   };
   const actual = actualCodeSet(tickets);
+  // 「共 N 张票」的**唯一口径**在 `ticket-info.ts::totalTicketCount`(别在这儿现算一份):
+  // 已抢到的场次 ∪ 手填过票数的场次,没填票数的按 1 张算。
+  const ticketTotal = totalTicketCount(actual, ticketInfo);
   const selected = codes
     .filter((code) => !actualOnly || actual.has(code))
     .map((code) => cat.byCode.get(code)!)
@@ -501,6 +506,15 @@ export function AgendaPage() {
               title="票务状态标为「已抢到」的场次（含转票补入）"
             >
               实际 {actual.size} 场
+            </span>
+            {/* 「有几张票」(2026-09-24,`PLAN-20260924141442`)。⚠ 它与上面那条**不是一个口径**:
+                那条数**场次**,这条数**张数**(一场可能买 2 张,在日程表上右键格子填)。
+                两者刻意并存 —— 筛选用的是场次,「我手上有几张票」才是张数。 */}
+            <span
+              className="overview-tag"
+              title="已抢到的场次 + 手填过票数的场次，没填票数的按 1 张算（在日程表格子上右键即可填）"
+            >
+              共 {ticketTotal} 张票
             </span>
             <span className="overview-tag">
               {formatKrw(selected.reduce((n, s) => n + priceOf(s), 0))}

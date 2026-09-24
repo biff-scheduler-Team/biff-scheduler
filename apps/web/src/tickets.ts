@@ -44,9 +44,14 @@ export function actualCodeSet(records: ReadonlyMap<string, TicketRecord>): Set<s
   return codes;
 }
 
-/** 已移出行程的场次,其票务状态已无意义 → 返回应删掉的 code(不直接改 Map,便于单测)。 */
-export function staleTicketCodes(
-  records: ReadonlyMap<string, TicketRecord>,
+/** 已移出行程的场次,其票务状态已无意义 → 返回应删掉的 code(不直接改 Map,便于单测)。
+ *
+ *  ⚠ 泛型化于 2026-09-24(`PLAN-20260924141442`):**票据明细**(`biff.ticketinfo.v1`)与三态
+ *    是两份并列的场次级数据,prune 判据一模一样(「这一场还在不在行程里」)——
+ *    两份各写一遍就是同一口径的第二份实现。放宽成 `T` 后两处共用这一个(既有断言不受影响)。
+ *    唯一**不能**复用的是三态那边的「prune 后回传服务端」—— 明细不上报,没有那一步。 */
+export function staleTicketCodes<T>(
+  records: ReadonlyMap<string, T>,
   alive: (code: string) => boolean,
 ): string[] {
   const stale: string[] = [];
