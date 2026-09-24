@@ -17,8 +17,9 @@
 > 已全部换成假数据(`ZHANGSAN` / `269EXAMPLE…` / `sample-account`),并在测试文件头写下
 > 「一律用假数据」的告诫;**已推送的 302 个提交也已用 `git filter-repo` 全量改写 + 强推**
 > (12 个敏感串在全历史 0 命中)。
-> ⚠ **改不掉的**:提交 metadata 里的真实姓名与两份真实邮箱(`gaaiyeoi <…>` / `…@example.com`)——
-> filter-repo 只动文件内容;一并处理需 `--name-callback`,代价是所有提交的作者归属被改,等用户定。
+> **提交 metadata 也一并改写了**:属于用户本人的两种身份(一份工作邮箱、一个带真实姓名的 GitHub noreply)
+> 全部归并成 `gaaiyeoi <gaaiyeoi@gmail.com>`;⚠ `citron` 的三种身份与 GitHub 的合并提交身份**未动**
+> (不是用户本人)。代价:这些提交不再被 GitHub 关联到账号(用户已知悉并接受)。
 > 同时把**账号名搬出 `biff.ticketinfo.v3`**(那是 `biff.` 前缀 = 上云 + 进导出备份两条外流通道),
 > 落到**本地专属**的 `iffday.workspace.ticketaccount.v1`;唯一能带走它的通道是票务 JSON 导入
 > (备份文件结构上带不走)。见 `PLAN-20260924141442` 修订 7);
