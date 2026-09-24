@@ -10,10 +10,14 @@
  *   (N 个座位行,不划位那档全是空串),故档位本身不落库 —— 见 `ticket-info.ts::allSeatsBlank`。
  * ★ 「不划位」的**初始档位**由 `defaultUnreserved` 给(露天场 `bt`、且不是开闭幕)——
  *   那是常识默认,不是数据(片单里查不到「划位 / 不划位」字段)。
- * ★ 落哪份数据:座位行 + 持票信息 → `biff.ticketinfo.v3`(`state.ts::setTicketInfo`)。
- *   ⚠ 它**随片单上云**(跨设备能看见),所以这里不许放任何凭据 ——
- *     「账号」那一栏存的是账号**名**标签,不是密码;账号 / 密码方案已在修订 3 整体撤销,
- *     理由见 `docs/CONVENTIONS.md`。
+ * ★ 落哪份数据:**分两只键**(修订 7)
+ *   · 座位行 + 姓名 + 预约号 → `biff.ticketinfo.v3`(`state.ts::setTicketInfo`)
+ *     —— ⚠ 它**随片单上云**(跨设备能看见)并进导出备份;
+ *   · 账号名 → `iffday.workspace.ticketaccount.v1`(`state.ts::setTicketAccount`)
+ *     —— **只存本机**,不上云、不进备份(用户 2026-09-24:「账号只存本地」)。
+ *   所以保存是**两次写入**,别把账号混进第一个对象里 —— 混进去就重新上了外流通道。
+ *   ⚠ 两处都不许放凭据:「账号」存的是账号**名**标签,不是密码
+ *     (账号 / 密码方案已在修订 3 整体撤销,理由见 `docs/CONVENTIONS.md`)。
  * ★ 为什么是模态 `Dialog` 而不是 `ScreeningInfoPopover` 那种非模态 `Popover`:里面全是输入框,
  *   需要焦点陷阱与「关掉就交回焦点」;仓库既有的同类路径是 `AgendaRemoveDialog`
  *   (`ScheduleGantt.tsx`)+ `DialogContainer` 条件挂载 —— 那条路径还顺带避开了
@@ -39,7 +43,14 @@ import {
 import { useCatalog } from "../app/store";
 import { extras } from "../extras";
 import { effEndMin, talkOnOf } from "../gv";
-import { setTicketInfo, clearTicketInfo, store, ticketInfoOf } from "../state";
+import {
+  setTicketInfo,
+  clearTicketInfo,
+  setTicketAccount,
+  store,
+  ticketAccountOf,
+  ticketInfoOf,
+} from "../state";
 import { TICKET_COUNT_MAX, allSeatsBlank, defaultUnreserved } from "../ticket-info";
 import { dateInfo, filmInfoOf, fmtEndClock, safeExternalUrl } from "../util";
 import { venueShort } from "../legend";
@@ -57,12 +68,13 @@ export function TicketEditDialog({
   const existing = ticketInfoOf(s.code);
   // 座位表就是**唯一的编辑面**:打开时按已存的座位行铺出来(空行也是「一张票」)。
   const [seats, setSeats] = useState<string[]>(() => [...(existing?.seats ?? [])]);
-  // 持票信息(修订 5)。**每场一条**,与座位行数无关 —— 一笔预约 1~2 张票共用同一个预约号 / 姓名 / 账号
-  // (用户 2026-09-24 给的 17 笔明细就是这个粒度)。
-  // ⚠ 「账号」记的是账号**名**(如 `example-account`),不是密码 —— 本结构落在 `biff.` 前缀下会随片单上云。
+  // 持票信息(修订 5)。**每场一条**,与座位行数无关 —— 一笔预约 1~2 张票共用同一个预约号 / 姓名 / 账号。
+  // ⚠ 姓名与预约号落在 `existing` 上(随片单上云);**账号不在**(修订 7,见下面那行)。
   const [name, setName] = useState(existing?.name ?? "");
   const [bookingNo, setBookingNo] = useState(existing?.bookingNo ?? "");
-  const [account, setAccount] = useState(existing?.account ?? "");
+  // ⚠ 账号来自**另一只键**(本地专属,见 `state.ts::ticketAccount`)—— 它不在 `existing` 上,
+  //   保存时也是**独立的一次写入**。别图省事把它并进 `setTicketInfo` 的对象里。
+  const [account, setAccount] = useState(() => ticketAccountOf(s.code) ?? "");
   /** 「不划位」档(2026-09-24 修订 4:用户「有不划位的 需要考虑这种情况」)。
    *  ⚠ 它**不落库** —— 落库的仍然只有座位行。重开时按两段判回来:
    *    存过明细 → `allSeatsBlank`(全空 = 不划位);从没存过 → `defaultUnreserved`(场馆默认)。
@@ -107,8 +119,13 @@ export function TicketEditDialog({
     const finalSeats = unreserved ? seats.map(() => "") : seats;
     // ⚠ 空串在这里就交出去,由 `normalizeTicketInfo` 统一折成「未填」——
     //   两个来源各判一次「空不空」迟早会漂(与读取端同一份判据)。
-    if (finalSeats.length) setTicketInfo(s.code, { seats: finalSeats, name, bookingNo, account });
+    if (finalSeats.length) setTicketInfo(s.code, { seats: finalSeats, name, bookingNo });
     else clearTicketInfo(s.code);
+    // ⚠ 账号**写在另一只键**上(本地专属,不上云/不进备份),所以是**独立的一次写入**,
+    //   不能混进上面那个对象里 —— 混进去的那一刻它就重新进了同步与备份两条外流通道。
+    // ⚠ 也**不能**放进 `else clearTicketInfo` 那个分支:清明细与清账号是同一次动作
+    //   (`clearTicketInfo` 内部已经一起清了),这里只管「有明细时写入」。
+    if (finalSeats.length) setTicketAccount(s.code, account);
     ToastQueue.positive("票务信息已保存", { timeout: 5000 });
     onDismiss();
   };
@@ -202,15 +219,11 @@ export function TicketEditDialog({
             )}
             {/* 持票信息(修订 5,为票务导入而加)。⚠ 三项都是**每场一条**:一笔预约的 1~2 张票
                 共用同一个姓名 / 预约号 / 账号 —— 这也是用户给的明细表里的粒度。
-                ⚠ 「账号」是账号**名**标签,不是密码:本结构落在 `biff.` 前缀下会随片单上云,
-                  而修订 3 撤销的正是「存密码」那一套。标签里把这句写明确。 */}
+                ⚠ **账号与另外两项落的地方不一样**(修订 7):姓名 / 预约号进随片单上云的
+                  `biff.ticketinfo.v3`,账号进**本地专属**的 `iffday.workspace.ticketaccount.v1`。
+                  所以标签与下面那行说明都必须写着「只存这台设备」—— 别让用户以为它跟着同步走。 */}
             <div className="ticket-holder" role="group" aria-label="持票信息">
-              <TextField
-                label="姓名"
-                placeholder="如 ZHANGSAN"
-                value={name}
-                onChange={setName}
-              />
+              <TextField label="姓名" placeholder="如 ZHANGSAN" value={name} onChange={setName} />
               <TextField
                 label="预约号"
                 placeholder="BIFF 订单号，换票 / 查订单时要报"
@@ -218,12 +231,15 @@ export function TicketEditDialog({
                 onChange={setBookingNo}
               />
               <TextField
-                label="账号（只记账号名，别填密码）"
+                label="账号（只记账号名，别填密码；只存本机）"
                 placeholder="如 example-account"
                 value={account}
                 onChange={setAccount}
               />
             </div>
+            <p className="ticket-hint">
+              账号只保存在这台设备上：不会同步到账号云端，也不会被写进导出的备份文件。
+            </p>
             {booking && (
               <div className="ticket-shortcuts" role="group" aria-label="票务快捷操作">
                 {/* 落地页是第三方售票平台(`biff.maketicket.co.kr`)。

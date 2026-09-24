@@ -5,6 +5,7 @@ import {
   defaultUnreserved,
   migrateTicketInfoV1,
   normalizeSeats,
+  normalizeTicketAccount,
   normalizeTicketInfo,
   ticketBadgeText,
   ticketCountOf,
@@ -18,6 +19,11 @@ import type { TicketInfo } from "../src/types";
 //   所以「空行」不是噪声,它本身就是一张票,任何归一化都不许把它收掉。
 // ★ 修订 4 追加:不划位 = **全空**的座位行(`allSeatsBlank` 判回),没有独立字段;
 //   初始档位由 `defaultUnreserved` 给(露天场、非开闭幕)。
+// ★ 修订 7 追加:账号名**不在** `TicketInfo` 上(它只存本机),本文件守住「读到也丢弃」这条。
+//
+// ⚠⚠ **本文件里的姓名 / 预约号 / 账号一律是假数据**(`ZHANGSAN` / `269EXAMPLE…`)。
+//    这个仓库是**公开**的 —— 2026-09-24 曾把真实姓名与 17 个真实预约号写进测试与文档,
+//    被用户发现后全部替换。**别再抄真实数据进来。**
 
 describe("normalizeSeats", () => {
   it("★ 保位:空行留下(空行也是一张票),只截长度与行数", () => {
@@ -67,49 +73,60 @@ describe("normalizeTicketInfo", () => {
     expect(normalizeTicketInfo({ seats: ["", ""] })).toEqual({ seats: ["", ""] });
   });
 
-  it("持票信息(修订 5):姓名 / 预约号 / 账号原样保留", () => {
+  it("持票信息(修订 5):姓名 / 预约号原样保留", () => {
     expect(
       normalizeTicketInfo({
         seats: ["Sec 7 · R2 S4"],
         name: "ZHANGSAN",
-        bookingNo: "269EXAMPLE0000011",
-        account: "example-account",
+        bookingNo: "269EXAMPLE0000001",
       }),
     ).toEqual({
       seats: ["Sec 7 · R2 S4"],
       name: "ZHANGSAN",
-      bookingNo: "269EXAMPLE0000011",
-      account: "example-account",
+      bookingNo: "269EXAMPLE0000001",
     });
   });
 
-  it("★ 三个字段都去首尾空白;空 / 空白 / 非字符串一律**省略**(不留空串键)", () => {
-    const record = normalizeTicketInfo({
-      seats: ["F12"],
-      name: "  CAT  ",
-      bookingNo: "   ",
-      account: 42,
-    });
-    expect(record).toEqual({ seats: ["F12"], name: "LISI" });
-    // 「省略」而不是 `{name: ""}` —— 空串会在存储里留噪声,也会让落盘等值判重失效
-    expect(record && "bookingNo" in record).toBe(false);
+  it("★ 修订 7:账号**不在**这个结构里 —— 读进来也一律丢弃(它该落本地键)", () => {
+    // 这条守的是「账号名又被写回随片单上云的记录」这个回归。
+    const record = normalizeTicketInfo({ seats: ["F12"], name: "ZHANGSAN", account: "leak" });
+    expect(record).toEqual({ seats: ["F12"], name: "ZHANGSAN" });
     expect(record && "account" in record).toBe(false);
   });
 
-  it("超长字段截断(预约号上限 32,实测 17 位)", () => {
+  it("两个字段都去首尾空白;空 / 空白 / 非字符串一律**省略**(不留空串键)", () => {
+    const record = normalizeTicketInfo({ seats: ["F12"], name: "  LISI  ", bookingNo: "   " });
+    expect(record).toEqual({ seats: ["F12"], name: "LISI" });
+    // 「省略」而不是 `{name: ""}` —— 空串会在存储里留噪声,也会让落盘等值判重失效
+    expect(record && "bookingNo" in record).toBe(false);
+  });
+
+  it("超长字段截断(姓名上限 24 / 预约号上限 32)", () => {
     const record = normalizeTicketInfo({
       seats: ["F12"],
       name: "N".repeat(40),
       bookingNo: "B".repeat(40),
-      account: "A".repeat(40),
     });
     expect(record?.name).toHaveLength(24);
     expect(record?.bookingNo).toHaveLength(32);
-    expect(record?.account).toHaveLength(32);
   });
 
   it("★ v2 记录(只有 seats)读进来天然合法 —— v2 → v3 不需要单独的迁移函数", () => {
     expect(normalizeTicketInfo({ seats: ["F12", ""] })).toEqual({ seats: ["F12", ""] });
+  });
+});
+
+describe("normalizeTicketAccount(修订 7:与票务家族同一套归一,但落本地键)", () => {
+  it("去首尾空白、超长截断到 32", () => {
+    expect(normalizeTicketAccount("  example-account  ")).toBe("example-account");
+    expect(normalizeTicketAccount("A".repeat(40))).toHaveLength(32);
+  });
+
+  it("空 / 空白 / 非字符串 → undefined(空即「没填」,不写空串)", () => {
+    expect(normalizeTicketAccount(undefined)).toBeUndefined();
+    expect(normalizeTicketAccount("   ")).toBeUndefined();
+    expect(normalizeTicketAccount(42)).toBeUndefined();
+    expect(normalizeTicketAccount(null)).toBeUndefined();
   });
 });
 
@@ -196,18 +213,30 @@ describe("ticketInfoTitle", () => {
 
   it("★ 预约号排在姓名前面(换票窗口要先看那串号);账号名最后", () => {
     expect(
-      ticketInfoTitle({
-        seats: ["Floor 3 · R1 S8", "Floor 3 · R1 S9"],
-        name: "LISI",
-        bookingNo: "269EXAMPLE0000001",
-        account: "sample-account",
-      }),
+      ticketInfoTitle(
+        {
+          seats: ["Floor 3 · R1 S8", "Floor 3 · R1 S9"],
+          name: "LISI",
+          bookingNo: "269EXAMPLE0000003",
+        },
+        "example-account",
+      ),
     ).toBe(
-      "2 张，座位 第 1 张 Floor 3 · R1 S8 / 第 2 张 Floor 3 · R1 S9，预约号 269EXAMPLE0000001，LISI，账号 sample-account",
+      "2 张，座位 第 1 张 Floor 3 · R1 S8 / 第 2 张 Floor 3 · R1 S9，预约号 269EXAMPLE0000003，LISI，账号 example-account",
     );
   });
 
-  it("只填了持票信息、没座号(不划位场次)→ 座位未填 + 后三项照印", () => {
+  it("★ 账号是**第二个参数**,不是 `TicketInfo` 上的字段(修订 7:它只存本机)", () => {
+    expect(ticketInfoTitle({ seats: ["F12"], name: "ZHANGSAN" })).toBe(
+      "1 张，座位 第 1 张 F12，ZHANGSAN",
+    );
+    // 传空串 = 本机没记账号 → 不印「账号 」半句
+    expect(ticketInfoTitle({ seats: ["F12"], name: "ZHANGSAN" }, "")).toBe(
+      "1 张，座位 第 1 张 F12，ZHANGSAN",
+    );
+  });
+
+  it("只填了持票信息、没座号(不划位场次)→ 座位未填 + 后两项照印", () => {
     expect(
       ticketInfoTitle({ seats: ["", ""], name: "ZHANGSAN", bookingNo: "269EXAMPLE0000002" }),
     ).toBe("2 张，座位未填，预约号 269EXAMPLE0000002，ZHANGSAN");

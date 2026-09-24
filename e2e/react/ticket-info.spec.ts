@@ -3,15 +3,21 @@ import { keyOf, openExport, ready, seed, storage } from "./helpers";
 
 // 票据明细:日程表上的座位表 = 票数(2026-09-24,`PLAN-20260924141442`)。
 //
-// ⚠ 本 spec 守的**四条不变量**比 UI 本身更重要:
+// ⚠ 本 spec 守的**五条不变量**比 UI 本身更重要:
 //   ① **票数是座位行数的派生值**,没有独立的数字字段 —— 空行也是「一张票」,归一化不许把它收掉;
 //   ② **「不划位」没有独立字段**:它落库就是全空的座位行,档位由界面推断(修订 4);
 //   ③ **票务导入只写票务,且必须先并行行程再写明细**(否则 rebuild 会把刚导的票 prune 掉,修订 5);
-//   ④ 已撤销的账号 / 密码方案**一个键都不许留**(`iffday.workspace.ticketaccounts.v1` 应当从不存在)。
+//   ④ **账号名只在本地键里**:`biff.*` 里一个字符都不许出现(修订 7,由全仓扫描的阴性对照守着);
+//   ⑤ 已撤销的账号 / 密码方案**一个键都不许留**(`iffday.workspace.ticketaccounts.v1` 应当从不存在)。
+//
+// ⚠⚠ 本文件里的姓名 / 预约号 / 账号一律是**假数据** —— 这个仓库是**公开**的,
+//    2026-09-24 曾把真实姓名与真实预约号写进来,被用户发现后全部替换。别再抄真实数据。
 
 const V1 = "biff.ticketinfo.v1";
 const V2 = "biff.ticketinfo.v2";
 const V3 = "biff.ticketinfo.v3";
+/** 账号名表(修订 7)—— ⚠ **本地专属**:不带 `biff.` 前缀,所以不上云、不进导出备份。 */
+const ACCOUNT_KEY = "iffday.workspace.ticketaccount.v1";
 
 /** 行程播种:`biff.picks.v2` 每场一个 key(与行程页口径一致)。 */
 const picks = (...codes: string[]) =>
@@ -33,6 +39,12 @@ async function addRows(dialog: Locator, n: number) {
   const add = dialog.getByRole("button", { name: /添加一张/ });
   for (let i = 0; i < n; i++) await add.click();
 }
+
+/** **本地专属键**的读取口。
+ *  ⚠ **不能用 `storage(page)`** —— 它按既定契约排除 `iffday.*`(`helpers.ts` 的注释写明它是
+ *    「应用数据契约快照」),而账号表正是一只本地专属键。这里只能直读 localStorage。 */
+const localItem = (page: Page, key: string) =>
+  page.evaluate((k) => localStorage.getItem(k), key);
 
 /** 「这场不划位」复选框的状态断言口。 */
 const unreservedBox = (dialog: Locator) =>
@@ -217,14 +229,26 @@ test("持票信息(姓名 / 预约号 / 账号)随票保存;BIFF 真实长座号
     "title",
     "2 张，座位 第 1 张 Floor 3 · R1 S8 / 第 2 张 Floor 3 · R1 S9，预约号 269EXAMPLE0000001，LISI，账号 sample-account",
   );
+  // ★ 姓名 / 预约号进 v3(随片单上云);⚠ **账号不在里面**(修订 7)
   expect(JSON.parse((await storage(page))[V3])).toEqual({
     "008": {
       seats: ["Floor 3 · R1 S8", "Floor 3 · R1 S9"],
       name: "LISI",
       bookingNo: "269EXAMPLE0000001",
-      account: "sample-account",
     },
   });
+
+  // ★★ 红线(修订 7):账号名写进**本地专属**键,且**在 `biff.*` 里一个字符都不许出现** ——
+  //    `biff.` 前缀同时是「账号云同步的收集范围」与「导出备份的快照范围」两条外流通道。
+  //    (与修订 3 守密码那条是同一套阴性对照写法。)
+  const data = await storage(page);
+  expect(JSON.parse((await localItem(page, ACCOUNT_KEY))!)).toEqual({ "008": "sample-account" });
+  const holders = await page.evaluate((account) =>
+    Object.keys(localStorage).filter((key) =>
+      (localStorage.getItem(key) ?? "").includes(account),
+    ),
+  "sample-account");
+  expect(holders).toEqual([ACCOUNT_KEY]);
 
   // 重开弹层三项回填(不是只活在 React state 里)
   await page.reload();
@@ -233,6 +257,30 @@ test("持票信息(姓名 / 预约号 / 账号)随票保存;BIFF 真实长座号
     "269EXAMPLE0000001",
   );
   await expect(again.getByRole("textbox", { name: "姓名", exact: true })).toHaveValue("LISI");
+  await expect(again.getByRole("textbox", { name: /只记账号名/ })).toHaveValue("sample-account");
+});
+
+test("旧的 v3 里残留的 account 会被搬到本地键,并从 v3 里删掉(修订 7 的搬家)", async ({
+  page,
+}) => {
+  // 修订 5 那版把账号写在 v3 里 —— 那正是「账号跟着上云/进备份」的来源
+  await seed(page, {
+    "biff.picks.v2": picks("008"),
+    [V3]: JSON.stringify({
+      "008": { seats: ["F12"], name: "LISI", bookingNo: "269EXAMPLE0000001", account: "old-account" },
+    }),
+  });
+  await ready(page, "/agenda");
+
+  const data = await storage(page);
+  expect(JSON.parse((await localItem(page, ACCOUNT_KEY))!)).toEqual({ "008": "old-account" });
+  // ★ v3 被重写过:account 已经不在那份随片单上云的记录里了
+  expect(JSON.parse(data[V3])).toEqual({
+    "008": { seats: ["F12"], name: "LISI", bookingNo: "269EXAMPLE0000001" },
+  });
+  // 弹层里仍然看得见(读的是本地键)
+  const dialog = await openEditor(page);
+  await expect(dialog.getByRole("textbox", { name: /只记账号名/ })).toHaveValue("old-account");
 });
 
 test("旧的 v2 结构一次性迁到 v3(只有 seats,新字段缺席),旧键删掉", async ({ page }) => {
@@ -290,9 +338,10 @@ test("票务导入:并进空行程 + 标已抢到 + 写明细;不在排期里的
       seats: ["Floor 3 · R1 S8", "Floor 3 · R1 S9"],
       name: "LISI",
       bookingNo: "269EXAMPLE0000001",
-      account: "sample-account",
     },
   });
+  // ★ 账号只在本地键里(修订 7)—— 没写 account 的那笔不产生条目
+  expect(JSON.parse((await localItem(page, ACCOUNT_KEY))!)).toEqual({ "008": "sample-account" });
   // 三态跟着标上 —— 于是概览的「实际 N 场」立刻对得上
   expect(JSON.parse(data["biff.tickets.v1"])).toEqual({
     "003": { state: "got" },
@@ -305,4 +354,9 @@ test("票务导入:并进空行程 + 标已抢到 + 写明细;不在排期里的
   await expect(page.locator('[data-grid-slot="003"] .gantt-ticket-badge')).toHaveText("2 张");
   await expect(page.locator(".agenda-overview")).toContainText("实际 2 场");
   await expect(page.locator(".agenda-overview")).toContainText("共 4 张票");
+  // 徽章 tooltip 从本地键取账号(它已不在 TicketInfo 上)
+  await expect(page.locator('[data-grid-slot="008"] .gantt-ticket-badge')).toHaveAttribute(
+    "title",
+    "2 张，座位 第 1 张 Floor 3 · R1 S8 / 第 2 张 Floor 3 · R1 S9，预约号 269EXAMPLE0000001，LISI，账号 sample-account",
+  );
 });

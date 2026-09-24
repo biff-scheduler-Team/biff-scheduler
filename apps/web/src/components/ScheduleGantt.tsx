@@ -26,7 +26,14 @@ import {
 } from "../filters";
 import { cardStateOf } from "../grid";
 import { effEndMin, filmEndMin, gvTalkMin, talkOnOf } from "../gv";
-import { setGvTalk, setSettings, slotOf, store, ticketInfoOf } from "../state";
+import {
+  setGvTalk,
+  setSettings,
+  slotOf,
+  store,
+  ticketAccountOf,
+  ticketInfoOf,
+} from "../state";
 import { ticketBadgeText, ticketInfoTitle } from "../ticket-info";
 import { scheduleAria } from "../actions-copy";
 import { removalDropsPick, useScreeningPicker } from "./screening-actions";
@@ -653,7 +660,12 @@ export function ScheduleGantt({
                             ⚠ 徽章只在**显式填过张数**时出现(`ticketBadgeText` 返回 null 即不渲染)——
                               不做「已抢到 = 1 张」的兜底徽章,否则整张画布都是「1 张」,标注失去信息量。 */}
                         {agenda && badge && (
-                          <span className="gantt-ticket-badge" title={ticketInfoTitle(ticketInfo)}>
+                          <span
+                            className="gantt-ticket-badge"
+                            // 账号来自**本地专属**键(修订 7),故在这里单独取出来传进去 ——
+                            // `ticketInfo` 上已经没有它了。
+                            title={ticketInfoTitle(ticketInfo, ticketAccountOf(s.code))}
+                          >
                             {badge}
                           </span>
                         )}

@@ -520,17 +520,26 @@
     数据仍在 `biff.picks.v2` 那一份行程里。该视图下**不摆顺位卡**:票都抢完了,再显示「顺位 1 / 备选」只会误导。
   · 读取一律走 `tickets.ts::normalizeTicketRecord()`:状态非法整条丢弃;`via` 缺省 / 非法退回「自己抢到」(**不写回 `self`**)。
 - **★ 票据明细 = 手填的座位表,「座位行数就是票数」(2026-09-24,`PLAN-20260924141442` 修订 3 起)**:
-  `biff.ticketinfo.v3` = `Record<场次 code, {seats: string[], name?, bookingNo?, account?}>`,
+  `biff.ticketinfo.v3` = `Record<场次 code, {seats: string[], name?, bookingNo?}>`,
   与 `biff.tickets.v1` **并列独立**:同以 code 为键、
   同处 `rebuildIndex()` 的 prune(共用 `tickets.ts::staleTicketCodes`),但**不是**同一条记录的两个半边。
-  · **修订 5** 加了三个并列文本字段(`name` 姓名 / `bookingNo` 预约号 / `account` 账号名),都是
+  · **修订 5** 加了两个并列文本字段(`name` 姓名 / `bookingNo` 预约号),都是
     **每场一条**(不是每张票一条)—— 对应 BIFF 一笔预约一行、1~2 张票共用同一个预约号。
     故 key 从 v2 升到 v3:**v2 相对 v3 只缺可选字段,旧记录读进来天然合法**,迁移就是
     「换只键名、值原样过一遍同一个归一」(`state.ts::migrateTicketInfoFromV2`),没有单独的纯函数。
     迁移链是**两级**:v3 缺席 → 先试 v2 → 再试 v1;v2 只要存在就是权威(即便里面一条合法记录都没有),
     不该再回头读更旧的 v1,否则会把用户已经删掉的旧数据复活。
-  · `account` 存的是账号**名**标签(如 `example-account`),**不是凭据** —— 本结构落在 `biff.` 前缀下会随片单上云,
-    修订 3 撤销的正是「存密码」那一套;弹层标签与文档都把这句写明。
+  · **★ 账号名不在这里(修订 7,2026-09-24)**:它曾经是第三个字段,但用户发现自己的**真实账号名**
+    跟着公开仓库一起出去了,要求「账号只存本地」。现在落 `iffday.workspace.ticketaccount.v1`
+    (`state.ts::ticketAccount`)= `Record<场次 code, 账号名>`:**不上云**(`sync-data.ts::readWorkspace`
+    只收 `biff.` 前缀)、**不进导出备份**(`backup.ts::BACKUP_PREFIX` 同上)。
+    · `normalizeTicketInfo` 读到 `account` 一律**丢弃**;载入时由 `state.ts::loadTicketInfo` 把它搬进
+      本地键(随后重写 v3,于是它从两条外流通道里退出)。**别再把它加回 `TicketInfo`**。
+    · 它**不是凭据**:存的是账号**名**标签(如 `example-account`),不是密码 ——
+      修订 3 撤销的正是「存密码」那一套;弹层标签与文档都把这句写明。
+    · 唯一的「带走」通道是**票务 JSON 导入**(那只解析器被明确授权写这只本地键);
+      备份文件**结构上做不到** —— `restore` 会跳过所有非 `biff.` 键(防手改备份塞任意键的闸门)。
+    · 账号随场次移出行程一并删(`rebuildIndex` 用同一个 `staleTicketCodes`),口径与明细一致。
   · **座号上限 32 字符**(修订 5 从 12 提上来):BIFF 的真实座号是 `Sec 7 · R2 S4`(13)/ `Floor 3 · R1 S8`(14)/
     `Floor 1 · R8 S23`(15)这种带区 / 排前缀的形态,12 会把它们**静默截断**(实测 17 笔里 12 笔超长)。
   · 为什么另起一只键:三态那份回答「抢到了没有」(驱动「实际行程」筛选与同场人数),这份回答「手上有几张、坐哪」

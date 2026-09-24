@@ -2,7 +2,7 @@ import {writeWorkspaceItem, removeWorkspaceItem} from "./workspace-storage";
 import {scheduleWantPing} from "./want-counts";
 import {scheduleScreeningPing} from "./screening-counts";
 import {scheduleTicketPing} from "./ticket-stats";
-import {migrateTicketInfoV1, normalizeTicketInfo} from "./ticket-info";
+import {migrateTicketInfoV1, normalizeTicketAccount, normalizeTicketInfo} from "./ticket-info";
 import {normalizeTicketRecord, staleTicketCodes} from "./tickets";
 // 应用状态:选片记录 / 抢票顺位 / 豆瓣映射 / 设置。
 //
@@ -33,6 +33,13 @@ const LS_TICKETS = "biff.tickets.v1"; // 票务结果:场次 code → {state, vi
 const LS_TICKET_INFO = "biff.ticketinfo.v3"; // 票据明细:场次 code → {seats, name?, bookingNo?, account?};**座位行数即票数**(见 ticket-info.ts)
 const LS_TICKET_INFO_V2 = "biff.ticketinfo.v2"; // 旧结构(只有 seats)—— **只作一次性迁移源,迁完即删**
 const LS_TICKET_INFO_V1 = "biff.ticketinfo.v1"; // 更旧结构(独立 count / accountId)—— 同为迁移源,迁完即删
+/** **账号名**表:场次 code → 账号名(修订 7)。⚠ **刻意不落 `biff.` 前缀** ——
+ *  `sync-data.ts::readWorkspace` 收的是全部 `biff.` 键并上传云端,`backup.ts::BACKUP_PREFIX`
+ *  又把全部 `biff.` 键写进**可以随手发给朋友**的导出备份;落那儿 = 账号名上云 + 进备份。
+ *  (`iffday.workspace.*` 是既有本地专属命名空间 —— 它只被写盘、不上报。)
+ *  与修订 3 撤销的那套「账号 + 密码」用的是同一个理由,但那只键
+ *  (`iffday.workspace.ticketaccounts.v1`,复数、带 defaultId)是**另一份形状**,别混淆。 */
+const LS_TICKET_ACCOUNT = "iffday.workspace.ticketaccount.v1";
 /** 旧版数据的 localStorage key —— 仅作一次性迁移源(迁移后即删) */
 const LS_PLAN_LEGACY = "biff.plan.v1";
 const LS_WISH_LEGACY = "biff.wish.v1";
@@ -195,25 +202,85 @@ export function clearTicket(code: string): void {
 }
 
 /* ---------- 票据明细(2026-09-24,PLAN-20260924141442) ----------
- * 场次 code → {seats, name?, bookingNo?, account?}:**座位行数就是票数**,用户手填
- * (「加一张座位 = 多一张票」);后三个是修订 5 为导入加的并列文本字段(姓名 / 预约号 / 账号名)。
+ * 场次 code → {seats, name?, bookingNo?}:**座位行数就是票数**,用户手填
+ * (「加一张座位 = 多一张票」);后两个是修订 5 为导入加的并列文本字段(姓名 / 预约号)。
  *
  * ⚠ 与上面的三态是**两份并列的场次级数据**,不是一个概念的两个半边 —— 为什么另起一只键而不是
  *   塞进 `biff.tickets.v1` 的值里,见 `types.ts::TicketInfo` 的注释(一句话:key 只增不改,
  *   且旧版本的 `normalizeTicketRecord` 会把多出来的字段静默丢掉)。
  * ⚠ **随账号云同步**:它落在 `biff.` 前缀下,会跟片单一起被同步上去(座位号与票务三态同性质)。
- *   代价写明:换设备能看见,但**也因此不许往里放任何凭据** —— 存的是账号**名**,不是密码
- *   (账号 / 密码方案已整体撤销,修订 3,理由见 `docs/CONVENTIONS.md`)。
+ *   ⇒ 因此**账号名不在这个结构里**(修订 7),它在下面那只本地专属键里。
  * ⚠ 场次被移出行程后明细同样失去意义 → 由 `rebuildIndex()` 与三态一起 prune。 */
 export const ticketInfo = new Map<string, TicketInfo>();
 
+/** **账号名**表:场次 code → 账号名(修订 7)。与本文件其它 Map 不同,它**只存本机**:
+ *  不上账号云(`sync-data.ts` 只收 `biff.` 前缀)、不进导出备份(`backup.ts::BACKUP_PREFIX` 同上)。
+ *  ⚠ 唯一的「带走」通道是**票务 JSON 导入**(`ticket-import.ts`)—— 那只解析器被明确授权写这只键,
+ *    而备份文件**结构上做不到**(`restore` 会跳过所有非 `biff.` 键,那是防手改备份塞任意键的闸门)。 */
+export const ticketAccount = new Map<string, string>();
+
+/** 本地账号表落盘。⚠ 走 `writeWorkspaceItem` 是为了广播 `iffday:workspace-change`
+ *  (与其它本地键同一条通道),但那**不等于上云** —— 上云由 `sync-data.ts` 的 `biff.` 前缀决定。 */
+function saveTicketAccount(): void {
+  try {
+    if (ticketAccount.size) {
+      writeWorkspaceItem(LS_TICKET_ACCOUNT, JSON.stringify(Object.fromEntries(ticketAccount)));
+    } else {
+      removeWorkspaceItem(LS_TICKET_ACCOUNT); // 空表就别留一只 `{}` 在盘上
+    }
+  } catch {
+    /* 忽略 */
+  }
+}
+
+function loadTicketAccount(): void {
+  const raw = readJson<Record<string, unknown>>(LS_TICKET_ACCOUNT);
+  if (!raw || typeof raw !== "object") return;
+  for (const [code, value] of Object.entries(raw)) {
+    const account = code && normalizeTicketAccount(value);
+    if (account) ticketAccount.set(code, account);
+  }
+}
+
+export function ticketAccountOf(code: string): string | undefined {
+  return ticketAccount.get(code);
+}
+
+/** 写某场的账号名;`undefined` / 空白 → 清掉这条(不留空壳)。 */
+export function setTicketAccount(code: string, account: string | undefined): void {
+  const normalized = normalizeTicketAccount(account);
+  if (!normalized) {
+    if (!ticketAccount.delete(code)) return;
+  } else {
+    if (ticketAccount.get(code) === normalized) return;
+    ticketAccount.set(code, normalized);
+  }
+  saveTicketAccount();
+  scheduleNotify("picks");
+}
+
 export function loadTicketInfo(): void {
+  // ⚠ 先读本地账号表:它是新版本写的,**权威**;下面从 v3 里搬出来的旧值只补空缺
+  //   (`!ticketAccount.has`) —— 否则一次读盘就能把用户刚改的账号名顶回旧值。
+  loadTicketAccount();
   const raw = readJson<Record<string, unknown>>(LS_TICKET_INFO);
   if (raw && typeof raw === "object") {
+    let movedAccount = false;
     for (const [code, value] of Object.entries(raw)) {
       if (!code) continue;
       const record = normalizeTicketInfo(value);
       if (record) ticketInfo.set(code, record);
+      // ★ 修订 7 的搬家:v3 里残留的 `account`(修订 5 那版写进去的)移到本地键,
+      //   随后 `saveTicketInfo()` 重写 v3 —— 于是它从**云同步与备份**两条通道里退出。
+      const account = normalizeTicketAccount((value as { account?: unknown } | null)?.account);
+      if (account && !ticketAccount.has(code)) {
+        ticketAccount.set(code, account);
+        movedAccount = true;
+      }
+    }
+    if (movedAccount) {
+      saveTicketAccount();
+      saveTicketInfo();
     }
     return;
   }
@@ -297,9 +364,15 @@ export function setTicketInfo(code: string, info: TicketInfo): void {
   scheduleNotify("picks");
 }
 
+/** 清掉某场的明细。⚠ **账号名一起清**(修订 7):账号记的是「这笔票在哪个账号下」,
+ *  票都没了它就没有意义;留着还会变成一只永远不被 prune 的孤儿条目。
+ *  ⚠ 账号表是**另一只键**,所以这里要显式落两次盘(不能只靠 `saveTicketInfo`)。 */
 export function clearTicketInfo(code: string): void {
-  if (!ticketInfo.delete(code)) return;
-  saveTicketInfo();
+  const hadInfo = ticketInfo.delete(code);
+  const hadAccount = ticketAccount.delete(code);
+  if (!hadInfo && !hadAccount) return;
+  if (hadInfo) saveTicketInfo();
+  if (hadAccount) saveTicketAccount();
   scheduleNotify("picks");
 }
 
@@ -315,11 +388,19 @@ export function clearTicketInfo(code: string): void {
 export function applyTicketImport(rows: readonly TicketImportRow[], markGot: boolean): number {
   let written = 0;
   let marked = false;
+  let accountsChanged = false;
   for (const row of rows) {
     const record = normalizeTicketInfo(row);
     if (!record) continue;
     ticketInfo.set(row.code, record);
     written++;
+    // 账号名落**本地键**(修订 7)。⚠ 文件里没写 account 的条目**不动**本地已有的值 ——
+    // 导入是「以文件为准」,而不写 ≠ 显式写成空。
+    const account = normalizeTicketAccount(row.account);
+    if (account && ticketAccount.get(row.code) !== account) {
+      ticketAccount.set(row.code, account);
+      accountsChanged = true;
+    }
     if (!markGot) continue;
     const prev = tickets.get(row.code);
     if (prev?.state === "got") continue;
@@ -331,6 +412,7 @@ export function applyTicketImport(rows: readonly TicketImportRow[], markGot: boo
   }
   if (!written) return 0;
   saveTicketInfo();
+  if (accountsChanged) saveTicketAccount();
   if (marked) {
     saveTickets();
     ticketsTouched = true;
@@ -544,6 +626,11 @@ function rebuildIndex(): void {
   const staleInfo = staleTicketCodes(ticketInfo, (code) => store.slotIndex.has(code));
   for (const code of staleInfo) ticketInfo.delete(code);
   if (staleInfo.length) saveTicketInfo();
+
+  // 账号名同判据、同命运(修订 7:它只是换了只键,「移出行程一起删」的口径不变)。
+  const staleAccount = staleTicketCodes(ticketAccount, (code) => store.slotIndex.has(code));
+  for (const code of staleAccount) ticketAccount.delete(code);
+  if (staleAccount.length) saveTicketAccount();
 
   // ⚠ 同场观影人数上报只能放这里:`store.allIndex` 刚重建完,是唯一的新鲜点
   //   (`saveLocal()` 跑在 rebuildIndex 之前,那一刻 allIndex 还是上一轮的快照)。

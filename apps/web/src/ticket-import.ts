@@ -12,11 +12,14 @@
  *   { "app": "biff-scheduler-tickets", "version": 1,
  *     "tickets": [
  *       { "code": "001", "seats": ["Sec 7 · R2 S4"], "name": "ZHANGSAN",
- *         "bookingNo": "269EXAMPLE0000011", "account": "example-account" },
+ *         "bookingNo": "269EXAMPLE0000001", "account": "example-account" },
  *       { "code": "003", "seats": 2, "name": "ZHANGSAN", "bookingNo": "269EXAMPLE0000002" }
  *     ] }
  *   ```
  *   裸数组 `[ … ]` 也认(只复制了 `tickets` 段的场景)。
+ *   ⚠ 示例里的姓名 / 预约号 / 账号**一律是假数据** —— 这份文档进的是公开仓库,
+ *     别把真实姓名或订单号抄进来(2026-09-24 踩过:真名与 17 个真实预约号被写进测试与文档)。
+ *   ⚠ `account`(账号名)落的是**本地专属**键,不上云、不进备份(修订 7,见 `TicketImportRow`)。
  *
  * ★ `seats` 的四种写法都接受(其余字段都是纯文本,可省):
  *   · `["Sec 7 · R2 S4"]` —— 一张票、有座号;
@@ -30,7 +33,7 @@
  *   (与 `.ics` 导入同一分工)。所以这里只做形状与格式校验。
  */
 
-import { TICKET_COUNT_MAX, normalizeTicketInfo } from "./ticket-info";
+import { TICKET_COUNT_MAX, normalizeTicketAccount, normalizeTicketInfo } from "./ticket-info";
 import type { TicketInfo } from "./types";
 
 /** 信封标识 —— 与 `backup.ts` 的 `BACKUP_APP` 一样,用来确认「这确实是一份票务导入」。
@@ -40,6 +43,13 @@ export const TICKET_IMPORT_APP = "biff-scheduler-tickets";
 /** 一行 = 一笔预约(一个场次)。**座位行数就是票数**,与 `TicketInfo` 同一口径。 */
 export interface TicketImportRow extends TicketInfo {
   code: string;
+  /** **账号名**(如 `example-account`)—— 记的是「这笔票在哪个 BIFF 账号下」。
+   *
+   *  ⚠⚠ 它**不落 `TicketInfo`**(修订 7):那块记录随片单上云、并进导出备份,而用户明确要求
+   *    「账号只存本地」。写入方(`state.ts::applyTicketImport`)把它放进**本地专属**的
+   *    `iffday.workspace.ticketaccount.v1`。
+   *  ⚠ 不是凭据:存的是账号**名**标签,不是密码(修订 3 撤销的正是「存密码」那一套)。 */
+  account?: string;
 }
 
 export type TicketImportParse =
@@ -123,8 +133,10 @@ export function parseTicketImport(text: string): TicketImportParse {
     if (!record) {
       return { ok: false, error: `${at}(${trimmedCode})没有任何有效信息` };
     }
+    // ⚠ 账号**单独归一、单独携带**(修订 7):它不落 `TicketInfo`,由写入方放进本地专属键。
+    const account = normalizeTicketAccount((item as { account?: unknown }).account);
     seen.add(trimmedCode);
-    rows.push({ code: trimmedCode, ...record });
+    rows.push(account ? { code: trimmedCode, ...record, account } : { code: trimmedCode, ...record });
   }
 
   const seatTotal = rows.reduce((n, row) => n + (row.seats?.length ?? 0), 0);

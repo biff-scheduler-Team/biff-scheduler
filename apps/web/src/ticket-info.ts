@@ -7,12 +7,16 @@
  * ★ 「不划位」(自由入座)在这套口径下有**唯一一种**表示:**全空的座位行**(修订 4,
  *   2026-09-24 用户「有不划位的 需要考虑这种情况」)。没有 `unreserved` 字段 ——
  *   档位由 `allSeatsBlank` 从行内容**推断**,只活在界面上。见 `types.ts::TicketInfo`。
- * ★ 修订 5(2026-09-24)为**导入**加了三个并列文本字段:`name` / `bookingNo` / `account`,
- *   都是**每场一条**(不是每张票一条)—— 对应 BIFF 一笔预约一行、1~2 张票共用同一个预约号。
+ * ★ 修订 5(2026-09-24)为**导入**加了两个并列文本字段:`name` / `bookingNo`,都是
+ *   **每场一条**(不是每张票一条)—— 对应 BIFF 一笔预约一行、1~2 张票共用同一个预约号。
  *   故结构从 v2 升到 v3(见 `state.ts::loadTicketInfo` 的两级迁移)。
+ * ★ 修订 7(2026-09-24):第三个字段 `account`(账号名)**搬出了本结构** —— 用户在公开仓库里
+ *   看到了自己的账号名,要求「账号只存本地」。它现在落在 `iffday.workspace.ticketaccount.v1`
+ *   (`state.ts::ticketAccount`,不上云、不进备份)。唯一保留的入口是 `normalizeTicketAccount`
+ *   (归一口径与票务家族共用),以及 `ticketInfoTitle` 的**第二个参数**。
  * ⚠ 只做「数据 → 数字 / 字符串」的换算,**不碰 DOM、不 import `state.ts`** ——
  *   node 直接可测(与 `tickets.ts` 同口径)。
- * ⚠ **本模块不认得任何凭据**:`account` 是账号**名**标签,不是密码。账号 / 密码方案已在修订 3
+ * ⚠ **本模块不认得任何凭据**:账号名只是一个标签,不是密码。账号 / 密码方案已在修订 3
  *   整体撤销(理由:落在 `biff.` 前缀下会随片单上云)。详情见 `docs/CONVENTIONS.md`。
  */
 
@@ -28,7 +32,7 @@ export const TICKET_COUNT_MAX = 10;
  *    12 会把它们**静默截断**(实测用户导入的 17 笔里有 12 笔超长)。 */
 const SEAT_MAX_LENGTH = 32;
 /** 姓名 / 预约号 / 账号名的长度上限。同为「防手滑粘贴」,不是业务约束:
- *  预约号实测 17 位(`269EXAMPLE0000001`),留一倍余量。 */
+ *  预约号实测 17 位(`269EXAMPLE0000001`（假数据）),留一倍余量。 */
 const NAME_MAX_LENGTH = 24;
 const BOOKING_NO_MAX_LENGTH = 32;
 const ACCOUNT_MAX_LENGTH = 32;
@@ -60,8 +64,11 @@ function normalizeField(raw: unknown, max: number): string | undefined {
 
 /** 读取时归一:座位行全空 / 结构不对 → `null`(整条丢弃,不留空壳记录)。
  *  ⚠ 空行**不算**「全空」:`["", ""]` 是「两张票、座位还没填」,必须原样留下。
- *  ⚠ v2 → v3 的迁移**就在这里完成** —— 新加的三个字段都是可选的,旧记录读进来天然合法,
- *    所以不需要单独的迁移函数(见 `state.ts::loadTicketInfo` 的说明)。 */
+ *  ⚠ v2 → v3 的迁移**就在这里完成** —— 新加的两个字段都是可选的,旧记录读进来天然合法,
+ *    所以不需要单独的迁移函数(见 `state.ts::loadTicketInfo` 的说明)。
+ *  ⚠⚠ **本函数不认 `account`**(修订 7):账号名存在**本地专属**键里,与这份随片单上云的记录
+ *    彻底分开。历史上它曾在这里 —— 于是 `account` 既上了云又进了导出备份。
+ *    读到这里出现的 `account` 一律**丢弃**,由 `state.ts::loadTicketInfo` 搬去本地键。 */
 export function normalizeTicketInfo(raw: unknown): TicketInfo | null {
   const seats = normalizeSeats(readSeats(raw));
   if (!seats) return null;
@@ -71,9 +78,15 @@ export function normalizeTicketInfo(raw: unknown): TicketInfo | null {
   if (name) record.name = name;
   const bookingNo = normalizeField(source.bookingNo, BOOKING_NO_MAX_LENGTH);
   if (bookingNo) record.bookingNo = bookingNo;
-  const account = normalizeField(source.account, ACCOUNT_MAX_LENGTH);
-  if (account) record.account = account;
   return record;
+}
+
+/** 账号名归一(修订 7)—— 与上面那句「本函数不认 account」配套:
+ *  字段的**归一口径**仍与票务家族共用(同一套「trim + 截断 + 空即缺省」),但它**落的是本地键**。
+ *  ⚠ 它**不是凭据**:存的是账号**名**标签(如 `example-account`),不是密码 ——
+ *    修订 3 撤销的正是「存密码」那一套。 */
+export function normalizeTicketAccount(raw: unknown): string | undefined {
+  return normalizeField(raw, ACCOUNT_MAX_LENGTH);
 }
 
 /** 旧结构(`biff.ticketinfo.v1`:`{count, seats, accountId}`)→ 新结构的一步换算。
@@ -149,8 +162,10 @@ export function ticketBadgeText(info: TicketInfo | undefined): string | null {
   return count === undefined ? null : `${count} 张`;
 }
 
-/** 徽章 / 概览 tag 的 tooltip:把「几张 / 坐哪」拼成一句。 */
-export function ticketInfoTitle(info: TicketInfo | undefined): string {
+/** 徽章 / 概览 tag 的 tooltip:把「几张 / 坐哪」拼成一句。
+ *  ⚠ `account` 是**第二个参数**而不是 `info.account`(修订 7):账号名存在本地专属键里,
+ *    不在随片单上云的 `TicketInfo` 上。调用方(日程表)自己把它取出来传进来。 */
+export function ticketInfoTitle(info: TicketInfo | undefined, account?: string): string {
   const count = ticketCountOf(info);
   if (count === undefined) return "还没有填写票务信息";
   const parts = [`${count} 张`];
@@ -167,6 +182,6 @@ export function ticketInfoTitle(info: TicketInfo | undefined): string {
   // 预约号排姓名前面 —— 换票窗口要的是那串号,不是名字。
   if (info?.bookingNo) parts.push(`预约号 ${info.bookingNo}`);
   if (info?.name) parts.push(info.name);
-  if (info?.account) parts.push(`账号 ${info.account}`);
+  if (account) parts.push(`账号 ${account}`);
   return parts.join("，");
 }

@@ -305,7 +305,7 @@
     },
     {
       "id": "ticket-info",
-      "note": "票据明细（日程表上的座位表 = 票数；`biff.ticketinfo.v3`，含 v1 / v2 两级一次性迁移）+ 票务 JSON 导入（`ticket-import.ts`，只写票务的增量通道，与备份的整体替换区分开）；「不划位」没有独立字段 —— 落库就是全空的座位行，档位由界面推断（露天场默认给、排除开闭幕，永不写回存储）；四条不变量（票数只能是行数的派生值 / 不划位不落字段 / 导入必须先并行行程再写明细 / 不留任何账号密码键）由 ticket-info.spec.ts 守着",
+      "note": "票据明细（日程表上的座位表 = 票数；`biff.ticketinfo.v3`，含 v1 / v2 两级一次性迁移）+ 票务 JSON 导入（`ticket-import.ts`，只写票务的增量通道，与备份的整体替换区分开）；「不划位」没有独立字段 —— 落库就是全空的座位行，档位由界面推断（露天场默认给、排除开闭幕，永不写回存储）；**账号名只存本地**（`iffday.workspace.ticketaccount.v1`，绝不落 `biff.` 前缀 = 不上云 + 不进导出备份）；五条不变量（票数只能是行数的派生值 / 不划位不落字段 / 导入必须先并行行程再写明细 / 账号名不许出现在任何 `biff.*` 里 / 不留任何账号密码键）由 ticket-info.spec.ts 守着",
       "paths": [
         "apps/web/src/ticket-info.ts",
         "apps/web/src/ticket-import.ts",

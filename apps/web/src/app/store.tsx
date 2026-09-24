@@ -30,6 +30,7 @@ import {
   registerSoleShows,
   store,
   subscribe,
+  ticketAccount,
   ticketInfo,
   tickets,
 } from "../state";
@@ -56,6 +57,9 @@ export function hydrateStorage(cat: Catalog) {
   rankOf.clear();
   tickets.clear();
   ticketInfo.clear();
+  // 账号表是**另一只键**(本地专属),但同属「票务」这一摊 —— 换数据源时必须一起清,
+  // 否则上一份数据里的账号名会挂到新行程的同名场次上。
+  ticketAccount.clear();
   gvTalk.clear();
   gvTalkMinOv.clear();
   agendaFolded.clear();

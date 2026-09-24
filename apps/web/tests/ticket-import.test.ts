@@ -13,7 +13,7 @@ import {
 describe("parseTicketImport:认哪些形状", () => {
   it("★ 信封 { tickets: [...] } 与裸数组都认(只复制了 tickets 段的场景)", () => {
     const rows = [
-      { code: "001", seats: ["Sec 7 · R2 S4"], name: "ZHANGSAN", bookingNo: "269EXAMPLE", account: "example-account" },
+      { code: "001", seats: ["Sec 7 · R2 S4"], name: "ZHANGSAN", bookingNo: "269EXAMPLE", account: "sample-account" },
     ];
     const envelope = parseTicketImport(
       JSON.stringify({ app: TICKET_IMPORT_APP, version: 1, tickets: rows }),
@@ -62,7 +62,7 @@ describe("parseTicketImport:认哪些形状", () => {
   it("持票信息照收;非字符串的座位项按空座处理(不静默丢位置)", () => {
     const result = parseTicketImport(
       JSON.stringify([
-        { code: "180", seats: ["R A S17", null, 3], name: "ZHANGSAN", bookingNo: "269EXAMPLE", account: "example-account" },
+        { code: "180", seats: ["R A S17", null, 3], name: "ZHANGSAN", bookingNo: "269EXAMPLE", account: "sample-account" },
       ]),
     );
     expect(result.ok).toBe(true);
@@ -72,7 +72,7 @@ describe("parseTicketImport:认哪些形状", () => {
       seats: ["R A S17", "", ""],
       name: "ZHANGSAN",
       bookingNo: "269EXAMPLE",
-      account: "example-account",
+      account: "sample-account",
     });
   });
 });
