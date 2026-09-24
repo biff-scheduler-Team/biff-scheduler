@@ -29,7 +29,7 @@ import {
   MenuItem,
   ToastContainer,
 } from "../components/spectrum";
-import { SettingsDialog } from "../components/SettingsDialog";
+import { OPEN_SETTINGS_EVENT, SettingsDialog } from "../components/SettingsDialog";
 import { ExportDialog } from "../components/ExportDialog";
 import {
   GuideDialog,
@@ -155,6 +155,16 @@ function Shell() {
     setOpen(false);
     headerMore.current?.focus();
   };
+  // 「去设置添加」这类**深处弹层**发出的请求(见 `SettingsDialog::OPEN_SETTINGS_EVENT`)。
+  // ⚠ 与「更多」菜单那条路径同一套状态:换 key 重挂载 + 打开。为什么要换 key 见 `openHeaderAction`。
+  useEffect(() => {
+    const open = () => {
+      setSettingsSession((n) => n + 1);
+      setSettingsOpen(true);
+    };
+    window.addEventListener(OPEN_SETTINGS_EVENT, open);
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, open);
+  }, []);
   const openHeaderAction = (key: string) => {
     // 每次打开都换 key → 重挂载弹层,读到的都是当下的设置 / 行程(与原先 DialogTrigger 的
     // onOpenChange + session 计数同一手法,见 `components/TransferAddDialog.tsx`)。

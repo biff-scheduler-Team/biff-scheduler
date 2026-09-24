@@ -10,6 +10,12 @@
  * ★ 「快速跳转」的**能力边界**(别把文案写大):`ticket.biff.kr` 是跨域站点,本站没有任何合法
  *   手段往它的登录框写值 —— 能做的只有「打开站点 + 一键复制凭据」,所以按钮说的是「复制」,
  *   不是「登录」。
+ * ★ 版式口径(2026-09-24 修订 2,用户验收后整改):
+ *   · 座位号用 S2 的 `labelPosition="side"` —— label 与输入框同一行,且**只有一份**标签
+ *     (改版前自绘的「第 N 张」与 S2 的顶部 label 重复,还折成两列);
+ *   · 账号提示是**三分支**条件渲染,同一时刻只有一行(改版前两段并存);
+ *   · 未解析出账号时不渲染复制按钮,而不是「禁用 + 再写一段话解释为什么禁用」;
+ *   · 底部按钮 `align="end"` —— 与左对齐的全宽字段同一基线(居中会让整屏重心歪掉)。
  */
 
 import { useEffect, useState } from "react";
@@ -21,7 +27,6 @@ import {
   Dialog,
   DialogContainer,
   Heading,
-  Link,
   NumberField,
   Picker,
   PickerItem,
@@ -41,6 +46,7 @@ import {
   resolveAccountOf,
   subscribeTicketAccounts,
 } from "../ticket-accounts";
+import { openSettingsDialog } from "./SettingsDialog";
 import { dateInfo, filmInfoOf, fmtEndClock, safeExternalUrl } from "../util";
 import { venueShort } from "../legend";
 import type { Screening } from "../types";
@@ -72,12 +78,15 @@ export function TicketEditDialog({
 
   const venue = cat.venueById.get(s.venue_id);
   const title = filmInfoOf(cat, s, store.mappings.get(s.code)).title;
+  const override = accountKey === DEFAULT_ACCOUNT ? undefined : accountKey;
+  const resolved = resolveAccountOf(accountsFile, { accountId: override });
+  // 默认账号:未设 / 指向已删账号都是 null(`normalizeAccountsFile` 保证不会指向空气)——
+  // 别用 `!` 去断言它一定存在,那一处断言只会在设置被外部改坏时变成运行时崩溃。
+  const fallbackAccount = resolveAccountOf(accountsFile, undefined);
   // 选中的账号 id 在本机找不到(跨设备同步过来的旧 id / 账号已被删)—— 说清楚,别让人以为设置没生效。
   // ⚠ 判据取的是**当前下拉选中值**而不是存下来的 `existing.accountId`:用户在下拉里另选一个之后,
   //   那句「保存后改为跟随默认账号」就已经不成立了 —— 挂在旧值上会让提示与实际发生的事相互矛盾。
   const orphaned = accountKey !== DEFAULT_ACCOUNT && !accountById(accountsFile, accountKey);
-  const override = accountKey === DEFAULT_ACCOUNT ? undefined : accountKey;
-  const resolved = resolveAccountOf(accountsFile, { accountId: override });
   const booking = safeExternalUrl(extras()?.ticketing.bookingUrl);
 
   /** 改张数:座位数组跟着伸缩(多出来的补空,少掉的截断)。 */
@@ -105,7 +114,9 @@ export function TicketEditDialog({
 
   return (
     <DialogContainer onDismiss={onDismiss}>
-      <Dialog size="S">
+      {/* `size="M"`:`S` 档内容区只有 336px,三只按钮并排差 7px 就会折行 —— 与其为省 80px 宽去
+          删文案,不如给足宽度(`PLAN-20260924141442` 修订 2:一排次要动作要能横着放下)。 */}
+      <Dialog size="M">
         <Heading slot="title">编辑场次 {s.code} 的票务</Heading>
         <Content>
           <div className="ticket-info-dialog">
@@ -115,42 +126,44 @@ export function TicketEditDialog({
               {venue ? `，${venueShort(venue)}` : ""}
             </p>
             <NumberField
-              label="有几张票"
-              description="留空 / 1 张都等于「按 1 张算」；行程概览的「共 N 张票」用它合计。"
+              label="购票数量"
+              description="用于行程概览的票数统计。"
               minValue={1}
               maxValue={TICKET_COUNT_MAX}
               value={count}
               onChange={changeCount}
             />
             <div className="ticket-seats" role="group" aria-label="座位号">
-              <span className="ticket-seats-title">座位号（可留空，只有你自己看得到）</span>
+              <span className="ticket-seats-title">座位号（可选，只有你自己看得到）</span>
               {Array.from({ length: count }, (_, i) => (
-                <div className="ticket-seat-row" key={i}>
-                  <span>第 {i + 1} 张</span>
-                  <TextField
-                    label={`第 ${i + 1} 张座位号`}
-                    placeholder="如 F12"
-                    value={seats[i] ?? ""}
-                    onChange={(value) =>
-                      setSeats((previous) => {
-                        const next = [...previous];
-                        next[i] = value;
-                        return next;
-                      })
-                    }
-                  />
-                </div>
+                <TextField
+                  key={i}
+                  // ⚠ label 走 `labelPosition="side"` 与输入框同行,且**不再另画一遍**「第 N 张」——
+                  //   两处都写就是改版前那个「标签重复 + 折成两列」。这一个 label 同时是**唯一**的
+                  //   可访问名(多张票时它必须唯一,否则读屏 / e2e 都分不清是第几张)。
+                  labelPosition="side"
+                  label={`第 ${i + 1} 张`}
+                  placeholder="座位号，如 F12"
+                  value={seats[i] ?? ""}
+                  onChange={(value) =>
+                    setSeats((previous) => {
+                      const next = [...previous];
+                      next[i] = value;
+                      return next;
+                    })
+                  }
+                />
               ))}
             </div>
             <Picker
-              label="这一场的票在哪个账号"
+              label="绑定票务账号"
               value={accountKey}
               onChange={(value) => setAccountKey(String(value))}
             >
               <PickerItem id={DEFAULT_ACCOUNT}>
-                {accountsFile.defaultId
-                  ? `跟随默认账号（${accountLabelOf(resolveAccountOf(accountsFile, undefined)!)}）`
-                  : "跟随默认账号（尚未设置默认账号）"}
+                {fallbackAccount
+                  ? `跟随默认账号（${accountLabelOf(fallbackAccount)}）`
+                  : "跟随默认账号（尚未设置）"}
               </PickerItem>
               {accountsFile.accounts.map((account) => (
                 <PickerItem id={account.id} key={account.id}>
@@ -158,47 +171,63 @@ export function TicketEditDialog({
                 </PickerItem>
               ))}
             </Picker>
-            {orphaned && (
+            {/* 账号提示 —— **三分支互斥**,同一时刻只有一行(改版前「还没配置」与「未指定账号」会同时出现) */}
+            {orphaned ? (
               <p className="ticket-hint ticket-hint-warn">
-                这一场原先指定的账号已不在本机（换设备后账号表不会跟着同步），保存后改为跟随默认账号。
+                这一场原先指定的账号已不在本机（账号表不跟着同步），保存后改为跟随默认账号。
               </p>
-            )}
-            {!accountsFile.accounts.length && (
+            ) : resolved ? (
               <p className="ticket-hint">
-                还没有配置票务账号。到「设置 → BIFF 票务账号」里添加，之后这里就能选。
+                {resolved.password
+                  ? `当前账号 ${accountLabelOf(resolved)}；密码只存在这台设备，打开票务站后粘贴即可。`
+                  : `当前账号 ${accountLabelOf(resolved)}（没有保存密码），只复制用户名。`}
+              </p>
+            ) : (
+              <p className="ticket-hint">
+                暂未配置票务账号，
+                <button
+                  type="button"
+                  className="ticket-link"
+                  // ⚠ 先关自己再开设置(同一个批次里两件事一起发生):只 dispatch 事件的话,
+                  //   设置弹层会**叠**在行程弹层上面 —— 用户得关两次才回到行程页,
+                  //   而且两个模态同屏正是 `SettingsDialog::ClearDialog` 记过的那个坑。
+                  onClick={() => {
+                    onDismiss();
+                    openSettingsDialog();
+                  }}
+                >
+                  去设置添加
+                </button>
+                ；不配也能记录张数与座位。
               </p>
             )}
             <div className="ticket-shortcuts" role="group" aria-label="票务快捷操作">
+              {/* `size="S"`:这一排是**次要动作**,用默认档会在「我的行程」那种窄弹层里折成两行 */}
               {booking && (
-                <Link href={booking} target="_blank" rel="noopener noreferrer">
-                  打开 BIFF 票务
-                </Link>
+                <ActionButton
+                  size="S"
+                  onPress={() => window.open(booking, "_blank", "noopener,noreferrer")}
+                >
+                  ↗ 打开 BIFF 票务
+                </ActionButton>
               )}
-              <ActionButton
-                isDisabled={!resolved}
-                onPress={() => resolved && void copy(resolved.username, "用户名")}
-              >
-                复制用户名
-              </ActionButton>
-              <ActionButton
-                isDisabled={!resolved?.password}
-                onPress={() => resolved && void copy(resolved.password, "密码")}
-              >
-                复制密码
-              </ActionButton>
+              {/* ⚠ 复制按钮只在**确实有账号**时渲染:没有账号时它们只能禁用,
+                  而「一个点不动又不解释的按钮」比不显示更让人困惑。 */}
+              {resolved && (
+                <ActionButton size="S" onPress={() => void copy(resolved.username, "用户名")}>
+                  复制用户名
+                </ActionButton>
+              )}
+              {resolved?.password && (
+                <ActionButton size="S" onPress={() => void copy(resolved.password, "密码")}>
+                  复制密码
+                </ActionButton>
+              )}
             </div>
-            {resolved ? (
-              <p className="ticket-hint">
-                当前账号:{accountLabelOf(resolved)}
-                {resolved.password ? "" : "（没有保存密码）"}。
-                密码只存在这台设备，本站不代填 —— 打开票务站后粘贴即可。
-              </p>
-            ) : (
-              <p className="ticket-hint">未指定账号:仍可记录张数与座位，只是没有可复制的登录凭据。</p>
-            )}
           </div>
         </Content>
-        <ButtonGroup>
+        {/* `align="end"`:内容整列左对齐,底部按钮若居中会让重心歪到中间(2026-09-24 用户指出) */}
+        <ButtonGroup align="end">
           <Button variant="secondary" onPress={onDismiss}>
             取消
           </Button>
