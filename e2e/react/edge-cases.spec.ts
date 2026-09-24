@@ -1,6 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { catalog, keyOf, ready, seed, storage } from "./helpers";
-import { hmsToMin } from "../../apps/web/src/util";
+import { agendaCards, keyOf, ready, seed, storage } from "./helpers";
 
 test("failed catalog requests show a recovery page and can be retried", async ({
   page,
@@ -28,64 +27,41 @@ test("unknown film URLs have a usable return action", async ({ page }) => {
   await expect(page).toHaveURL(/\/library$/);
 });
 
-test("rank repairs preview changes before applying them", async ({ page }) => {
-  const overlaps = (
-    a: (typeof catalog.schedule.screenings)[number],
-    b: typeof a,
-  ) =>
-    a.date === b.date &&
-    a.code !== b.code &&
-    keyOf(a.code) !== keyOf(b.code) &&
-    hmsToMin(a.start_time) < hmsToMin(b.end_time) &&
-    hmsToMin(b.start_time) < hmsToMin(a.end_time);
-  const shows = catalog.schedule.screenings;
-  let sample: string[] | undefined;
-  for (const first of shows) {
-    const second = shows.find(
-      (s) =>
-        s.date !== first.date &&
-        keyOf(s.code) === keyOf(first.code) &&
-        shows.some((other) => overlaps(s, other)),
-    );
-    const alt1 = shows.find((s) => overlaps(first, s));
-    const alt2 =
-      second &&
-      shows.find(
-        (s) =>
-          overlaps(second, s) && keyOf(s.code) !== (alt1 && keyOf(alt1.code)),
-      );
-    if (second && alt1 && alt2) {
-      sample = [first.code, alt1.code, second.code, alt2.code];
-      break;
-    }
-  }
-  expect(sample).toBeDefined();
-  const picks = new Map<
-    string,
-    { key: string; picks: { code: string }[]; note: string }
-  >();
-  for (const c of sample!) {
-    const key = keyOf(c);
-    const item = picks.get(key) ?? { key, picks: [], note: "" };
-    item.picks.push({ code: c });
-    picks.set(key, item);
-  }
-  const ranks = Object.fromEntries(sample!.map((c, i) => [c, (i % 2) + 1]));
+// ⚠ 本条原先测的是「预览顺位修复」弹层（点「预览顺位修复」→ 弹层里预览 + 「应用修复」）。
+//   那一整块（冲突组顺位提示 + 逐组让路按钮 + `autoFixRanks` 的 UI 出口）已于 2026-09-22 删除
+//   （`PLAN-20260922123138`，用户口径「我的行程**不需要显示**冲突组顺位这个组件 直接铺满」），
+//   于是这条断言在 main 上一直卡在「按钮找不到 → click 超时」—— 报出来像功能坏了，其实是测试在点一个不存在的入口。
+//   顺位机制**本身没动**（`biff.ranks.v1` / `plans.ts` / `setRanks` 全部保留），入口只剩
+//   **卡片视图**里顺位卡的拖拽 / 上移 / 下移，故这里对齐现状：钉住「日程表没有这个入口」
+//   + 「卡片视图里顺位仍能就地改」。
+test("顺位修改入口只在卡片视图:日程表上没有已下线的「预览顺位修复」", async ({ page }) => {
   await seed(page, {
-    "biff.picks.v2": JSON.stringify([...picks.values()]),
-    "biff.ranks.v1": JSON.stringify(ranks),
+    "biff.picks.v2": JSON.stringify(
+      ["008", "033"].map((code) => ({
+        key: keyOf(code),
+        picks: [{ code }],
+        note: "",
+      })),
+    ),
+    "biff.ranks.v1": JSON.stringify({ "008": 1, "033": 2 }),
   });
   await ready(page, "/agenda");
-  await page.getByRole("button", { name: "预览顺位修复", exact: true }).click();
-  const dialog = page.getByRole("dialog", {
-    name: "调整抢票顺位",
-    exact: true,
+  // ① 日程表（默认视图）里不该再有这个入口
+  await expect(
+    page.getByRole("button", { name: "预览顺位修复", exact: true }),
+  ).toHaveCount(0);
+
+  // ② 卡片视图里顺位还在,且能就地改（提高 033 → 它成为第 1 顺位）
+  await agendaCards(page);
+  const group = page.locator(".rank-group").first();
+  await expect(group).toBeVisible();
+  await group
+    .getByRole("button", { name: "提高 033 顺位", exact: true })
+    .click();
+  expect(JSON.parse((await storage(page))["biff.ranks.v1"])).toEqual({
+    "033": 1,
+    "008": 2,
   });
-  await expect(dialog).toContainText("改为");
-  expect(JSON.parse((await storage(page))["biff.ranks.v1"])).toEqual(ranks);
-  await dialog.getByRole("button", { name: "应用修复", exact: true }).click();
-  await expect(dialog).toHaveCount(0);
-  expect(JSON.parse((await storage(page))["biff.ranks.v1"])).not.toEqual(ranks);
 });
 
 test("screening location reveals the correct day and target", async ({
