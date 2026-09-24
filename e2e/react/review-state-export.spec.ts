@@ -11,7 +11,7 @@ test("restored stale ranks do not become the first choice of a later ICS import"
   await ready(page, "/agenda");
   expect(JSON.parse((await storage(page))["biff.ranks.v1"])).toEqual({});
   const dialog = await openExport(page);
-  await dialog.getByRole("textbox", { name: "或粘贴备份内容", exact: true }).fill([
+  await dialog.getByRole("textbox", { name: "或粘贴备份 / 日历 / 票务内容", exact: true }).fill([
     "BEGIN:VCALENDAR", "UID:033@biff-2026", "UID:008@biff-2026", "END:VCALENDAR",
   ].join("\n"));
   await dialog.getByRole("button", { name: "合并到当前行程", exact: true }).click();

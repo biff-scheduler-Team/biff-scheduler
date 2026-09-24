@@ -305,9 +305,11 @@
     },
     {
       "id": "ticket-info",
-      "note": "票据明细（日程表上的座位表 = 票数；`biff.ticketinfo.v2`，含 v1 一次性迁移）；「票数只能是座位行数的派生值」与「不留任何账号 / 密码键」两条不变量由 ticket-info.spec.ts 守着",
+      "note": "票据明细（日程表上的座位表 = 票数；`biff.ticketinfo.v3`，含 v1 / v2 两级一次性迁移）+ 票务 JSON 导入（`ticket-import.ts`，只写票务的增量通道，与备份的整体替换区分开）；「不划位」没有独立字段 —— 落库就是全空的座位行，档位由界面推断（露天场默认给、排除开闭幕，永不写回存储）；四条不变量（票数只能是行数的派生值 / 不划位不落字段 / 导入必须先并行行程再写明细 / 不留任何账号密码键）由 ticket-info.spec.ts 守着",
       "paths": [
         "apps/web/src/ticket-info.ts",
+        "apps/web/src/ticket-import.ts",
+        "apps/web/src/state.ts",
         "apps/web/src/components/TicketEditDialog.tsx",
         "apps/web/src/components/ticket-info.css",
         "apps/web/src/types.ts"

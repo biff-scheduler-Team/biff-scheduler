@@ -298,10 +298,10 @@ test("imports ICS by file, previews invalid data, and merges without duplicates"
   await agendaCards(page);
   const dialog = await openExport(page);
   await dialog
-    .getByRole("textbox", { name: "或粘贴备份内容", exact: true })
+    .getByRole("textbox", { name: "或粘贴备份 / 日历 / 票务内容", exact: true })
     .fill("invalid JSON");
   await expect(dialog.getByRole("alert")).toContainText("不是有效的 JSON");
-  await dialog.getByLabel("选择备份或日历文件").setInputFiles({
+  await dialog.getByLabel("选择备份、日历或票务文件").setInputFiles({
     name: "old.ics",
     mimeType: "text/calendar",
     buffer: Buffer.from(
