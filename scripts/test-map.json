@@ -304,6 +304,25 @@
       ]
     },
     {
+      "id": "ticket-info",
+      "note": "票据明细（日程表上的张数 / 座位 / 账号覆盖）+ 本地专属的 BIFF 票务账号表；「账号与密码不上云、不进导出备份」是红线，由 ticket-info.spec.ts 的阴性对照守着",
+      "paths": [
+        "apps/web/src/ticket-info.ts",
+        "apps/web/src/ticket-accounts.ts",
+        "apps/web/src/components/TicketEditDialog.tsx",
+        "apps/web/src/components/ticket-info.css",
+        "apps/web/src/types.ts"
+      ],
+      "specs": [
+        "ticket-info",
+        "screening-social",
+        "parity-agenda",
+        "agenda-gantt",
+        "parity-dialogs",
+        "compatibility"
+      ]
+    },
+    {
       "id": "data-update",
       "note": "排期数据更新提示（顶栏入口 / changelog 产物 / 与我选片的相关性 / 排进行程）",
       "paths": [

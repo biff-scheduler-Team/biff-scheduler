@@ -2,6 +2,7 @@ import {writeWorkspaceItem, removeWorkspaceItem} from "./workspace-storage";
 import {scheduleWantPing} from "./want-counts";
 import {scheduleScreeningPing} from "./screening-counts";
 import {scheduleTicketPing} from "./ticket-stats";
+import {normalizeTicketInfo} from "./ticket-info";
 import {normalizeTicketRecord, staleTicketCodes} from "./tickets";
 // 应用状态:选片记录 / 抢票顺位 / 豆瓣映射 / 设置。
 //
@@ -18,7 +19,7 @@ import {normalizeTicketRecord, staleTicketCodes} from "./tickets";
 //   冲突决策改由**场次级「抢票顺位」**承担(拖动冲突组内的场次排序,见 `plans.ts`),
 //   档位在非冲突场景里只剩排序噪声,两套排序机制并存只会互相打架。
 
-import type { Mapping, PickEntry, PickSlot, Settings, TicketRecord, TicketState, TicketVia } from "./types";
+import type { Mapping, PickEntry, PickSlot, Settings, TicketInfo, TicketRecord, TicketState, TicketVia } from "./types";
 import { loadDoubanMappings } from "./data";
 
 const LS_PICKS = "biff.picks.v2";
@@ -28,6 +29,7 @@ const LS_GV_TALK_MIN = "biff.gvtalkmin.v1"; // GV 映后谈单场时长覆写(co
 const LS_AGENDA_FOLD = "biff.agendafold.v1"; // 「我的行程」按日收起:已收起的日期集合(纯视图偏好,独立键)
 const LS_RANKS = "biff.ranks.v1"; // 抢票顺位:场次 code → 组内序号(1-based);独立键,与 gvtalk 同口径
 const LS_TICKETS = "biff.tickets.v1"; // 票务结果:场次 code → {state, via};独立键,与 ranks 同口径
+const LS_TICKET_INFO = "biff.ticketinfo.v1"; // 票据明细:场次 code → {count?, seats?, accountId?};独立键(见 ticket-info.ts)
 /** 旧版数据的 localStorage key —— 仅作一次性迁移源(迁移后即删) */
 const LS_PLAN_LEGACY = "biff.plan.v1";
 const LS_WISH_LEGACY = "biff.wish.v1";
@@ -186,6 +188,63 @@ export function clearTicket(code: string): void {
   saveTickets();
   ticketsTouched = true;
   pingTickets();
+  scheduleNotify("picks");
+}
+
+/* ---------- 票据明细(2026-09-24,PLAN-20260924141442) ----------
+ * 场次 code → {count?, seats?, accountId?}:「这一场几张、坐哪、票在哪个账号」**用户手填**。
+ *
+ * ⚠ 与上面的三态是**两份并列的场次级数据**,不是一个概念的两个半边 —— 为什么另起一只键而不是
+ *   塞进 `biff.tickets.v1` 的值里,见 `types.ts::TicketInfo` 的注释(一句话:key 只增不改,
+ *   且旧版本的 `normalizeTicketRecord` 会把多出来的字段静默丢掉)。
+ * ⚠ **只存本地形态 + 随账号云同步**:它落在 `biff.` 前缀下,所以会跟片单一起被同步上去(座位号
+ *   与票务三态同性质);但里面的 `accountId` 指向的是**本机**账号表(`iffday.workspace.*`),
+ *   换设备后会失配 —— 由 `ticket-accounts.ts::resolveAccountOf` 回落默认账号兜底。
+ * ⚠ 账号密码**不在这里** —— 那份数据按设计不许进 `biff.*`(见 `ticket-accounts.ts` 文件头)。
+ * ⚠ 场次被移出行程后明细同样失去意义 → 由 `rebuildIndex()` 与三态一起 prune。 */
+export const ticketInfo = new Map<string, TicketInfo>();
+
+export function loadTicketInfo(): void {
+  const raw = readJson<Record<string, unknown>>(LS_TICKET_INFO);
+  if (!raw || typeof raw !== "object") return;
+  for (const [code, value] of Object.entries(raw)) {
+    if (!code) continue;
+    const record = normalizeTicketInfo(value);
+    if (record) ticketInfo.set(code, record);
+  }
+}
+
+function saveTicketInfo(): void {
+  try {
+    writeWorkspaceItem(LS_TICKET_INFO, JSON.stringify(Object.fromEntries(ticketInfo)));
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 某场的票据明细;未填 → undefined。 */
+export function ticketInfoOf(code: string): TicketInfo | undefined {
+  return ticketInfo.get(code);
+}
+
+/** 写某场的票据明细;`info` 归一后为空 → 等价于「清掉这一场的明细」(不留空壳记录)。
+ *  ⚠ 归一走 `ticket-info.ts::normalizeTicketInfo`,与读取端**同一份**判据。 */
+export function setTicketInfo(code: string, info: TicketInfo): void {
+  const normalized = normalizeTicketInfo(info);
+  if (!normalized) {
+    clearTicketInfo(code);
+    return;
+  }
+  const prev = ticketInfo.get(code);
+  if (prev && JSON.stringify(prev) === JSON.stringify(normalized)) return;
+  ticketInfo.set(code, normalized);
+  saveTicketInfo();
+  scheduleNotify("picks");
+}
+
+export function clearTicketInfo(code: string): void {
+  if (!ticketInfo.delete(code)) return;
+  saveTicketInfo();
   scheduleNotify("picks");
 }
 
@@ -387,6 +446,12 @@ function rebuildIndex(): void {
   // 被 prune 掉的结果同样要回传服务端(否则那边留着「我的」脏状态)—— 但仍要过启动期守卫:
   // 载入时的那次 prune 不是用户动作(见 `ticketsTouched` 的说明),不能把服务端记录误清。
   if (staleTickets.length && ticketsTouched) pingTickets();
+
+  // 票据明细与三态同判据(「这一场还在不在行程里」),故共用 `staleTicketCodes` 这一个实现。
+  // ⚠ 明细**不上报服务端**,所以没有上面那一步「prune 后回传」。
+  const staleInfo = staleTicketCodes(ticketInfo, (code) => store.slotIndex.has(code));
+  for (const code of staleInfo) ticketInfo.delete(code);
+  if (staleInfo.length) saveTicketInfo();
 
   // ⚠ 同场观影人数上报只能放这里:`store.allIndex` 刚重建完,是唯一的新鲜点
   //   (`saveLocal()` 跑在 rebuildIndex 之前,那一刻 allIndex 还是上一轮的快照)。

@@ -1,5 +1,6 @@
 import { screeningMembers } from "../app/screening-members";
 import { ScreeningInfoPopover } from "./ScreeningInfoPopover";
+import { TicketEditDialog } from "./TicketEditDialog";
 import { officialStills } from "../app/official-stills";
 import { highlightCodesFor, highlightedCode, setHighlight, subscribeHighlight } from "../app/highlight";
 import { Component, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
@@ -25,7 +26,14 @@ import {
 } from "../filters";
 import { cardStateOf } from "../grid";
 import { effEndMin, filmEndMin, gvTalkMin, talkOnOf } from "../gv";
-import { setGvTalk, setSettings, slotOf, store } from "../state";
+import { setGvTalk, setSettings, slotOf, store, ticketInfoOf } from "../state";
+import { ticketBadgeText, ticketInfoTitle } from "../ticket-info";
+import {
+  accountLabelOf,
+  peekTicketAccounts,
+  resolveAccountOf,
+  subscribeTicketAccounts,
+} from "../ticket-accounts";
 import { scheduleAria } from "../actions-copy";
 import { removalDropsPick, useScreeningPicker } from "./screening-actions";
 import {
@@ -267,6 +275,16 @@ export function ScheduleGantt({
   // 待确认移除的那一场(只有行程档会写它,见 `AgendaRemoveDialog`)。
   // 存整条 `Screening` 而不是 code:弹层要印片名 / 时间 / 影院,而移除动作还没发生。
   const [pendingRemove, setPendingRemove] = useState<Screening | null>(null);
+  // 待编辑票务的那一场(同样只有行程档会写它,见 `TicketEditDialog`)。
+  // ⚠ 与 `pendingRemove` **是两个弹层**:右键和左键在同一格上的语义完全不同 ——
+  //   左键 = 移出行程(带确认),右键 = 编辑票务。别把它们合到一个 state 上。
+  const [pendingTicket, setPendingTicket] = useState<Screening | null>(null);
+  // 账号表在另一个 store(本地专属键):这里只**读**它来拼徽章 tooltip。
+  // ⚠ 必须显式订阅 —— 不订阅的话,在设置里改完账号回到行程页,徽章 tooltip 里的账号名还是旧的
+  //   (那正是 `notify` 注释里点名的「状态改了但界面没动」)。账号为空时 tooltip 显示「未指定账号」。
+  const [, forceAccounts] = useState(0);
+  useEffect(() => subscribeTicketAccounts(() => forceAccounts((n) => n + 1)), []);
+  const accountsFile = peekTicketAccounts();
   const { params, update } = useQuery();
   const toggle = useScreeningPicker();
   const scroll = useRef<HTMLDivElement>(null);
@@ -558,6 +576,12 @@ export function ScheduleGantt({
                       cardState.conflictTip,
                       tight.get(s.code),
                     ].filter(Boolean).join("\n");
+                    // 票务标注:徽章只在显式填过张数时给出文案(见下面的渲染条件);
+                    // 账号名先解析好(覆盖 → 默认),供 tooltip 用。
+                    const ticketInfo = ticketInfoOf(s.code);
+                    const badge = ticketBadgeText(ticketInfo);
+                    const account = resolveAccountOf(accountsFile, ticketInfo);
+                    const accountLabel = account ? accountLabelOf(account) : null;
                     // 正片末 = 有效结束的「弃映后」那一路（唯一来源 `gv.ts::effEndMin`）
                     const bodyEnd = effEndMin(s, false);
                     const dim =
@@ -580,6 +604,18 @@ export function ScheduleGantt({
                         // `data-highlighted` 由上面的订阅直改 DOM（不在 render 里读 store）
                         onMouseEnter={() => setHighlight(s.code)}
                         onMouseLeave={() => setHighlight(null)}
+                        // 右键 = 编辑这一场的票务(2026-09-24,`PLAN-20260924141442`),**只挂在行程档**:
+                        // 排片表那档画的是全届排片,在那儿右键会盖掉浏览器原生菜单的日常用途
+                        //(在新标签打开 / 复制链接),代价大于收益。
+                        // ⚠ 必须 `preventDefault()`,否则原生菜单照样弹出来压在弹层上。
+                        onContextMenu={
+                          agenda
+                            ? (event) => {
+                                event.preventDefault();
+                                setPendingTicket(s);
+                              }
+                            : undefined
+                        }
                         className={`gantt-slot ${dim ? "dimmed" : ""} ${tone}`}
                         key={s.code}
                         style={{
@@ -627,6 +663,44 @@ export function ScheduleGantt({
                           </span>
                         </button>
                         <ScreeningInfoPopover screening={s} />
+                        {/* 票务标注(2026-09-24,`PLAN-20260924141442`)。两件都只挂行程档:
+                            排片表那档画的是全届排片,一堆「N 张」只会挤掉片名与时间。
+                            ⚠ 徽章只在**显式填过张数**时出现(`ticketBadgeText` 返回 null 即不渲染)——
+                              不做「已抢到 = 1 张」的兜底徽章,否则整张画布都是「1 张」,标注失去信息量。 */}
+                        {agenda && badge && (
+                          <span
+                            className="gantt-ticket-badge"
+                            title={ticketInfoTitle(ticketInfoOf(s.code), accountLabel)}
+                          >
+                            {badge}
+                          </span>
+                        )}
+                        {/* 非右键入口(触摸设备没有右键,键盘也需要一个可聚焦的锚点)。
+                            ⚠ 它与 `.gantt-film` 是**兄弟节点**,不是子节点 —— 点它不会冒泡到
+                              「移出行程」那个按钮上,不存在误删场次的风险。 */}
+                        {agenda && (
+                          <button
+                            type="button"
+                            className="gantt-ticket-edit"
+                            data-has-info={ticketInfoOf(s.code) ? "true" : undefined}
+                            aria-label={`编辑场次 ${s.code} 的票务`}
+                            title="编辑这一场的票数 / 座位 / 账号（也可以直接右键格子）"
+                            onClick={() => setPendingTicket(s)}
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 20 20"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              aria-hidden="true"
+                            >
+                              <path d="M2 7.5V5.5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2a2.5 2.5 0 0 0 0 5v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2a2.5 2.5 0 0 0 0-5Z" />
+                              <path d="M11.5 4.5v11" strokeDasharray="2 2" />
+                            </svg>
+                          </button>
+                        )}
                         {isSelected && s.is_gv && talk === 0 && <div className="grid-gv-duration" style={{bottom: 4}}><GvDurationButton screening={s} iconOnly /></div>}
                         {talk > 0 && (
                           <div className="gantt-talk-section" style={{height: talk * ppm}}>
@@ -703,6 +777,16 @@ export function ScheduleGantt({
         <AgendaRemoveDialog
           screening={pendingRemove}
           onDismiss={() => setPendingRemove(null)}
+        />
+      )}
+      {/* 票务编辑弹层(右键 / 票按钮打开)。同样条件挂载 —— `SettingsDialog::ClearDialog`
+          记过这个坑:常驻的 `Dialog` 会被当成「当前弹层」,一次打开冒出好几个。
+          `key` 带上 code:连续编辑不同场次时保证状态重新初始化。 */}
+      {pendingTicket && (
+        <TicketEditDialog
+          key={pendingTicket.code}
+          screening={pendingTicket}
+          onDismiss={() => setPendingTicket(null)}
         />
       )}
     </div>

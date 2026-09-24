@@ -1,0 +1,162 @@
+/* 票据明细(张数 / 座位 / 账号)的样式(2026-09-24,`PLAN-20260924141442`)。
+ *
+ * ⚠ 刻意**独立成文件**而不是追加进 `style.css`:`style.css` 命中 TEST-MAP 的 `allOn`,
+ *   改它会触发三浏览器全量 E2E(5–9 min)。这里只复用既有 token,不新增视觉语言。
+ * ⚠ 也不追加进 `screening-social.css`:那个文件管的是**场次卡**上的票务三态控件,
+ *   本文件管的是**日程表格子**上的标注与两个新弹层 —— 宿主不同,合在一起只会互相牵连。
+ */
+
+/* ---------- 日程表格子上的标注(只在「我的行程 → 日程表」这一档渲染) ---------- */
+
+/* 张数徽章:左上角小药丸。压在海报(或没海报时的片名)上方,故必须自带实底 ——
+   半透明会跟海报的花花绿绿糊在一起,读不出数字。 */
+.gantt-ticket-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 3;
+  padding: 1px 7px;
+  border: 1px solid var(--brand);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* 编辑票务的入口。⚠ **始终可见**、不做 hover 淡显:触屏没有 hover,
+   「常态隐身 hover 显现」在那类设备上等于功能不存在(仓库 legacy 侧有过同一课)。 */
+.gantt-ticket-edit {
+  position: absolute;
+  top: 0;
+  /* 让开右上角的 ⓘ(`.vertical-schedule .gantt-info` 是 30×30 且贴 right:0) */
+  right: 30px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 0 0 0 5px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+.gantt-ticket-edit:hover {
+  color: var(--brand);
+}
+/* 已经有张数标注时把这个入口也染成品牌色 —— 一眼看出「这一场填过票」 */
+.gantt-ticket-edit[data-has-info="true"] {
+  color: var(--brand);
+}
+
+/* 触屏:入口本来就常显,这里只把尺寸放大到可点(桌面逐字不变)。 */
+@media (pointer: coarse) {
+  .gantt-ticket-edit {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* ---------- 编辑弹层 ---------- */
+
+.ticket-info-dialog {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  max-width: 100%;
+}
+.ticket-info-dialog h2 {
+  margin: 0;
+  font-size: 14px;
+}
+/* 座位号:一张票一行,行首是「第 N 张」的小标 */
+.ticket-seats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+.ticket-seats-title {
+  font-size: 12px;
+  color: var(--muted);
+}
+.ticket-seat-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.ticket-seat-row > span {
+  flex: 0 0 52px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.ticket-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.ticket-hint-warn {
+  color: var(--conflict-line);
+}
+/* 跳转 / 复制那一排 */
+.ticket-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+/* ---------- 设置里的账号表 ---------- */
+
+.ticket-accounts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+}
+.ticket-account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ticket-account-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--raised);
+}
+.ticket-account-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+.ticket-account-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  width: 100%;
+}
