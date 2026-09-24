@@ -72,11 +72,9 @@
   gap: 16px;
   max-width: 100%;
 }
-.ticket-info-dialog h2 {
-  margin: 0;
-  font-size: 14px;
-}
-/* 座位号:一张票一行,行首是「第 N 张」的小标 */
+/* 座位号:一张票一行。行首的「第 N 张」由 S2 的 `labelPosition="side"` 提供,
+   这里只负责把它与上一行说明、下一行账号区分开 —— **不要**再自己画一遍标签
+   (改版前那处重复就是这么来的)。 */
 .ticket-seats {
   display: flex;
   flex-direction: column;
@@ -88,18 +86,6 @@
   font-size: 12px;
   color: var(--muted);
 }
-.ticket-seat-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-}
-.ticket-seat-row > span {
-  flex: 0 0 52px;
-  font-size: 12px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
 .ticket-hint {
   margin: 0;
   font-size: 12px;
@@ -109,7 +95,18 @@
 .ticket-hint-warn {
   color: var(--conflict-line);
 }
-/* 跳转 / 复制那一排 */
+/* 提示行里的可点文字(「去设置添加」)—— 它是**链接**不是按钮,所以不走 S2 ActionButton;
+   样式只三件事:继承字号、品牌色、下划线。别在这儿复制按钮的外观。 */
+.ticket-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--brand);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+/* 跳转 / 复制那一排:三只同族按钮并排,允许换行 */
 .ticket-shortcuts {
   display: flex;
   flex-wrap: wrap;

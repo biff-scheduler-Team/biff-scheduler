@@ -33,6 +33,19 @@ import "./ticket-info.css";
  *  那个是「这一场跟随默认」,这个是「根本没有默认」。两处语义不同,别共用一个常量。 */
 const NO_DEFAULT = "__none__";
 
+/** 请求打开设置弹层(2026-09-24,`PLAN-20260924141442` 修订 2)。
+ *
+ *  ★ 为什么走 `window` 事件而不是 Context:设置弹层的**宿主在 `App`**(它按 `settingsSession`
+ *    重挂载整只弹层),而需要打开它的却是深处的另一个弹层(`TicketEditDialog` 里那句
+ *    「去设置添加」)。为这一件事从 App 往下一路透传回调,链路上每一层都要多一个无关的 prop;
+ *    事件则与仓库既有的 `iffday:workspace-change` 同手法,零 prop 污染。
+ *  ⚠ 事件名只有这一处定义,`App.tsx` 从本模块 import —— 别在两处各写一份字符串字面量。 */
+export const OPEN_SETTINGS_EVENT = "biff:open-settings";
+
+export function openSettingsDialog(): void {
+  window.dispatchEvent(new Event(OPEN_SETTINGS_EVENT));
+}
+
 /** 账号表的**深拷贝** —— `peekTicketAccounts()` 交回的是模块级活对象,
  *  弹层里就地改它等于「取消也生效」。 */
 function cloneAccounts(file: TicketAccountsFile): TicketAccountsFile {

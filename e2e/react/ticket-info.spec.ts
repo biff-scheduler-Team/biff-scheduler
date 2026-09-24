@@ -30,10 +30,12 @@ test("右键格子填张数与座位:格子标出「2 张」,概览按张数合�
   const dialog = page.getByRole("dialog", { name: "编辑场次 008 的票务", exact: true });
   await expect(dialog).toBeVisible();
 
-  const count = dialog.getByRole("textbox", { name: "有几张票", exact: true });
+  const count = dialog.getByRole("textbox", { name: "购票数量", exact: true });
   await count.fill("2");
   await count.press("Tab");
-  await dialog.getByRole("textbox", { name: "第 1 张座位号", exact: true }).fill("F12");
+  // 座位号的标签走 `labelPosition="side"`,文字就是「第 N 张」——
+  // 它同时是**唯一**的可访问名(改版前顶部 label 与左侧自绘标签重复,读屏与选择器都会撞名)。
+  await dialog.getByRole("textbox", { name: "第 1 张", exact: true }).fill("F12");
   await dialog.getByRole("button", { name: "保存票务信息", exact: true }).click();
 
   // 标注回到画布上(徽章带 tooltip,里面是「3 件事」的完整口径)
@@ -79,8 +81,9 @@ test("票里单独指定的账号优先于设置里的默认账号;密码只落 
 
   await page.getByRole("button", { name: "编辑场次 008 的票务", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "编辑场次 008 的票务", exact: true });
-  await expect(dialog).toContainText("当前账号:朋友号");
-  await expect(dialog.getByRole("button", { name: "复制密码", exact: true })).toBeEnabled();
+  await expect(dialog).toContainText("当前账号 朋友号");
+  // 未解析出账号时这两只按钮**根本不渲染**(而不是禁用),所以这里断言的是「在」
+  await expect(dialog.getByRole("button", { name: "复制密码", exact: true })).toBeVisible();
 
   // ★ 阴性对照:密码**只**出现在 `iffday.workspace.*` 那只键里 ——
   //   `biff.*` 一个字符都不能沾(沾了就会被账号云同步上传,并被写进可分享的备份文件)。
