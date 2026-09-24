@@ -2,7 +2,7 @@ import {writeWorkspaceItem, removeWorkspaceItem} from "./workspace-storage";
 import {scheduleWantPing} from "./want-counts";
 import {scheduleScreeningPing} from "./screening-counts";
 import {scheduleTicketPing} from "./ticket-stats";
-import {normalizeTicketInfo} from "./ticket-info";
+import {migrateTicketInfoV1, normalizeTicketInfo} from "./ticket-info";
 import {normalizeTicketRecord, staleTicketCodes} from "./tickets";
 // 应用状态:选片记录 / 抢票顺位 / 豆瓣映射 / 设置。
 //
@@ -29,7 +29,8 @@ const LS_GV_TALK_MIN = "biff.gvtalkmin.v1"; // GV 映后谈单场时长覆写(co
 const LS_AGENDA_FOLD = "biff.agendafold.v1"; // 「我的行程」按日收起:已收起的日期集合(纯视图偏好,独立键)
 const LS_RANKS = "biff.ranks.v1"; // 抢票顺位:场次 code → 组内序号(1-based);独立键,与 gvtalk 同口径
 const LS_TICKETS = "biff.tickets.v1"; // 票务结果:场次 code → {state, via};独立键,与 ranks 同口径
-const LS_TICKET_INFO = "biff.ticketinfo.v1"; // 票据明细:场次 code → {count?, seats?, accountId?};独立键(见 ticket-info.ts)
+const LS_TICKET_INFO = "biff.ticketinfo.v2"; // 票据明细:场次 code → {seats};**座位行数即票数**(见 ticket-info.ts)
+const LS_TICKET_INFO_V1 = "biff.ticketinfo.v1"; // 旧结构(独立 count / accountId)—— **只作一次性迁移源,迁完即删**
 /** 旧版数据的 localStorage key —— 仅作一次性迁移源(迁移后即删) */
 const LS_PLAN_LEGACY = "biff.plan.v1";
 const LS_WISH_LEGACY = "biff.wish.v1";
@@ -192,26 +193,52 @@ export function clearTicket(code: string): void {
 }
 
 /* ---------- 票据明细(2026-09-24,PLAN-20260924141442) ----------
- * 场次 code → {count?, seats?, accountId?}:「这一场几张、坐哪、票在哪个账号」**用户手填**。
+ * 场次 code → {seats}:**座位行数就是票数**,用户手填(「加一张座位 = 多一张票」)。
  *
  * ⚠ 与上面的三态是**两份并列的场次级数据**,不是一个概念的两个半边 —— 为什么另起一只键而不是
  *   塞进 `biff.tickets.v1` 的值里,见 `types.ts::TicketInfo` 的注释(一句话:key 只增不改,
  *   且旧版本的 `normalizeTicketRecord` 会把多出来的字段静默丢掉)。
- * ⚠ **只存本地形态 + 随账号云同步**:它落在 `biff.` 前缀下,所以会跟片单一起被同步上去(座位号
- *   与票务三态同性质);但里面的 `accountId` 指向的是**本机**账号表(`iffday.workspace.*`),
- *   换设备后会失配 —— 由 `ticket-accounts.ts::resolveAccountOf` 回落默认账号兜底。
- * ⚠ 账号密码**不在这里** —— 那份数据按设计不许进 `biff.*`(见 `ticket-accounts.ts` 文件头)。
+ * ⚠ **随账号云同步**:它落在 `biff.` 前缀下,会跟片单一起被同步上去(座位号与票务三态同性质)。
+ *   代价写明:换设备能看见,但**也因此不许往里放任何凭据** —— 账号 / 密码方案已整体撤销
+ *   (修订 3,理由见 `docs/CONVENTIONS.md`)。
  * ⚠ 场次被移出行程后明细同样失去意义 → 由 `rebuildIndex()` 与三态一起 prune。 */
 export const ticketInfo = new Map<string, TicketInfo>();
 
 export function loadTicketInfo(): void {
   const raw = readJson<Record<string, unknown>>(LS_TICKET_INFO);
-  if (!raw || typeof raw !== "object") return;
-  for (const [code, value] of Object.entries(raw)) {
-    if (!code) continue;
-    const record = normalizeTicketInfo(value);
-    if (record) ticketInfo.set(code, record);
+  if (raw && typeof raw === "object") {
+    for (const [code, value] of Object.entries(raw)) {
+      if (!code) continue;
+      const record = normalizeTicketInfo(value);
+      if (record) ticketInfo.set(code, record);
+    }
+    return;
   }
+  migrateTicketInfoFromV1();
+}
+
+/** v1 → v2 的一次性迁移(2026-09-24,`PLAN-20260924141442` 修订 3,按 AGENTS §5「改结构必须
+ *  新 key + 一次性迁移 + 删旧 key」)。
+ *
+ *  v1 把「几张」放在独立字段 `count` 里,而修订 3 起**行数即票数** —— 迁移就是把旧的 `count`
+ *  换算成「补齐到那么长的座位行」;v1 里的 `accountId` 属于已撤销的账号方案,直接丢弃(不换算:
+ *  凭据本身就不该留)。
+ *  ⚠ 迁完立刻删旧键:留着它,下次载入会**再迁一遍**,而且云端那份 v1 记录也永远不会按
+ *    「缺席即删除」的合并语义收敛掉(`sync-data.ts`)。
+ *  ⚠ 只有本机**没有** v2 时才走这条路 —— v2 一旦存在就是权威,绝不被 v1 覆盖。 */
+function migrateTicketInfoFromV1(): void {
+  const legacy = readJson<Record<string, unknown>>(LS_TICKET_INFO_V1);
+  if (!legacy || typeof legacy !== "object") return;
+  let migrated = false;
+  for (const [code, value] of Object.entries(legacy)) {
+    if (!code) continue;
+    const record = migrateTicketInfoV1(value);
+    if (!record) continue;
+    ticketInfo.set(code, record);
+    migrated = true;
+  }
+  removeWorkspaceItem(LS_TICKET_INFO_V1);
+  if (migrated) saveTicketInfo();
 }
 
 function saveTicketInfo(): void {

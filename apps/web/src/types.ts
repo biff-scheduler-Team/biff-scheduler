@@ -207,44 +207,23 @@ export interface TicketRecord {
   via?: TicketVia;
 }
 
-/** **票据明细** —— 手填的「这一场有几张、坐哪儿、票落在哪个账号」(2026-09-24,`PLAN-20260924141442`)。
+/** **票据明细** —— 手填的「这一场有几张、分别坐哪」(2026-09-24,`PLAN-20260924141442`)。
  *
- *  ⚠ 它与 `TicketRecord`(`biff.tickets.v1`)是**两份并列的数据**,不是同一概念的两个半边:
+ *  ★ **座位行数就是票数**(用户 2026-09-24 拍板:「用添加的座位数作为票数」)——
+ *    所以这里**没有**独立的 `count` 字段:两个来源必然会打架,而「加一张座位 = 多一张票」
+ *    比「先填数字、再填座位」少一次思考。票数一律由 `ticket-info.ts::ticketCountOf` 派生。
+ *  ⚠ 它与 `TicketRecord`(`biff.tickets.v1`)是**两份并列的数据**:
  *    `TicketRecord` 回答「这一场抢到了没有」(自述三态,驱动「实际行程」筛选与同场人数口径);
- *    这里回答「手上有几张、坐哪、票在哪个账号」(用户自己输入的实物信息)。
+ *    这里回答「手上有几张、坐哪」(用户自己输入的实物信息)。
  *  ⚠ 因此**不**塞进 `biff.tickets.v1` 的值里 —— 那既违反「`biff.*` key 只增不改」,
  *    也会被旧版本的 `normalizeTicketRecord` 静默丢掉(它只挑 `state` / `via`)。
- *  ⚠ 与 `biff.tickets.v1` 同以场次 code 为键、同处 `rebuildIndex()` 的 prune。 */
+ *  ⚠ 与 `biff.tickets.v1` 同以场次 code 为键、同处 `rebuildIndex()` 的 prune。
+ *  ⚠ **这里不许放任何凭据**:本结构落在 `biff.` 前缀下,会随片单一起同步到账号云端
+ *    (见 `PLAN-20260924141442` 修订 3:账号 / 密码方案已整体撤销,理由见 `docs/CONVENTIONS.md`)。 */
 export interface TicketInfo {
-  /** 这一场有几张票。缺省 / 非法 = **不填**(不是 0):格子徽章只认显式填过的值。 */
-  count?: number;
-  /** 座位号,第 n 项 = 第 n 张票的座位;多余项按 `count` 截断。 */
+  /** 座位号,第 n 项 = 第 n 张票的座位。**数组长度 = 票数**;
+   *  空串 = 这一张还没填座位 —— **席位要留住**,否则票数会跟着缩水。 */
   seats?: string[];
-  /** 本场票所属账号 id(取自 `iffday.workspace.ticketaccounts.v1`);
-   *  缺省 = 用设置里的**默认账号**(见 `ticket-accounts.ts::resolveAccountOf`)。 */
-  accountId?: string;
-}
-
-/** BIFF 官网票务账号(2026-09-24,`PLAN-20260924141442`)。
- *
- *  ⚠ **只存本机**(`iffday.workspace.ticketaccounts.v1`)—— 绝不落 `biff.*` 前缀:
- *    ① 账号云同步(key `readWorkspace`)收的是全部 `biff.` 键,落那儿等于把密码上传云端;
- *    ② 「导出数据备份」(`backup.ts::BACKUP_PREFIX`)同样按 `biff.` 全量快照,落那儿等于
- *       把密码写进一份**可以随手发给朋友**的 JSON。两条通道都实测过,不是推测。 */
-export interface TicketAccount {
-  id: string;
-  /** 显示名(如「主号」「朋友号」);空则回落用户名。 */
-  label: string;
-  username: string;
-  /** 明文密码。**空串 = 用户选择不保存密码**(只留用户名)—— 这是唯一一个「留空有意义」的字段。 */
-  password: string;
-}
-
-/** `iffday.workspace.ticketaccounts.v1` 的存储形状(本地专属,不上云、不进备份)。 */
-export interface TicketAccountsFile {
-  accounts: TicketAccount[];
-  /** 默认账号 id;`null` = 未设(此时「跟随默认」解析为「无账号」)。 */
-  defaultId: string | null;
 }
 
 export interface Mapping {

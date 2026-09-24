@@ -1,9 +1,9 @@
-/* 票据明细(张数 / 座位 / 账号)的样式(2026-09-24,`PLAN-20260924141442`)。
+/* 票据明细(座位表 = 票数)的样式(2026-09-24,`PLAN-20260924141442`)。
  *
  * ⚠ 刻意**独立成文件**而不是追加进 `style.css`:`style.css` 命中 TEST-MAP 的 `allOn`,
  *   改它会触发三浏览器全量 E2E(5–9 min)。这里只复用既有 token,不新增视觉语言。
  * ⚠ 也不追加进 `screening-social.css`:那个文件管的是**场次卡**上的票务三态控件,
- *   本文件管的是**日程表格子**上的标注与两个新弹层 —— 宿主不同,合在一起只会互相牵连。
+ *   本文件管的是**日程表格子**上的标注与票务编辑弹层 —— 宿主不同,合在一起只会互相牵连。
  */
 
 /* ---------- 日程表格子上的标注(只在「我的行程 → 日程表」这一档渲染) ---------- */
@@ -50,7 +50,7 @@
 .gantt-ticket-edit:hover {
   color: var(--brand);
 }
-/* 已经有张数标注时把这个入口也染成品牌色 —— 一眼看出「这一场填过票」 */
+/* 已经有票务明细时把这个入口也染成品牌色 —— 一眼看出「这一场填过票」 */
 .gantt-ticket-edit[data-has-info="true"] {
   color: var(--brand);
 }
@@ -72,9 +72,8 @@
   gap: 16px;
   max-width: 100%;
 }
-/* 座位号:一张票一行。行首的「第 N 张」由 S2 的 `labelPosition="side"` 提供,
-   这里只负责把它与上一行说明、下一行账号区分开 —— **不要**再自己画一遍标签
-   (改版前那处重复就是这么来的)。 */
+/* 座位表:一行 = 一张票。行首的「第 N 张」由 S2 的 `labelPosition="side"` 提供,
+   这里只负责把行与行、行与说明分开 —— **不要**再自己画一遍标签。 */
 .ticket-seats {
   display: flex;
   flex-direction: column;
@@ -86,74 +85,35 @@
   font-size: 12px;
   color: var(--muted);
 }
+.ticket-seat-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ticket-seats-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+/* 票数是**派生值**(行数),所以它是一个只读的事实陈述,不是一个可点的东西 */
+.ticket-seats-count {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 .ticket-hint {
   margin: 0;
   font-size: 12px;
   line-height: 1.6;
   color: var(--muted);
 }
-.ticket-hint-warn {
-  color: var(--conflict-line);
-}
-/* 提示行里的可点文字(「去设置添加」)—— 它是**链接**不是按钮,所以不走 S2 ActionButton;
-   样式只三件事:继承字号、品牌色、下划线。别在这儿复制按钮的外观。 */
-.ticket-link {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--brand);
-  font: inherit;
-  text-decoration: underline;
-  cursor: pointer;
-}
-/* 跳转 / 复制那一排:三只同族按钮并排,允许换行 */
+/* 跳转那一排 */
 .ticket-shortcuts {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  width: 100%;
-}
-
-/* ---------- 设置里的账号表 ---------- */
-
-.ticket-accounts {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 12px;
-  width: 100%;
-}
-.ticket-account-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.ticket-account-item {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  width: 100%;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--raised);
-}
-.ticket-account-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-}
-.ticket-account-fields {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
   width: 100%;
 }

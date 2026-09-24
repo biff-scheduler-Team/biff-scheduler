@@ -33,7 +33,6 @@ import {
   ticketInfo,
   tickets,
 } from "../state";
-import { loadTicketAccounts } from "../ticket-accounts";
 import { loadScreeningCounts } from "../screening-counts";
 import { computeConflicts } from "../conflict";
 import { buildPlanSet } from "../plans";
@@ -74,10 +73,9 @@ export function hydrateStorage(cat: Catalog) {
   loadRanks();
   // 票务状态同理:必须在 loadPicks 之前载入,否则 rebuildIndex() 会把整张表当成脏数据 prune 掉
   loadTickets();
-  // 票据明细(张数 / 座位 / 账号)与三态同判据、同一个 prune 点,故同一条纪律
+  // 票据明细(座位表 = 票数)与三态同判据、同一个 prune 点,故同一条纪律。
+  // ⚠ 它内部还负责 v1 → v2 的一次性迁移(`state.ts::migrateTicketInfoFromV1`)
   loadTicketInfo();
-  // 票务账号表:本地专属键(`iffday.workspace.*`),既不进同步也不进备份 —— 这里只读一次。
-  loadTicketAccounts();
   loadAgendaFold();
   loadPicks((code) => {
     const s = cat.byCode.get(code);

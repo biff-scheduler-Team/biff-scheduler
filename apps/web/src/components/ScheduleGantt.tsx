@@ -28,12 +28,6 @@ import { cardStateOf } from "../grid";
 import { effEndMin, filmEndMin, gvTalkMin, talkOnOf } from "../gv";
 import { setGvTalk, setSettings, slotOf, store, ticketInfoOf } from "../state";
 import { ticketBadgeText, ticketInfoTitle } from "../ticket-info";
-import {
-  accountLabelOf,
-  peekTicketAccounts,
-  resolveAccountOf,
-  subscribeTicketAccounts,
-} from "../ticket-accounts";
 import { scheduleAria } from "../actions-copy";
 import { removalDropsPick, useScreeningPicker } from "./screening-actions";
 import {
@@ -279,12 +273,6 @@ export function ScheduleGantt({
   // ⚠ 与 `pendingRemove` **是两个弹层**:右键和左键在同一格上的语义完全不同 ——
   //   左键 = 移出行程(带确认),右键 = 编辑票务。别把它们合到一个 state 上。
   const [pendingTicket, setPendingTicket] = useState<Screening | null>(null);
-  // 账号表在另一个 store(本地专属键):这里只**读**它来拼徽章 tooltip。
-  // ⚠ 必须显式订阅 —— 不订阅的话,在设置里改完账号回到行程页,徽章 tooltip 里的账号名还是旧的
-  //   (那正是 `notify` 注释里点名的「状态改了但界面没动」)。账号为空时 tooltip 显示「未指定账号」。
-  const [, forceAccounts] = useState(0);
-  useEffect(() => subscribeTicketAccounts(() => forceAccounts((n) => n + 1)), []);
-  const accountsFile = peekTicketAccounts();
   const { params, update } = useQuery();
   const toggle = useScreeningPicker();
   const scroll = useRef<HTMLDivElement>(null);
@@ -576,12 +564,9 @@ export function ScheduleGantt({
                       cardState.conflictTip,
                       tight.get(s.code),
                     ].filter(Boolean).join("\n");
-                    // 票务标注:徽章只在显式填过张数时给出文案(见下面的渲染条件);
-                    // 账号名先解析好(覆盖 → 默认),供 tooltip 用。
+                    // 票务标注:徽章只在有票务明细(加过座位行)时给出文案(见下面的渲染条件)
                     const ticketInfo = ticketInfoOf(s.code);
                     const badge = ticketBadgeText(ticketInfo);
-                    const account = resolveAccountOf(accountsFile, ticketInfo);
-                    const accountLabel = account ? accountLabelOf(account) : null;
                     // 正片末 = 有效结束的「弃映后」那一路（唯一来源 `gv.ts::effEndMin`）
                     const bodyEnd = effEndMin(s, false);
                     const dim =
@@ -668,10 +653,7 @@ export function ScheduleGantt({
                             ⚠ 徽章只在**显式填过张数**时出现(`ticketBadgeText` 返回 null 即不渲染)——
                               不做「已抢到 = 1 张」的兜底徽章,否则整张画布都是「1 张」,标注失去信息量。 */}
                         {agenda && badge && (
-                          <span
-                            className="gantt-ticket-badge"
-                            title={ticketInfoTitle(ticketInfoOf(s.code), accountLabel)}
-                          >
+                          <span className="gantt-ticket-badge" title={ticketInfoTitle(ticketInfo)}>
                             {badge}
                           </span>
                         )}

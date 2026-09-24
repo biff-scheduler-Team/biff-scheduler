@@ -1,24 +1,22 @@
 /**
- * 「这一场几张票 / 坐哪儿 / 票在哪个账号」的编辑弹层(2026-09-24,`PLAN-20260924141442`)。
+ * 「这一场几张票、分别坐哪」的编辑弹层(2026-09-24,`PLAN-20260924141442`)。
  *
- * ★ 落哪份数据:张数 / 座位 / 账号覆盖 → `biff.ticketinfo.v1`(`state.ts::setTicketInfo`);
- *   **账号与密码本身不在这里** —— 它们是本地专属的另一只键,见 `ticket-accounts.ts` 文件头。
+ * ★ 核心交互:**加一张座位 = 多一张票**(用户 2026-09-24 拍板「直接通过操作去添加座位表…
+ *   用添加的座位数作为票数」)。所以这里**没有**「几张票」的输入框 —— 票数是座位行数的派生值,
+ *   两个来源必然会打架。加/删行是唯一入口。
+ * ★ 落哪份数据:座位行 → `biff.ticketinfo.v2`(`state.ts::setTicketInfo`)。
+ *   ⚠ 它**随片单上云**(跨设备能看见),所以这里不许放任何凭据 ——
+ *     账号 / 密码方案已在修订 3 整体撤销,理由见 `docs/CONVENTIONS.md`。
  * ★ 为什么是模态 `Dialog` 而不是 `ScreeningInfoPopover` 那种非模态 `Popover`:里面全是输入框,
  *   需要焦点陷阱与「关掉就交回焦点」;仓库既有的同类路径是 `AgendaRemoveDialog`
  *   (`ScheduleGantt.tsx`)+ `DialogContainer` 条件挂载 —— 那条路径还顺带避开了
  *   `SettingsDialog::ClearDialog` 记下的坑(常驻 `Dialog` 会被当成「当前弹层」一起显示)。
- * ★ 「快速跳转」的**能力边界**(别把文案写大):`ticket.biff.kr` 是跨域站点,本站没有任何合法
- *   手段往它的登录框写值 —— 能做的只有「打开站点 + 一键复制凭据」,所以按钮说的是「复制」,
- *   不是「登录」。
- * ★ 版式口径(2026-09-24 修订 2,用户验收后整改):
- *   · 座位号用 S2 的 `labelPosition="side"` —— label 与输入框同一行,且**只有一份**标签
- *     (改版前自绘的「第 N 张」与 S2 的顶部 label 重复,还折成两列);
- *   · 账号提示是**三分支**条件渲染,同一时刻只有一行(改版前两段并存);
- *   · 未解析出账号时不渲染复制按钮,而不是「禁用 + 再写一段话解释为什么禁用」;
- *   · 底部按钮 `align="end"` —— 与左对齐的全宽字段同一基线(居中会让整屏重心歪掉)。
+ * ★ 「打开 BIFF 票务」的**能力边界**(别把文案写大):`ticket.biff.kr` 会 302 到第三方平台
+ *   `biff.maketicket.co.kr`,**是另一个域** —— 本站既没法写它的登录框,也没法替它建会话,
+ *   所以只能把票务站打开、由用户自己的浏览器登录态决定进不进得去 My page(订单页)。
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ActionButton,
   Button,
@@ -27,34 +25,18 @@ import {
   Dialog,
   DialogContainer,
   Heading,
-  NumberField,
-  Picker,
-  PickerItem,
   TextField,
   ToastQueue,
 } from "./spectrum";
 import { useCatalog } from "../app/store";
-import { copyText } from "../clipboard";
 import { extras } from "../extras";
 import { effEndMin, talkOnOf } from "../gv";
 import { setTicketInfo, clearTicketInfo, store, ticketInfoOf } from "../state";
-import { TICKET_COUNT_MAX, ticketCountOf } from "../ticket-info";
-import {
-  accountById,
-  accountLabelOf,
-  peekTicketAccounts,
-  resolveAccountOf,
-  subscribeTicketAccounts,
-} from "../ticket-accounts";
-import { openSettingsDialog } from "./SettingsDialog";
+import { TICKET_COUNT_MAX } from "../ticket-info";
 import { dateInfo, filmInfoOf, fmtEndClock, safeExternalUrl } from "../util";
 import { venueShort } from "../legend";
 import type { Screening } from "../types";
 import "./ticket-info.css";
-
-/** 账号下拉里「跟随设置里的默认账号」那一项 —— 它必须有 id,但不能撞上真实账号 id
- *  (真实 id 是 UUID / `acc-…`,不含双下划线包裹的形态)。 */
-const DEFAULT_ACCOUNT = "__default__";
 
 export function TicketEditDialog({
   screening: s,
@@ -64,49 +46,37 @@ export function TicketEditDialog({
   onDismiss: () => void;
 }) {
   const { cat } = useCatalog();
-  // 账号表在**另一个 store**(本地专属键,不进 `state.ts`),显式订阅一次
-  const [, force] = useState(0);
-  useEffect(() => subscribeTicketAccounts(() => force((n) => n + 1)), []);
-  const accountsFile = peekTicketAccounts();
   const existing = ticketInfoOf(s.code);
-  const [count, setCount] = useState(() => ticketCountOf(existing) ?? 1);
-  const [seats, setSeats] = useState<string[]>(() => {
-    const initial = existing?.seats ?? [];
-    return Array.from({ length: ticketCountOf(existing) ?? 1 }, (_, i) => initial[i] ?? "");
-  });
-  const [accountKey, setAccountKey] = useState<string>(existing?.accountId ?? DEFAULT_ACCOUNT);
+  // 座位表就是**唯一的编辑面**:打开时按已存的座位行铺出来(空行也是「一张票」)。
+  const [seats, setSeats] = useState<string[]>(() => [...(existing?.seats ?? [])]);
 
   const venue = cat.venueById.get(s.venue_id);
   const title = filmInfoOf(cat, s, store.mappings.get(s.code)).title;
-  const override = accountKey === DEFAULT_ACCOUNT ? undefined : accountKey;
-  const resolved = resolveAccountOf(accountsFile, { accountId: override });
-  // 默认账号:未设 / 指向已删账号都是 null(`normalizeAccountsFile` 保证不会指向空气)——
-  // 别用 `!` 去断言它一定存在,那一处断言只会在设置被外部改坏时变成运行时崩溃。
-  const fallbackAccount = resolveAccountOf(accountsFile, undefined);
-  // 选中的账号 id 在本机找不到(跨设备同步过来的旧 id / 账号已被删)—— 说清楚,别让人以为设置没生效。
-  // ⚠ 判据取的是**当前下拉选中值**而不是存下来的 `existing.accountId`:用户在下拉里另选一个之后,
-  //   那句「保存后改为跟随默认账号」就已经不成立了 —— 挂在旧值上会让提示与实际发生的事相互矛盾。
-  const orphaned = accountKey !== DEFAULT_ACCOUNT && !accountById(accountsFile, accountKey);
   const booking = safeExternalUrl(extras()?.ticketing.bookingUrl);
+  const full = seats.length >= TICKET_COUNT_MAX;
 
-  /** 改张数:座位数组跟着伸缩(多出来的补空,少掉的截断)。 */
-  const changeCount = (next: number) => {
-    const value = Math.max(1, Math.min(TICKET_COUNT_MAX, Math.round(next) || 1));
-    setCount(value);
-    setSeats((previous) => Array.from({ length: value }, (_, i) => previous[i] ?? ""));
+  /** 加一行空座位 = 多一张票。
+   *  ⚠ **刻意不自动聚焦新行**:S2 的 `TextField` 要拿到底层 `<input>` 得走它的 ref API
+   *    (`getInputElement()`),为这点便利去挂一堆 ref 不值得;加号按钮本身不会被顶走太多,
+   *    连续点几下再回来填也顺手。 */
+  const addSeat = () => {
+    if (full) return;
+    setSeats((previous) => [...previous, ""]);
   };
 
-  const copy = async (text: string, what: string) => {
-    const ok = await copyText(text);
-    if (ok) ToastQueue.positive(`${what}已复制`, { timeout: 5000 });
-    else ToastQueue.neutral(`复制失败，请手动选中「${what}」再复制`, { timeout: 5000 });
-  };
+  const patchSeat = (index: number, value: string) =>
+    setSeats((previous) => {
+      const next = [...previous];
+      next[index] = value;
+      return next;
+    });
 
-  /** 三样都等于默认值(1 张 / 没填座位 / 跟随默认账号)= 没有明细要记 → 清掉这一条。
-   *  不然「打开看一眼就保存」会给每一场都留下一个 `{count:1}`,把格子徽章糊满。 */
+  const removeSeat = (index: number) =>
+    setSeats((previous) => previous.filter((_, i) => i !== index));
+
+  /** 一行都没有 = 这一场没有明细 → 清掉记录(不留空壳,也免得徽章写着「1 张」)。 */
   const save = () => {
-    const meaningful = count !== 1 || seats.some((seat) => seat.trim()) || Boolean(override);
-    if (meaningful) setTicketInfo(s.code, { count, seats, accountId: override });
+    if (seats.length) setTicketInfo(s.code, { seats });
     else clearTicketInfo(s.code);
     ToastQueue.positive("票务信息已保存", { timeout: 5000 });
     onDismiss();
@@ -114,119 +84,69 @@ export function TicketEditDialog({
 
   return (
     <DialogContainer onDismiss={onDismiss}>
-      {/* `size="M"`:`S` 档内容区只有 336px,三只按钮并排差 7px 就会折行 —— 与其为省 80px 宽去
-          删文案,不如给足宽度(`PLAN-20260924141442` 修订 2:一排次要动作要能横着放下)。 */}
+      {/* `size="M"`:`S` 档内容区只有 336px,「第 N 张 + 输入框 + 删除」三件并排会挤到折行 */}
       <Dialog size="M">
         <Heading slot="title">编辑场次 {s.code} 的票务</Heading>
         <Content>
           <div className="ticket-info-dialog">
             <p className="ticket-hint">
-              《{title}》{dateInfo(s.date).label} {s.start_time.slice(0, 5)}–
+              《{title}》 {dateInfo(s.date).label} {s.start_time.slice(0, 5)}–
               {fmtEndClock(effEndMin(s, talkOnOf(s.code)))}
               {venue ? `，${venueShort(venue)}` : ""}
             </p>
-            <NumberField
-              label="购票数量"
-              description="用于行程概览的票数统计。"
-              minValue={1}
-              maxValue={TICKET_COUNT_MAX}
-              value={count}
-              onChange={changeCount}
-            />
-            <div className="ticket-seats" role="group" aria-label="座位号">
-              <span className="ticket-seats-title">座位号（可选，只有你自己看得到）</span>
-              {Array.from({ length: count }, (_, i) => (
-                <TextField
-                  key={i}
-                  // ⚠ label 走 `labelPosition="side"` 与输入框同行,且**不再另画一遍**「第 N 张」——
-                  //   两处都写就是改版前那个「标签重复 + 折成两列」。这一个 label 同时是**唯一**的
-                  //   可访问名(多张票时它必须唯一,否则读屏 / e2e 都分不清是第几张)。
-                  labelPosition="side"
-                  label={`第 ${i + 1} 张`}
-                  placeholder="座位号，如 F12"
-                  value={seats[i] ?? ""}
-                  onChange={(value) =>
-                    setSeats((previous) => {
-                      const next = [...previous];
-                      next[i] = value;
-                      return next;
-                    })
-                  }
-                />
+            <div className="ticket-seats" role="group" aria-label="座位表">
+              <span className="ticket-seats-title">
+                座位表 —— <strong>加一张就是多一张票</strong>，空着也行（座位号只有你自己看得到）
+              </span>
+              {seats.map((seat, index) => (
+                <div className="ticket-seat-row" key={index}>
+                  {/* ⚠ label 走 `labelPosition="side"` 与输入框同行,且**只有这一份**标签 ——
+                      它同时是唯一区分的可访问名(多张票时必须唯一,否则读屏 / e2e 分不清是第几张)。 */}
+                  <TextField
+                    labelPosition="side"
+                    label={`第 ${index + 1} 张`}
+                    placeholder="座位号，如 F12"
+                    value={seat}
+                    onChange={(value) => patchSeat(index, value)}
+                  />
+                  <ActionButton
+                    aria-label={`删除第 ${index + 1} 张`}
+                    onPress={() => removeSeat(index)}
+                  >
+                    删除
+                  </ActionButton>
+                </div>
               ))}
+              <div className="ticket-seats-foot">
+                <ActionButton isDisabled={full} onPress={addSeat}>
+                  ＋ 添加一张
+                </ActionButton>
+                <span className="ticket-seats-count" aria-live="polite">
+                  {seats.length} 张票
+                  {full ? `（已达上限 ${TICKET_COUNT_MAX} 张）` : ""}
+                </span>
+              </div>
+              {seats.length === 0 && (
+                <p className="ticket-hint">
+                  还没加座位行。加一行就是一张票，行程概览的「共 N 张票」按行数合计。
+                </p>
+              )}
             </div>
-            <Picker
-              label="绑定票务账号"
-              value={accountKey}
-              onChange={(value) => setAccountKey(String(value))}
-            >
-              <PickerItem id={DEFAULT_ACCOUNT}>
-                {fallbackAccount
-                  ? `跟随默认账号（${accountLabelOf(fallbackAccount)}）`
-                  : "跟随默认账号（尚未设置）"}
-              </PickerItem>
-              {accountsFile.accounts.map((account) => (
-                <PickerItem id={account.id} key={account.id}>
-                  {accountLabelOf(account)}
-                </PickerItem>
-              ))}
-            </Picker>
-            {/* 账号提示 —— **三分支互斥**,同一时刻只有一行(改版前「还没配置」与「未指定账号」会同时出现) */}
-            {orphaned ? (
-              <p className="ticket-hint ticket-hint-warn">
-                这一场原先指定的账号已不在本机（账号表不跟着同步），保存后改为跟随默认账号。
-              </p>
-            ) : resolved ? (
-              <p className="ticket-hint">
-                {resolved.password
-                  ? `当前账号 ${accountLabelOf(resolved)}；密码只存在这台设备，打开票务站后粘贴即可。`
-                  : `当前账号 ${accountLabelOf(resolved)}（没有保存密码），只复制用户名。`}
-              </p>
-            ) : (
-              <p className="ticket-hint">
-                暂未配置票务账号，
-                <button
-                  type="button"
-                  className="ticket-link"
-                  // ⚠ 先关自己再开设置(同一个批次里两件事一起发生):只 dispatch 事件的话,
-                  //   设置弹层会**叠**在行程弹层上面 —— 用户得关两次才回到行程页,
-                  //   而且两个模态同屏正是 `SettingsDialog::ClearDialog` 记过的那个坑。
-                  onClick={() => {
-                    onDismiss();
-                    openSettingsDialog();
-                  }}
-                >
-                  去设置添加
-                </button>
-                ；不配也能记录张数与座位。
-              </p>
-            )}
-            <div className="ticket-shortcuts" role="group" aria-label="票务快捷操作">
-              {/* `size="S"`:这一排是**次要动作**,用默认档会在「我的行程」那种窄弹层里折成两行 */}
-              {booking && (
+            {booking && (
+              <div className="ticket-shortcuts" role="group" aria-label="票务快捷操作">
+                {/* 落地页是第三方售票平台(`biff.maketicket.co.kr`)。
+                    打开它不需要我们存任何凭据 —— 进不进得去订单页只取决于你自己的登录态。 */}
                 <ActionButton
                   size="S"
                   onPress={() => window.open(booking, "_blank", "noopener,noreferrer")}
                 >
                   ↗ 打开 BIFF 票务
                 </ActionButton>
-              )}
-              {/* ⚠ 复制按钮只在**确实有账号**时渲染:没有账号时它们只能禁用,
-                  而「一个点不动又不解释的按钮」比不显示更让人困惑。 */}
-              {resolved && (
-                <ActionButton size="S" onPress={() => void copy(resolved.username, "用户名")}>
-                  复制用户名
-                </ActionButton>
-              )}
-              {resolved?.password && (
-                <ActionButton size="S" onPress={() => void copy(resolved.password, "密码")}>
-                  复制密码
-                </ActionButton>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </Content>
-        {/* `align="end"`:内容整列左对齐,底部按钮若居中会让重心歪到中间(2026-09-24 用户指出) */}
+        {/* `align="end"`:内容整列左对齐,底部按钮若居中会让重心歪到中间 */}
         <ButtonGroup align="end">
           <Button variant="secondary" onPress={onDismiss}>
             取消

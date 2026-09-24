@@ -305,10 +305,9 @@
     },
     {
       "id": "ticket-info",
-      "note": "票据明细（日程表上的张数 / 座位 / 账号覆盖）+ 本地专属的 BIFF 票务账号表；「账号与密码不上云、不进导出备份」是红线，由 ticket-info.spec.ts 的阴性对照守着",
+      "note": "票据明细（日程表上的座位表 = 票数；`biff.ticketinfo.v2`，含 v1 一次性迁移）；「票数只能是座位行数的派生值」与「不留任何账号 / 密码键」两条不变量由 ticket-info.spec.ts 守着",
       "paths": [
         "apps/web/src/ticket-info.ts",
-        "apps/web/src/ticket-accounts.ts",
         "apps/web/src/components/TicketEditDialog.tsx",
         "apps/web/src/components/ticket-info.css",
         "apps/web/src/types.ts"

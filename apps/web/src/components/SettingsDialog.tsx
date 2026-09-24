@@ -11,7 +11,6 @@ import {
   NumberField,
   Picker,
   PickerItem,
-  TextField,
   ToastQueue,
 } from "./spectrum";
 import {
@@ -20,141 +19,7 @@ import {
   setSettings,
   store,
 } from "../state";
-import {
-  accountLabelOf,
-  newAccountId,
-  peekTicketAccounts,
-  setTicketAccounts,
-} from "../ticket-accounts";
-import type { Settings, ThemePref, TicketAccount, TicketAccountsFile } from "../types";
-import "./ticket-info.css";
-
-/** 「默认账号」下拉里代表「不指定」的那一项 —— 与 `TicketEditDialog` 里那个哨兵**故意不同**:
- *  那个是「这一场跟随默认」,这个是「根本没有默认」。两处语义不同,别共用一个常量。 */
-const NO_DEFAULT = "__none__";
-
-/** 请求打开设置弹层(2026-09-24,`PLAN-20260924141442` 修订 2)。
- *
- *  ★ 为什么走 `window` 事件而不是 Context:设置弹层的**宿主在 `App`**(它按 `settingsSession`
- *    重挂载整只弹层),而需要打开它的却是深处的另一个弹层(`TicketEditDialog` 里那句
- *    「去设置添加」)。为这一件事从 App 往下一路透传回调,链路上每一层都要多一个无关的 prop;
- *    事件则与仓库既有的 `iffday:workspace-change` 同手法,零 prop 污染。
- *  ⚠ 事件名只有这一处定义,`App.tsx` 从本模块 import —— 别在两处各写一份字符串字面量。 */
-export const OPEN_SETTINGS_EVENT = "biff:open-settings";
-
-export function openSettingsDialog(): void {
-  window.dispatchEvent(new Event(OPEN_SETTINGS_EVENT));
-}
-
-/** 账号表的**深拷贝** —— `peekTicketAccounts()` 交回的是模块级活对象,
- *  弹层里就地改它等于「取消也生效」。 */
-function cloneAccounts(file: TicketAccountsFile): TicketAccountsFile {
-  return { accounts: file.accounts.map((account) => ({ ...account })), defaultId: file.defaultId };
-}
-
-/** 「BIFF 票务账号」区块(2026-09-24,`PLAN-20260924141442`)。
- *
- *  ⚠ 它**不是** `Settings` 的一部分,也不落 `biff.settings.v1` —— 账号 / 密码存在本地专属键里
- *    (`iffday.workspace.ticketaccounts.v1`,理由见 `ticket-accounts.ts` 文件头)。
- *    但走**同一个「保存设置」按钮**:与弹层里其它字段共享「草稿 → 保存」这一套,取消即丢弃,
- *    否则这一个弹层里会同时存在「改了就立刻生效」和「要按保存」两套规则。
- *  ⚠ 「恢复默认设置」**刻意不动账号**:那是用户录入的数据,不是偏好 —— 一次手滑不该把密码抹掉。 */
-function TicketAccountsSection({
-  file,
-  onChange,
-}: {
-  file: TicketAccountsFile;
-  onChange: (next: TicketAccountsFile) => void;
-}) {
-  const patch = (id: string, fields: Partial<TicketAccount>) =>
-    onChange({
-      ...file,
-      accounts: file.accounts.map((account) =>
-        account.id === id ? { ...account, ...fields } : account,
-      ),
-    });
-  return (
-    <section className="ticket-accounts" aria-label="BIFF 票务账号">
-      <h2>BIFF 票务账号</h2>
-      <p className="muted">
-        在「我的行程 → 日程表」上给每一场标注「这张票在哪个账号」，并可一键复制凭据去官网登录。
-        ⚠ 密码只保存在这台设备上（不进账号同步、也不会被导出到备份文件）；公用设备建议把密码留空。
-      </p>
-      {file.accounts.length > 0 && (
-        <ul className="ticket-account-list">
-          {file.accounts.map((account) => (
-            <li className="ticket-account-item" key={account.id}>
-              <div className="ticket-account-head">
-                <strong>{accountLabelOf(account)}</strong>
-                <ActionButton
-                  aria-label={`删除账号 ${accountLabelOf(account)}`}
-                  onPress={() =>
-                    onChange({
-                      accounts: file.accounts.filter((item) => item.id !== account.id),
-                      // 删掉的正好是默认账号 → 默认跟着清掉,别留一个指向空气的 id
-                      defaultId: file.defaultId === account.id ? null : file.defaultId,
-                    })
-                  }
-                >
-                  删除
-                </ActionButton>
-              </div>
-              <div className="ticket-account-fields">
-                <TextField
-                  label="名称"
-                  placeholder="如 主号"
-                  value={account.label}
-                  onChange={(label) => patch(account.id, { label })}
-                />
-                <TextField
-                  label="用户名（必填）"
-                  placeholder="如 me@example.com"
-                  value={account.username}
-                  onChange={(username) => patch(account.id, { username })}
-                />
-                <TextField
-                  label="密码（留空 = 不保存）"
-                  type="password"
-                  value={account.password}
-                  onChange={(password) => patch(account.id, { password })}
-                />
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      <ActionButton
-        onPress={() =>
-          onChange({
-            ...file,
-            accounts: [
-              ...file.accounts,
-              { id: newAccountId(), label: "", username: "", password: "" },
-            ],
-          })
-        }
-      >
-        添加账号
-      </ActionButton>
-      {file.accounts.length > 0 && (
-        <Picker
-          label="默认账号（票里没单独指定时用它）"
-          value={file.defaultId ?? NO_DEFAULT}
-          onChange={(value) =>
-            onChange({ ...file, defaultId: String(value) === NO_DEFAULT ? null : String(value) })
-          }
-        >
-          <PickerItem id={NO_DEFAULT}>不指定</PickerItem>
-          {file.accounts.map((account) => (
-            <PickerItem id={account.id} key={account.id}>
-              {accountLabelOf(account)}
-            </PickerItem>
-          ))}
-        </Picker>
-      )}
-    </section>
-  );
-}
+import type { Settings, ThemePref } from "../types";
 
 function ClearDialog({ all }: { all: boolean }) {
   // ⚠ **必须**只在打开时挂载 `Dialog`(与 `TransferAddDialog` 同一手法):
@@ -212,9 +77,6 @@ export function SettingsDialog() {
     gvTalkMin: store.settings.gvTalkMin,
     showPni: store.settings.showPni,
     theme: store.settings.theme ?? "system",
-    // 票务账号(**不是** `Settings` 的一部分,见 `TicketAccountsSection`)。
-    // ⚠ 必须深拷贝:直接存 `peekTicketAccounts()` 那个活对象的话,「取消」就形同虚设。
-    accounts: cloneAccounts(peekTicketAccounts()),
   }));
   const [themeChanged, setThemeChanged] = useState(false);
   return (
@@ -296,10 +158,6 @@ export function SettingsDialog() {
               >
                 恢复默认设置
               </ActionButton>
-              <TicketAccountsSection
-                file={draft.accounts}
-                onChange={(accounts) => setDraft((v) => ({ ...v, accounts }))}
-              />
               <section className="danger-zone">
                 <h2>清空数据</h2>
                 <p className="muted">建议先在「导出与分享」中备份。</p>
@@ -316,15 +174,6 @@ export function SettingsDialog() {
             </Button>
             <Button
               onPress={() => {
-                // 账号必填校验:没有用户名的账号在**读取归一**里会被丢掉
-                // (`ticket-accounts.ts::normalizeAccountsFile`)—— 那会表现成「保存后账号凭空消失」。
-                // 宁可在这儿明确挡下来,也不静默丢用户刚录入的东西。
-                if (draft.accounts.accounts.some((account) => !account.username.trim())) {
-                  ToastQueue.negative("每个票务账号都要填用户名（密码可以留空）", {
-                    timeout: 5000,
-                  });
-                  return;
-                }
                 const patch: Partial<Settings> = {
                   alarmMin: Number.isFinite(draft.alarmMin)
                     ? Math.max(0, draft.alarmMin)
@@ -340,8 +189,6 @@ export function SettingsDialog() {
                 };
                 if (themeChanged) patch.theme = draft.theme;
                 setSettings(patch);
-                // 账号落的是**另一只键**(`iffday.workspace.ticketaccounts.v1`,本地专属)
-                setTicketAccounts(draft.accounts);
                 ToastQueue.positive("设置已保存", { timeout: 5000 });
                 close();
               }}
