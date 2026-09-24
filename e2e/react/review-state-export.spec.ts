@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { keyOf, legacyRead, openExport, ready, seed, storage } from "./helpers";
+import { agendaCards, keyOf, legacyRead, openExport, ready, seed, storage } from "./helpers";
 
 test("restored stale ranks do not become the first choice of a later ICS import", async ({ page }) => {
   const staleRanks = '{"008":2,"033":1}';
@@ -16,6 +16,11 @@ test("restored stale ranks do not become the first choice of a later ICS import"
   ].join("\n"));
   await dialog.getByRole("button", { name: "合并到当前行程", exact: true }).click();
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+  // ⚠ 必须先切到**卡片**视图:行程页自 2026-09-21 起默认是「日程表」(`PLAN-20260921223658`),
+  //   而顺位卡(`data-rank-code`)只存在于卡片视图 —— 不切的话这条断言找不到元素,
+  //   报出来的是「超时」而不是「顺位不对」,看上去像功能坏了。
+  //   (`workflows` / `parity-agenda` / `desktop` 三处早就带着这一步,只有这里漏了。)
+  await agendaCards(page);
   await expect(page.locator("[data-rank-code]").first()).toHaveAttribute("data-rank-code", "008");
   // ⚠ 这里原先还有一步「保存当前方案 → 断言落盘的方案就是 008」。方案已于 2026-09-22 整体下线
   //   (`PLAN-20260922105228`),而**本用例要守的东西没变**:陈旧顺位在重新水合时被剪掉、
