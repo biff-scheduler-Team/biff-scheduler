@@ -103,6 +103,18 @@
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+/* 持票信息(姓名 / 预约号 / 账号):三个窄输入框竖排。
+   ⚠ 竖排而不是两列 —— 预约号有 17 位,分两列会让它一格装不下、被 `TextField` 横向滚动吃掉。 */
+.ticket-holder {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+.ticket-holder > * {
+  width: 100%;
+}
 .ticket-hint {
   margin: 0;
   font-size: 12px;

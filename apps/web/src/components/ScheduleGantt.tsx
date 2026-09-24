@@ -666,7 +666,7 @@ export function ScheduleGantt({
                             className="gantt-ticket-edit"
                             data-has-info={ticketInfoOf(s.code) ? "true" : undefined}
                             aria-label={`编辑场次 ${s.code} 的票务`}
-                            title="编辑这一场的票数 / 座位 / 账号（也可以直接右键格子）"
+                            title="编辑这一场的票数 / 座位 / 姓名 / 预约号（也可以直接右键格子）"
                             onClick={() => setPendingTicket(s)}
                           >
                             <svg

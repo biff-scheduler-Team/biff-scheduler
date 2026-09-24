@@ -20,7 +20,8 @@ import { topPlanCodes } from "../app/agenda-model";
 import { buildIcs, type PickRow } from "../ics";
 import { buildShareText } from "../share";
 import { parseBackupText, parseIcsCodes, restore, snapshot } from "../backup";
-import { mergeScreenings, replaceScreenings, slotOf, store } from "../state";
+import { looksLikeTicketImport, parseTicketImport } from "../ticket-import";
+import { applyTicketImport, mergeScreenings, replaceScreenings, slotOf, store } from "../state";
 import { talkOnOf } from "../gv";
 import { todayIsoLocal } from "../util";
 import { copyText } from "../clipboard";
@@ -59,6 +60,10 @@ function ImportData() {
   const [error, setError] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const ics = /BEGIN:VCALENDAR/i.test(text);
+  // 三种内容共用一个框(备份 / .ics / 票务),**先按顶层形状分流再各报各的错** ——
+  // 把一份票务 JSON 当备份解析,报出来的会是「没找到任何 biff.* 数据」,用户看不懂
+  // (判据与理由见 `ticket-import.ts::looksLikeTicketImport`)。
+  const ticketParsed = !ics && looksLikeTicketImport(text) ? parseTicketImport(text) : null;
   const parsed = ics ? parseIcsCodes(text) : parseBackupText(text);
   const validCodes =
     parsed.ok && "codes" in parsed
@@ -68,6 +73,10 @@ function ImportData() {
     parsed.ok && "codes" in parsed
       ? parsed.codes.length - validCodes.length
       : 0;
+  // 票务导入:只留片单里有的场次(不在当前届排期里的 code 没有场次可挂,与 .ics 同一分工)。
+  const ticketRows = ticketParsed?.ok ? ticketParsed.rows.filter((r) => cat.byCode.has(r.code)) : [];
+  const unknownTickets = ticketParsed?.ok ? ticketParsed.rows.length - ticketRows.length : 0;
+  const ticketSeats = ticketRows.reduce((n, r) => n + (r.seats?.length ?? 0), 0);
   const importText = (value: string) => {
     if (value === text) return;
     setText(value);
@@ -95,13 +104,27 @@ function ImportData() {
       );
     }
   };
+  /** 导入票务:并行程 → 写明细 → 标「已抢到」。
+   *  ⚠ **顺序不能反**:`rebuildIndex()` 会把不在行程里的票务明细当脏数据 prune 掉
+   *    (`state.ts::staleTicketCodes`)—— 先写明细再并行程,刚导进去的票会在下一次 rebuild 时凭空消失。
+   *  ⚠ 这里不做 try/catch 的存储写入分支:明细/三态各自内部已吞掉配额异常
+   *    (`saveTicketInfo` / `saveTickets`),不会像 `restore` 那样抛出去。 */
+  const applyTickets = () => {
+    if (!ticketParsed?.ok) return;
+    mergeScreenings(ticketRows.map((r) => r.code), keyOf);
+    applyTicketImport(ticketRows, true);
+    ToastQueue.positive(`已导入 ${ticketRows.length} 笔票务（${ticketSeats} 张）`, {
+      timeout: 5000,
+    });
+    importText("");
+  };
   return (
     <section className="import-data">
-      <h2>导入备份或日历</h2>
+      <h2>导入备份 / 日历 / 票务</h2>
       <label className="file-label">
         选择 JSON 或 ICS 文件
         <input
-          aria-label="选择备份或日历文件"
+          aria-label="选择备份、日历或票务文件"
           type="file"
           accept=".json,.ics,application/json,text/calendar"
           onChange={(e) => {
@@ -115,13 +138,39 @@ function ImportData() {
           }}
         />
       </label>
-      <TextArea label="或粘贴备份内容" value={text} onChange={importText} />
-      {text && !parsed.ok && (
+      <TextArea label="或粘贴备份 / 日历 / 票务内容" value={text} onChange={importText} />
+      {/* ⚠ 票务分支存在时**不再报**备份通道的错:同一段文本被两条通道各判一次,
+          备份那条必然失败(没有 biff.* 键),报出来只会盖掉真正对症的提示。 */}
+      {text && !ticketParsed && !parsed.ok && (
         <p role="alert" className="error-text">
           {parsed.error.replaceAll(" —— ", "，")}
         </p>
       )}
-      {parsed.ok && (
+      {ticketParsed && (
+        <div className="import-preview">
+          {ticketParsed.ok ? (
+            <>
+              <p>
+                识别到 {ticketRows.length} 笔票务、{ticketSeats} 张票
+                {unknownTickets ? `；另有 ${unknownTickets} 笔的场次不在当前排期，会跳过` : ""}。
+              </p>
+              <p className="muted">
+                这些场次会一并加进行程，并标为「已抢到」；同一场已有的票务信息会被这份文件覆盖。
+              </p>
+              <div className="inline-actions">
+                <Button isDisabled={!ticketRows.length} onPress={applyTickets}>
+                  导入票务
+                </Button>
+              </div>
+            </>
+          ) : (
+            <p role="alert" className="error-text">
+              {ticketParsed.error.replaceAll(" —— ", "，")}
+            </p>
+          )}
+        </div>
+      )}
+      {!ticketParsed && parsed.ok && (
         <div className="import-preview">
           <p>
             {"data" in parsed

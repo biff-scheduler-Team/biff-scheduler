@@ -20,6 +20,7 @@ import {normalizeTicketRecord, staleTicketCodes} from "./tickets";
 //   档位在非冲突场景里只剩排序噪声,两套排序机制并存只会互相打架。
 
 import type { Mapping, PickEntry, PickSlot, Settings, TicketInfo, TicketRecord, TicketState, TicketVia } from "./types";
+import type { TicketImportRow } from "./ticket-import";
 import { loadDoubanMappings } from "./data";
 
 const LS_PICKS = "biff.picks.v2";
@@ -29,8 +30,9 @@ const LS_GV_TALK_MIN = "biff.gvtalkmin.v1"; // GV 映后谈单场时长覆写(co
 const LS_AGENDA_FOLD = "biff.agendafold.v1"; // 「我的行程」按日收起:已收起的日期集合(纯视图偏好,独立键)
 const LS_RANKS = "biff.ranks.v1"; // 抢票顺位:场次 code → 组内序号(1-based);独立键,与 gvtalk 同口径
 const LS_TICKETS = "biff.tickets.v1"; // 票务结果:场次 code → {state, via};独立键,与 ranks 同口径
-const LS_TICKET_INFO = "biff.ticketinfo.v2"; // 票据明细:场次 code → {seats};**座位行数即票数**(见 ticket-info.ts)
-const LS_TICKET_INFO_V1 = "biff.ticketinfo.v1"; // 旧结构(独立 count / accountId)—— **只作一次性迁移源,迁完即删**
+const LS_TICKET_INFO = "biff.ticketinfo.v3"; // 票据明细:场次 code → {seats, name?, bookingNo?, account?};**座位行数即票数**(见 ticket-info.ts)
+const LS_TICKET_INFO_V2 = "biff.ticketinfo.v2"; // 旧结构(只有 seats)—— **只作一次性迁移源,迁完即删**
+const LS_TICKET_INFO_V1 = "biff.ticketinfo.v1"; // 更旧结构(独立 count / accountId)—— 同为迁移源,迁完即删
 /** 旧版数据的 localStorage key —— 仅作一次性迁移源(迁移后即删) */
 const LS_PLAN_LEGACY = "biff.plan.v1";
 const LS_WISH_LEGACY = "biff.wish.v1";
@@ -193,14 +195,15 @@ export function clearTicket(code: string): void {
 }
 
 /* ---------- 票据明细(2026-09-24,PLAN-20260924141442) ----------
- * 场次 code → {seats}:**座位行数就是票数**,用户手填(「加一张座位 = 多一张票」)。
+ * 场次 code → {seats, name?, bookingNo?, account?}:**座位行数就是票数**,用户手填
+ * (「加一张座位 = 多一张票」);后三个是修订 5 为导入加的并列文本字段(姓名 / 预约号 / 账号名)。
  *
  * ⚠ 与上面的三态是**两份并列的场次级数据**,不是一个概念的两个半边 —— 为什么另起一只键而不是
  *   塞进 `biff.tickets.v1` 的值里,见 `types.ts::TicketInfo` 的注释(一句话:key 只增不改,
  *   且旧版本的 `normalizeTicketRecord` 会把多出来的字段静默丢掉)。
  * ⚠ **随账号云同步**:它落在 `biff.` 前缀下,会跟片单一起被同步上去(座位号与票务三态同性质)。
- *   代价写明:换设备能看见,但**也因此不许往里放任何凭据** —— 账号 / 密码方案已整体撤销
- *   (修订 3,理由见 `docs/CONVENTIONS.md`)。
+ *   代价写明:换设备能看见,但**也因此不许往里放任何凭据** —— 存的是账号**名**,不是密码
+ *   (账号 / 密码方案已整体撤销,修订 3,理由见 `docs/CONVENTIONS.md`)。
  * ⚠ 场次被移出行程后明细同样失去意义 → 由 `rebuildIndex()` 与三态一起 prune。 */
 export const ticketInfo = new Map<string, TicketInfo>();
 
@@ -214,18 +217,43 @@ export function loadTicketInfo(): void {
     }
     return;
   }
+  // v3 不在 → 按新旧顺序依次试迁移源。**先 v2 后 v1**:v2 比 v1 新,它一旦存在就是权威。
+  if (migrateTicketInfoFromV2()) return;
   migrateTicketInfoFromV1();
 }
 
-/** v1 → v2 的一次性迁移(2026-09-24,`PLAN-20260924141442` 修订 3,按 AGENTS §5「改结构必须
- *  新 key + 一次性迁移 + 删旧 key」)。
+/** v2 → v3 的一次性迁移(2026-09-24,修订 5,按 AGENTS §5「改结构必须新 key + 一次性迁移 +
+ *  删旧 key」)。
+ *
+ *  ⚠ 这一步**没有**对应的 `ticket-info.ts` 纯函数,而且是刻意的:v3 相对 v2 只多了三个
+ *    **可选**字段,旧记录读进来天然合法 —— 迁移就是「换只键名,值原样过一遍同一个归一」
+ *    (`normalizeTicketInfo`)。为它造一个恒等函数只会多一处要同步的判据。
+ *  ⚠ 迁完立刻删旧键:留着它,下次载入会**再迁一遍**,而且云端那份 v2 记录也永远不会按
+ *    「缺席即删除」的合并语义收敛掉(`sync-data.ts`)。
+ *  ⚠ 返回「是否处理了 v2」:即便 v2 里一条合法记录都没有,只要那只键存在就算处理过 ——
+ *    v2 是权威,不该再回头去读更旧的 v1(否则会把已经被用户删掉的旧数据复活)。 */
+function migrateTicketInfoFromV2(): boolean {
+  const legacy = readJson<Record<string, unknown>>(LS_TICKET_INFO_V2);
+  if (!legacy || typeof legacy !== "object") return false;
+  let migrated = false;
+  for (const [code, value] of Object.entries(legacy)) {
+    if (!code) continue;
+    const record = normalizeTicketInfo(value);
+    if (!record) continue;
+    ticketInfo.set(code, record);
+    migrated = true;
+  }
+  removeWorkspaceItem(LS_TICKET_INFO_V2);
+  if (migrated) saveTicketInfo();
+  return true;
+}
+
+/** v1 → v3 的一次性迁移(2026-09-24,`PLAN-20260924141442` 修订 3)。
  *
  *  v1 把「几张」放在独立字段 `count` 里,而修订 3 起**行数即票数** —— 迁移就是把旧的 `count`
  *  换算成「补齐到那么长的座位行」;v1 里的 `accountId` 属于已撤销的账号方案,直接丢弃(不换算:
  *  凭据本身就不该留)。
- *  ⚠ 迁完立刻删旧键:留着它,下次载入会**再迁一遍**,而且云端那份 v1 记录也永远不会按
- *    「缺席即删除」的合并语义收敛掉(`sync-data.ts`)。
- *  ⚠ 只有本机**没有** v2 时才走这条路 —— v2 一旦存在就是权威,绝不被 v1 覆盖。 */
+ *  ⚠ 只有本机**没有** v3、也没有 v2 时才走这条路。 */
 function migrateTicketInfoFromV1(): void {
   const legacy = readJson<Record<string, unknown>>(LS_TICKET_INFO_V1);
   if (!legacy || typeof legacy !== "object") return;
@@ -273,6 +301,43 @@ export function clearTicketInfo(code: string): void {
   if (!ticketInfo.delete(code)) return;
   saveTicketInfo();
   scheduleNotify("picks");
+}
+
+/** 批量导入票务(2026-09-24,修订 5):一次写 N 场明细(按需同时标「已抢到」),
+ *  落盘与通知**各只做一次**(逐条走 `setTicketInfo` 会写 17 次硬盘、发 17 次通知)。
+ *
+ *  ⚠ 调用方**必须先**把这些场次并进行程(`mergeScreenings`):`rebuildIndex()` 会把不在行程里的
+ *    明细当脏数据 prune 掉 —— 顺序反了,明细会在下一次 rebuild 时凭空消失。
+ *  ⚠ 不做「已存在就不动」的判重:导入的语义是**以文件为准覆盖这一场的票务信息**。
+ *  ⚠ 标三态只在**当前不是 `got`** 时写,且保留既有 `via` —— 标状态不该顺手清掉「转票」标记
+ *    (与 `setTicket` 同一口径)。
+ *  ⚠ 返回实际写入的场次数,供调用方给提示(调用方已按片单过滤过 code,这里只认结构)。 */
+export function applyTicketImport(rows: readonly TicketImportRow[], markGot: boolean): number {
+  let written = 0;
+  let marked = false;
+  for (const row of rows) {
+    const record = normalizeTicketInfo(row);
+    if (!record) continue;
+    ticketInfo.set(row.code, record);
+    written++;
+    if (!markGot) continue;
+    const prev = tickets.get(row.code);
+    if (prev?.state === "got") continue;
+    tickets.set(
+      row.code,
+      prev?.via === "transfer" ? { state: "got", via: "transfer" } : { state: "got" },
+    );
+    marked = true;
+  }
+  if (!written) return 0;
+  saveTicketInfo();
+  if (marked) {
+    saveTickets();
+    ticketsTouched = true;
+    pingTickets();
+  }
+  scheduleNotify("picks");
+  return written;
 }
 
 /** GV 映后谈单场覆写:code → 参加(true)/放弃(false);无条目 = 跟随全局默认 */

@@ -193,7 +193,7 @@ test("JSON backup exports unknown keys and restores raw values without touching 
     }),
   };
   await dialog
-    .getByRole("textbox", { name: "或粘贴备份内容", exact: true })
+    .getByRole("textbox", { name: "或粘贴备份 / 日历 / 票务内容", exact: true })
     .fill(JSON.stringify({ ...data, data: replacement }));
   await dialog
     .getByRole("button", { name: "准备恢复备份", exact: true })
