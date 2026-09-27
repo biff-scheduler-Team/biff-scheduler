@@ -126,6 +126,15 @@ export function crowdStickers(filmKey: string, counts: StickerCounts | undefined
     const id = `${filmKey}#crowd-${i}`;
     out.push({ id, type: i < reds ? "red" : "black", ...spotOf(id) });
   }
+  // 叠放顺序:**按落点纵坐标升序**(2026-09-28,PLAN-20260928003736)。
+  // 上面那个循环把红票**整段**排在黑票之前,而 canvas / 分享图都是画家算法(后画的盖住先画的)
+  // → 黑票永远压住红票(用户 2026-09-28 报的「黑色总是压住红色」)。三处消费的都是这一份数组
+  // (卡片画布 / 「看全部」弹层 / 分享图),改这里三处一起修好。
+  // ⚠ 按 y 升序 = 上面(远)的先画、下面(近)的后画,于是近的压住远的 —— 读起来像「撒在倾斜桌面上
+  //   的一堆纸片」。红黑在位置上本就哈希均匀分布,排序后两色自然交错,不再有谁被系统性压制。
+  // ⚠ 二级键 `hashOf(id)` 只为打破「恰好同一 posY」的并列,保证**完全确定性**:
+  //   同一份票数每次渲染顺序一致,不会刷新一下就换个压法。
+  out.sort((a, b) => a.posY - b.posY || hashOf(a.id) - hashOf(b.id));
   return out;
 }
 

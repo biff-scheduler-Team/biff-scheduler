@@ -345,6 +345,35 @@ describe("别人的贴纸:票数几枚就画几枚", () => {
   });
 });
 
+// 叠放顺序(2026-09-28,PLAN-20260928003736)。
+// 为什么单测它:用户报「黑色的贴纸总是会压住红色的贴纸」—— 根因是生成时**红票整段排在黑票之前**,
+// 而 canvas 与分享图都是画家算法(后画的盖住先画的),于是黑票永远在最上层。三处消费同一份数组
+// (卡片画布 / 「看全部」弹层 / 分享图),所以这是**一处实现、三处中招**。
+// ⚠ 口径是「按落点纵坐标」(用户 2026-09-28 拍板),**不是**「按贴票时间」:
+//   服务端只回聚合计数(没有时间),真按时间排要回 O(票数) 个时间戳,与量级目标冲突(见 PLAN)。
+describe("别人的贴纸:叠放顺序按落点纵坐标", () => {
+  it("纵坐标单调不减(远的先画、近的后画)", () => {
+    const dots = crowdStickers("a", { total: 40, red: 20, black: 20 });
+    const ys = dots.map((d) => d.posY);
+    expect(ys).toEqual([...ys].sort((x, y) => x - y));
+  });
+
+  it("红黑交错,不再「先全红后全黑」—— 旧实现下这条必红", () => {
+    const dots = crowdStickers("a", { total: 40, red: 20, black: 20 });
+    const firstBlack = dots.findIndex((d) => d.type === "black");
+    const lastRed = dots.map((d) => d.type).lastIndexOf("red");
+    // 旧实现:红占 0..19、黑占 20..39 → firstBlack(20) > lastRed(19),断言失败
+    expect(firstBlack).toBeLessThan(lastRed);
+  });
+
+  it("顺序确定性:同一份票数两次调用的 id 序列完全一致(不靠随机)", () => {
+    const input = { total: 30, red: 10, black: 20 };
+    expect(crowdStickers("a", input).map((d) => d.id)).toEqual(
+      crowdStickers("a", input).map((d) => d.id),
+    );
+  });
+});
+
 // 落点的**分布**(2026-09-22,PLAN-20260922145815 修订 2)。
 // 为什么单测它:落点直接拿 FNV 哈希的高位算,而同一部片的 id 共享前缀(`cat:f001#crowd-`),
 // 高位对末尾那几个字符几乎不敏感 —— 100 枚会挤成一条横带,个别片甚至全落在上面 40% 里。
