@@ -15,6 +15,7 @@ const base: DrawKey = {
   width: 600,
   height: 352,
   counts: "5,3,2",
+  epoch: 0,
 };
 
 describe("needsRedraw:该不该重画画布", () => {
@@ -46,5 +47,10 @@ describe("needsRedraw:该不该重画画布", () => {
   it("backing store 尺寸变了(拉伸窗口 / 断点切换)→ 重画", () => {
     expect(needsRedraw(base, { ...base, width: 601 })).toBe(true);
     expect(needsRedraw(base, { ...base, height: 353 })).toBe(true);
+  });
+
+  it("贴纸外观版本变了(切主题)→ 重画,否则群点停在旧配色", () => {
+    // 这是 2026-09-28 补的一条:尺寸与票数一个都没动,「颜色要重画」只由 `epoch` 表达
+    expect(needsRedraw(base, { ...base, epoch: 1 })).toBe(true);
   });
 });

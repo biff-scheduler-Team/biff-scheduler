@@ -273,7 +273,9 @@ test("「别人的贴纸」与我贴的那枚同尺寸,只差常驻纸白边与�
 
   const mine = card.locator(".rb-dot");
   await expect(mine).toHaveCount(1);
-  await expect(mine.first()).toHaveCSS("width", "26px");
+  // 尺寸口径同源两处:CSS 的 `.rb-dot` 与 canvas sprite 的 `sticker-sprite.ts::STICKER_SIZE`
+  // (2026-09-28 由 26 缩到 20,PLAN-20260928003736;单测守着 sprite 那一侧,这里守 DOM 这一侧)
+  await expect(mine.first()).toHaveCSS("width", "20px");
   await expect(mine.first()).toHaveCSS("cursor", "grab");
 
   // **常驻纸白边**(2026-09-23):我贴的那一枚独有,群点那边(canvas / sprite)不许有这一层 ——

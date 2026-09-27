@@ -20,8 +20,9 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { countsSignature, crowdStickers, tiltOf, type StickerCounts } from "../redblack";
+import { observeResize } from "../shared-resize-observer";
 import { needsRedraw, type DrawKey } from "../sticker-canvas-guard";
-import { STICKER_SIZE, stickerSprite } from "../sticker-sprite";
+import { onSpriteInvalidate, spriteEpoch, STICKER_SIZE, stickerSprite } from "../sticker-sprite";
 import { useDpr } from "../use-dpr";
 
 interface StickerCanvasProps {
@@ -41,17 +42,23 @@ export function StickerCanvas({ filmKey, counts, inView }: StickerCanvasProps) {
   // 交替,那会让浏览器反复强制布局
   const [box, setBox] = useState({ width: 0, height: 0 });
   const dpr = useDpr();
+  // 贴纸**外观**版本(token 变了就 +1,见 `sticker-sprite.ts::invalidate`)。
+  // ⚠ 重绘守护只比尺寸与票数,看不见配色:不订阅它、不把它并进 `DrawKey`,配色一变画布就不会重画
+  //   (`--rb-red` / `--rb-black` 目前没有暗色覆盖,所以这条今天还看不出差别 —— 它是为那次覆盖准备的)。
+  const [epoch, setEpoch] = useState(() => spriteEpoch());
+
+  useEffect(() => onSpriteInvalidate(() => setEpoch(spriteEpoch())), []);
 
   useEffect(() => {
     const node = ref.current;
-    if (!node || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setBox({ width: entry.contentRect.width, height: entry.contentRect.height });
-      }
+    if (!node) return;
+    // 共享单例(见 `shared-resize-observer.ts`):近 300 张卡各建一个 ResizeObserver 纯属浪费。
+    // ⚠ 宽高**没变就不 setState**:滚动与布局微调会让 ResizeObserver 反复回调,
+    //   每次都塞一个新对象进去,等于让这张卡白 re-render 一遍(绘制那头有 `needsRedraw` 守着,
+    //   但那已经是 re-render 之后的事了)。
+    return observeResize(node, (width, height) => {
+      setBox((prev) => (prev.width === width && prev.height === height ? prev : { width, height }));
     });
-    observer.observe(node);
-    return () => observer.disconnect();
   }, []);
 
   // 画在 layout effect 里:paint 之前画完,不会看到「先空白再出贴纸」的一闪
@@ -71,15 +78,18 @@ export function StickerCanvas({ filmKey, counts, inView }: StickerCanvasProps) {
       width: Math.max(1, Math.round(box.width * dpr)),
       height: Math.max(1, Math.round(box.height * dpr)),
       counts: countsSignature(counts),
+      epoch,
     };
     if (!needsRedraw(lastRef.current, key)) return;
-    lastRef.current = paint(canvas, filmKey, counts, box.width, box.height, dpr);
-  }, [inView, box, dpr, filmKey, counts]);
+    paint(canvas, filmKey, counts, box.width, box.height, dpr);
+    // 记下「这次画下去时用的参数」:尺寸在 `paint` 里走的是同一条式子,`key` 就是实际写进画布的那一份
+    lastRef.current = key;
+  }, [inView, box, dpr, filmKey, counts, epoch]);
 
   return <canvas ref={ref} className="rb-ink" aria-hidden="true" />;
 }
 
-/** 真的画一遍,返回这次用的守护键(与实际写进画布的尺寸一致)。 */
+/** 真的画一遍。⚠ 不再返回守护键 —— 尺寸用的是与 `DrawKey` 同一条式子,调用方拿 `key` 记账即可。 */
 function paint(
   canvas: HTMLCanvasElement,
   filmKey: string,
@@ -87,7 +97,7 @@ function paint(
   cssWidth: number,
   cssHeight: number,
   dpr: number,
-): DrawKey {
+): void {
   const width = Math.max(1, Math.round(cssWidth * dpr));
   const height = Math.max(1, Math.round(cssHeight * dpr));
   // ⚠ 写 width/height 会**清空画布并重置 transform**,所以尺寸与变换必须一起设;
@@ -95,7 +105,7 @@ function paint(
   if (canvas.width !== width) canvas.width = width;
   if (canvas.height !== height) canvas.height = height;
   const ctx = canvas.getContext("2d");
-  if (!ctx) return { filmKey, dpr, width, height, counts: countsSignature(counts) };
+  if (!ctx) return;
 
   // 幂等:用 setTransform 而不是累加的 scale()
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -116,5 +126,4 @@ function paint(
     );
     ctx.restore();
   }
-  return { filmKey, dpr, width, height, counts: countsSignature(counts) };
 }

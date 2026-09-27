@@ -21,6 +21,9 @@ export interface DrawKey {
   height: number;
   /** 票数签名(`redblack.ts::countsSignature`) */
   counts: string;
+  /** 贴纸**外观**版本(`sticker-sprite.ts::spriteEpoch`) —— `--rb-red` / `--rb-black` 一变就 +1。
+   *  ⚠ 尺寸与票数一个都没动时,「配色变了要重画」这件事只由它表达。 */
+  epoch: number;
 }
 
 /** 是否需要重画:没有上一次(首次 / 刚从视口外回来)或任一参数变了 → 要。 */
@@ -31,6 +34,7 @@ export function needsRedraw(prev: DrawKey | null, next: DrawKey): boolean {
     prev.dpr !== next.dpr ||
     prev.width !== next.width ||
     prev.height !== next.height ||
-    prev.counts !== next.counts
+    prev.counts !== next.counts ||
+    prev.epoch !== next.epoch
   );
 }

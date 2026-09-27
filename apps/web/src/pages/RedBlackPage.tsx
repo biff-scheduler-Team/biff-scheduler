@@ -16,7 +16,9 @@
 //   监听器在 pointerdown 里**同步挂上**、`pointermove` 合并到一帧一次(见 `beginDrag`)。
 
 import {
+  lazy,
   memo,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -27,9 +29,7 @@ import {
 } from "react";
 import { ToastQueue } from "../components/spectrum";
 import { QuerySearchField } from "../components/QuerySearchField";
-import { RedBlackShareDialog } from "../components/RedBlackShareDialog";
 import { StickerCanvas } from "../components/StickerCanvas";
-import { StickerZoomDialog } from "../components/StickerZoomDialog";
 import type { FilmNode } from "../app/model";
 import { searchFilm } from "../app/model";
 import { useQuery } from "../app/hooks";
@@ -72,6 +72,21 @@ import {
 } from "../film-votes";
 import { useInView } from "../use-in-view";
 import "./redblack-parity.css";
+
+/** 两个弹层**按需加载**(2026-09-28,PLAN-20260928003736)。
+ *
+ * 为什么:`RedBlackShareDialog` 一条链上带着 `redblack-poster.ts`(约 9KB gz)+ 自己(约 3KB gz),
+ * 而进红黑榜的人多数不会点「生成分享图」—— 同步 import 等于让**每个人**先下载它再进页面;
+ * 「放大看全部」同理(约 2.3KB gz)。两者都是**点了才挂**(见 JSX 里的 `shareOpen && …` / `zoomOpen && …`),
+ * 所以懒加载只是把那次网络往返挪到点击那一刻;再点第二次时模块已在缓存里,零成本。
+ * ⚠ 两个组件都是**具名导出**,而 `lazy` 要的是 `{ default }` —— 所以这里包一层,不动组件文件。
+ * ⚠ **不给 loading 占位**:同源、体积小,加载是毫秒级;给个 spinner 反而闪一下更难读。 */
+const RedBlackShareDialog = lazy(() =>
+  import("../components/RedBlackShareDialog").then((m) => ({ default: m.RedBlackShareDialog })),
+);
+const StickerZoomDialog = lazy(() =>
+  import("../components/StickerZoomDialog").then((m) => ({ default: m.StickerZoomDialog })),
+);
 
 const SORTS: Array<[SortMode, string]> = [
   ["total", "总数"],
@@ -772,18 +787,21 @@ export function RedBlackPage() {
       )}
 
       {shareOpen && (
-        <RedBlackShareDialog
-          films={films}
-          /* ⚠ 传**修正过**的那份(与卡片 / hero 同源):否则「我贴了一枚还没上报」时,
-             图上会把别人的票少画一枚,与卡片当场对不上。
-             ⚠ 给它的是 `reconciledCrowd`(全量)而不是 `filmCounts`(只有当前榜单那几部)——
-             搜索过滤后 `sorted` 会变小,而分享图要画的是**整份**影片库 */
-          crowd={reconciledCrowd}
-          board={board}
-          site={{ total: totals.total, red: totals.red, black: totals.black }}
-          mine={{ marked: totals.marked, placed: totals.placed, quota: totals.quota }}
-          onDismiss={() => setShareOpen(false)}
-        />
+        // ⚠ `Suspense` 写在条件**内部**:`shareOpen` 为假时连它都不挂,不多包一层没有内容的边界
+        <Suspense fallback={null}>
+          <RedBlackShareDialog
+            films={films}
+            /* ⚠ 传**修正过**的那份(与卡片 / hero 同源):否则「我贴了一枚还没上报」时,
+               图上会把别人的票少画一枚,与卡片当场对不上。
+               ⚠ 给它的是 `reconciledCrowd`(全量)而不是 `filmCounts`(只有当前榜单那几部)——
+               搜索过滤后 `sorted` 会变小,而分享图要画的是**整份**影片库 */
+            crowd={reconciledCrowd}
+            board={board}
+            site={{ total: totals.total, red: totals.red, black: totals.black }}
+            mine={{ marked: totals.marked, placed: totals.placed, quota: totals.quota }}
+            onDismiss={() => setShareOpen(false)}
+          />
+        </Suspense>
       )}
     </section>
   );
@@ -880,7 +898,9 @@ const RbCard = memo(function RbCard({
     >
       <div className="rb-card-info">
         {film.poster ? (
-          <img className="rb-poster" src={film.poster} loading="lazy" alt="" />
+          /* `decoding="async"`:解码挪到后台线程。榜单一次有上百张海报,同步解码会在主线程上
+             一顿一顿地抢滚动 —— 这个属性只影响解码时机,不改变任何布局或优先级 */
+          <img className="rb-poster" src={film.poster} loading="lazy" decoding="async" alt="" />
         ) : (
           <span className="rb-poster rb-poster--none" aria-hidden="true">
             {film.zh.slice(0, 1)}
@@ -990,12 +1010,14 @@ const RbCard = memo(function RbCard({
       {zoomOpen && (
         // ⚠ `mine` 必须传:弹层里我那一枚是**独立的只读 DOM 元素**(与卡片同一组成,见该组件),
         //   不传的话它只会以「别人的点」的身份出现,既没有那圈白边、也不是它的真实位置。
-        <StickerZoomDialog
-          film={film}
-          counts={all}
-          mine={myStickers[0]}
-          onDismiss={() => setZoomOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <StickerZoomDialog
+            film={film}
+            counts={all}
+            mine={myStickers[0]}
+            onDismiss={() => setZoomOpen(false)}
+          />
+        </Suspense>
       )}
     </article>
   );

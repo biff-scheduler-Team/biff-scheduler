@@ -7,7 +7,7 @@
  *
  * ⚠ 形状与质感必须与 `redblack-parity.css` 里的 `.rb-dot` **逐字对应**(用户 2026-09-22 选的是
  *   「预渲染 sprite,视觉几乎不变」):
- *   · 尺寸 26×26(`STICKER_SIZE`);
+ *   · 尺寸 20×20(`STICKER_SIZE`,2026-09-28 由 26 缩到 20);
  *   · 不规则圆片 —— `border-radius: 48% 52% 45% 55% / 52% 46% 54% 48%`(四角椭圆半径不同);
  *   · 两层外落影 + 一层内描边(`inset 0 0 0 1px rgb(255 255 255 / 18%)`);
  *   · 红 / 黑各一层斜向细条纹(115°,周期 3px)+ 一枚径面高光(圆心 34% / 28%)。
@@ -19,11 +19,17 @@ import type { StickerType } from "./redblack";
 // sprite / 分享图里的小贴纸)改一处要同步另外两处,详见 `sticker-shape.ts`。
 import { blobPath } from "./sticker-shape";
 
-/** 贴纸边长(CSS px)。⚠ 必须与 `.rb-dot` 的 `width` / `height` 一致 */
-export const STICKER_SIZE = 26;
+/** 贴纸边长(CSS px)。⚠ 必须与 `.rb-dot` 的 `width` / `height` 一致
+ *
+ * ⚠ 2026-09-28 由 26 缩到 20(PLAN-20260928003736):用户要求「贴纸改小一点,这样也能容纳更多」。
+ *   画布高 176px,26px 时纵向只铺得下 6 行;20px 能铺 8 行,同等面积密度约 +40%。 */
+export const STICKER_SIZE = 20;
 
 /** sprite 四周给落影留的余量(CSS px):
- *  最外那层是 `0 2px 4px`,即向下 6px;横向按 4px 模糊留 8px 足够。 */
+ *  最外那层是 `0 2px 4px`,即向下 6px;横向按 4px 模糊留 8px 足够。
+ *
+ * ⚠ 2026-09-28:贴纸从 26 缩到 20 时**这一项刻意没跟着缩** —— 落影是 `box-shadow` 的**绝对尺寸**
+ *   (offset 2px + blur 4px),不随贴纸变小而变小;跟着等比缩会把最外那层阴影裁掉一条边。 */
 const SPRITE_PAD = 8;
 
 /** 红 / 黑各自的径面高光强度 —— 与 CSS 里 `.rb-dot--red` / `--black` 的 0.14 / 0.10 一致 */
@@ -39,10 +45,64 @@ export interface StickerSprite {
 const cache = new Map<string, StickerSprite>();
 let colors: Record<StickerType, string> | null = null;
 
+/* ---------------- 外观失效(2026-09-28,PLAN-20260928003736) ----------------
+ * 要挡的是什么:`colors` 与 `cache` 都是模块级单例、**只在首次读取**,而读失败时还会兜底成中性灰
+ * `#8b8b8b`(样式表还没生效的那一瞬)。也就是说那次读到的值会**永久生效** —— 之后 token 怎么变
+ * 都不会再读一次。
+ *
+ * ⚠ **诚实记录(2026-09-28 核实)**:`--rb-red` / `--rb-black` 目前只在 `redblack-parity.css` 的
+ *   `:root` 定义一次、**没有任何暗色覆盖**,所以切主题时贴纸颜色本来就**不会变** —— 这一条不是
+ *   在修一个用户可见的 bug。它收的是上面那个脆弱点:`style.css` 的 `:root[data-theme="dark"]`
+ *   已经覆盖了几十个 token,给贴纸补一档是很自然的下一步,届时这里一行都不用再改。
+ *
+ * ⚠ 监听 `data-theme` 属性而不是 `prefers-color-scheme`:应用主题由根元素属性标记
+ *   (`state.ts` 的主题切换),系统偏好只是它的默认值之一。
+ * ⚠ 光清缓存**不够**:画布的重绘守护比较的是尺寸与票数,它看不见 token 变化 —— 已经画下去的像素
+ *   不会自己变色。所以还要通知订阅者重画(`onSpriteInvalidate`),并把 `spriteEpoch()` 并进
+ *   `DrawKey`(见 `sticker-canvas-guard.ts`)。 */
+let epoch = 0;
+const listeners = new Set<() => void>();
+
+function invalidate(): void {
+  colors = null;
+  cache.clear();
+  epoch += 1;
+  for (const cb of listeners) cb();
+}
+
+/** 订阅「已画好的贴纸外观作废了」,返回退订函数。画布靠它触发一次重绘。 */
+export function onSpriteInvalidate(cb: () => void): () => void {
+  listeners.add(cb);
+  return () => {
+    listeners.delete(cb);
+  };
+}
+
+/** 当前的「贴纸外观版本」—— 主题每切一次 +1。
+ *  ⚠ 画布必须把它并进重绘判据:主题切换时尺寸与票数一个都没动,只看那些参数会被判成「不用重画」。 */
+export function spriteEpoch(): number {
+  return epoch;
+}
+
+/** 惰性挂主题监听(第一次真要读颜色时才装):既不在 import 期碰 DOM(本模块要被 node 单测 import),
+ *  也免得「从没画过贴纸」的人白挂一个 MutationObserver。 */
+let themeWatched = false;
+
+function watchTheme(): void {
+  if (themeWatched) return;
+  if (typeof MutationObserver === "undefined" || typeof document === "undefined") return;
+  themeWatched = true;
+  new MutationObserver(invalidate).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme"],
+  });
+}
+
 /** 读 CSS token。⚠ 只为「样式表还没生效」这一种意外兜底(给个中性灰,一眼能看出不对),
  *  正常路径永远走 `--rb-red` / `--rb-black` —— 颜色只有那一处实现(AGENTS.md §5)。 */
 function readColors(): Record<StickerType, string> {
   if (colors) return colors;
+  watchTheme();
   const read = (name: string): string => {
     if (typeof document === "undefined") return "#8b8b8b";
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#8b8b8b";

@@ -522,10 +522,12 @@
 
 .rb-dot {
   position: absolute;
-  width: 26px;
-  height: 26px;
+  /* ⚠ 20px 与 `sticker-sprite.ts::STICKER_SIZE` **必须逐字一致**(2026-09-28 由 26 缩到 20,
+   *   见 PLAN-20260928003736):canvas 上的群点走 sprite,这一枚走 DOM,尺寸只此两处表达。 */
+  width: 20px;
+  height: 20px;
   /* 这枚贴纸是 `<button>`(它可单击收回,顺带让键盘也能收回):把按钮的默认外观清干净,
-   * 否则自带的 padding / 边框会把 26px 的方框撑坏 */
+   * 否则自带的 padding / 边框会把 20px 的方框撑坏 */
   appearance: none;
   padding: 0;
   border: 0;
@@ -617,9 +619,11 @@
   top: 0;
   left: 0;
   z-index: 60;
-  width: 28px;
-  height: 28px;
-  margin: -14px 0 0 -14px;
+  /* ⚠ 跟着 `.rb-dot` 一起缩(2026-09-28):它比贴纸本体大 2px(26→28 / 现在是 20→22),
+   *   这个「浮起来显得大一点」的相对关系保持不变;margin 恒为负的半径,把浮标中心对准指针。 */
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
   border-radius: 48% 52% 45% 55% / 52% 46% 54% 48%;
   box-shadow: 0 6px 14px rgb(0 0 0 / 30%);
   opacity: 0.95;
