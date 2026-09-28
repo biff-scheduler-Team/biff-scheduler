@@ -19,6 +19,7 @@ import {
   crowdOf,
   crowdSignature,
   crowdStickers,
+  flushPendingStickers,
   loadStickers,
   loadWatched,
   makeSticker,
@@ -28,8 +29,10 @@ import {
   placeSticker,
   purgeDemoLeavings,
   reconcile,
+  retintSticker,
   saveStickers,
   saveWatched,
+  scheduleSaveStickers,
   scoreOf,
   sortByCounts,
   spotOf,
@@ -37,6 +40,7 @@ import {
   tallyOf,
   tiltOf,
   votesOf,
+  votesSignature,
   type CrowdCounts,
   type Sticker,
   type StickerBoard,
@@ -658,5 +662,94 @@ describe("purgeDemoLeavings:清理示例残留", () => {
     mem.set(LS_SEEN, "off");
     purgeDemoLeavings();
     expect(mem.has(LS_SEEN)).toBe(false);
+  });
+});
+
+// 「我的票」的内容签名(2026-09-28,PLAN-20260928102019 ②)。
+// 为什么单测它:它是「拖动位置」与「票真的变了」之间的那条分界,两个方向错了都能感知到,
+// 但原因都很难猜 —— 算得太松:拖一下位置就发一次全量上报(+ 成功后一次重拉);
+// 算得太严:真改了颜色却不重算,榜上的数字一直不更新。
+describe("votesSignature:票的签名与坐标无关", () => {
+  it("只挪位置(票一枚没变)→ 签名不变", () => {
+    const before = placeSticker(new Map(), "a", sticker("s1", "red", 0.1, 0.1));
+    const after = moveSticker(before, "a", "s1", 0.9, 0.9);
+    expect(votesSignature(after)).toBe(votesSignature(before));
+  });
+
+  it("换色 / 新增票 → 签名变;空榜 → 空串", () => {
+    const one = placeSticker(new Map(), "a", sticker("s1", "red"));
+    expect(votesSignature(retintSticker(one, "a", "s1", "black"))).not.toBe(votesSignature(one));
+    const two = placeSticker(one, "b", sticker("s2", "black"));
+    expect(votesSignature(two)).not.toBe(votesSignature(one));
+    expect(votesSignature(new Map())).toBe("");
+  });
+
+  it("插入顺序不同 → 签名相同(比的是内容,不是 Map 的迭代序)", () => {
+    const ab = placeSticker(placeSticker(new Map(), "a", sticker("s1", "red")), "b", sticker("s2", "black"));
+    const ba = placeSticker(placeSticker(new Map(), "b", sticker("s2", "black")), "a", sticker("s1", "red"));
+    expect(votesSignature(ba)).toBe(votesSignature(ab));
+  });
+});
+
+// 原地换色(2026-09-28,PLAN-20260928102019 ⑧)。
+// 为什么单测它:它是「贴错了颜色」的唯一**无损**出口 —— 判错的后果大多是静默的
+// (顺手把位置也改掉 → 用户只觉得「怎么移位了」;同色也返回新对象 → 白触发一次上报)。
+describe("retintSticker:原地换色", () => {
+  const base = (): StickerBoard => placeSticker(new Map(), "a", sticker("s1", "red", 0.3, 0.7));
+
+  it("只改颜色,位置与 id 原样保留", () => {
+    expect(retintSticker(base(), "a", "s1", "black").get("a")).toEqual([
+      { id: "s1", type: "black", posX: 0.3, posY: 0.7 },
+    ]);
+  });
+
+  it("同色 → 返回**同一个引用**(调用方据此知道「这次点击什么也没做」)", () => {
+    const board = base();
+    expect(retintSticker(board, "a", "s1", "red")).toBe(board);
+  });
+
+  it("那一部没贴过 / 找不到那一枚 → 原样返回", () => {
+    const board = base();
+    expect(retintSticker(board, "a", "nope", "black")).toBe(board);
+    expect(retintSticker(board, "nope", "s1", "black")).toBe(board);
+  });
+
+  it("不改原 board(不可变)", () => {
+    const board = base();
+    retintSticker(board, "a", "s1", "black");
+    expect(board.get("a")![0].type).toBe("red");
+  });
+});
+
+// 分级写盘(2026-09-28,PLAN-20260928102019 ④)。
+// 为什么单测它:延后写盘的两条风险都是「安静地丢数据」—— flush 漏了、或合并把最后一次吃掉,
+// 而两者都只在崩溃 / 关页那一刻才暴露。这里把时序钉住。
+describe("scheduleSaveStickers:延后写盘", () => {
+  beforeEach(() => {
+    flushPendingStickers();
+    mem.clear();
+  });
+
+  it("调度后不立刻落盘,flush 之后才落盘", () => {
+    scheduleSaveStickers(placeSticker(new Map(), "a", sticker("s1", "red", 0.2, 0.4)));
+    expect(mem.has(LS_V2)).toBe(false);
+    flushPendingStickers();
+    expect(loadStickers().get("a")).toEqual([
+      { id: "s1", type: "red", posX: 0.2, posY: 0.4 },
+    ]);
+  });
+
+  it("同一拍内多次调度 → 只写最后一次那一份", () => {
+    const first = placeSticker(new Map(), "a", sticker("s1", "red", 0.2, 0.2));
+    scheduleSaveStickers(first);
+    scheduleSaveStickers(moveSticker(first, "a", "s1", 0.9, 0.9));
+    flushPendingStickers();
+    expect(loadStickers().get("a")![0]).toMatchObject({ posX: 0.9, posY: 0.9 });
+  });
+
+  it("没有待写的东西时 flush 是空转:不抛,也不动已经落盘的那一份", () => {
+    saveStickers(placeSticker(new Map(), "a", sticker("s1", "red")));
+    flushPendingStickers();
+    expect(loadStickers().has("a")).toBe(true);
   });
 });

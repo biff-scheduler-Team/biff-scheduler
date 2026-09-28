@@ -50,6 +50,27 @@ function emit(): void {
   for (const listener of listeners) listener();
 }
 
+/* ---------------- 上报失败的通知口(2026-09-28) ----------------
+ * 由来:上报是 `fetch(...).catch(() => undefined)` —— 断网 / 被限流时用户以为榜上记了,
+ * 其实没有。完全静默与「报错刷屏」都不对,这里只回答「**连续**失败了几次」,
+ * 由视图层决定什么时候说一次(它才是知道「有没有说过」的那一层)。 */
+
+const failureListeners = new Set<(streak: number) => void>();
+let pingFailureStreak = 0;
+
+/** 订阅「上报连续失败了几次」。成功时会收到一次 `0`,供视图层复位「已提示过」。 */
+export function onFilmVotesPingFailure(listener: (streak: number) => void): () => void {
+  failureListeners.add(listener);
+  return () => {
+    failureListeners.delete(listener);
+  };
+}
+
+function reportPingFailure(streak: number): void {
+  pingFailureStreak = streak;
+  for (const listener of failureListeners) listener(streak);
+}
+
 /** 已缓存的票数（同步读，未加载过则为空表） */
 export function peekFilmVotes(): FilmVoteCounts {
   return cache ?? emptyCounts();
@@ -92,6 +113,15 @@ export function parseVotes(raw: unknown): FilmVoteCounts {
   return out;
 }
 
+/** 用一份**刚从服务端回来的**票替换缓存并广播。
+ *  ⚠ 与 `loadFilmVotes` 的分工:它**不发起请求** —— 上报成功时服务端顺手回了全量,
+ *    再 GET 一次纯粹是白跑一个 RTT(2026-09-28,见 `scheduleFilmVotesPing`)。 */
+function applyVotes(raw: unknown): FilmVoteCounts {
+  cache = parseVotes(raw);
+  emit();
+  return cache;
+}
+
 export async function loadFilmVotes(force = false): Promise<FilmVoteCounts> {
   if (cache && !force) return cache;
   if (loading && !force) return loading;
@@ -104,9 +134,7 @@ export async function loadFilmVotes(force = false): Promise<FilmVoteCounts> {
       });
       if (!response.ok) return cache ?? emptyCounts();
       const body = (await response.json()) as { votes?: unknown };
-      cache = parseVotes(body.votes);
-      emit();
-      return cache;
+      return applyVotes(body.votes);
     } catch {
       // 接口还没部署 / 断网：留一份空表，页面照常能贴（只是看不到大家的票）
       return cache ?? emptyCounts();
@@ -117,6 +145,45 @@ export async function loadFilmVotes(force = false): Promise<FilmVoteCounts> {
   return loading;
 }
 
+/** 一份票 → 去掉重复（同一部片只留最后一条，防抖窗口内后到的覆盖先到的） */
+function dedupeVotes(
+  votes: Iterable<{ key: string; vote: "red" | "black" }>,
+): Array<{ key: string; vote: "red" | "black" }> {
+  return [...new Map([...votes].map((entry) => [entry.key, entry])).values()];
+}
+
+/** 把一份票发给服务端，返回它顺手回的全量（老服务端没这个字段 → `null`）。
+ *
+ * ⚠ 服务端是「**整份替换**」语义（`replaceContributorVotes`），所以超限时**不能**切成互不相交
+ *   的块 —— 后一块会把前一块盖掉，等于只发了最后一块。这正是原来 `slice(0, MAX)` 的隐患：
+ *   超出的票**永远不会**上报，而且是静默的。
+ *   这里按**累积前缀**分批：第 k 批发 `[0, k × MAX)`，于是最后一批就是全量、服务端最终状态正确。
+ *   代价是超限时多几个 RTT —— 而 `MAX_VOTES_PER_PING = 500` 已高于当前影片库规模（有排期的近
+ *   300 部），这条路径平时走不到；它存在的意义是「万一走到，也不静默丢票」。
+ * ⚠ 串行发送：并发写同一个 contributor 的行会互相覆盖，落库顺序无法保证。
+ * ⚠ 空表也是合法输入（我撤回了全部票）—— 它发一条空数组，服务端据此清掉我的所有票。 */
+async function sendVotes(
+  list: readonly { key: string; vote: "red" | "black" }[],
+): Promise<unknown | null> {
+  const total = list.length;
+  for (
+    let end = Math.min(MAX_VOTES_PER_PING, total);
+    ;
+    end = Math.min(end + MAX_VOTES_PER_PING, total)
+  ) {
+    const response = await fetch("/api/stats/film-votes-ping", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ edition: EDITION, votes: list.slice(0, end) }),
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!response.ok) throw new Error(`film-votes-ping ${response.status}`);
+    const body = (await response.json()) as { votes?: unknown };
+    if (end >= total) return body.votes ?? null;
+  }
+}
+
 /** 上报我的投票。**发全量**（1200ms 防抖）—— 服务端按整份替换，
  *  所以断网一段时间后重新上报一次就能自愈，不需要在本地记「待同步队列」。
  *  ⚠ 用全局 `setTimeout` 而不是 `window.setTimeout`：与 `screening-counts.ts` 同一条理由
@@ -124,29 +191,23 @@ export async function loadFilmVotes(force = false): Promise<FilmVoteCounts> {
 export function scheduleFilmVotesPing(
   votes: Iterable<{ key: string; vote: "red" | "black" }>,
 ): void {
-  // 同一部片只留一条（防抖窗口内重复调用时，后到的覆盖先到的）
-  const list = [...new Map([...votes].map((entry) => [entry.key, entry])).values()].slice(
-    0,
-    MAX_VOTES_PER_PING,
-  );
+  const list = dedupeVotes(votes);
   clearTimeout(pingTimer);
   pingTimer = setTimeout(() => {
-    void fetch("/api/stats/film-votes-ping", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ edition: EDITION, votes: list }),
-      signal: AbortSignal.timeout(12_000),
-    })
-      .then((response) => {
-        if (!response.ok) return;
+    void sendVotes(list)
+      .then((rawVotes) => {
         // 服务端已收下这份票 → 它现在**含我**，扣减基准跟着切过去。
-        // ⚠ 顺序不能倒：先采纳（不广播）、再重拉 —— 重拉内部那次 `emit` 会把新的 counts 与新的
-        //   synced 一起送到页面，中间不留「服务端仍算我旧票」的那一帧。
+        // ⚠ 顺序不能倒：先采纳（不广播）、再更新 counts（它内部那次 `emit` 会把新的 counts 与
+        //   新的 synced 一起送到页面），中间不留「服务端仍算我旧票」的那一帧。
         adoptSyncedVotes(list);
-        // 上报成功后再拉一次，让自己这一票立刻体现在榜单上
-        return loadFilmVotes(true);
+        reportPingFailure(0);
+        // ⚠ 新服务端在响应里顺手回了全量 → 直接用，省掉「上报成功再 GET 一次」的那个 RTT；
+        //   老服务端（没这个字段）才退回去重拉。
+        if (rawVotes === null) return loadFilmVotes(true);
+        return applyVotes(rawVotes);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        reportPingFailure(pingFailureStreak + 1);
+      });
   }, 1200);
 }

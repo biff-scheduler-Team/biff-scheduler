@@ -144,9 +144,9 @@ describe("scheduleFilmVotesPing", () => {
     });
   });
 
-  it("上报条数截到 500(与 api 侧 MAX_VOTES_PER_PING 对齐)", async () => {
+  it("超过上限不丢票:按**累积前缀**分批,最后一批才是全量(服务端是整份替换语义)", async () => {
     vi.resetModules();
-    const fetchMock = vi.fn(() => fail());
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => okJson({ ok: true, votes: {} }));
     vi.stubGlobal("fetch", fetchMock);
     const { scheduleFilmVotesPing, MAX_VOTES_PER_PING } = await import("../src/film-votes");
 
@@ -155,8 +155,65 @@ describe("scheduleFilmVotesPing", () => {
       Array.from({ length: 600 }, (_, i) => ({ key: `f${i}`, vote: "red" as const })),
     );
     await vi.advanceTimersByTimeAsync(1200);
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect((JSON.parse(String(init.body)) as { votes: unknown[] }).votes).toHaveLength(500);
+    // 第二批是在第一批 await 之后才发起的 —— 再走一轮把它的微任务放出来
+    await vi.advanceTimersByTimeAsync(0);
+
+    // ⚠ 为什么不是 [500, 100]:服务端按**整份替换**,切成互不相交的两块会让后一块把前一块盖掉,
+    // 等于只发了最后 100 条(那正是原来的静默丢票)。所以第 1 批发前 500、第 2 批发**全部 600**。
+    const sizes = fetchMock.mock.calls.map(
+      ([, init]) => (JSON.parse(String(init?.body)) as { votes: unknown[] }).votes.length,
+    );
+    expect(sizes).toEqual([500, 600]);
+  });
+
+  it("服务端在 ping 响应里顺手回了全量 → 直接用,不再重拉一次(省掉一个 RTT)", async () => {
+    vi.resetModules();
+    let reads = 0;
+    const fetchMock = vi.fn((url: string) => {
+      if (String(url).includes("film-votes-ping")) {
+        return okJson({ ok: true, count: 1, votes: { a: { red: 3, black: 0 } } });
+      }
+      reads += 1;
+      return okJson({ votes: { a: { red: 1, black: 0 } } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { peekFilmVotes, peekSyncedVotes, scheduleFilmVotesPing } = await import(
+      "../src/film-votes"
+    );
+
+    scheduleFilmVotesPing([{ key: "a", vote: "red" }]);
+    await vi.advanceTimersByTimeAsync(1200);
+
+    expect(reads).toBe(0);
+    expect(peekFilmVotes()).toEqual({ a: { red: 3, black: 0 } });
+    // ⚠ 扣减基准仍要切到「服务端已含我」那份,否则画布上会多画一枚别人的点
+    expect(peekSyncedVotes()).toEqual({ a: { red: 1, black: 0 } });
+  });
+
+  it("连续失败会通知订阅者(1、2…),成功一次就报 0 让它复位", async () => {
+    vi.resetModules();
+    let ok = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => (ok ? okJson({ ok: true }) : fail(500))),
+    );
+    const { onFilmVotesPingFailure, scheduleFilmVotesPing } = await import("../src/film-votes");
+    const seen: number[] = [];
+    onFilmVotesPingFailure((streak) => seen.push(streak));
+
+    scheduleFilmVotesPing([{ key: "a", vote: "red" }]);
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(seen).toEqual([1]);
+
+    scheduleFilmVotesPing([{ key: "a", vote: "red" }]);
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(seen).toEqual([1, 2]);
+
+    ok = true;
+    scheduleFilmVotesPing([{ key: "a", vote: "red" }]);
+    await vi.advanceTimersByTimeAsync(1200);
+    // 成功 → 报一次 0(视图层据此把「已经提示过」复位,下次再失败才会再说一次)
+    expect(seen).toEqual([1, 2, 0]);
   });
 
   it("上报成功 → 把刚发出去的这份记成「服务端已含我」,并顺手重拉一次", async () => {

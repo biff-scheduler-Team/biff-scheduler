@@ -40,20 +40,27 @@ import {
   countsSignature,
   crowdOf,
   crowdSignature,
+  loadStickers,
+  loadWatched,
+  LS_REDBLACK,
+  LS_REDBLACK_WATCHED,
   makeSticker,
   moveSticker,
   othersOf,
   placeSticker,
   purgeDemoLeavings,
   reconcile,
+  retintSticker,
   saveStickers,
   saveWatched,
+  scheduleSaveStickers,
   scoreOf,
   sortByCounts,
   takeSticker,
   tallyOf,
   tiltOf,
   votesOf,
+  votesSignature,
   type CrowdCounts,
   type SortMode,
   type Sticker,
@@ -65,6 +72,7 @@ import {
   adoptSyncedVotes,
   loadFilmVotes,
   onFilmVotesChange,
+  onFilmVotesPingFailure,
   peekFilmVotes,
   peekSyncedVotes,
   scheduleFilmVotesPing,
@@ -106,7 +114,24 @@ interface RbDrag {
   srcKey: string;
   /** 已经贴在画布上那一枚的 id;`null` = 从**暂存区**(海报下方那两枚)拖出 */
   fromId: string | null;
+  /** 源片那块画布 —— 落点判定与预览都靠它,**在 `pointerdown` 里取一次**。
+   *  ⚠ 原来每帧都拿 `document.elementFromPoint` 做全页命中测试(近 300 张卡),
+   *    而这里要回答的只有「是不是**源片自己**那块画布」—— 一个矩形比较就够
+   *    (2026-09-28,PLAN-20260928102019 ①)。取不到时按「整场都算出界」处理。 */
+  canvas: HTMLElement | null;
 }
+
+/** 方向键每次微调落点的比例(相对画布);按住 Shift 走大步(2026-09-28,PLAN-20260928102019 ⑫)。
+ *  贴纸是 `<button>`:键盘能「收回」却一直挪不动位置 —— 这是没有指针时的唯一出口。 */
+const NUDGE_STEP = 0.02;
+const NUDGE_STEP_LARGE = 0.08;
+/** 方向键 → 位移(单位是「步」)。不在表里的按键原样放行(不做任何事,也不吃默认行为) */
+const NUDGE_KEYS: Record<string, { dx: number; dy: number }> = {
+  ArrowLeft: { dx: -1, dy: 0 },
+  ArrowRight: { dx: 1, dy: 0 },
+  ArrowUp: { dx: 0, dy: -1 },
+  ArrowDown: { dx: 0, dy: 1 },
+};
 
 /** 没有票的影片共用这一个常量:
  *  ⚠ 必须共用(`?? { total: 0, red: 0, black: 0 }` 会每次造新对象)—— 卡片是 `memo` 的,
@@ -154,6 +179,8 @@ interface RbCardProps {
    *  `detail` 直接透传 `MouseEvent.detail` —— 调用方靠它区分「指针来的 click」与
    *  键盘 / `element.click()`(后者恒为 0),见 `takeBackByTap`。 */
   onTakeBack: (filmKey: string, stickerId: string, detail: number) => void;
+  /** 方向键微调「我贴的那一枚」的落点(比例增量,见 `NUDGE_KEYS`) */
+  onNudge: (filmKey: string, sticker: Sticker, dx: number, dy: number) => void;
 }
 
 export function RedBlackPage() {
@@ -171,6 +198,42 @@ export function RedBlackPage() {
   const [boot] = useState(() => purgeDemoLeavings());
   const [board, setBoard] = useState<StickerBoard>(boot.board);
   const [watched, setWatched] = useState(boot.watched);
+  /** 「我的票」的内容签名 —— **与坐标无关**(见 `redblack.ts::votesSignature`)。
+   *  拖动微调位置会换掉 `board` 的引用,而票一枚都没变。拿它当依赖,下游就不会为「挪了个位置」
+   *  白干活:① 上报 effect 不再被拖动触发(原来拖一下 = 一次全量 POST + 成功后一次重拉);
+   *  ② 「我的票」/ 修正票数 / 配额头寸也不再重算一遍(2026-09-28,PLAN-20260928102019 ②③)。 */
+  const votesKey = useMemo(() => votesSignature(board), [board]);
+  // 多标签页同步(2026-09-28,PLAN-20260928102019 ⑨):board / watched 存在 localStorage 里,
+  // 而页面载入后只认内存中那一份 —— 另一个标签页贴的贴纸这边一直看不到,得刷新才发现。
+  // ⚠ **不碰 `actedRef`**:别的标签页的票不是「我在这个标签页动过手」,顺手去上报等于把
+  //   「这边看到的票」当成用户的新意图推上去。只重读,不上报。
+  useEffect(() => {
+    const sync = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== LS_REDBLACK && event.key !== LS_REDBLACK_WATCHED) {
+        return;
+      }
+      setBoard(loadStickers());
+      setWatched(loadWatched());
+    };
+    window.addEventListener("storage", sync);
+    return () => window.removeEventListener("storage", sync);
+  }, []);
+  // 上报失败**说一次**(2026-09-28,PLAN-20260928102019 ⑩):过去是彻底静默 —— 断网 / 被限流时
+  // 用户以为榜上记了。⚠ 只在「连续失败的第 1 次」弹;成功(streak 归 0)后复位,下次再失败才再说。
+  const pingFailedRef = useRef(false);
+  useEffect(
+    () =>
+      onFilmVotesPingFailure((streak) => {
+        if (streak === 0) {
+          pingFailedRef.current = false;
+          return;
+        }
+        if (pingFailedRef.current) return;
+        pingFailedRef.current = true;
+        ToastQueue.negative("贴纸没能同步到榜上，请检查网络后重试。", { timeout: 5000 });
+      }),
+    [],
+  );
   // 「生成分享图」弹层。⚠ 焦点归还必须在弹层**真正卸载之后**再做(S2 `DialogContainer`
   // 自己也会 restoreFocus,而 WebKit 上点按钮不会让按钮获得焦点、它记下的原焦点是 body)——
   // 所以放 `useEffect` 而不是写在 onDismiss 里,与卡片上的「放大看全部」同一手法。
@@ -270,7 +333,10 @@ export function RedBlackPage() {
   useEffect(() => {
     if (!actedRef.current) return;
     scheduleFilmVotesPing(votesOf(board));
-  }, [board]);
+    // ⚠ 依赖是**票签名**而不是 `board`:拖动只挪坐标、票一枚没变,不该触发一次全量上报
+    //   (原来拖一下就发一次 POST + 成功后一次重拉,见 PLAN-20260928102019 ②)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 故意不依赖 board,见上一行
+  }, [votesKey]);
 
   const candidates = useMemo(
     () => boardFilms(films).filter((film) => searchFilm(film, query)),
@@ -296,12 +362,15 @@ export function RedBlackPage() {
   //   「有新贴纸 · 重新排序」的提醒就永远亮不起来(顺序冻结机制见上面那段)。
   const visible = useMemo(
     () => (onlyMine ? sorted.filter((film) => (board.get(film.key)?.length ?? 0) > 0) : sorted),
-    [sorted, onlyMine, board],
+    // ⚠ 依赖票签名而不是 `board`:过滤只看「有没有票」,拖动位置不该让它重算
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 同上
+    [sorted, onlyMine, votesKey],
   );
   // 我自己那一份 —— 只用来控制「能不能贴 / 还能贴几枚」
   const tallies = useMemo(
     () => new Map(sorted.map((film) => [film.key, tallyOf(film.key, watched.has(film.key), board)])),
-    [sorted, watched, board],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `tallyOf` 只读票(条数与颜色),与坐标无关
+    [sorted, watched, votesKey],
   );
   // 「以本地视角修正过的全站票数」——卡片 / hero / 分享图共用这一份(`redblack.ts::reconcile`)。
   // ⚠ 换基准的理由就是那条用户反馈(「收回贴纸之后 贴纸仍残留」):服务端要等防抖上报 + 重拉
@@ -325,7 +394,10 @@ export function RedBlackPage() {
     }
     filmCountCache.current = next;
     return next;
-  }, [crowd, syncedCrowd, board]);
+    // ⚠ 依赖票签名而不是 `board`:上面只读票(`board.keys()` 与 `countsOf`)——
+    //   拖动位置会让 `board` 换引用,但这一份修正票数一个数字都不变
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 同上
+  }, [crowd, syncedCrowd, votesKey]);
   /** 卡片要的那几部 —— 只从上面那份里取(口径单一来源,不在这里再算一遍) */
   const filmCounts = useMemo(
     () =>
@@ -368,21 +440,44 @@ export function RedBlackPage() {
   const latest = useRef({ board, watched, tallies, filmByKey });
   latest.current = { board, watched, tallies, filmByKey };
 
-  const commitBoard = useCallback((next: StickerBoard) => {
+  /** 上一步**可撤销**的动作(见 `undoLast`):存的是「撤销后该回到的那份 board」。
+   *  ⚠ 只留最近一条 —— 撤销是「手滑了」的补丁,不是编辑历史:允许退回到一个早已被后续操作
+   *    覆盖的状态只会让人看不懂(2026-09-28,PLAN-20260928102019 ⑦)。 */
+  const undoRef = useRef<StickerBoard | null>(null);
+
+  const commitBoard = useCallback((next: StickerBoard, deferred = false) => {
+    // 新的动作让上一步的「撤销」失效(调用方若想要撤销,在**这之后**再把目标塞回 `undoRef`)
+    undoRef.current = null;
     setBoard(next);
     // 用户动过手了 —— 从这里开始才允许把「我的票」上报给服务端(见上面 actedRef 的说明)。
     actedRef.current = true;
-    saveStickers(next);
+    // ⚠ 只有**拖动**那条路走延后写盘(见 `redblack.ts::scheduleSaveStickers` 的说明):
+    //   贴 / 收 / 换色是语义操作,崩溃时丢不起
+    if (deferred) scheduleSaveStickers(next);
+    else saveStickers(next);
   }, []);
+
+  /** 撤销上一步(Toast 上的「撤销」按钮 → 这儿)。
+   *  ⚠ 恢复的是**当时那一份 board**(含那一枚原 id / 颜色 / 坐标),不是「重新贴一枚」——
+   *    重贴会换随机落点,那不叫撤销。 */
+  const undoLast = useCallback(() => {
+    const target = undoRef.current;
+    if (!target) return;
+    undoRef.current = null;
+    commitBoard(target);
+  }, [commitBoard]);
 
   // 刚贴下的那一枚(见 `RbCard` 里的动效说明)。⚠ 必须声明在 `place` **之前** ——
   // `place` 的依赖数组在渲染期求值,放到后面会撞上 TDZ。
-  const [freshKey, setFreshKey] = useState<string | null>(null);
+  // ⚠ 是 **Set** 而不是单个 key(2026-09-28):连着给两部贴时,原来后一部会把前一部的高亮顶掉。
+  const [freshKeys, setFreshKeys] = useState<ReadonlySet<string>>(() => new Set());
   const freshTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const markFresh = useCallback((filmKey: string) => {
-    setFreshKey(filmKey);
+    setFreshKeys((prev) => new Set(prev).add(filmKey));
+    // ⚠ 计时器**共享**:每贴一枚就重置一次,于是先后贴的几枚几乎同时灭掉 —— 这比「每枚各带
+    //   一个计时器」简单,而描边本来就只回答「刚才那一下落在哪」。
     clearTimeout(freshTimerRef.current);
-    freshTimerRef.current = setTimeout(() => setFreshKey(null), FRESH_MS);
+    freshTimerRef.current = setTimeout(() => setFreshKeys(new Set()), FRESH_MS);
   }, []);
   useEffect(() => () => clearTimeout(freshTimerRef.current), []);
 
@@ -391,13 +486,21 @@ export function RedBlackPage() {
   const takeBack = useCallback(
     (filmKey: string, stickerId: string) => {
       const { board, filmByKey } = latest.current;
-      if (!board.get(filmKey)?.length) return;
+      const list = board.get(filmKey);
+      if (!list?.some((sticker) => sticker.id === stickerId)) return;
+      const name = filmByKey.get(filmKey)?.zh ?? "这部";
       commitBoard(takeSticker(board, filmKey, stickerId));
-      ToastQueue.neutral(`《${filmByKey.get(filmKey)?.zh ?? "这部"}》的贴纸收回暂存区了。`, {
+      // 收回是**丢信息**的动作(那一枚连位置一起没了),而误触它的代价很高(要重贴、位置也会变),
+      // 所以给它一个撤销出口(2026-09-28,PLAN-20260928102019 ⑦)。
+      // ⚠ 必须在 `commitBoard` **之后**设 —— 它会把上一步的撤销目标清掉
+      undoRef.current = board;
+      ToastQueue.neutral(`《${name}》的贴纸收回暂存区了。`, {
         timeout: 3000,
+        actionLabel: "撤销",
+        onAction: undoLast,
       });
     },
-    [commitBoard],
+    [commitBoard, undoLast],
   );
 
   /** 卡片上那枚贴纸的**单击**入口。
@@ -412,6 +515,20 @@ export function RedBlackPage() {
       takeBack(filmKey, stickerId);
     },
     [takeBack],
+  );
+
+  /** 方向键微调落点(2026-09-28,PLAN-20260928102019 ⑫):贴纸是 `<button>`(键盘能收回),
+   *  但一直**挪不了位置** —— 没有指针时,方向键是唯一的出口。
+   *  ⚠ 走延后写盘:与指针拖动同一条路(都是装饰性写入,见 `redblack.ts::scheduleSaveStickers`)。 */
+  const nudge = useCallback(
+    (filmKey: string, sticker: Sticker, dx: number, dy: number) => {
+      const { board } = latest.current;
+      commitBoard(
+        moveSticker(board, filmKey, sticker.id, sticker.posX + dx, sticker.posY + dy),
+        true,
+      );
+    },
+    [commitBoard],
   );
 
   /** 标记 / 取消标记。
@@ -447,7 +564,23 @@ export function RedBlackPage() {
         ToastQueue.neutral(`先给《${name}》标一下「看过」，就能贴了。`, { timeout: 4000 });
         return;
       }
+      // ⚠ 已经贴过这一部:点**另一色** = **原地换色**(保留位置与 id),点**同色**才是「什么也没发生」。
+      //   这是 2026-09-28 新增的出口 —— 过去贴错颜色只能「先单击收回、再从暂存区重贴」,
+      //   而重贴会换一个随机落点,等于顺手把位置也丢了(PLAN-20260928102019 ⑧)。
       if (!tally.canPlace) {
+        const existing = board.get(filmKey)?.[0];
+        if (existing && existing.type !== type) {
+          commitBoard(retintSticker(board, filmKey, existing.id, type));
+          // 换色同样是「改掉已有信息」,给它撤销(撤销 = 换回原来那一色)
+          undoRef.current = board;
+          markFresh(filmKey);
+          ToastQueue.neutral(`《${name}》的贴纸换成${type === "red" ? "红" : "黑"}色了。`, {
+            timeout: 3000,
+            actionLabel: "撤销",
+            onAction: undoLast,
+          });
+          return;
+        }
         ToastQueue.neutral(`《${name}》已经贴了一枚，点它一下（或拖到画布外）就能收回。`, {
           timeout: 4000,
         });
@@ -456,25 +589,27 @@ export function RedBlackPage() {
       commitBoard(placeSticker(board, filmKey, makeSticker(type, spot)));
       markFresh(filmKey);
     },
-    [commitBoard, markFresh],
+    [commitBoard, markFresh, undoLast],
   );
 
   // ⚠ 落点处理要用**最新**的 board,而 window 监听只在开始拖拽时挂一次 ——
   //   所以把处理函数放进 ref,每次渲染更新,监听器里读 ref.current。
   const finishRef = useRef<(drag: RbDrag, x: number, y: number) => void>(() => {});
   finishRef.current = (meta, x, y) => {
-    // 落点算不算本片张贴区 —— 与拖拽中的高亮 /「会被收回」提示**同一个判据**(`ownCanvasAt`)
-    const canvas = ownCanvasAt(x, y, meta.srcKey);
+    // 落点算不算本片张贴区 —— 与拖拽中的高亮 /「会被收回」提示 / 落点预览**同一个判据**
+    // (`spotInsideSrc` + 源片画布的 rect,见 PLAN-20260928102019 ①)
+    const rect = meta.canvas?.getBoundingClientRect() ?? null;
 
     // ① 出界。⚠ 旧口径是「不落在**任何**画布上」才算出去 —— 那会把《A》的票
     //    **直接改记到《B》头上**(`moveSticker` 的跨片分支,已删);现在别片的画布与页面空白同一类。
-    if (!canvas) {
+    if (!spotInsideSrc(rect, x, y)) {
       // 已经贴着的那一枚 → 出界就是收回(用户口径:「贴纸拖到外面就需要取消」),
       //   与「单击那枚贴纸」共用 `takeBack`(文案与落库口径只此一处)
       if (meta.fromId) takeBack(meta.srcKey, meta.fromId);
       else if (canvasAt(x, y)) {
         // 从暂存区拖出来、却落在别片的画布上 → 什么都不做(它本来就在暂存区),但要讲清为什么。
-        // ⚠ 这里再查一次画布**只为分辨「别片的画布」与「页面空白」**:前者要解释,后者不用。
+        // ⚠ 这里查一次 `elementFromPoint` **只为分辨「别片的画布」与「页面空白」**:前者要解释,
+        //   后者不用 —— 这是全链路上唯一还需要它的地方(只在松手时走一次)。
         const name = filmByKey.get(meta.srcKey)?.zh ?? "这部";
         ToastQueue.neutral(`这枚是《${name}》的贴纸，只能贴到《${name}》自己的张贴区里。`, {
           timeout: 3500,
@@ -483,13 +618,15 @@ export function RedBlackPage() {
       return;
     }
 
-    const rect = canvas.getBoundingClientRect();
+    // ⚠ 到这儿 `rect` 必然有效 —— `spotInsideSrc` 对空 rect 恒返回 false
+    if (!rect) return;
     const posX = (x - rect.left) / rect.width;
     const posY = (y - rect.top) / rect.height;
 
     // ② 已经贴着的那一枚 → 在**本片画布内**挪位置
+    // ⚠ 拖动走**延后写盘**(deferred):位置只是装饰,崩溃丢掉它的代价是「下次再拖一遍」
     if (meta.fromId) {
-      commitBoard(moveSticker(board, meta.srcKey, meta.fromId, posX, posY));
+      commitBoard(moveSticker(board, meta.srcKey, meta.fromId, posX, posY), true);
       return;
     }
 
@@ -530,18 +667,24 @@ export function RedBlackPage() {
       const startX = event.clientX;
       const startY = event.clientY;
       const slop = event.pointerType === "touch" ? DRAG_SLOP_TOUCH : DRAG_SLOP_MOUSE;
-      const meta: RbDrag = { type, srcKey, fromId };
-      // 源片那张卡与它的暂存区 —— 出界提示要把「它要回到哪儿」点亮(见 `setOut`)。
-      // ⚠ 在 pointerdown 里**就地**取:`currentTarget` 出了处理函数就可能被 React 回收,
-      //   而之后整场拖拽都只用这两个引用,不每帧再查一次 DOM。
+      // 源片那张卡、它的暂存区、以及它那块画布 —— 出界提示要把「它要回到哪儿」点亮(见 `setOut`),
+      // 落点判定与预览都用画布。
+      // ⚠ 都在 pointerdown 里**就地**取:`currentTarget` 出了处理函数就可能被 React 回收,
+      //   而之后整场拖拽都只用这几个引用,不每帧再查一次 DOM。
       const srcCard = event.currentTarget.closest<HTMLElement>("[data-film-key]");
       const srcTray = srcCard?.querySelector<HTMLElement>(".rb-tray") ?? null;
+      /** 源片那块画布 —— 落点判定与预览的唯一依据(见 `RbDrag::canvas`) */
+      const srcCanvas = srcCard?.querySelector<HTMLElement>("[data-rb-canvas]") ?? null;
+      const meta: RbDrag = { type, srcKey, fromId, canvas: srcCanvas };
 
       // ghost 只在**真的开始移动**之后才创建:「点一下贴纸」是合法操作(随机贴),
       //   在 pointerdown 就造浮标会让每次点击都闪一下。
       let ghost: HTMLElement | null = null;
       /** 浮标下面那枚短标签(出界时才说话,见 `setOut`) */
       let hint: HTMLElement | null = null;
+      /** 落点预览:画在**真实落点**上的半透明轮廓 —— 与跟着指针的浮标是两回事,
+       *  ghost 正好压在指针底下,看不清这枚贴下去会与已有群点差多远(2026-09-28,⑪)。 */
+      let preview: HTMLElement | null = null;
       // ⚠ 落点高亮**直接改 DOM 属性**而不走 state:榜单有近 300 张卡,
       //   每跨一张卡就 setState 会整页重渲染一次,贴纸立刻跟不上指针。
       let hoverCard: HTMLElement | null = null;
@@ -575,16 +718,47 @@ export function RedBlackPage() {
           else srcTray?.removeAttribute("data-rb-target");
         }
       };
-      /** 一帧只做一次:浮标跟上指针 + 重新判定落点 */
+      /** 落点预览跟着指针走(只在**算落点**时显形)。
+       *  ⚠ 位置口径与落库那两行(`finishRef`)逐字一致 —— 画布内的相对比例 × 画布尺寸,
+       *    否则「预览看着在画布中间、松手却偏了」就是必然。
+       *  ⚠ 写的是 **`transform` 而不是 `left` / `top`**:后者是布局属性,每帧写等于每帧把这张卡
+       *    拖进一次 layout 重算 —— 正好抵消掉「不再每帧做全页命中测试」省下来的那点开销。 */
+      const setPreview = (
+        spot: { x: number; y: number; width: number; height: number } | null,
+      ) => {
+        if (!preview) return;
+        if (!spot) {
+          if (preview.style.display !== "none") preview.style.display = "none";
+          return;
+        }
+        const ratio = (value: number) => Math.min(1, Math.max(0, value));
+        preview.style.transform = `translate3d(${ratio(spot.x) * spot.width}px, ${ratio(spot.y) * spot.height}px, 0)`;
+        if (preview.style.display === "none") preview.style.display = "";
+      };
+      /** 一帧只做一次:浮标跟上指针 + 重新判定落点 + 同步预览 */
       const flush = () => {
         frame = 0;
         if (!ghost) return;
         ghost.style.transform = `translate3d(${lastX}px, ${lastY}px, 0) ${GHOST_TILT}`;
-        // ⚠ 高亮与出界提示共用**同一个**判据(`ownCanvasAt`):亮起的就是真能放下的地方,
-        //   反过来灭灯 = 松手会收回。张贴区按片独立,给别片亮灯等于承诺一个不会兑现的落点。
-        const own = ownCanvasAt(lastX, lastY, srcKey);
+        // ⚠ 高亮 / 出界提示 / 预览共用**同一个**判据(`spotInsideSrc` + 源片画布的 rect):
+        //   亮起的就是真能放下的地方,反过来灭灯 = 松手会收回。张贴区按片独立,
+        //   给别片亮灯等于承诺一个不会兑现的落点(见 PLAN-20260923101147)。
+        // ⚠ 这里只量**源片那一块**画布 —— 原来每帧一次 `elementFromPoint` 全页命中测试
+        //   在近 300 张卡的页面上是拖不动指针的主因之一(2026-09-28,PLAN-20260928102019 ①)。
+        const rect = srcCanvas?.getBoundingClientRect() ?? null;
+        const own = spotInsideSrc(rect, lastX, lastY);
         setHover(own ? srcCard : null);
         setOut(!own);
+        setPreview(
+          own && rect
+            ? {
+                x: (lastX - rect.left) / rect.width,
+                y: (lastY - rect.top) / rect.height,
+                width: rect.width,
+                height: rect.height,
+              }
+            : null,
+        );
       };
       const onMove = (event: PointerEvent) => {
         // 只认发起这次手势的那根手指:另一指的移动不该驱动这个浮标 / 命中测试
@@ -625,6 +799,15 @@ export function RedBlackPage() {
           //   会先在视口左上角闪一帧。后面才开始按帧合并。
           ghost.style.transform = `translate3d(${event.clientX}px, ${event.clientY}px, 0) ${GHOST_TILT}`;
           document.body.appendChild(ghost);
+          // 落点预览与浮标**同拍**创建(它的位置由 `flush` 每帧同步)。
+          // ⚠ 它挂在**源片画布内**:位置就是最终落点的相对比例,且天然被画布的
+          //   `overflow: hidden` 裁掉,不会漫到隔壁卡
+          preview = document.createElement("span");
+          preview.className = `rb-preview rb-preview--${type}`;
+          // ⚠ 先藏起来:它此刻还在 (0,0),直接可见会在画布左上角闪一帧
+          //   (ghost 那条走的是「就地摆正 transform」,这里藏一帧更省事、也少一次写)
+          preview.style.display = "none";
+          srcCanvas?.appendChild(preview);
         }
         lastX = event.clientX;
         lastY = event.clientY;
@@ -653,6 +836,9 @@ export function RedBlackPage() {
         ghost?.remove();
         ghost = null;
         hint = null;
+        // ⚠ 预览挂在**画布**里(不是 body):漏掉这一句会在卡片上留一枚永远不动的轮廓
+        preview?.remove();
+        preview = null;
         setHover(null);
         if (gestureRef.current?.pointerId === pointerId) gestureRef.current = null;
       };
@@ -775,11 +961,12 @@ export function RedBlackPage() {
                 /* ⚠ 直接传 `board.get(...)` 的结果(可能 undefined),不要 `?? []` —— 那会每次造新数组,memo 失效 */
                 placed={board.get(film.key)}
                 counts={filmCounts.get(film.key)!}
-                fresh={freshKey === film.key}
+                fresh={freshKeys.has(film.key)}
                 onToggleWatched={toggleWatched}
                 onPlace={place}
                 onBeginDrag={beginDrag}
                 onTakeBack={takeBackByTap}
+                onNudge={nudge}
               />
             );
           })}
@@ -831,6 +1018,7 @@ const RbCard = memo(function RbCard({
   onPlace,
   onBeginDrag,
   onTakeBack,
+  onNudge,
 }: RbCardProps) {
   // 视口按需渲染:屏幕外的卡**一枚贴纸都不画**(见 `useInView` 与 PLAN-20260922145815)。
   // ⚠ 贴纸是绝对定位,稍后补画不触发兄弟节点回流 —— 所以「滚到才画」不会引起版面跳动。
@@ -847,6 +1035,11 @@ const RbCard = memo(function RbCard({
   // 这一部**自己的**评分(红票占比折算 0–10);还没有人贴过 → null(显示成「—」)
   const filmScore = scoreOf(counts);
   const myStickers = placed ?? EMPTY_STICKERS;
+  // 暂存区里哪一枚算「已用掉」(2026-09-28,PLAN-20260928102019 ⑧):淡掉的只有**当前已贴的那一色**,
+  // 另一色**保持正常** —— 点它就是原地换色,那是一个真能用的动作,不该被读成「不能点」。
+  const placedType = myStickers[0]?.type;
+  const redSpent = !canPlace && placedType === "red";
+  const blackSpent = !canPlace && placedType === "black";
   // 「放大看全部」画的是**全部**(群点 + 我贴的那一枚),不是卡片上那份「别人的」——
   // 点进来看全部却少了自己那一枚,数字会跟卡片对不上。
   // ⚠ 相加不会重复计数:页面给的 `counts` 已按本地视角修正(`reconcile`)**恒含我这一枚**,
@@ -942,11 +1135,16 @@ const RbCard = memo(function RbCard({
         {/* 暂存区(海报下方那两枚):点一下 → 随机贴到画布;拖到画布 → 落在松手那一点。
             ⚠ 这里**不写状态文案**(2026-09-16 用户:「太占空间」):
             按钮亮着就说明能贴、暗了就是贴过了 —— 靠形态表达,不靠解释。 */}
+        {/* ⚠ 只加 `aria-disabled`(而不是 `disabled`):按钮**仍要能点** —— 点了才有
+            「已经贴了一枚」/「换成 X 色」那句提示与动作,真 `disabled` 掉等于把出口关了
+            (2026-09-28,PLAN-20260928102019 ⑫)。 */}
         <div className="rb-tray" aria-label={`《${film.zh}》的贴纸暂存区`}>
           <button
             type="button"
             className="rb-src rb-src--red"
-            data-rb-spent={!canPlace || undefined}
+            data-rb-spent={redSpent || undefined}
+            aria-disabled={redSpent || undefined}
+            title={placedType === "black" ? "点一下把贴纸换成红色（位置不变）" : undefined}
             aria-label={`给《${film.zh}》贴红贴纸（点一下随机贴，也可以拖到右边画布上）`}
             onClick={() => onPlace(film.key, "red")}
             onPointerDown={(event) => onBeginDrag(event, "red", film.key, null)}
@@ -956,7 +1154,9 @@ const RbCard = memo(function RbCard({
           <button
             type="button"
             className="rb-src rb-src--black"
-            data-rb-spent={!canPlace || undefined}
+            data-rb-spent={blackSpent || undefined}
+            aria-disabled={blackSpent || undefined}
+            title={placedType === "red" ? "点一下把贴纸换成黑色（位置不变）" : undefined}
             aria-label={`给《${film.zh}》贴黑贴纸（点一下随机贴，也可以拖到右边画布上）`}
             onClick={() => onPlace(film.key, "black")}
             onPointerDown={(event) => onBeginDrag(event, "black", film.key, null)}
@@ -995,9 +1195,17 @@ const RbCard = memo(function RbCard({
                 "--rb-tilt": `${tiltOf(sticker.id)}deg`,
               } as CSSProperties
             }
-            aria-label={`${sticker.type === "red" ? "红" : "黑"}贴纸；单击收回暂存区，拖动可在《${film.zh}》自己的张贴区里挪位置，拖出这张画布也是收回`}
+            aria-label={`${sticker.type === "red" ? "红" : "黑"}贴纸；单击收回暂存区，拖动或按方向键可在《${film.zh}》自己的张贴区里挪位置，拖出这张画布也是收回`}
             onPointerDown={(event) => onBeginDrag(event, sticker.type, film.key, sticker.id)}
             onClick={(event) => onTakeBack(film.key, sticker.id, event.detail)}
+            onKeyDown={(event) => {
+              const delta = NUDGE_KEYS[event.key];
+              if (!delta) return;
+              // ⚠ 必须吃掉默认行为:方向键在这张页面上是「滚动」
+              event.preventDefault();
+              const step = event.shiftKey ? NUDGE_STEP_LARGE : NUDGE_STEP;
+              onNudge(film.key, sticker, delta.dx * step, delta.dy * step);
+            }}
           />
         ))}
         {myStickers.length === 0 && others.total === 0 && (
@@ -1023,20 +1231,25 @@ const RbCard = memo(function RbCard({
   );
 });
 
-/** 指针落点所在的**画布**(ghost 是 `pointer-events: none`,不会挡住命中测试) */
+/** 指针落点所在的**画布** —— 只用来**分辨「别片的画布」与「页面空白」**(见 `finishRef` 的出界分支)。
+ *  ⚠ 它**不再是**落点判据(那是 `spotInsideSrc`):每帧做一次全页命中测试,在近 300 张卡的页面上
+ *    太贵,而判据要回答的问题本来只需要**源片那一块**画布(2026-09-28,PLAN-20260928102019 ①)。
+ *  ⚠ ghost 是 `pointer-events: none`,不会挡住命中测试。 */
 function canvasAt(x: number, y: number): HTMLElement | null {
   const hit = document.elementFromPoint(x, y);
   return hit instanceof HTMLElement ? hit.closest<HTMLElement>("[data-rb-canvas]") : null;
 }
 
-/** 这一次松手**算不算落在这一部自己的张贴区里** —— 返回那块画布,否则 `null`(= 会被收回)。
+/** 落点**在不在**这一部的张贴区里 —— 唯一的落点判据(2026-09-28 起改用矩形比较)。
  *
- *  ⚠ 它是**唯一**的落点判据:拖拽中的高亮 /「会被收回」提示(`beginDrag::flush`)与松手结算
- *    (`finishRef`)共用它,所以「可张贴区」与「会被收回」的边界不会两处各写一份、各说各话
- *    (2026-09-23 之前正是两处:高亮按**卡片**判、结算按**画布**判 —— 拖到卡片左侧信息列时
- *    卡片亮着灯,松手却是收回)。
+ *  ⚠ 它替代了原来的 `ownCanvasAt(...)`(那个是 `elementFromPoint` + `closest` 的全页命中测试):
+ *    要回答的只有「是不是**源片自己**那块画布」,一个矩形比较就够 —— 而它在 `beginDrag::flush`
+ *    里是**每帧**调一次,那才是这笔开销的关键。
+ *  ⚠ **四处**共用它:拖拽中的高亮 /「会被收回」提示 / 落点预览 / 松手结算,所以「可张贴区」
+ *    与「会被收回」的边界不会两处各写一份、各说各话(2026-09-23 之前正是两处:高亮按**卡片**判、
+ *    结算按**画布**判 —— 拖到卡片左侧信息列时卡片亮着灯,松手却是收回)。
  *  ⚠ 别片的画布与页面空白是同一类:都算出界(张贴区按片独立,见 `PLAN-20260923101147`)。 */
-function ownCanvasAt(x: number, y: number, srcKey: string): HTMLElement | null {
-  const canvas = canvasAt(x, y);
-  return canvas?.dataset.rbCanvas === srcKey ? canvas : null;
+function spotInsideSrc(rect: DOMRect | null, x: number, y: number): boolean {
+  if (!rect || rect.width <= 0 || rect.height <= 0) return false;
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }

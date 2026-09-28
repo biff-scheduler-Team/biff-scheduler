@@ -300,6 +300,23 @@ export function votesOf(board: StickerBoard): Array<{ key: string; vote: Sticker
   return out;
 }
 
+/** 「我的票」的内容签名 —— **只串影片 key 与颜色,与坐标无关**(2026-09-28)。
+ *
+ * 为什么需要它:拖动微调位置会换掉 `board` 的对象引用,而票一枚都没变。视图层若拿
+ * `board` 当依赖,一次拖动就会 ① 触发一次全量上报(外加成功后那次重拉)、
+ * ② 让「我的票」/ 修正票数 / 自己的配额 / 顶部统计全部重算一遍 —— 全都是白做。
+ * 签名把「票变了」与「只是挪了个位置」分开,只有前者才让下游动。
+ *
+ * ⚠ 先按 key 排序再拼:`board` 的迭代序是插入序,换个插入顺序不该算「票变了」。 */
+export function votesSignature(board: StickerBoard): string {
+  const parts: string[] = [];
+  for (const [key, list] of board) {
+    const sticker = list[0];
+    if (sticker) parts.push(`${key}:${sticker.type}`);
+  }
+  return parts.sort().join("|");
+}
+
 /* ---------------- 变更(全部不可变:返回新 board) ----------------
  * ⚠ 纯函数里**不校验「看过」标记**:标记是视图层的概念,这里只管数据结构。 */
 
@@ -344,6 +361,30 @@ export function moveSticker(
   const i = src?.findIndex((s) => s.id === id) ?? -1;
   if (!src || i < 0) return board;
   src[i] = { ...src[i], ...clampSpot(posX, posY) };
+  return next;
+}
+
+/** 把**已经贴着的那一枚**原地换色:只改 `type`,**位置与 id 都保留**(2026-09-28)。
+ *
+ * 为什么需要它:一部一枚的口径下,「贴错了颜色」过去只有两条路 —— 先单击收回
+ * (贴纸消失、位置丢掉),再从暂存区重贴(随机落点)。换色是同一个名额换了个态度,
+ * 不是「再贴一枚」,所以它**绕开 `placeSticker` 的 `MAX_PER_FILM` 闸门**,直接改那一枚。
+ *
+ * ⚠ 同色时原样返回**同一个引用**:调用方靠 `next === board` 就知道「这次点击什么也没做」,
+ *   不必自己再比一次颜色(也让视图层能据此决定要不要弹提示)。 */
+export function retintSticker(
+  board: StickerBoard,
+  key: string,
+  id: string,
+  type: StickerType,
+): StickerBoard {
+  const list = board.get(key);
+  const index = list?.findIndex((sticker) => sticker.id === id) ?? -1;
+  if (!list || index < 0 || list[index].type === type) return board;
+  const next = cloneBoard(board);
+  const target = next.get(key);
+  if (!target) return board;
+  target[index] = { ...target[index], type };
   return next;
 }
 
@@ -425,6 +466,41 @@ export function saveStickers(board: StickerBoard): void {
     writeWorkspaceItem(LS_REDBLACK, JSON.stringify(Object.fromEntries(board)));
   } catch {
     /* 忽略 */
+  }
+}
+
+/* ---------------- 延后写盘(只给「挪位置」用) ----------------
+ * 贴 / 收 / 换色是**语义操作**,必须立即落盘 —— 崩溃时丢掉一枚贴纸是「我做的事没了」;
+ * 而拖动只是挪个位置,丢掉它的代价是「下次再拖一遍」。两者不对等,所以只有拖动走这里。 */
+
+/** 待落盘的那一份(`scheduleSaveStickers` 的暂存处) */
+let pendingStickers: StickerBoard | null = null;
+let pendingTimer: ReturnType<typeof setTimeout> | undefined;
+/** `pagehide` 只挂一次 —— 每次调度都挂会积一串不会因一次 flush 而消失的监听 */
+let pagehideBound = false;
+
+/** 把待落盘的那一份**立刻**写掉。幂等:没有待写的就什么也不做。
+ *  ⚠ 页面要走时必须走它(`pagehide` 已挂),否则最后那次延后写会随着页面一起消失。 */
+export function flushPendingStickers(): void {
+  if (pendingTimer !== undefined) {
+    clearTimeout(pendingTimer);
+    pendingTimer = undefined;
+  }
+  const board = pendingStickers;
+  pendingStickers = null;
+  if (board) saveStickers(board);
+}
+
+/** 延后写盘:同一拍内的多次调用合并成一次,实际写发生在下一轮宏任务。
+ *  ⚠ 只给**装饰性**的写入用(当前只有拖动),见上面那段「两者不对等」。 */
+export function scheduleSaveStickers(board: StickerBoard): void {
+  pendingStickers = board;
+  if (pendingTimer !== undefined) return;
+  pendingTimer = setTimeout(flushPendingStickers, 0);
+  // ⚠ 单测跑在 node 环境(没有 window),这条自动跳过 —— 那个环境里由测试自己调 flush
+  if (!pagehideBound && typeof window !== "undefined") {
+    pagehideBound = true;
+    window.addEventListener("pagehide", flushPendingStickers);
   }
 }
 

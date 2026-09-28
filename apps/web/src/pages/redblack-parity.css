@@ -673,6 +673,33 @@
   display: none;
 }
 
+/* 拖拽时的**落点预览**(2026-09-28,PLAN-20260928102019 ⑪):画在真实落点上的一圈虚线轮廓。
+ * 为什么需要它:浮标(`.rb-ghost`)就压在指针底下,其实看不清这枚贴下去会与已有的群点差多远;
+ * 预览用的是**落库时的同一套相对坐标**,所以「预览在哪、松手就落在哪」。
+ * ⚠ `pointer-events: none` 是必须的:否则它会挡住松手那一次 `elementFromPoint` ——
+ *   出界诊断要靠那次命中测试分辨「别片的画布」与「页面空白」(见 `RedBlackPage.tsx::finishRef`)。
+ * ⚠ 画成**虚线轮廓**而不是第二枚实心贴纸:实心会与「我贴的那一枚」混淆,而那一枚才是真的。 */
+.rb-preview {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  /* ⚠ 居中用负 margin,把 `transform` **整个**留给位移:拖拽期间每帧要写的是位移,而
+   * `left` / `top` 是**布局属性** —— 每帧写它们等于每帧把这张卡拖进一次 layout 重算,
+   * 正好抵消掉本轮「不再每帧做全页命中测试」省下来的那点开销。
+   * `transform` 只走合成层,不碰布局(与 `.rb-ghost` 同一手法)。 */
+  margin: -10px 0 0 -10px;
+  border: 1.5px dashed var(--rb-red);
+  border-radius: 48% 52% 45% 55% / 52% 46% 54% 48%;
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.rb-preview--black {
+  border-color: var(--rb-black);
+}
+
 /* 窄屏:信息列收窄,画布还是占剩下的全部 */
 @media (max-width: 560px) {
   .rb-card {
