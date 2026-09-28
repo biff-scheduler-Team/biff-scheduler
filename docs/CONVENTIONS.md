@@ -736,11 +736,53 @@
     ② 浮标下面那枚 `.rb-drag-hint` 短标签**写明后果**(已贴的那枚 =「松开 · 收回暂存区」,
     从暂存区拖出的那枚 =「松开 · 取消」)③ 源片暂存区点亮 `data-rb-target`(亮的是**真的落点**;
     ⚠ 只有「已贴的那枚」这条路会挂 —— 从暂存区拖出的那枚松手什么也不做,给它亮灯是假承诺)。
-    ⚠ **落点判据只此一处**:`RedBlackPage.tsx::ownCanvasAt(x, y, srcKey)`(=`canvasAt()` 再比
-    `data-rbCanvas`),拖拽中的高亮与提示、松手结算**共用**它。改之前高亮按**卡片**判、结算按**画布**判 ——
+    ⚠ **落点判据只此一处**:拖拽中的高亮与提示、松手结算**共用**它。改之前高亮按**卡片**判、结算按**画布**判 ——
     拖到卡片左侧信息列时卡片亮着灯、松手却收回(假承诺),那正是「拖出可张贴区域」的真实边界。
+    ⚠ 判据的**实现**后来换过一次(`ownCanvasAt` → `spotInsideSrc`,见下面那条),但「只此一处」这条不变。
     ⚠ 提示只在**出界**时出现:可张贴区内不说话(那时「能放」由画布亮灯说);
     也不弹 toast(出界是中途状态,弹了会盖掉松手之后那一条)。
+- **★ 红黑榜贴纸操作口径(2026-09-28,`PLAN-20260928102019`)**:贴 / 收 / 换色 / 拖四条路径上的一轮
+  「性能 + 交互」收口。渲染层(画布 / sprite / memo / `useInView`)本轮**一行没动**。
+  · **落点判据改成矩形比较**:`RedBlackPage.tsx::spotInsideSrc(rect, x, y)` —— 拿**源片自己那块画布**的
+    `getBoundingClientRect()` 做一次包含判断,替代原来的 `ownCanvasAt()`(那是
+    `document.elementFromPoint` + `closest` 的**全页命中测试**,而它在 `beginDrag::flush` 里是**每帧**跑)。
+    画布元素在 `pointerdown` 里取一次(`RbDrag::canvas`)。高亮 / 提示 / 预览 / 松手结算**仍共用同一条判据**。
+    `canvasAt()`(真命中测试)只保留在**松手且出界**那条分支 —— 那里要分辨「别片的画布」与「页面空白」
+    (两者文案不同),是全链路唯一还需要它的地方。
+  · **拖拽落点预览**:`.rb-preview`(虚线轮廓,`pointer-events: none`;必须 `pointer-events: none`,
+    否则会挡住上面那次命中测试)挂在**源片画布内**,位置 = 落库时的同一套相对比例。
+    ⚠ 位移走 `transform: translate3d(px, …)`、居中用负 `margin` —— **不要**用 `left` / `top`:
+    那是布局属性,拖拽期间每帧写等于每帧把这张卡拖进一次 layout 重算,正好抵消掉上一条省下的开销。
+    创建时先 `display: none`,否则会在画布左上角闪一帧。
+  · **点另一色 = 原地换色**(新出口,`redblack.ts::retintSticker`):「一部一枚」的口径不变 —— 换色只改
+    `type`,**位置与 id 都保留**,所以它绕开 `placeSticker` 的 `MAX_PER_FILM` 闸门;同色时返回**同一个引用**,
+    调用方据此知道「这次点击什么也没做」。视觉口径同步收紧:暂存区 `data-rb-spent` 只标**当前已贴的那一色**,
+    另一色**不淡** —— 它是个真能用的动作,淡掉会被读成「不能点」。
+    ⚠ 按钮只挂 `aria-disabled` 而**不挂 `disabled`**:点了才有提示与动作,真 `disabled` 等于把出口关了。
+  · **收回 / 换色可撤销**(`undoRef` + Toast 的 `actionLabel="撤销"`):恢复的是**当时那一份 board**
+    (含原 id / 颜色 / 坐标),不是「重新贴一枚」—— 重贴会换随机落点,那不叫撤销。
+    ⚠ 只留**最近一条**:新的动作会让上一步的撤销失效(`commitBoard` 里清 `undoRef`);「贴一枚」不给撤销
+    (它已有 fresh 描边确认,且再点一下就收回 —— 同一件事不要两个出口)。
+  · **票签名把「拖动位置」与「票变了」分开**(`redblack.ts::votesSignature`,只串 `key:type` 并**按 key 排序**):
+    视图层拿它当依赖(`votesKey`),于是拖动**不再**触发全量上报 + 成功后重拉,
+    也不再打 `tallies` / `reconciledCrowd` / `visible` 的全量重算。
+    ⚠ 这几个 memo 的闭包仍读 `board`,靠「签名不变 ⟹ 票不变」保证复用是安全的 —— 改它们之前先想清这一条。
+  · **写盘分级**:贴 / 收 / 换色**立即** `saveStickers`(语义操作,崩溃丢不起);
+    拖动位置走 `scheduleSaveStickers`(同一拍合并 + `pagehide` 强制 flush,`flushPendingStickers` 供测试)——
+    它只是装饰性写入。⚠ 这一条的性能收益**近似为 0**(一次写盘 ~1ms 以下),它的价值是把两类写入分开。
+  · **上报协议**:`POST /api/stats/film-votes-ping` 顺手回最新聚合(`votes`),前端直接用 ——
+    省掉原来「上报成功再 GET 一次 `/api/stats/film-votes`」的那个 RTT;老服务端没这个字段时前端仍回退重拉。
+    ⚠ 超过 `MAX_VOTES_PER_PING = 500` 时按**累积前缀**分批(第 k 批发 `[0, k × 500)`):服务端
+    `replaceContributorVotes` 是**整份替换**语义,切成互不相交的块会让后一块盖掉前一块 ——
+    那正是原来 `slice(0, 500)` 的静默丢票(超出的票**永远**不上报)。
+  · **多标签页同步**:监听 `storage`(只认 `biff.redblack.v2` / `biff.redblack.watched.v1`,或 `event.key === null`),
+    重读 board / watched。⚠ **不设 `actedRef`** —— 别的标签页的票不是「我在这个标签页动过手」,
+    顺手去上报等于把「这边看到的票」当成用户的新意图推上去。
+  · **上报失败说一次**:`film-votes.ts::onFilmVotesPingFailure` 只回答「**连续**失败了几次」,
+    视图层在第 1 次弹一条 negative toast,成功(streak 归 0)后复位。⚠ 不做常驻弹窗、不逐次提示。
+  · **贴纸可用键盘挪位置**:方向键每次 `NUDGE_STEP = 2%`(按住 Shift 走 `NUDGE_STEP_LARGE = 8%`),
+    `preventDefault` 吃掉翻页 —— 它原本只能被指针拖。「刚贴」的高亮从单个 key 改成 `Set`(`freshKeys`):
+    连着贴两部时不再互相顶掉。
 - **★ 场次讨论 / 讨论区 —— 前端已整体下线(2026-09-22,`PLAN-20260922101227`,用户「去掉讨论区入口 相关组件也去掉」)**:
   导航项、`/discussions` 路由、`pages/DiscussionsPage.tsx`、`components/ScreeningDiscussionDialog.tsx`
   (以及它的 `DiscussionEntry`)、`screening-discussion.ts`、`screening-social.css` 里整批 `discussion*` 选择器、
