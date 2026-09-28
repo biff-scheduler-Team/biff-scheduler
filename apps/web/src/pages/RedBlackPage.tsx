@@ -148,8 +148,14 @@ const FRESH_MS = 2400;
 const FRESH_BLINK_MS = 800;
 const FRESH_BLINKS = 3;
 /** 判定「算拖、不算点」的位移阈值(px)。手指比鼠标抖得多:4px 在触屏上几乎必然越过,
- *  于是「想点一下收回」会变成「挪了个位置」—— 所以触屏放宽到 10px。 */
-const DRAG_SLOP_MOUSE = 4;
+ *  于是「想点一下收回」会变成「挪了个位置」—— 所以触屏放宽到 10px。
+ *  ⚠ 鼠标这一侧 2026-09-28 由 4px 放宽到 8px(PLAN-20260928120415):4px 比系统的双击容差还小,
+ *    握着鼠标想「点一下收回」时那点自然位移会先被判成拖 —— 收回没发生、贴纸只挪了一丁点,
+ *    用户读作「点了没反应」。
+ *  ⚠ 再往上放宽要小心:`e2e/react/redblack.spec.ts` 的「跨片拖拽」用例,从起手到第一个落点的
+ *    位移正是「贴纸位置 → 画布中心」,而贴纸是**随机落点**;它压在画布中心附近时,这段位移本身
+ *    就只有几像素 —— 阈值一旦超过它,手势不算拖、卡片不亮,那条用例会开始抛硬币。改阈值请连它一起改。 */
+const DRAG_SLOP_MOUSE = 8;
 const DRAG_SLOP_TOUCH = 10;
 
 interface RbCardProps {
@@ -168,7 +174,10 @@ interface RbCardProps {
   fresh: boolean;
   /** 回调都必须是**稳定引用**(见 `RedBlackPage` 里 `latest` 那段注释) */
   onToggleWatched: (film: FilmNode) => void;
-  onPlace: (filmKey: string, type: StickerType, spot?: { posX: number; posY: number }) => void;
+  /** 暂存区那两枚按钮的**单击**入口 → 「贴一枚」(落在随机位置)。
+   *  ⚠ 它不是 `place` 本身:得先吃掉「在按钮上拖了一小段又被补发的那次 click」,见 `placeByTap`。
+   *  `detail` 同样直接透传 `MouseEvent.detail`(键盘 / `element.click()` 恒为 0)。 */
+  onPlaceByTap: (filmKey: string, type: StickerType, detail: number) => void;
   onBeginDrag: (
     event: ReactPointerEvent<HTMLElement>,
     type: StickerType,
@@ -494,8 +503,9 @@ export function RedBlackPage() {
       // 所以给它一个撤销出口(2026-09-28,PLAN-20260928102019 ⑦)。
       // ⚠ 必须在 `commitBoard` **之后**设 —— 它会把上一步的撤销目标清掉
       undoRef.current = board;
+      // ⚠ 不写 `timeout`:带「撤销」的提示走 `toast.ts` 自己的收口定时器,时长只在那一处定义
+      //   (S2 在 action 场景会**忽略**调用方的 timeout,写了也是误导;PLAN-20260928120415)。
       ToastQueue.neutral(`《${name}》的贴纸收回暂存区了。`, {
-        timeout: 3000,
         actionLabel: "撤销",
         onAction: undoLast,
       });
@@ -574,8 +584,8 @@ export function RedBlackPage() {
           // 换色同样是「改掉已有信息」,给它撤销(撤销 = 换回原来那一色)
           undoRef.current = board;
           markFresh(filmKey);
+          // ⚠ 同 `takeBack`:带「撤销」的提示不写 `timeout`,时长只在 `toast.ts` 一处定义
           ToastQueue.neutral(`《${name}》的贴纸换成${type === "red" ? "红" : "黑"}色了。`, {
-            timeout: 3000,
             actionLabel: "撤销",
             onAction: undoLast,
           });
@@ -590,6 +600,24 @@ export function RedBlackPage() {
       markFresh(filmKey);
     },
     [commitBoard, markFresh, undoLast],
+  );
+
+  /** 暂存区那两枚按钮的**单击**入口(与 `takeBackByTap` 对称,但出口是「贴一枚」而不是「收回」)。
+   *  它要保证的是:**在按钮上拖了一小段、松手仍在按钮里**的那次手势不会被读成「贴一枚」——
+   *  那次拖动本身什么也不做(出界、且没落在任何画布上),用户以为自己只是拖了一下。
+   *  ⚠ 实测口径(2026-09-28,PLAN-20260928120415):当前 `beginDrag::onMove` 在越线那一刻的
+   *    `preventDefault()` **已经**能把后面那次补发的 `click` 压掉 —— 在桌面 Chromium / 移动
+   *    Chromium / 移动 WebKit 上,摘掉这道守卫用例仍然绿。所以这里是**不依赖那行副作用的保险**:
+   *    ① 跨引擎(补发 click 是浏览器各自实现);
+   *    ② 将来若有人删掉那行 `preventDefault`,行为靠这里守住而不是靠运气。
+   *  ⚠ 同 `takeBackByTap`,只吞**指针来的**那一次(`detail > 0`):键盘 `Enter` / 空格与
+   *    `element.click()` 的 `detail` 恒为 0、不走 `pointerdown`,否则「拖一次 → 再按回车贴」会被吞。 */
+  const placeByTap = useCallback(
+    (filmKey: string, type: StickerType, detail: number) => {
+      if (detail > 0 && movedRef.current) return;
+      place(filmKey, type);
+    },
+    [place],
   );
 
   // ⚠ 落点处理要用**最新**的 board,而 window 监听只在开始拖拽时挂一次 ——
@@ -963,7 +991,7 @@ export function RedBlackPage() {
                 counts={filmCounts.get(film.key)!}
                 fresh={freshKeys.has(film.key)}
                 onToggleWatched={toggleWatched}
-                onPlace={place}
+                onPlaceByTap={placeByTap}
                 onBeginDrag={beginDrag}
                 onTakeBack={takeBackByTap}
                 onNudge={nudge}
@@ -1015,7 +1043,7 @@ const RbCard = memo(function RbCard({
   counts,
   fresh,
   onToggleWatched,
-  onPlace,
+  onPlaceByTap,
   onBeginDrag,
   onTakeBack,
   onNudge,
@@ -1146,7 +1174,7 @@ const RbCard = memo(function RbCard({
             aria-disabled={redSpent || undefined}
             title={placedType === "black" ? "点一下把贴纸换成红色（位置不变）" : undefined}
             aria-label={`给《${film.zh}》贴红贴纸（点一下随机贴，也可以拖到右边画布上）`}
-            onClick={() => onPlace(film.key, "red")}
+            onClick={(event) => onPlaceByTap(film.key, "red", event.detail)}
             onPointerDown={(event) => onBeginDrag(event, "red", film.key, null)}
           >
             红
@@ -1158,7 +1186,7 @@ const RbCard = memo(function RbCard({
             aria-disabled={blackSpent || undefined}
             title={placedType === "red" ? "点一下把贴纸换成黑色（位置不变）" : undefined}
             aria-label={`给《${film.zh}》贴黑贴纸（点一下随机贴，也可以拖到右边画布上）`}
-            onClick={() => onPlace(film.key, "black")}
+            onClick={(event) => onPlaceByTap(film.key, "black", event.detail)}
             onPointerDown={(event) => onBeginDrag(event, "black", film.key, null)}
           >
             黑
