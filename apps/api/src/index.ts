@@ -622,7 +622,12 @@ app.post("/api/stats/film-votes-ping", limited(pingLimiter), async (c) => {
   // 归一化兜一层:zod 挡结构,这里挡「同一部片发了两条」这类语义重复(以最后一条为准)
   const normalized = normalizeVotes(votes);
   await replaceContributorVotes(db, edition, contributor, normalized);
-  return c.json({ ok: true, count: normalized.size });
+  // ⚠ 顺手把**最新聚合**一起回给客户端（2026-09-28）：前端本来就要在「上报成功后」再 GET 一次
+  //   `/api/stats/film-votes` 才能看到自己这一票体现在榜上 —— 那是多出来的一整个 RTT，
+  //   弱网下尤其明显。这里多读一次聚合（与读接口同一条 `readVoteCounts`，同一份一致性口径），
+  //   前端就能少走一次往返。老客户端不看这个字段，多带一份数据对它没有影响。
+  const counts = await readVoteCounts(db, edition);
+  return c.json({ ok: true, count: normalized.size, votes: counts });
 });
 
 /* ---------------- 红黑榜投票行自查(2026-09-23,PLAN-20260923124402) ----------------
