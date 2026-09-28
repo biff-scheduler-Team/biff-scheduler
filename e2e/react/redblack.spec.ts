@@ -32,6 +32,26 @@ async function paintedCanvas(card: Locator): Promise<Locator> {
   return card.locator(".rb-canvas[data-rb-crowd]");
 }
 
+/** 尽力等页面上的提示条(S2 `ToastQueue`)退场,再做**需要命中**的动作。
+ *
+ *  为什么(2026-09-28 从 CI 上抓到的假红):提示条挂在视口**底部**、`role=alertdialog`,
+ *  而且**接得住指针** —— 手机上它正好盖住卡片下半截(暂存区那两颗「红 / 黑」就在那儿),
+ *  `hover()` / `mouse.down()` 都会先落在它身上;它进出场又走 **View Transitions**,
+ *  过渡那几帧整页被一层快照盖住,命中测试会返回 `<html>`
+ *  (Playwright 原话:`<html> intercepts pointer events`),`document.elementFromPoint()`
+ *  也会拿到 `<html>` 而不是贴纸自己。
+ *
+ *  ⚠ **必须有界**:指针正好压在提示条上时它会 `pauseAll()` 自己的计时器(`react-stately`
+ *    的 `pauseAll` / `resumeAll`),于是永远不走 —— 实测把「窗口外松手」那条卡到 10s 超时。
+ *    等不到就照常往下走:后面那些 `hover()` / 断言自己会重试,卡死在这里反而更糟。
+ *  ⚠ 只等、**不要**在这里挪指针(试过 `mouse.move(2, 2)`:它会把后面量到的坐标全废掉,
+ *    「跨片拖拽」「拖出张贴区」随即以「指针不在画布内」失败)。 */
+async function quiet(page: Page) {
+  await expect(page.locator("[role=alertdialog]"))
+    .toHaveCount(0, { timeout: 6000 })
+    .catch(() => undefined);
+}
+
 test("首次进入是空榜:一枚贴纸都没有,只留一句怎么开始", async ({ page }) => {
   await stubEmpty(page);
   await ready(page, "/redblack");
@@ -51,32 +71,41 @@ test("首次进入是空榜:一枚贴纸都没有,只留一句怎么开始", asy
 // 它挂在栅格**上方**,一收一放会把整页内容顶上去 53px(实测:38px 提示条 + 15px 间距)——
 // 用户点一下标记,看到的是「整页闪了一下」。根因是条件里混进了 `totals.marked`(本地「我看过」),
 // 而文案说的「榜」指的是全站票数,两回事。
-// ⚠ 判据用**文档坐标**(`rect.top + scrollY`)而不是视口坐标:Playwright 为了点击可能会滚页面,
-//   那样量的是滚动不是布局位移 —— 这次差一点又被它骗过去。
+// ⚠ 判据是「**页眉底边 → 栅格顶边**」这段间距,不是栅格的绝对文档坐标(2026-09-28 改):
+//   预览页会异步换上 S2 的 WebFont,而页眉里那行 `.rb-mine` 走的是 `line-height: normal` ——
+//   换上的那一刻它的行盒高会变一次(CI 实测 **+2px**)。量绝对坐标时,「标记前」量到的是换字体
+//   之前的版面、「标记后」量到的是换完之后的,差的 2px 会被读成「标记把整页顶上去了」
+//   (2026-09-28 CI 上桌面与手机同时以 433 → 435 红掉,查了一轮才发现与标记无关)。
+//   页眉自己高矮一次与这条用例无关:要守的是**页眉与栅格之间那一段**(空榜引导条就长在那儿)——
+//   它一出现 / 一消失,下面的内容就被顶上 / 放下 53px,那才是用户看到的「闪了一下」。
+//   ⚠ 顺带免疫滚动:两个 rect 一起滚,相减之后与 `scrollY` 无关(旧写法要自己补 `scrollY`,
+//   而 Playwright 为了点击会滚页面 —— 这次不再有那个坑)。
 test("点「标记看过」不会把整页顶上去", async ({ page }) => {
   await stubEmpty(page);
   await ready(page, "/redblack");
 
   const key = keyOf("008");
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
-  const gridTopDoc = () =>
-    page.evaluate(() =>
-      Math.round(
-        (document.querySelector(".rb-grid") as HTMLElement).getBoundingClientRect().top + scrollY,
-      ),
-    );
+  const aboveGrid = () =>
+    page.evaluate(() => {
+      const hero = document.querySelector(".rb-hero") as HTMLElement;
+      const grid = document.querySelector(".rb-grid") as HTMLElement;
+      return Math.round(
+        grid.getBoundingClientRect().top - hero.getBoundingClientRect().bottom,
+      );
+    });
 
-  const before = await gridTopDoc();
+  const before = await aboveGrid();
   await card.getByRole("button", { name: /^标记《/ }).click();
   await expect(card).toHaveAttribute("data-rb-marked", "true");
-  expect(await gridTopDoc()).toBe(before);
+  expect(await aboveGrid()).toBe(before);
   // 引导条还在(它只随「全站有没有贴纸」变,与本地的「我看过」无关)
   await expect(page.locator(".rb-hint")).toBeVisible();
 
   // 再点回去也一样,不许弹回来
   await card.getByRole("button", { name: /取消标记/ }).click();
   await expect(card).not.toHaveAttribute("data-rb-marked", "true");
-  expect(await gridTopDoc()).toBe(before);
+  expect(await aboveGrid()).toBe(before);
 });
 
 test("榜单铺出去重后的影片,同一部只出现一次,且能按场次 code 搜到", async ({ page }) => {
@@ -254,12 +283,17 @@ test("屏幕外的卡片仍留着我贴的那一枚:自己的贴纸始终抓得�
   await expect(mine).toHaveCount(1);
   // 而且它压在最上层、点得到自己 —— 这就是「能不能拖」本身
   // (群点在 `.rb-ink` 上,那层 `pointer-events: none`,不会把它盖住)
-  const hitSelf = await mine.evaluate((node) => {
-    const box = node.getBoundingClientRect();
-    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-    return hit === node || node.contains(hit);
-  });
-  expect(hitSelf).toBe(true);
+  // ⚠ 用 `expect.poll` 而不是量一次就断:提示条(S2 `ToastQueue`)的进出场走 View Transitions,
+  //   过渡那几帧整页被一层快照盖住 —— `elementFromPoint()` 会返回 `<html>` 而不是贴纸本身。
+  //   那是**暂时**的,与「我的那一枚有没有被压住」不是一回事(`mine` 是真实元素、`.rb-ink`
+  //   又是 `pointer-events: none`,这条断言守的是后者)。2026-09-28 CI 上就红在这里。
+  const hitSelf = () =>
+    mine.evaluate((node) => {
+      const box = node.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      return hit === node || node.contains(hit);
+    });
+  await expect.poll(hitSelf).toBe(true);
 });
 
 test("「别人的贴纸」与我贴的那枚同尺寸,只差常驻纸白边与能不能拖", async ({ page }) => {
@@ -580,7 +614,10 @@ test("拖出张贴区:先给「会被收回」的提示,拖回来立刻消失,�
   await expect(mine).toHaveCount(1);
 
   // 三个点都要在视口里:`elementFromPoint` 与指针坐标都按视口算(实测过假绿)
-  await card.scrollIntoViewIfNeeded();
+  // ⚠ 用 `block: "center"` 而不是 `scrollIntoViewIfNeeded`(2026-09-28):后者只滚到「刚好
+  //   露出来」,卡片会停在视口底缘 —— 而贴纸落点是随机的,那一枚就可能落在 `vh` 之下,
+  //   下面那条前置断言会偶发假红(手机上一张卡近 300px 高,底缘那一截正好是提示条的地盘)。
+  await card.evaluate((node) => node.scrollIntoView({ block: "center" }));
   const canvas = (await card.locator(".rb-canvas").boundingBox())!;
   const dot = (await mine.boundingBox())!;
   const info = (await card.locator(".rb-card-info").boundingBox())!;
@@ -650,11 +687,16 @@ test("从暂存区拖出并移出画布:提示是「松开 · 取消」,暂存�
   // ⚠ 先等这次重渲染落地(按钮文案从「标记看过」变「看过 ✓」会让左侧信息列改高矮),
   //   否则后面量到的位置是过期的
   await expect(card).toHaveAttribute("data-rb-marked", "true");
-  await card.scrollIntoViewIfNeeded();
+  // ⚠ 滚到视口**中间**而不是 `scrollIntoViewIfNeeded`:后者只把卡片滚到「刚好露出来」,
+  //   暂存区那两颗就落在视口底缘 —— 正好是提示条的地盘,`hover()` 会一直重试到超时
+  //   (2026-09-28 CI 上 mobile-webkit 就是这么红的:`<html ... toast-remove> intercepts pointer events`)。
+  await card.evaluate((node) => node.scrollIntoView({ block: "center" }));
 
-  const info = (await card.locator(".rb-card-info").boundingBox())!;
   // ⚠ 起手用 `hover()`:让 Playwright 在**按下的那一刻**现算按钮中心(理由同上)
+  await quiet(page);
   await card.locator(".rb-src--red").hover();
+  // ⚠ `info` 在 `hover()` **之后**量:`hover()` 有需要时会滚一下,先量的坐标会过期
+  const info = (await card.locator(".rb-card-info").boundingBox())!;
   await page.mouse.down();
   await page.mouse.move(info.x + info.width / 2, info.y + 16, { steps: 6 });
 
@@ -752,23 +794,49 @@ test("两指同时按住两张卡的贴纸:一次松手只结算发起的那一�
   const b = page.locator(".rb-card").nth(1);
   await a.getByRole("button", { name: /^标记《/ }).click();
   await b.getByRole("button", { name: /^标记《/ }).click();
-  await a.getByRole("button", { name: /贴红贴纸/ }).click();
-  await b.getByRole("button", { name: /贴黑贴纸/ }).click();
+  // ⚠ 两枚贴纸用**键盘**贴,不用 `click()`(2026-09-28):`click()` 会起一次真实鼠标手势,而
+  //   mobile-webkit 上那一次**有时没被收尾** —— 随后合成的单指手势会有约一半概率被
+  //   `beginDrag` 第一行的单手势守卫直接挡掉(实测:同一个手势 `ghost` 数 0 / 1 随机,
+  //   失败值恒等于「贴纸到落点」的距离,即「一枚都没挪」)。这条用例从头到尾用的都是
+  //   **合成**指针事件,前置步骤就不该在页面上留下手势。
+  //   键盘 `Enter` 触发的 click `detail === 0` → 走 `placeByTap` 的键盘分支(页面本来就支持)。
+  await a.getByRole("button", { name: /贴红贴纸/ }).focus();
+  await page.keyboard.press("Enter");
+  await b.getByRole("button", { name: /贴黑贴纸/ }).focus();
+  await page.keyboard.press("Enter");
   const dotA = a.locator(".rb-dot");
   const dotB = b.locator(".rb-dot");
   await expect(dotA).toHaveCount(1);
   await expect(dotB).toHaveCount(1);
 
-  // 两张卡都要在视口里:`elementFromPoint` 与指针坐标都按视口算(实测过假绿)
+  // 两张卡上的**贴纸**都要在视口里:落点判定与指针坐标都按视口算(实测过假绿)。
+  // ⚠ 只把《A》那张卡滚动到视口中间是**不够**的(2026-09-28):手机上一张卡近 300px 高,
+  //   两张卡放不下,第二枚贴纸很可能落在视口**之下** —— CI 上正是以「692 > 664」红的。
+  //   改成按「两枚贴纸实际占的那段窗口」来滚:把它们整体挪到上边留 8px。
+  //   ⚠ 那段窗口本身放不下时直接断言失败 —— 那种情况没有合法位置,不该让后面的断言遮成假绿。
   await a.evaluate((node) => node.scrollIntoView({ block: "center" }));
   const vh = page.viewportSize()!.height;
-  for (const dot of [dotA, dotB]) {
-    const box = (await dot.boundingBox())!;
+  /** 把两枚贴纸一起挪进视口(上边留 8px)。
+   *  ⚠ 不能只滚一次:榜单每张卡都挂着 `content-visibility: auto` + 估算高度(206px),滚动中
+   *    屏外卡片的**估算高**会被换成真实高,文档里上面的内容跟着变高变矮 —— 「滚到某个绝对位置」
+   *    于是要一两轮才收敛(实测一次滚完仍可能差 100px 以上,贴纸直接落在视口外)。
+   *    所以量一次、挪一次,最多几轮;始终进不去就由下面的断言明确失败(那样也没有合法窗口)。 */
+  const fitBoth = async () => {
+    for (let i = 0; i < 6; i += 1) {
+      const top = (await dotA.boundingBox())!.y;
+      const bb = (await dotB.boundingBox())!;
+      if (top > 4 && bb.y + bb.height < vh - 4) return;
+      await page.evaluate((dy) => window.scrollBy(0, dy), top - 8);
+    }
+  };
+  await fitBoth();
+  const aBox = (await dotA.boundingBox())!;
+  const bBox = (await dotB.boundingBox())!;
+  expect(bBox.y + bBox.height - aBox.y).toBeLessThan(vh - 16);
+  for (const box of [aBox, bBox]) {
     expect(box.y).toBeGreaterThan(0);
     expect(box.y + box.height).toBeLessThan(vh);
   }
-  const aBox = (await dotA.boundingBox())!;
-  const bBox = (await dotB.boundingBox())!;
   const centerOf = (box: { x: number; y: number; width: number; height: number }) => ({
     x: box.x + box.width / 2,
     y: box.y + box.height / 2,
@@ -777,12 +845,27 @@ test("两指同时按住两张卡的贴纸:一次松手只结算发起的那一�
   const bAt = centerOf(bBox);
 
   // 第一指按住《A》那枚 → 第二指按住《B》那枚(同一时刻的两个指针)
+  // ⚠ 起手前先补一个 `pointerId = 1` 的 `pointerup`(2026-09-28):这条用例从头到尾用的是
+  //   **合成**指针,而它前一拍是**真实鼠标**交互(`click()` / `keyboard`)—— Playwright 的鼠标
+  //   `pointerId` 在 Chromium 与 WebKit 上都是 **1**(实测),所以上一步那次手势万一没被收尾,
+  //   它占着的 `gestureRef` 会把这里的第一指直接挡掉(实测:同一个手势 `ghost` 数 0 / 1 随机,
+  //   失败值恒等于「贴纸到落点」的距离 = 一枚都没挪)。补的这一发在**没有**残留时是空操作;
+  //   有残留时 `moved` 仍是 false(真实鼠标只是把指针移过去再按,没越过拖动阈值)→ 只收尾、不结算。
+  await dispatchPointerUp(page, 1, { x: 0, y: 0 });
   await dispatchPointer(dotA, "pointerdown", 1, aFrom);
   await dispatchPointer(dotB, "pointerdown", 2, bAt);
-  // ⚠ 落点取《A》画布的**几何中心**,不是「贴纸中心 + 固定像素」(2026-09-23,PLAN-20260923104622):
-  //   贴纸落点是 `Math.random` 的,靠近画布右下角时那个偏移会把松手点推出画布 → 判成出界 →
-  //   那枚被收回 → 断言以「确实动了」失败(偶发**假红**)。按画布矩形推出来的点才是确定性的。
-  const aDrop = centerOf((await a.locator(".rb-canvas").boundingBox())!);
+  // ⚠ 落点由一个**画布内的相对位置**推出来,而不是「贴纸中心 + 固定像素」,也不再固定用
+  //   「画布正中」(2026-09-28):
+  //   ① 固定偏移会在贴纸靠近右下角时把松手点推出画布 → 判成出界 → 那枚被收回
+  //      (2026-09-23,PLAN-20260923104622 已经踩过一次);
+  //   ② 「画布正中」是**彩票**:贴纸落点走 `Math.random`,它本来就在正中附近时,从起手到落点
+  //      这段位移连触屏 10px 的拖动阈值都过不去(`moved` 不置位 → 手势不算拖 → 一枚都不结算),
+  //      失败值恰好等于「贴纸到画布中心」那点距离 —— CI 上两次假红都是这个形状。
+  //   ③ 所以目标点**按贴纸现在的位置反着挑**:它偏左就落 0.85,偏右就落 0.15,位移恒 ≥ 0.3 个画布。
+  const aRect = (await a.locator(".rb-canvas").boundingBox())!;
+  const aRel = { x: (aFrom.x - aRect.x) / aRect.width, y: (aFrom.y - aRect.y) / aRect.height };
+  const target = { x: aRel.x < 0.5 ? 0.85 : 0.15, y: aRel.y < 0.5 ? 0.85 : 0.15 };
+  const aDrop = { x: aRect.x + aRect.width * target.x, y: aRect.y + aRect.height * target.y };
   // 第一指拖动(越过触屏 10px 阈值),第二指不动
   await dispatchPointer(dotA, "pointermove", 1, aDrop);
   // 抬起第一指 —— 旧实现这一刻两套 `onUp` 都会收到它,第二套还会拿**这个坐标**去结算《B》
@@ -790,10 +873,18 @@ test("两指同时按住两张卡的贴纸:一次松手只结算发起的那一�
   await dispatchPointerUp(page, 1, aDrop);
   await dispatchPointerUp(page, 2, bAt);
 
-  // 发起的那一枚**确实被挪到了松手那一点**(否则就是「手势压根没跑」,测试会假绿)
+  // 发起的那一枚**确实被挪到了松手那一点**(否则就是「手势压根没跑」,测试会假绿)。
+  // ⚠ 判据回到**画布内的相对位置**:贴纸存的就是相对坐标,从「量画布」到「派发 pointerup」
+  //   之间画布被浮动层推几个像素也不影响它;拿视口坐标相减则会把那点位移原样记成误差
+  //   (实测 2~48px 不等,「落点对不对」就成了看运气)。
   const aAfter = centerOf((await dotA.boundingBox())!);
-  expect(Math.abs(aAfter.x - aDrop.x)).toBeLessThan(2);
-  expect(Math.abs(aAfter.y - aDrop.y)).toBeLessThan(2);
+  const afterRect = (await a.locator(".rb-canvas").boundingBox())!;
+  const afterRel = {
+    x: (aAfter.x - afterRect.x) / afterRect.width,
+    y: (aAfter.y - afterRect.y) / afterRect.height,
+  };
+  expect(Math.abs(afterRel.x - target.x)).toBeLessThan(0.03);
+  expect(Math.abs(afterRel.y - target.y)).toBeLessThan(0.03);
   // 《B》那枚**一枚不多、一位不移**
   await expect(dotB).toHaveCount(1);
   const bAfter = (await dotB.boundingBox())!;
@@ -816,7 +907,8 @@ test("窗口外松手丢了 pointerup:手势不卡死,贴纸也原样留着", as
   await a.getByRole("button", { name: /贴红贴纸/ }).click();
   const mine = a.locator(".rb-dot");
   await expect(mine).toHaveCount(1);
-  // 两张卡都要在视口里:落点命中测试(`elementFromPoint`)与指针坐标都按视口算
+  // ⚠ 这一步只是为了把版面摆正:上面两条 `dispatchPointer` 是**直接派发到元素上**的
+  //   (本来就不吃视口),但③那一步要拿《B》画布的真实 rect 算落点,摆正之后更稳。
   await a.evaluate((node) => node.scrollIntoView({ block: "center" }));
 
   const before = (await mine.boundingBox())!;
@@ -844,13 +936,21 @@ test("窗口外松手丢了 pointerup:手势不卡死,贴纸也原样留着", as
   // ③ 让出来的手势要**真的能再用**:把《B》暂存区那枚拖到《B》自己的画布上,它必须落下去
   //    (未修前 `beginDrag` 会被那个卡住的手势一直挡掉:《B》一枚都贴不上,而《A》那枚
   //     还会被那套陈旧的监听拿**这次**的坐标结算一次)
-  const src = (await b.locator(".rb-src--red").boundingBox())!;
-  const bCanvas = (await b.locator(".rb-canvas").boundingBox())!;
-  const from = { x: src.x + src.width / 2, y: src.y + src.height / 2 };
-  const to = { x: bCanvas.x + bCanvas.width / 2, y: bCanvas.y + bCanvas.height / 2 };
-  await page.mouse.move(from.x, from.y);
+  // ⚠ 起手用 `hover()` 而不是「先量按钮坐标再 `mouse.move`」(2026-09-28):
+  //   手机上一张卡就有近 300px 高,`scrollIntoView({block:"center"})` 到的是**上一张卡**的
+  //   中心,《B》的暂存区那颗还在视口之下 —— `mouse.down()` 落在视口外面,手势压根没起
+  //   (CI 上 mobile-chromium 与 mobile-webkit 都红在这里:`《B》一枚都贴不上`)。
+  //   `hover()` 会自己把按钮滚进视野,再按下去才真的落在它身上;顺带先等提示条退场(见 `quiet`)。
+  await b.evaluate((node) => node.scrollIntoView({ block: "center" }));
+  await quiet(page);
+  await b.locator(".rb-src--red").hover();
   await page.mouse.down();
-  await page.mouse.move(to.x, to.y, { steps: 6 });
+  // ⚠ 落点在 `hover()` **之后**量:它可能刚滚过页面(而落点判据是画布 rect 的矩形包含,
+  //   只要求这个点落在《B》那块画布里,不要求它在视口的哪个位置)
+  const bCanvas = (await b.locator(".rb-canvas").boundingBox())!;
+  await page.mouse.move(bCanvas.x + bCanvas.width / 2, bCanvas.y + bCanvas.height / 2, {
+    steps: 6,
+  });
   await page.mouse.up();
   const placedB = b.locator(".rb-dot");
   await expect(placedB).toHaveCount(1);
