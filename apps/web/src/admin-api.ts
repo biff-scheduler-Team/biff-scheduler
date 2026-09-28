@@ -39,12 +39,13 @@ export interface AdminAudit {
   ok: boolean;
 }
 
+/** ⚠ **没有** `audit`：对账是五张贡献表各一次全表 GROUP BY，已拆到 `loadAdminAudit()`
+ *  （2026-09-28，PLAN-20260928101634）—— 挂在概览里会让整屏被最慢的那一步拖住。 */
 export interface AdminOverview {
   edition: string;
   today: string;
   earliestDay: string | null;
   metrics: AdminMetricSummary[];
-  audit: AdminAudit;
   accounts: { sessions: number; documents: number; documentBytes: number; imported: number };
   content: { discussions: number; feedback: number };
 }
@@ -119,6 +120,18 @@ const q = (values: Record<string, string | number | undefined>) => {
 export async function loadAdminOverview(edition = EDITION): Promise<AdminOverview> {
   const response = await api(`/api/admin/overview?${q({ edition })}`);
   return (await response.json()) as AdminOverview;
+}
+
+/**
+ * 数据体检（聚合对账）。
+ *
+ * ⚠ 与 `loadAdminOverview()` **分开**是一条刻意的口径（2026-09-28，PLAN-20260928101634）：
+ *   它要对五张贡献表各做一次全表 GROUP BY，是这一页最慢的一项。合并进概览 = 整屏陪着它一起等，
+ *   而这四块内容（规模 / 数据总览 / 账号与内容）与对账结论毫无依赖关系。
+ */
+export async function loadAdminAudit(edition = EDITION): Promise<AdminAudit> {
+  const response = await api(`/api/admin/audit?${q({ edition })}`);
+  return (await response.json()) as AdminAudit;
 }
 
 export async function loadAdminRows(options: {

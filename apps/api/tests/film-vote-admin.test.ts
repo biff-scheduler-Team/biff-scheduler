@@ -454,7 +454,7 @@ describe("管理端读接口 HTTP 边界", () => {
     expect(await ok.json()).toEqual({ subject: ADMIN_SUBJECT, admin: true });
   });
 
-  it("★ overview：给出各模块总量与对账结论，且**不含任何片单内容**", async () => {
+  it("★ overview：给出各模块总量，且**不含任何片单内容**；也**不含对账**（它已拆到 /audit）", async () => {
     await replaceContributorWants(db, EDITION, NON_ADMIN_SUBJECT, 1, ["cat:f001"]);
     sqlite
       .prepare(
@@ -466,15 +466,32 @@ describe("管理端读接口 HTTP 边界", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
       metrics: Array<{ metric: string; total: number }>;
-      audit: { ok: boolean };
       accounts: { documents: number };
       today: string;
     };
     expect(body.metrics.find((row) => row.metric === "want")?.total).toBe(1);
-    expect(body.audit.ok).toBe(true);
     expect(body.accounts.documents).toBe(1);
     expect(body.today).toBe(TODAY);
     expect(JSON.stringify(body)).not.toContain("别人的片单");
+    // ★ 2026-09-28（PLAN-20260928101634）：对账是整页最慢的一步，**必须**留在概览之外 ——
+    //   塞回来就等于「最慢的那一步决定整屏能不能看」（这条就是防止它被顺手塞回去）
+    expect("audit" in body).toBe(false);
+  });
+
+  it("★ audit：门禁与读路径同一层（401 / 403），管理员能**真的报出**人为制造的漂移", async () => {
+    // 门禁先钉一遍：新路由若注册在 `/api/admin/*` 的两条中间件之前，就会变成裸接口
+    expect((await app.request(`${base}/audit?edition=${EDITION}`, {}, env)).status).toBe(401);
+    expect((await requestAs(NON_ADMIN_SUBJECT, `${base}/audit?edition=${EDITION}`)).status).toBe(403);
+
+    await replaceContributorVotes(db, EDITION, "c1", new Map([["cat:f001", "red"]]));
+    sqlite.prepare("UPDATE film_vote_stat SET red_count = 0").run();
+
+    const response = await requestAs(ADMIN_SUBJECT, `${base}/audit?edition=${EDITION}`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { ok: boolean; drifts: unknown[]; scanned: Record<string, number> };
+    expect(body.ok).toBe(false);
+    expect(body.drifts).toEqual([{ metric: "vote", key: "cat:f001|red", contribution: 1, stat: 0 }]);
+    expect(body.scanned.film_vote_contribution).toBe(1);
   });
 
   it("rows：管理员能读到 contributor 原文；metric 非法 → 422", async () => {

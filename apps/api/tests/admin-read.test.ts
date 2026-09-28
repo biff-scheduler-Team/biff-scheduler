@@ -75,7 +75,6 @@ describe("readOverview（d1 垫片，跑真 SQL）", () => {
     });
     expect(overview.today).toBe(TODAY);
     expect(overview.earliestDay).toBe(TODAY);
-    expect(overview.audit.ok).toBe(true);
   });
 
   it("今日增量按「族」加总：红黑两种颜色算进同一个 vote 数字", async () => {
@@ -86,14 +85,18 @@ describe("readOverview（d1 垫片，跑真 SQL）", () => {
     expect(vote).toMatchObject({ rows: 3, contributors: 3, targets: 2, total: 3, today: 3 });
   });
 
-  it("概览同时给出对账结论（体检与目录一屏看完）", async () => {
+  it("★ 概览里**没有**对账（2026-09-28 拆到 /api/admin/audit）：最慢的那一步不再拖住整屏", async () => {
     await replaceContributorScreenings(db, EDITION, "c1", 1, ["008"]);
+    // 把聚合表改坏：`auditContributions()` 会报出这一处漂移，但概览**与它无关** ——
+    // 两者已是两条路径（对账算法本身由 stat-audit.test.ts 钉住）
     sqlite.prepare("UPDATE screening_attendance_stat SET weight_sum = '0.25'").run();
     const overview = await readOverview(db, EDITION);
-    expect(overview.audit.ok).toBe(false);
-    expect(overview.audit.drifts).toEqual([
-      { metric: "screening", key: "008", contribution: 1, stat: 0.25 },
-    ]);
+    expect("audit" in overview).toBe(false);
+    expect(overview.metrics.find((row) => row.metric === "screening")).toMatchObject({
+      metric: "screening",
+      rows: 1,
+      total: 1,
+    });
   });
 
   it("★ 账号概况只回统计量：会话数 / 文档数 / 文档字节数 / 已导入数，**绝不回片单内容**", async () => {

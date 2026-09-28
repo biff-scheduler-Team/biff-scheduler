@@ -2,8 +2,7 @@
  * 管理端的读聚合（2026-09-23，PLAN-20260923142546，批 1）。
  *
  * 两件事：
- *   ① `readOverview` —— 一屏看全：五个统计模块的总量 / 去重人数 / 今日增量、对账结论、
- *      账号概况、内容条数；
+ *   ① `readOverview` —— 一屏看全：五个统计模块的总量 / 去重人数 / 今日增量、账号概况、内容条数；
  *   ② `readContributionRows` —— **通用的贡献行明细**：四张同形的贡献表 + 事件流水收成一条读路径，
  *      免得分页 / 筛选 / DTO 各写四五份（同口径两份 = 红线 5）。
  *
@@ -12,13 +11,15 @@
  * ⚠ 账号概况**只回统计量**，绝不回片单内容（`festival_document.records`）—— 那是账号自己的东西。
  * ⚠ 这是**管理端低频**路径，所以用裸 SQL 换可读性（`COUNT(DISTINCT …)` 这类在 SQL 里最直白），
  *   并行的独立查询用 `Promise.all` 让往返重叠。它不在任何用户热路径上。
+ * ⚠ **对账（体检）不在这里**（2026-09-28，PLAN-20260928101634）：它对五张贡献表各做一次全表
+ *   GROUP BY，是这一页唯一的重查询 —— 挂在 `Promise.all` 里就等于「最慢的那一步决定整屏能不能看」。
+ *   它现在走独立的 `GET /api/admin/audit`（`stat-audit.ts::auditContributions`）。
  */
 
 import { sql } from "drizzle-orm";
 import { database } from "./db";
 import { kstDay } from "./day";
 import { dailyMetricFamily, type DailyMetric } from "./stat-daily";
-import { auditContributions, type StatAudit } from "./stat-audit";
 import { parseCursor, cursorOf, parseLimit } from "./pagination";
 
 type Db = ReturnType<typeof database>;
@@ -187,7 +188,6 @@ export interface AdminOverview {
   /** 趋势从哪天开始（历史不回填，所以这通常就是上线那天） */
   earliestDay: string | null;
   metrics: AdminMetricSummary[];
-  audit: StatAudit;
   accounts: { sessions: number; documents: number; documentBytes: number; imported: number };
   content: { discussions: number; feedback: number };
 }
@@ -221,7 +221,6 @@ export async function readOverview(db: Db, edition: string): Promise<AdminOvervi
     imported,
     discussions,
     feedback,
-    audit,
   ] = await Promise.all([
     summaryQuery(ROW_SOURCES.want),
     summaryQuery(ROW_SOURCES.vote),
@@ -248,7 +247,6 @@ export async function readOverview(db: Db, edition: string): Promise<AdminOvervi
     db.get<{ n: number }>(sql`SELECT COUNT(*) AS n FROM screening_post WHERE edition = ${edition}`),
     // ⚠ 反馈表没有 edition 列（全站一份），所以不按 edition 过滤
     db.get<{ n: number }>(sql`SELECT COUNT(*) AS n FROM feedback_post`),
-    auditContributions(db, edition),
   ]);
 
   const todayByMetric = new Map<string, number>();
@@ -276,7 +274,6 @@ export async function readOverview(db: Db, edition: string): Promise<AdminOvervi
       summary("ticket", ticket),
       summary("telemetry", telemetry),
     ],
-    audit,
     accounts: {
       sessions: Number(sessions?.n) || 0,
       documents: Number(documents?.n) || 0,

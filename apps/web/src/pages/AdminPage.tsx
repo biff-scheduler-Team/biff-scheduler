@@ -14,20 +14,28 @@
  *   一条 fullPage 正则。URL 依然可分享、可收藏、可后退。
  *
  * ⚠ 渲染一律按「字段可能缺」写（`?? []`）：`admin-api.ts` 刻意不做逐字段白名单，理由见那里。
+ *
+ * ★ 2026-09-28（PLAN-20260928101634）两处结构性改动，理由都写在各自的实现旁边：
+ *   ① 权限探测按**身份主体**判重 + 重探**不再把整屏换回 `loading`**（`identityOf` / `probe`）——
+ *      原先每 20s 的例行同步都会把整页拆掉重挂一次，用户「在那中间无法操作」；
+ *   ② 数据体检拆成独立的 `AdminAuditPanel`（接口也拆到 `/api/admin/audit`）——
+ *      全表对账是整页最慢的一项，挂在概览里就是「最慢的那一步决定整屏能不能看」。
  */
 
 import { DISCUSSION_CATEGORIES } from "@biff/contracts/screening";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { openAccountPanel } from "../account";
-import { ApiFailure, onAccountChange } from "../account-sync";
+import { accountState, ApiFailure, onAccountChange } from "../account-sync";
 import {
   deleteAdminVote,
+  loadAdminAudit,
   loadAdminContent,
   loadAdminOverview,
   loadAdminRows,
   loadAdminTrend,
   loadAdminVoteRows,
   probeAdmin,
+  type AdminAudit,
   type AdminContentPost,
   type AdminOverview,
   type AdminProbe,
@@ -97,23 +105,57 @@ function PanelMore({ label, children }: { label: string; children: ReactNode }) 
   );
 }
 
+/**
+ * 「权限判定的输入」= 当前身份的主体（未登录记 `guest`）。
+ *
+ * ★ 为什么用它做判重键（2026-09-28，PLAN-20260928101634）：权限是**主体**的函数 ——
+ *   白名单在服务端写死（`admin.ts::ADMIN_SUBJECTS`），同一个主体问多少次答案都一样。
+ *   而 `account-sync` 每 20s（外加 `focus` / `online`）的例行同步都会 `emit()`，
+ *   它们**只改同步状态、不改主体** —— 按状态判重就等于每 20 秒白问一次。
+ * ⚠ 代价写明：身份不变时不再自动重探，所以**名单改了 / 权限被撤**不会自己反映到已打开的页面上。
+ *   这不是安全口子 —— 门禁在服务端，这一页拿到的每个数据接口都各自过一次门禁；这里只是渲染层。
+ *   需要立刻重判时切一下账号（主体变 → 重探）或刷新页面。
+ */
+function identityOf(): string {
+  return accountState.account?.user.id ?? "guest";
+}
+
 export function AdminPage() {
   const { params, update } = useQuery();
   const tab = adminTabOf(params.get("tab"));
   const [gate, setGate] = useState<Gate>("loading");
+  const [probing, setProbing] = useState(false);
 
+  /**
+   * 探测权限。
+   *
+   * ★ 2026-09-28（用户：「admin 页面总是一下在刷新确认权限，每次一刷新这个过程就无法操作」）：
+   *   原先这里第一行是 `setGate("loading")`，而重探由 `onAccountChange` 驱动 ——
+   *   于是**整屏（规模图 / 数据总览表 / 明细分页 / 滚动位置）每 20 秒被拆掉重挂一次**，
+   *   用户在那中间的每一秒都点不动东西。
+   *   现在：首屏的加载态由初值 `"loading"` 承担，**重探一律静默**，进行中用按钮文案表达。
+   */
   const probe = useCallback(() => {
-    setGate("loading");
+    setProbing(true);
     probeAdmin()
       .then(setGate)
       // 网络错误/超时走这里：**不能**伪装成「你没权限」，那会把排查带偏
-      .catch(() => setGate("error"));
+      .catch(() => setGate("error"))
+      .finally(() => setProbing(false));
   }, []);
 
   useEffect(() => probe(), [probe]);
-  // 登录态一变就重新判定：刚登录成功 / 刚登出都该立刻反映，而不是等刷新
+  // 登录态一变就重新判定：刚登录成功 / 刚登出都该立刻反映，而不是等刷新。
+  // ⚠ 但**必须按身份判重**：例行同步同样会走到这里（见 `identityOf` 的说明），不判重就是
+  //   每 20 秒重来一次 —— 那正是「一直在刷新确认权限」。
   useEffect(() => {
-    const stop = onAccountChange(() => probe());
+    let last = identityOf();
+    const stop = onAccountChange(() => {
+      const now = identityOf();
+      if (now === last) return;
+      last = now;
+      probe();
+    });
     return () => {
       stop();
     };
@@ -138,7 +180,11 @@ export function AdminPage() {
           </p>
           <div className="admin-row-tools">
             <ActionButton onPress={() => openAccountPanel()}>登录 IFFDAY</ActionButton>
-            <ActionButton onPress={probe}>重新确认</ActionButton>
+            {/* ⚠ 进行中的反馈只能落在这里：重探**不再**把 gate 打回 loading（见 `probe` 的说明），
+             *   否则点了没反应会像坏了。 */}
+            <ActionButton isDisabled={probing} onPress={probe}>
+              {probing ? "正在确认…" : "重新确认"}
+            </ActionButton>
           </div>
         </section>
       )}
@@ -163,7 +209,9 @@ export function AdminPage() {
             可能是网络问题或服务端不可用 —— 这与「没有权限」是两件事，别混淆。
           </p>
           <div className="admin-row-tools">
-            <ActionButton onPress={probe}>重试</ActionButton>
+            <ActionButton isDisabled={probing} onPress={probe}>
+              {probing ? "正在重试…" : "重试"}
+            </ActionButton>
           </div>
         </section>
       )}
@@ -231,7 +279,6 @@ function AdminOverviewView() {
     );
   }
 
-  const audit = data.audit;
   const users = metricBars(data.metrics);
   const mix = contentDonut(data.content);
   return (
@@ -316,52 +363,7 @@ function AdminOverviewView() {
         </div>
       </section>
 
-      <section className={`admin-panel${audit?.ok ? "" : " admin-panel--alert"}`}>
-        <div className="admin-panel-head">
-          <h2 className="admin-panel-title">数据体检（聚合对账）</h2>
-          <PanelMore label="数据体检">
-            <p className="admin-note">
-              做法：把每张贡献表现算一遍，与读侧真正用的预聚合表逐项比。聚合表一旦漂移，
-              榜单照常显示、只是数字错了 —— 读侧永远看不出来，所以要有这一屏。
-            </p>
-            <p className="admin-note">
-              对账只报告不修：修法是重算聚合（属写路径），不该由一个体检接口顺手做 ——
-              否则「谁在什么时候把数字改回去了」就没人知道。
-            </p>
-          </PanelMore>
-        </div>
-        <p className="admin-note">{auditHeadline(audit)}</p>
-        {audit && !audit.ok && (
-          <div className="admin-table-wrap">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>模块</th>
-                  <th>目标</th>
-                  <th className="num">贡献表现算</th>
-                  <th className="num">聚合表存储</th>
-                </tr>
-              </thead>
-              <tbody>
-                {audit.drifts.map((drift) => (
-                  <tr key={`${drift.metric}|${drift.key}`}>
-                    <td>{metricLabel(drift.metric)}</td>
-                    <td className="admin-mono">{drift.key}</td>
-                    <td className="num">{formatWeight(drift.contribution)}</td>
-                    <td className="num">{formatWeight(drift.stat)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <p className="admin-note text-12">
-          扫描行数：
-          {Object.entries(audit?.scanned ?? {})
-            .map(([table, count]) => `${table} ${count}`)
-            .join(" · ") || "—"}
-        </p>
-      </section>
+      <AdminAuditPanel />
 
       <section className="admin-panel">
         <div className="admin-panel-head">
@@ -404,6 +406,133 @@ function AdminOverviewView() {
         </div>
       </section>
     </div>
+  );
+}
+
+/* ---------------- 数据体检（聚合对账，独立加载） ---------------- */
+
+/**
+ * 本次会话里上一次体检的结果 —— **切 tab 回来不重跑**。
+ *
+ * ★ 2026-09-28（用户：「数据体检（聚合对账）太长了」，PLAN-20260928101634）：
+ *   体检要对五张贡献表各做一次全表 GROUP BY，是这一页唯一的重查询；而切 tab
+ *   （概览 → 明细 → 概览）会**重新挂载**本组件 —— 不缓存就等于每次回来都重跑一遍，
+ *   「太长了」原样复发。所以：首次进来自动跑一次，之后由「重新体检」按钮驱动。
+ * ⚠ 必须是**模块级**变量而不是 React state：`AdminPage` 切 tab 时整棵子树卸载，state 留不住。
+ */
+let auditCache: { audit: AdminAudit; at: number } | null = null;
+
+/**
+ * 在途的体检请求 —— 合并并发调用。
+ *
+ * ⚠ 必须有它：`main.tsx` 用的是 `<StrictMode>`，dev 下 effect 会**跑两次**，
+ *   而体检是整页最贵的一次请求（五张表全表扫描）—— 不合并就是并发跑两遍，
+ *   正好是这轮要修的那个「太长」。顺带也把「连点重新体检」收敛成一次。
+ */
+let auditInFlight: Promise<AdminAudit> | null = null;
+
+function fetchAudit(): Promise<AdminAudit> {
+  auditInFlight ??= loadAdminAudit().finally(() => {
+    auditInFlight = null;
+  });
+  return auditInFlight;
+}
+
+/** 数据体检面板：自己的加载 / 失败 / 重跑，**与概览互不阻塞**（两条接口各回各的）。 */
+function AdminAuditPanel() {
+  const [audit, setAudit] = useState<AdminAudit | null>(auditCache?.audit ?? null);
+  /** 这次结果是什么时候拿到的（`null` = 还没拿到过） */
+  const [at, setAt] = useState<number | null>(auditCache?.at ?? null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(auditCache === null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    fetchAudit()
+      .then((next) => {
+        auditCache = { audit: next, at: Date.now() };
+        setAudit(next);
+        setAt(auditCache.at);
+        setError("");
+      })
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "加载失败"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (!auditCache) load();
+  }, [load]);
+
+  // ⚠ 三态分开说：**没跑成** ≠ 「对账未运行」≠「库是空的」—— 混成一句会把运维带偏
+  const headline =
+    !audit && loading
+      ? "正在体检（要对五张表各做一次全表扫描，这一页最慢的就是它）…"
+      : !audit
+        ? "这次没体检成 —— 原因见下。"
+        : `${auditHeadline(audit)}${loading ? " · 正在重新体检…" : ""}`;
+
+  return (
+    <section className={`admin-panel${audit && !audit.ok ? " admin-panel--alert" : ""}`}>
+      <div className="admin-panel-head">
+        <h2 className="admin-panel-title">数据体检（聚合对账）</h2>
+        <PanelMore label="数据体检">
+          <p className="admin-note">
+            做法：把每张贡献表现算一遍，与读侧真正用的预聚合表逐项比。聚合表一旦漂移，
+            榜单照常显示、只是数字错了 —— 读侧永远看不出来，所以要有这一屏。
+          </p>
+          <p className="admin-note">
+            对账只报告不修：修法是重算聚合（属写路径），不该由一个体检接口顺手做 ——
+            否则「谁在什么时候把数字改回去了」就没人知道。
+          </p>
+          <p className="admin-note">
+            ⚠ 这一屏**单独取**（`/api/admin/audit`，不挂在概览里）：全表扫描是整页最慢的一项，
+            跟概览绑在一起会让别的面板陪着它一起等。
+          </p>
+        </PanelMore>
+      </div>
+      <p className="admin-note">{headline}</p>
+      {error && <p className="admin-note admin-error">这次没体检成：{error}</p>}
+      {audit && !audit.ok && (
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>模块</th>
+                <th>目标</th>
+                <th className="num">贡献表现算</th>
+                <th className="num">聚合表存储</th>
+              </tr>
+            </thead>
+            <tbody>
+              {audit.drifts.map((drift) => (
+                <tr key={`${drift.metric}|${drift.key}`}>
+                  <td>{metricLabel(drift.metric)}</td>
+                  <td className="admin-mono">{drift.key}</td>
+                  <td className="num">{formatWeight(drift.contribution)}</td>
+                  <td className="num">{formatWeight(drift.stat)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="admin-note text-12">
+        扫描行数：
+        {Object.entries(audit?.scanned ?? {})
+          .map(([table, count]) => `${table} ${count}`)
+          .join(" · ") || "—"}
+      </p>
+      {at !== null && (
+        <p className="admin-note text-12">
+          体检时间 {formatTime(at)} · 结果在本次会话内缓存（切回概览不会重跑），点「重新体检」才会重跑。
+        </p>
+      )}
+      <div className="admin-row-tools">
+        <ActionButton isDisabled={loading} onPress={load}>
+          {loading ? "正在体检…" : "重新体检"}
+        </ActionButton>
+      </div>
+    </section>
   );
 }
 

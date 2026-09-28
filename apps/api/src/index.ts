@@ -27,6 +27,7 @@ import {
   readOverview,
 } from "./admin-read";
 import { dailyMetricFamily, isDailyMetric, readDailySeries, readEarliestDay } from "./stat-daily";
+import { auditContributions } from "./stat-audit";
 import { kstDayMinus } from "./day";
 import {
   normalizeFeedbackBody,
@@ -727,12 +728,23 @@ app.get("/api/admin/whoami", (c) =>
   c.json({ subject: c.get("session").row.subject, admin: true }),
 );
 
-/** 管理端概览：五个模块的总量 / 去重人数 / 今日增量 + 对账结论 + 账号概况 + 内容条数。
+/** 管理端概览：五个模块的总量 / 去重人数 / 今日增量 + 账号概况 + 内容条数。
  *  ⚠ 账号那块**只回统计量**，永不回片单内容。 */
 app.get("/api/admin/overview", async (c) => {
   const edition = editionParam(c.req.query("edition"));
   if (!edition) return c.json({ error: "INVALID_EDITION" }, 422);
   return c.json(await readOverview(database(c.env.DB), edition));
+});
+
+/** 管理端数据体检（聚合对账）：**单独一条**，不挂在概览里（2026-09-28，PLAN-20260928101634）。
+ *  ⚠ 它要对五张贡献表各做一次全表 GROUP BY（`stat-audit.ts`），是这一页唯一的重查询。
+ *    原先挂在 `/overview` 的 `Promise.all` 里 —— 最慢的那一步决定整屏能不能看，
+ *    实测就是「概览一直转、数据体检太长」的成因。拆开之后概览秒开，体检自己转自己的。
+ *  门禁靠上面 `/api/admin/*` 那两条 `app.use`（本路由在它们之后注册）。 */
+app.get("/api/admin/audit", async (c) => {
+  const edition = editionParam(c.req.query("edition"));
+  if (!edition) return c.json({ error: "INVALID_EDITION" }, 422);
+  return c.json(await auditContributions(database(c.env.DB), edition));
 });
 
 /** 管理端明细：四张同形的贡献表 + 事件流水收成一条读路径（`metric` 决定读哪张）。 */

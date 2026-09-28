@@ -10,7 +10,9 @@
 //        ③ 四个视图的标签与顺序固定、`?tab=` 可直达可分享；
 //        ④ ★ 趋势图的 `data-points` **等于天数** —— 缺的天被补成 0，图不缩水；
 //        ⑤ 内容视图真的打**公开**接口（/api/discussions 与 /api/feedback）；
-//        ⑥ 全页不出现 NaN / Infinity / undefined。
+//        ⑥ 全页不出现 NaN / Infinity / undefined；
+//        ⑦ ★ 2026-09-28（PLAN-20260928101634）两处结构改动：**例行账号同步不再拆屏**
+//           （whoami 只探一次）、**体检挂住不返回也不挡住概览**（对账已拆成独立接口）。
 
 import { test, expect, type Page } from "@playwright/test";
 import { buildFilms } from "../../apps/web/src/app/model";
@@ -86,9 +88,15 @@ const filmTitleOf = (key: string) => buildFilms(catalog, new Map()).find((f) => 
 
 /** 管理员的四份数据。**趋势刻意只喂 1 天** —— 页面若照原样画，点数就会是 1（见覆盖点 ④）。
  *  `emptyLedger`：模拟「日账本一行都没有」（部署当天就是这状态）—— 用来验「空态不画空图」。
- *  `deleteFails`：模拟服务端 404（那一行已经不在了）—— 用来验「不静默成功」。 */
-async function stubAdmin(page: Page, options: { emptyLedger?: boolean; deleteFails?: boolean } = {}) {
+ *  `deleteFails`：模拟服务端 404（那一行已经不在了）—— 用来验「不静默成功」。
+ *  `auditPending`：体检接口**永不响应** —— 用来验「最慢的那一步不再决定整屏能不能看」。 */
+async function stubAdmin(
+  page: Page,
+  options: { emptyLedger?: boolean; deleteFails?: boolean; auditPending?: boolean } = {},
+) {
   await page.route("**/api/admin/whoami", (route) => route.fulfill({ json: { ok: true } }));
+  // ⚠ 概览里**没有** `audit`（2026-09-28 拆到独立接口）：这两个 stub 的形状差异本身就是口径，
+  //   把 audit 塞回概览会在这里露出第二份实现
   await page.route("**/api/admin/overview*", (route) =>
     route.fulfill({
       json: {
@@ -98,12 +106,18 @@ async function stubAdmin(page: Page, options: { emptyLedger?: boolean; deleteFai
         metrics: [
           { metric: "vote", rows: 2, contributors: 2, targets: 2, total: 2, today: 2 },
         ],
-        audit: { edition: EDITION, scanned: { vote: 2 }, drifts: [], ok: true },
         accounts: { sessions: 1, documents: 2, documentBytes: 2048, imported: 1 },
         content: { discussions: 1, feedback: 1 },
       },
     }),
   );
+  await page.route("**/api/admin/audit*", (route) => {
+    // 故意不响应：模拟「五张贡献表各一次全表扫描」的现场，请求一直挂着
+    if (options.auditPending) return;
+    return route.fulfill({
+      json: { edition: EDITION, scanned: { vote: 2 }, drifts: [], ok: true },
+    });
+  });
   await page.route("**/api/admin/rows*", (route) =>
     route.fulfill({
       json: {
@@ -378,6 +392,47 @@ test("口径说明默认收起（点开才显示）—— 否则概览会被文�
   await more.locator(".admin-more-btn").click({ force: true });
   await expect(more.locator(".admin-more-body")).toBeVisible();
   await expect(more.locator(".admin-more-body")).toContainText("对账只报告不修");
+});
+
+/* ---------------- 2026-09-28：权限探测不再打断操作 / 体检不再拖住概览 ----------------
+ * 两条都来自同一句用户反馈：「admin 页面总是一下在刷新确认权限，每次一刷新这个过程就无法操作；
+ * 数据体检（聚合对账）太长了」（PLAN-20260928101634）。 */
+
+test("★ 例行账号同步不再把整屏拆掉重来：whoami 只探一次，页面不回到「正在确认权限…」", async ({
+  page,
+}) => {
+  const probes: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/admin/whoami") probes.push(request.url());
+  });
+  await stubAdmin(page);
+  await openAdmin(page);
+  await expect(page.getByRole("heading", { name: `数据总览（${EDITION}）` })).toBeVisible();
+  expect(probes).toHaveLength(1);
+
+  // `account-sync` 的例行同步（20s 定时器 / 回到前台 / 恢复联网）走的就是这条路径：
+  // 它每轮都会 `emit()`，而权限只与**身份主体**有关 —— 旧实现据此重探并把 gate 打回
+  // `loading`，于是整屏（图表 / 表格 / 滚动位置）每 20 秒被拆掉重挂一次。
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await page.waitForTimeout(500);
+  expect(probes).toHaveLength(1);
+  await expect(page.getByText("正在确认权限…")).toHaveCount(0);
+  // 「没被拆屏」的直接证据：概览内容一直在（拆屏会把它换成一句 loading）
+  await expect(page.getByRole("heading", { name: `数据总览（${EDITION}）` })).toBeVisible();
+});
+
+test("★ 体检挂住不返回也不挡住概览：其余三块照样先出来，体检自己转自己的", async ({ page }) => {
+  await stubAdmin(page, { auditPending: true });
+  await openAdmin(page);
+  // 规模图 / 数据总览 / 账号与内容都不依赖对账 —— 它们必须在对账还没跑完时就已渲染
+  await expect(page.getByRole("heading", { name: "规模" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: `数据总览（${EDITION}）` })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "账号与内容" })).toBeVisible();
+  // 体检那格是自己的加载态，而不是把整屏拖进「概览加载失败」
+  await expect(page.getByRole("heading", { name: "数据体检（聚合对账）" })).toBeVisible();
+  // ⚠ 只匹配那句结论文案：按钮文案是「正在体检…」，用 /正在体检/ 会撞上 strict mode
+  await expect(page.getByText("正在体检（要对五张表各做一次全表扫描")).toBeVisible();
+  await expect(page.getByText("概览加载失败")).toHaveCount(0);
 });
 
 /* ---------------- 贴纸（删红黑榜投票行） ---------------- */
