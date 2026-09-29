@@ -72,8 +72,9 @@ test("首次进入是空榜:一枚贴纸都没有,只留一句怎么开始", asy
 // 用户点一下标记,看到的是「整页闪了一下」。根因是条件里混进了 `totals.marked`(本地「我看过」),
 // 而文案说的「榜」指的是全站票数,两回事。
 // ⚠ 判据是「**页眉底边 → 栅格顶边**」这段间距,不是栅格的绝对文档坐标(2026-09-28 改):
-//   预览页会异步换上 S2 的 WebFont,而页眉里那行 `.rb-mine` 走的是 `line-height: normal` ——
-//   换上的那一刻它的行盒高会变一次(CI 实测 **+2px**)。量绝对坐标时,「标记前」量到的是换字体
+//   预览页会异步换上 S2 的 WebFont,而页眉里那组小字(现在是 `.rb-badge`,2026-09-29 改版前叫 `.rb-mine`)
+//   走的是 `line-height: normal` —— 换上的那一刻它的行盒高会变一次(CI 实测 **+2px**)。
+//   量绝对坐标时,「标记前」量到的是换字体
 //   之前的版面、「标记后」量到的是换完之后的,差的 2px 会被读成「标记把整页顶上去了」
 //   (2026-09-28 CI 上桌面与手机同时以 433 → 435 红掉,查了一轮才发现与标记无关)。
 //   页眉自己高矮一次与这条用例无关:要守的是**页眉与栅格之间那一段**(空榜引导条就长在那儿)——
@@ -129,6 +130,37 @@ test("榜单铺出去重后的影片,同一部只出现一次,且能按场次 co
   //   所以这里必须用会重试的 `expect.poll` 等数量真的降下来。
   await expect.poll(() => cards.count()).toBeLessThan(total);
   await expect(page.locator(`.rb-card[data-film-key="${target}"]`)).toBeVisible();
+});
+
+// 未标记「看过」时红 / 黑按钮是**真 `disabled`**(2026-09-29,PLAN-20260929172651 §4)。
+// 用户要的是「查看 → 标记看过 → 选红黑」这条**单向流**:过去按钮只是 CSS 置灰、点了仍进得去,
+// 弹一句「先标记看过」——那是个「看着能点、点了被拒」的假出口。
+// ⚠ 判据必须是 `toBeDisabled()`(真 `disabled` 属性),**不是** `data-rb-spent` / `aria-disabled`:
+//   后两者说的是「已经贴过这一色」,与「有没有标记看过」是两件事(已标记但已贴时按钮**仍要能点**,
+//   那是「点另一色原地换色」的出口,2026-09-28 加的,不许被这轮改掉)。
+test("没标记「看过」时红 / 黑按钮是禁态,标记之后才放开", async ({ page }) => {
+  await stubEmpty(page);
+  await ready(page, "/redblack");
+
+  const card = page.locator(`.rb-card[data-film-key="${keyOf("008")}"]`);
+  const red = card.getByRole("button", { name: /贴红贴纸/ });
+  const black = card.getByRole("button", { name: /贴黑贴纸/ });
+
+  await expect(red).toBeDisabled();
+  await expect(black).toBeDisabled();
+  // 「为什么点不动」只能挂在**容器**上:`disabled` 的按钮在浏览器里不弹 `title`
+  await expect(card.locator(".rb-tray")).toHaveAttribute("title", /标记看过/);
+
+  // 点「标记看过」→ 两枚立刻放开,那句 hover 解释也跟着撤掉
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await expect(red).toBeEnabled();
+  await expect(black).toBeEnabled();
+  await expect(card.locator(".rb-tray")).not.toHaveAttribute("title");
+
+  // 取消标记 → 收回禁态(单向流是可逆的,只是每次都要先把「看过」补回来)
+  await card.getByRole("button", { name: /取消标记/ }).click();
+  await expect(red).toBeDisabled();
+  await expect(black).toBeDisabled();
 });
 
 test("标记「看过」→ 贴一枚红:画布上立刻出现,并上报给服务端", async ({ page }) => {
@@ -560,8 +592,15 @@ test("跨片拖拽:别片的张贴区一枚都不会多", async ({ page }) => {
 
   const mine = a.locator(".rb-dot");
   await expect(mine).toHaveCount(1);
-  // ⚠ 贴纸是随机落点,不居中时它可能落在视口上方 —— 那样 `page.mouse` 的事件根本送不到它身上
-  await a.evaluate((node) => node.scrollIntoView({ block: "center" }));
+  // ⚠ 贴纸是随机落点,不居中时它可能落在视口上方 —— 那样 `page.mouse` 的事件根本送不到它身上。
+  // ⚠ 但这里**不能**用 `block: "center"`(2026-09-29 窄屏改上下布局之后才暴露):
+  //   单列把卡片撑高了一倍,把《A》居中会让《B》的画布整个掉到 `vh` 之下 ——
+  //   下面那几行视口断言当场以 `Expected: < 839 / Received: 920` 报出来。
+  //   这条用例要的是「两张卡的关键区域**同时在**视口里」,所以对齐到**顶部**:
+  //   《A》顶边贴住视口顶,页眉 / 工具条被滚出去正好让位。
+  //   ⚠ 只对齐顶部还不够:`mobile-webkit` 的视口只有 664px,单列卡片一屏仍放不下两张 ——
+  //     所以《B》的落点也一并改成了「画布上缘内一点」(见下面的 `bSpot`)。
+  await a.evaluate((node) => node.scrollIntoView({ block: "start" }));
   const from = (await mine.boundingBox())!;
   const aBox = (await a.locator(".rb-canvas").boundingBox())!;
   const bBox = (await b.locator(".rb-canvas").boundingBox())!;
@@ -572,8 +611,12 @@ test("跨片拖拽:别片的张贴区一枚都不会多", async ({ page }) => {
   });
   const here = center(from);
   const aMid = center(aBox);
-  const bMid = center(bBox);
-  for (const point of [here, aMid, bMid]) {
+  // ⚠ 《B》的落点取**画布上缘内一点**,不是画布中心(2026-09-29,窄屏改上下布局之后才暴露):
+  //   单列把卡片撑高,就算《A》顶边对齐,`webkit` 那个更矮的视口(vh=664)也放不下
+  //   《B》的画布中心(实测 692)。而这条用例要的只是「落点**在《B》的画布上**」——
+  //   上缘内 8px 同样是合法落点(判据是画布矩形包含),却稳稳落在视口里。
+  const bSpot = { x: bBox.x + bBox.width / 2, y: bBox.y + 8 };
+  for (const point of [here, aMid, bSpot]) {
     expect(point.y).toBeGreaterThan(0);
     expect(point.y).toBeLessThan(vh);
   }
@@ -584,8 +627,8 @@ test("跨片拖拽:别片的张贴区一枚都不会多", async ({ page }) => {
   await page.mouse.move(aMid.x, aMid.y, { steps: 4 });
   await expect(a).toHaveAttribute("data-rb-hover", "");
 
-  // 再拖到《B》的画布正中:张贴区按片独立 → 《B》不该被点亮成落点(亮灯 = 承诺一个不会兑现的落点)
-  await page.mouse.move(bMid.x, bMid.y, { steps: 8 });
+  // 再拖到《B》的画布上:张贴区按片独立 → 《B》不该被点亮成落点(亮灯 = 承诺一个不会兑现的落点)
+  await page.mouse.move(bSpot.x, bSpot.y, { steps: 8 });
   await expect(b).not.toHaveAttribute("data-rb-hover", "");
   await expect(a).not.toHaveAttribute("data-rb-hover", "");
   await page.mouse.up();

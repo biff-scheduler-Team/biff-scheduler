@@ -117,13 +117,28 @@ describe("位置与角度", () => {
   });
 
   it("makeSticker:不给 spot 时落点随机但在安全区内;给了 spot 就用它并钳进安全区", () => {
-    const seq = [0.25, 0.9, 0.1];
-    let i = 0;
-    const s = makeSticker("black", undefined, () => seq[i++ % seq.length]);
+    // ⚠ 这里**不再**硬算那一串 `0.08 + u * 0.84`(2026-09-29 改):那是旧口径(矩形均匀)的公式,
+    //    而公式本身在 `redblack.ts::discSpot` 里已经有一份 —— 测试再抄一份,落点分布一改就得跟着改,
+    //    而且抄错了也只会让测试变绿。改成断**性质**:落点始终在圆盘内。
+    const s = makeSticker("black", undefined, () => 0.5);
     expect(s.type).toBe("black");
     expect(s.id).not.toBe("");
-    expect(s.posX).toBeCloseTo(0.08 + 0.9 * 0.84, 6);
-    expect(s.posY).toBeCloseTo(0.08 + 0.1 * 0.84, 6);
+    expect(s.posX).toBeGreaterThanOrEqual(0.08);
+    expect(s.posX).toBeLessThanOrEqual(0.92);
+    expect(s.posY).toBeGreaterThanOrEqual(0.08);
+    expect(s.posY).toBeLessThanOrEqual(0.92);
+
+    // 与 `spotOf` **同一套分布**(`softSpot`):随手撒 200 枚,一枚都不许出安全区 ——
+    // 两处分家的话,「群点挤在中间、我刚贴的那一枚偏偏跑到角上」当场可见。
+    let seed = 1;
+    const lcg = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+    for (let k = 0; k < 200; k += 1) {
+      const one = makeSticker("red", undefined, lcg);
+      expect(one.posX).toBeGreaterThanOrEqual(0.08);
+      expect(one.posX).toBeLessThanOrEqual(0.92);
+      expect(one.posY).toBeGreaterThanOrEqual(0.08);
+      expect(one.posY).toBeLessThanOrEqual(0.92);
+    }
 
     // 从暂存区拖到画布上松手 → 落在松手那一点(越界则钳回安全区)
     const dropped = makeSticker("red", { posX: 0.3, posY: 0.4 });
@@ -406,6 +421,26 @@ describe("spotOf:落点要真的铺开", () => {
       expect(spread(key, "posY").span).toBeGreaterThan(0.5);
       expect(spread(key, "posX").span).toBeGreaterThan(0.5);
     }
+  });
+
+  // 「铺开」的反面同样是口径(2026-09-29,经两轮修订):
+  // 用户先反馈「几乎铺满了矩形各个角……让中间密、边缘留白多一点」——
+  // 第一版把它做成了**圆盘撒点**:四角是空了,却撒出一条看得见的**椭圆边界**,
+  // 用户当场反问「为什么现在贴纸聚成椭圆形了」。
+  // ⇒ 口径定稿:**形状仍是矩形**(边缘不许成片空白),变的只是**密度**(中间密、四周疏)。
+  it("中间密、四周疏,但**没有椭圆边界**:边缘照样有点", () => {
+    const spots = Array.from({ length: 400 }, (_, i) => spotOf(`cat:f001#crowd-${i}`));
+
+    // ① 铺遍整个安全区 —— 圆盘版会在四角留下成片空白,那条边界就是「椭圆」的来源
+    const inCorners = spots.filter(
+      (p) => (p.posX < 0.15 || p.posX > 0.85) && (p.posY < 0.15 || p.posY > 0.85),
+    );
+    expect(inCorners.length).toBeGreaterThan(0);
+
+    // ② 但确实向心:横向偏离的中位数要明显小于**均匀**分布(纯均匀时是 0.25;
+    //    本实现实测 ≈ 0.13,取 0.18 作阈值留出余量,同时仍然区分得开)
+    const devs = spots.map((p) => Math.abs(p.posX - 0.5)).sort((a, b) => a - b);
+    expect(devs[199]).toBeLessThan(0.18);
   });
 });
 

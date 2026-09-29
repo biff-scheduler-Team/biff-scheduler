@@ -46,6 +46,21 @@ export const MAX_PER_FILM = 1;
 /** 落点边距(相对):贴纸中心不出这个范围,免得贴在画布最边上被裁掉一半 */
 const SPOT_MARGIN = 0.08;
 
+/** 落点的**向心强度**(2026-09-29,经两轮修订)。
+ *
+ *  用户第一次反馈:「分布比较均匀(几乎铺满了矩形各个角)……让中间密、边缘留白多一点」。
+ *  第一版把它实现成了**极坐标圆盘撒点** —— 四角确实空了,但多出一条**看得见的椭圆边界**,
+ *  用户随即反问「为什么现在贴纸聚成椭圆形了」。**教训:要的是密度的渐变,不是形状的改变。**
+ *
+ *  所以现在是:x / y 各自仍在**整个矩形**里取值(没有边界),只把两路均匀数**加权混合**,
+ *  让分布从「均匀」偏向「中间高、四周低」:
+ *  · `0` → 纯均匀(铺满四角,即改版前的观感);
+ *  · `1` → 三角形分布(中点最密,向两端线性递减);
+ *  · 取 `0.5`:看得出中间更密,而**边缘依然有点** —— 不会留下成片的空白。
+ *
+ *  ⚠ 只作用在落点推导(`spotOf` 群点 / `makeSticker` 我自己那枚)**共用** `softSpot`。 */
+const SPOT_CENTER_BIAS = 0.5;
+
 /** 一部片的**全体**红黑计数 —— 红黑榜是「全部用户都可以贴」的,这份计数**只来自服务端聚合**
  *  (`film-votes.ts::loadFilmVotes` + api 的 `/api/stats/film-votes`),本地绝不造:
  *  造出来的假数字会在接口上线后与真实票数打架(用户 2026-09-16 明确要求去掉模拟)。
@@ -99,15 +114,41 @@ function mix32(hash: number): number {
   return x >>> 0;
 }
 
+/** **矩形里的一点**:四路 [0,1) 均匀输入 → 画布相对坐标。
+ *
+ *  `spotOf`(由 id 推导)与 `makeSticker`(随机)共用这一条式子 —— 否则会出现
+ *  「群点都挤在中间、我刚贴的那一枚偏偏跑到角上」,一眼就看出是两套口径(AGENTS §5)。
+ *
+ *  ⚠ **不是极坐标**(2026-09-29 二次修订):第一版用圆盘撒点,四角是空了,但撒出了一条
+ *  看得见的**椭圆边界**(用户当场反问「为什么聚成椭圆形了」)。这里 x / y 各自独立取遍整条边,
+ *  向心只体现在**密度**上:把 `u1` 与 `u2` 按 `SPOT_CENTER_BIAS` 加权混合 ——
+ *  `bias = 0` 退化成纯 `u1`(均匀),`bias = 1` 就是 `(u1 + u2) / 2`(三角形分布)。
+ *  两个权重之和为 1,所以取值范围仍是 `[SPOT_MARGIN, 1 - SPOT_MARGIN]` 整段,没有被切掉一块。 */
+function softSpot(ax: number, bx: number, ay: number, by: number): { posX: number; posY: number } {
+  const span = 1 - SPOT_MARGIN * 2;
+  const half = SPOT_CENTER_BIAS / 2;
+  const pull = (u1: number, u2: number) => u1 * (1 - half) + u2 * half;
+  return clampSpot(SPOT_MARGIN + pull(ax, bx) * span, SPOT_MARGIN + pull(ay, by) * span);
+}
+
 /** 由 id 推导的**确定性**落点 —— 迁移旧数据 / 画「别人的贴纸」都用它
  *  (不能用 `Math.random`,否则每次载入旧数据贴纸都会换位置)。
- *  ⚠ 取坐标前必须过一遍 `mix32`:见它的注释(不 mix 会挤成一条横带)。 */
+ *  ⚠ 取坐标前必须过一遍 `mix32`:见它的注释(不 mix 会挤成一条横带)。
+ *
+ *  ⚠ 分布口径见 `softSpot`:中间密、边缘疏,但形状仍是**矩形**、没有硬边界。
+ *  ⚠ 仍然是**纯确定性**的:同一个 id 每次算出来还是同一个点,刷新不会换位置 ——
+ *    `crowdStickers` 的叠放顺序 / 分享图 / 「看全部」弹层全依赖这条性质。 */
 export function spotOf(id: string): { posX: number; posY: number } {
-  const hash = mix32(hashOf(id));
-  const span = 1 - SPOT_MARGIN * 2;
-  const a = ((hash >>> 8) % 1000) / 1000;
-  const b = ((hash >>> 20) % 1000) / 1000;
-  return { posX: SPOT_MARGIN + a * span, posY: SPOT_MARGIN + b * span };
+  const h1 = mix32(hashOf(id));
+  // ⚠ 四路输入要用**两次** mix32:一次 32 位只够切两段干净的整数
+  //   (`>>> 8` / `>>> 20` 各 12 位),再往下切 `>>> 30` 就只剩 2 位了。
+  const h2 = mix32(h1 ^ 0x9e3779b9);
+  return softSpot(
+    ((h1 >>> 8) % 1000) / 1000,
+    ((h1 >>> 20) % 1000) / 1000,
+    ((h2 >>> 8) % 1000) / 1000,
+    ((h2 >>> 20) % 1000) / 1000,
+  );
 }
 
 /** 把「别人的贴纸」变成画布上能画出来的点:位置由 `(filmKey, index)` **确定性**推导,
@@ -140,7 +181,9 @@ export function crowdStickers(filmKey: string, counts: StickerCounts | undefined
 
 /** 生成一枚新贴纸。**不给 `spot` 时落点随机**(点一下按钮就走这条,允许重叠、不避让);
  *  给了 `spot` 就用它(从暂存区拖到画布上松手的那一点)。
- *  `seed` 只为单测可复现而存在,真机走 `Math.random`。 */
+ *  `seed` 只为单测可复现而存在,真机走 `Math.random`。
+ *  ⚠ 随机落点走 `softSpot` —— 与 `spotOf` **同一套分布**。两处一旦分家,
+ *    「群点都挤在中心、我自己贴的那一枚跑到四角」当场可见(AGENTS §5)。 */
 export function makeSticker(
   type: StickerType,
   spot?: { posX: number; posY: number },
@@ -148,9 +191,9 @@ export function makeSticker(
 ): Sticker {
   const rand = seed ?? Math.random;
   const id = `s-${Date.now().toString(36)}-${Math.floor(rand() * 1e9).toString(36)}`;
-  const span = 1 - SPOT_MARGIN * 2;
-  const at =
-    spot ?? { posX: SPOT_MARGIN + rand() * span, posY: SPOT_MARGIN + rand() * span };
+  // ⚠ 四次 `rand()` 的**次序**就是「x 的主 / 副、y 的主 / 副」(见 `softSpot`)——
+  //   单测喂固定种子时靠它复现
+  const at = spot ?? softSpot(rand(), rand(), rand(), rand());
   return { id, type, ...clampSpot(at.posX, at.posY) };
 }
 

@@ -11,6 +11,10 @@
 :root {
   --rb-red: #cf3b52;
   --rb-black: #2f2f36;
+  /* 规则浮层的底色(2026-09-29)。⚠ 也走 token 而不是就地写死(AGENTS.md §5):
+   * 它是**深色浮层 + 白字**,在亮 / 暗两种主题下都成立,所以不随主题翻转 ——
+   * 但颜色仍然只在这一处表达,将来要调只改这里。 */
+  --rb-tip-bg: rgb(20 20 24 / 96%);
 }
 
 .rb-page {
@@ -51,19 +55,108 @@
 }
 
 .rb-lede {
+  /* ⚠ 规则正文只剩一句(2026-09-29,PLAN-20260929172651 §1):其余收进尾随的 `?`。
+     改版前是 44 字一句,窄屏要折三行、把 hero 顶得很高(用户:「副标题规则……稍微有点长」)。 */
+  max-width: 46ch;
   margin: 8px 0 0;
   font-size: 13px;
+  line-height: 1.5;
   opacity: 0.9;
 }
 
-/* 「全站为主、我为辅」(用户 2026-09-22):
- * 榜是大家的 → 大字给**全站总票数**;我自己那份进度收成下面一行小字 ——
- * 它只回答「我还能不能贴」,不是榜单的主角(改版前这三格全是我的,全站数字一个都没露)。 */
+/* 「?」—— 完整规则的载体(用户 2026-09-29:「可以改为更加精简的文案或增加问号图标
+ * (Hover 展示完整规则),释放视觉空间」)。
+ * ⚠ 展开走**纯 CSS** 的 `:hover` + `:focus-within`,不引 JS 状态:`:focus-within` 让触屏
+ *   「点一下 `?`」也能看、键盘 Tab 进来同样展开、点别处自动收起。
+ * ⚠ `display: none` / `visibility: hidden` **禁止**出现在 `.rb-rule-pop` 上:`aria-describedby`
+ *   指向的节点一旦从无障碍树里被摘掉,读屏就再也拿不到全文 —— 所以只用 `opacity` 表达「看不见」。 */
+.rb-rule {
+  position: relative;
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: baseline;
+}
+
+.rb-rule-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 55%);
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  /* 它是一个「问号」,不是一个胶囊按钮 —— 所以没有 padding、没有实底,`cursor: help` 也在说这件事 */
+  cursor: help;
+  vertical-align: middle;
+}
+
+.rb-rule-btn:hover,
+.rb-rule:focus-within .rb-rule-btn {
+  border-color: #fff;
+  background: rgb(255 255 255 / 18%);
+}
+
+.rb-rule-pop {
+  position: absolute;
+  z-index: 20;
+  /* ⚠ **向下**弹,不向上:`?` 落在页眉第一行,向上弹会顶到页面 header 之外 ——
+   *   它既不是 `fixed`、页眉也没留出那块空间,页面停在顶部时浮层上半截直接被裁掉。
+   *   向下弹落在正文与控制条之上,临时遮一下可以接受:它在移开指针 / 失焦时就收。 */
+  top: calc(100% + 8px);
+  left: 50%;
+  width: min(280px, 72vw);
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--rb-tip-bg);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 28%);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: left;
+  opacity: 0;
+  /* ⚠ `pointer-events: none` 是必须的:它盖在正文上方,不收掉指针会把规则的选中 / 长按吃掉 */
+  pointer-events: none;
+  transform: translate(-50%, -4px);
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+
+.rb-rule:hover .rb-rule-pop,
+.rb-rule:focus-within .rb-rule-pop {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* 「全站为主、我为辅」(用户 2026-09-22):榜是大家的 → 大字给**全站总票数**。
+ * ⚠ 2026-09-29 补一层**容器**(用户:「建议通过卡片化或微缩标签(Badge)样式将其整理,
+ *   区分『全局数据』与『个人数据』」)—— 改版前两类数据只靠字号与 `opacity` 区分,挤在一处。
+ *   现在:全站 = 一块半透明卡片;我的 = 三个小 Badge。两类各自成组,不再互相粘着。 */
 .rb-totals {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   justify-items: end;
   text-align: right;
+}
+
+.rb-stat-card {
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+  padding: 10px 14px;
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 10%);
+}
+
+/* 卡片顶上那枚「全站」标签:小字号 + 拉开字距 —— 与下面那组「我的」Badge 形成明确的层级差 */
+.rb-stat-head {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  opacity: 0.78;
 }
 
 .rb-global {
@@ -92,14 +185,37 @@
   font-variant-numeric: tabular-nums;
 }
 
-.rb-mine {
-  margin: 0;
-  font-size: 12px;
-  opacity: 0.85;
-  font-variant-numeric: tabular-nums;
+/* 我自己那份:Badge 组 —— 它只回答「我还能不能贴」,不是榜单主角 */
+.rb-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
-/* ---------- 搜索 / 排序 ---------- */
+.rb-badge {
+  padding: 2px 9px;
+  border: 1px solid rgb(255 255 255 / 20%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 8%);
+  font-size: 11px;
+  /* ⚠ 等宽数字:否则「已贴 1」变「已贴 10」时整组宽度会跳一下 */
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.rb-badge strong {
+  font-weight: 700;
+}
+
+/* 配额见底(还能贴 0)时才把它顶出来 —— 平时三枚 Badge 齐平,不抢戏 */
+.rb-badge--quota[data-rb-empty] {
+  border-color: rgb(255 255 255 / 46%);
+  background: rgb(255 255 255 / 18%);
+  font-weight: 600;
+}
+
+/* ---------- 搜索 / 排序 / 筛选 ---------- */
 
 .rb-controls {
   display: flex;
@@ -108,14 +224,44 @@
   gap: 12px;
 }
 
-.rb-sort {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
+/* 分段控件(Segmented Control):三档排序是**互斥选项**,外观上就该是一个整体 ——
+ * 外层一个圆角边框,内部各占一格、自己不带边框。改版前三档各是一枚带边框的胶囊,
+ * 再加「只看我贴过」和「生成分享图」,一排里四五个小胶囊(用户 2026-09-29:「色彩过于繁杂」)。
+ * ⚠ 语义仍是 `role=group` + `aria-pressed`(在 JSX 里),这里只改形态。 */
+.rb-seg {
+  display: inline-flex;
+  align-items: stretch;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--raised);
 }
 
-.rb-sort-btn {
+.rb-seg-btn {
+  padding: 5px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  /* ⚠ 两档之间**不加分隔线**:分段控件靠「选中那块是实底」区分,加线又回到「一排胶囊」的样子 */
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.rb-seg-btn:hover {
+  color: var(--brand);
+}
+
+.rb-seg-btn[aria-pressed="true"] {
+  background: var(--brand);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* 「只看我贴过」是**另一个视野**,不是排序的第四档 —— 所以它**不在**分段控件里,
+ * 用一枚带边框的开关(chip)表达「可开可关、默认关」。 */
+.rb-filter {
   padding: 6px 14px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -125,23 +271,26 @@
   cursor: pointer;
 }
 
-.rb-sort-btn:hover {
+.rb-filter:hover {
   border-color: var(--brand);
   color: var(--brand);
 }
 
-.rb-sort-btn[aria-pressed="true"] {
+.rb-filter[aria-pressed="true"] {
   border-color: var(--brand);
-  background: var(--brand);
-  color: #fff;
+  background: var(--brand-soft);
+  color: var(--brand);
   font-weight: 600;
 }
 
-/* 「重新排序」:顺序被冻住之后,重排要由用户主动触发(贴纸变化不自动重排,见页面注释) */
+/* 「重新排序」:顺序被冻住之后,重排要由用户主动触发(贴纸变化不自动重排,见页面注释)。
+ * ⚠ 改版前它是**虚线胶囊**、与筛选同权;现在降成**弱按钮**(无边框 / 无底色,hover 才浮出来)——
+ *   它是维护性动作,不该跟「筛选 / 出图」抢视觉重心(用户 2026-09-29:「色彩过于繁杂」)。
+ * ⚠ 类名与 `data-rb-stale` **不许动**:E2E 按 `.rb-resort` + 该属性断言(spec:1034 / 1065 / 1248)。 */
 .rb-resort {
-  padding: 6px 14px;
-  border: 1px dashed var(--line);
-  border-radius: 999px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
   background: transparent;
   color: var(--muted);
   font-size: 13px;
@@ -149,19 +298,26 @@
 }
 
 .rb-resort:hover {
-  border-color: var(--brand);
+  border-color: var(--line);
+  background: var(--raised);
   color: var(--brand);
 }
 
 /* 冻住顺序之后又贴了纸 → 亮起来提醒「该重排了」 */
 .rb-resort[data-rb-stale] {
-  border-style: solid;
   border-color: var(--brand);
+  background: var(--brand-soft);
   color: var(--brand);
   font-weight: 600;
 }
 
+/* 说明文字:**独占一行**的纯文字(无边框 / 无底色 / 无 padding)。
+ * ⚠ `flex-basis: 100%` 是它换行的唯一手段 —— 改版前它贴在「重新排序」右侧,两者视觉上粘成一组,
+ *   被读成「一个奇怪的胶囊按钮」,而它根本不是按钮(用户 2026-09-29:
+ *   「提示性文本……尽量不要做成外观类似按钮的胶囊形态,以免造成点击误解」)。 */
 .rb-sort-hint {
+  flex-basis: 100%;
+  margin: 0;
   color: var(--muted);
   font-size: 12px;
 }
@@ -324,22 +480,24 @@
   font-weight: 600;
 }
 
-/* 「生成分享图」—— 出图是**主动动作**,给一档比筛选更实的形态(实底 + 品牌色),
- * 但仍小于 hero 里的主操作,免得抢了「标记看过 / 贴贴纸」这条主线的注意力 */
+/* 「生成分享图」—— 这一排里**唯一的主操作**(用户 2026-09-29:
+ * 「将主要操作(如『生成分享图』)高亮突出,筛选切换保持统一的 Segmented Control 样式」)。
+ * ⚠ 改版前它用 `--selected` / `--selected-line`(= #388452 绿):用户读作「绿色胶囊」,
+ *   而绿色与红黑榜的红黑语义毫无关系 —— 那只是别处抄来的 token。
+ *   现在收归品牌红,与 hero 的整块红底同源,一排里只有它是实底。 */
 .rb-share-btn {
-  padding: 5px 12px;
-  border: 1px solid var(--selected-line);
+  padding: 6px 16px;
+  border: 1px solid var(--brand);
   border-radius: 999px;
-  background: var(--selected);
-  color: var(--selected-line);
-  font-size: 12px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
 
 .rb-share-btn:hover {
-  border-color: var(--brand);
-  color: var(--brand);
+  filter: brightness(1.08);
 }
 
 /* 分享图预览:竖长图,靠容器限宽 + 自适应高度 */
@@ -372,20 +530,28 @@
   background: var(--raised);
 }
 
-/* 「看全部」(放大看全部贴纸的入口)—— 与 `.rb-mark` 同一档的小按钮:
- * 它是**查看**动作,不是表态,所以不抢红 / 黑那两个贴纸按钮的视觉权重 */
+/* 「看全部 N 枚」(放大看全部贴纸的入口)—— 与 `.rb-mark` 同一档的小按钮:
+ * 它是**查看**动作,不是表态,所以不抢红 / 黑那两个贴纸按钮的视觉权重。
+ * ⚠ 2026-09-29 用户:「显示为『看全部 239 枚』这类浅灰胶囊……建议样式做一个轻微的 Hover 态
+ *   (比如鼠标移上去变红底或加下划线),让用户知道这是一个可以点击展开的入口,
+ *   而不是一个纯静态 Label」。两处一起改:
+ *   ① 常态的字色由 `--muted` 提到 `--text` —— 与身边那些**真的**死标签(`.rb-chip`)拉开一档;
+ *   ② hover 时边框 / 底色 / 字色**三处同时**变(品牌红 + `--brand-soft` 底),
+ *      单改字色读起来仍像一句说明,hover 出来才有「按得下去」的手感。 */
 .rb-zoom {
   padding: 3px 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface);
-  color: var(--muted);
+  color: var(--text);
   font-size: 11px;
   cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
 }
 
 .rb-zoom:hover {
   border-color: var(--brand);
+  background: var(--brand-soft);
   color: var(--brand);
 }
 
@@ -467,7 +633,17 @@
   opacity: 0.3;
 }
 
-.rb-src:not([data-rb-spent]):hover {
+/* 未标记「看过」时按钮是**真 `disabled`**(2026-09-29,PLAN-20260929172651 §4):
+ * 形态上要一眼看出「现在碰不动」,而不是「按了会弹一句提示」。
+ * ⚠ 光标必须换 `not-allowed`:这也是「为什么点不动」唯一的即时反馈 ——
+ *   `disabled` 的按钮在浏览器里**不弹** `title`,所以那句解释挂到了父级 `.rb-tray` 上(见 JSX)。 */
+.rb-src[disabled] {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+/* ⚠ 选择器要排除 `disabled`:否则 hover 时那圈「抬起来」的阴影会让禁用态看起来又能点了 */
+.rb-src:not([data-rb-spent]):not([disabled]):hover {
   box-shadow:
     inset 0 0 0 1px rgb(255 255 255 / 30%),
     0 2px 4px rgb(0 0 0 / 22%),
@@ -486,6 +662,16 @@
   background: var(--raised);
 }
 
+/* 还没标记「看过」→ 这块展板是**锁定**的:底色抽掉,只剩一圈虚线。
+ * 用户 2026-09-29:「未标记时,可以将右侧展板做**半透明虚线框**处理……保持界面的整洁度」——
+ * 用形态说「现在还贴不了」,而不是在每张卡上刷一遍灰字。
+ * ⚠ 只抽底色、**不动整个元素的 `opacity`**:画布里有「我贴的那一枚」(`.rb-dot`,虽然未标记时不会有)
+ *   以及别人已贴的票(`StickerCanvas` 画的群点)—— 整块降透明度会把**内容**一起变淡,
+ *   而未标记的卡上照样可能有别人的票,那些票是内容、不该跟着被「锁」。 */
+.rb-card:not([data-rb-marked]) .rb-canvas {
+  background: transparent;
+}
+
 /* 标记之后这张卡才「可贴」:边框收实、底色提亮一档 */
 .rb-card[data-rb-marked] .rb-canvas {
   border-style: solid;
@@ -498,6 +684,13 @@
   background: var(--brand-soft);
 }
 
+/* 空展板的提示。⚠ **未标记**那一档默认不可见(2026-09-29,PLAN-20260929172651 §3):
+ * 用户反馈「未标记看过的卡片右侧空白区域重复出现了**大量灰色的**『标记「看过」后就能贴』字样」——
+ * 一屏两张卡就是两遍,一页近 300 张卡就是 300 遍。
+ * 现在卡片被 hover、或里面任何东西获得焦点时才淡入;触屏没有 hover,所以在 `hover: none` 下常显
+ * (否则手机上永远看不到引导 —— 那是把一个「噪音问题」换成了一个「可用性问题」)。
+ * ⚠ 只许用 `opacity` 表达「看不见」,**不许** `display: none` / `visibility: hidden`:
+ *   节点要留在 DOM 里(兄弟用例 `.rb-canvas-hint` 的 `toHaveCount` 数它)。 */
 .rb-canvas-hint {
   position: absolute;
   inset: 0;
@@ -507,6 +700,34 @@
   color: var(--muted);
   font-size: 12px;
   text-align: center;
+  /* ⚠ `pointer-events: none`:它是 `inset: 0` 的整块浮层,默认会把画布整片指针吃掉。
+   *   今天看不出问题(它只是句提示、画布那会儿也没有可点的东西),但 `opacity: 0` 的隐藏态
+   *   同样接得住指针 —— 留着这行,将来在画布上加重叠点、悬停气泡之类的交互时才不会踩坑。 */
+  pointer-events: none;
+  transition: opacity 0.14s ease;
+}
+
+.rb-card:not([data-rb-marked]) .rb-canvas-hint {
+  opacity: 0;
+}
+
+.rb-card:not([data-rb-marked]):hover .rb-canvas-hint,
+.rb-card:not([data-rb-marked]):focus-within .rb-canvas-hint {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  /* 触屏:没有 hover 可用 → 保持常显,但压到低对比度(它仍是一句提示,不是内容) */
+  .rb-card:not([data-rb-marked]) .rb-canvas-hint {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 动效敏感:淡入淡出也不做,直接切换 */
+  .rb-canvas-hint {
+    transition: none;
+  }
 }
 
 /* ---------- 贴纸本体:纸片 ----------
@@ -700,12 +921,20 @@
   border-color: var(--rb-black);
 }
 
-/* 窄屏:信息列收窄,画布还是占剩下的全部 */
+/* 窄屏:卡片改**上下布局**(信息在上、展板在下)。
+ * ⚠ 改版前它只把信息列从 158px 收窄到 116px,展板仍挤在右边 —— 390px 的屏上画布只剩几十像素宽,
+ *   贴纸叠成一条缝(用户 2026-09-29:「移动端屏幕较窄时容易显得拥挤……或者上下布局」)。
+ * ⚠ **没有**做「可折叠面板」:折叠要么引 JS 状态、要么用 `<details>`,而折叠态下画布尺寸为 0 ——
+ *   `StickerCanvas` 的 ResizeObserver 会拿到 0×0 并把 backing store 释放掉,展开那一刻整块重绘;
+ *   而它本可省下的「屏外跳绘」早已被 `content-visibility: auto` 覆盖 —— 多一层状态只多一个出错面。 */
 @media (max-width: 560px) {
   .rb-card {
-    grid-template-columns: 116px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 10px;
     padding: 12px;
+    /* ⚠ 单列之后卡片更高,估值要跟着上调:估得太小会让 `content-visibility: auto` 在快速滚动时
+       反复用错高度,滚动条一直抖 */
+    contain-intrinsic-size: auto 340px;
   }
 
   .rb-poster {

@@ -570,6 +570,9 @@ export function RedBlackPage() {
       const { board, tallies, filmByKey } = latest.current;
       const name = filmByKey.get(filmKey)?.zh ?? "这部";
       const tally = tallies.get(filmKey);
+      // ⚠ 这一支已经是**防御性**的(2026-09-29,PLAN-20260929172651 §4):未标记时红 / 黑按钮是
+      //   真 `disabled`,指针与拖动两条入口都到不了这里。留着它是因为 `place` 是**纯逻辑出口**,
+      //   将来多一条调用路径(快捷键 / 键盘直达)时不该静默什么都不做。
       if (!tally?.marked) {
         ToastQueue.neutral(`先给《${name}》标一下「看过」，就能贴了。`, { timeout: 4000 });
         return;
@@ -885,66 +888,101 @@ export function RedBlackPage() {
           <p className="rb-eyebrow">看过就贴</p>
           <h1>红黑榜</h1>
           <p className="rb-lede">
-            一部电影一枚贴纸：标记「看过」，点红或黑，贴纸就落在右边的空地上；大家的票一起排榜。
+            一部电影一枚贴纸：标记「看过」，再点红或黑。
+            {/* 完整规则收进 `?`(2026-09-29,PLAN-20260929172651 §1):正文只留一句话,把版面让出来。
+                ⚠ 展开走**纯 CSS** 的 `:hover` + `:focus-within`,不引 JS 状态 —— `:focus-within` 让触屏
+                也「点一下 `?`」就能看,键盘 Tab 进来同样展开;`aria-describedby` 让读屏也拿得到全文
+                (所以 CSS 里**不能**用 `visibility: hidden` / `display: none`,那会把内容从无障碍树里摘掉)。 */}
+            <span className="rb-rule">
+              <button type="button" className="rb-rule-btn" aria-describedby="rb-rule-full">
+                ?
+              </button>
+              <span className="rb-rule-pop" id="rb-rule-full">
+                在卡片上点「标记看过」解锁它，再挑一枚红或黑贴上去；贴纸落在右边那块空地上，可以拖动微调位置，
+                单击它、或拖出那块空地都是收回。一部片只有一枚，红黑是同一个名额的两种取舍。大家的票一起排榜。
+              </span>
+            </span>
           </p>
         </div>
         <div className="rb-totals" aria-live="polite">
-          {/* 大字是**全站**的:榜本来就看大家贴了什么(改版前这三格全是我的) */}
-          <span className="rb-global">
-            <strong className="rb-global-num">{totals.total}</strong>
-            <span className="rb-global-label">全站贴纸</span>
+          {/* 全站那份:榜本来就看大家贴了什么 —— 给它一个**卡片**(用户 2026-09-29:「建议通过卡片化或
+              微缩标签(Badge)样式将其整理,区分『全局数据』与『个人数据』」),不再只靠字号与 opacity 区分。
+              大字仍是**全站总票数**(改版前这三格全是我的)。 */}
+          <div className="rb-stat-card">
+            <span className="rb-stat-head">全站</span>
+            {/* ⚠ `.rb-global` 这一层保留:它承载 `redblack-poster.ts` 之外唯一的「全站数字」口径,
+                样式改版不该顺手改结构(颜色 / 字号仍由既有的 `.rb-global-*` 管) */}
+            <span className="rb-global">
+              <strong className="rb-global-num">{totals.total}</strong>
+              <span className="rb-global-label">枚贴纸</span>
+            </span>
             <span className="rb-global-split">
               红 {totals.red} · 黑 {totals.black}
             </span>
-          </span>
-          {/* 我自己那份收成一行小字:它只回答「我还能不能贴」 */}
-          <p className="rb-mine">
-            我的：标记看过 {totals.marked} · 已贴 {totals.placed} · 还能贴 {totals.quota}
-          </p>
+          </div>
+          {/* 我自己那份:Badge 组 —— 它只回答「我还能不能贴」,不是榜单主角 */}
+          <div className="rb-badges">
+            <span className="rb-badge">
+              标记看过 <strong>{totals.marked}</strong>
+            </span>
+            <span className="rb-badge">
+              已贴 <strong>{totals.placed}</strong>
+            </span>
+            {/* ⚠ `data-rb-empty` = **存在即真**(只有配额见底时才写):`CSS` 靠它决定要不要把
+                这枚 Badge 顶出来,值本身不参与判断 */}
+            <span
+              className="rb-badge rb-badge--quota"
+              data-rb-empty={totals.quota === 0 || undefined}
+            >
+              还能贴 <strong>{totals.quota}</strong>
+            </span>
+          </div>
         </div>
       </header>
 
       <div className="rb-controls">
-        <QuerySearchField
-          label="搜索影片或场次编号"
-          placeholder="片名 / 场次 code，如 0412"
-        />
-        <div className="rb-sort" role="group" aria-label="榜单排序">
+        {/* ⚠ 文案按用户 2026-09-29 的建议收短(`label` 是同一句话的长版本,留给读屏) */}
+        <QuerySearchField label="搜索影片或场次编号" placeholder="搜索影片 / 场次编号" />
+        {/* 排序:三档互斥 → **一个**分段控件(Segmented Control),不再是三个各自带边框的胶囊。
+            ⚠ `role=group` + `aria-pressed` 一个都不能少:分段控件只是视觉形态,语义上它仍是
+              「一组互斥选项」(用户 2026-09-29:「筛选切换(总数、红榜、黑榜)保持统一的分段控件样式」)。 */}
+        <div className="rb-seg" role="group" aria-label="榜单排序">
           {SORTS.map(([value, label]) => (
             <button
               key={value}
               type="button"
-              className="rb-sort-btn"
+              className="rb-seg-btn"
               aria-pressed={mode === value}
               onClick={() => update({ sort: value === "total" ? null : value }, true)}
             >
               {label}
             </button>
           ))}
-          <button
-            type="button"
-            className="rb-resort"
-            data-rb-stale={orderStale || undefined}
-            aria-label="按当前的贴纸数量重新排序"
-            onClick={() => setSortTick((count) => count + 1)}
-          >
-            {orderStale ? "有新贴纸 · 重新排序" : "重新排序"}
-          </button>
-          <span className="rb-sort-hint">
-            {mode === "total" ? "按贴纸总数" : mode === "red" ? "按红贴纸数" : "按黑贴纸数"}
-            从高到低；贴纸变化不会打乱当前顺序
-          </span>
         </div>
         {/* 筛选是**另一个视野**,不是排序的第四档 —— 所以留在排序组外面 */}
         <button
           type="button"
-          className="rb-sort-btn"
+          className="rb-filter"
           aria-pressed={onlyMine}
           onClick={() => update({ only: onlyMine ? null : "mine" }, true)}
         >
           只看我贴过
         </button>
-        {/* 出图入口与筛选同排:它是「把这页拿出去给朋友看」,既不是排序也不是筛选 */}
+        {/* 「重新排序」:顺序被冻住之后,重排要由用户主动触发(贴纸变化不自动重排,见页面注释)。
+            ⚠ 类名与 `data-rb-stale` **不许动**:E2E 按 `.rb-resort` + 该属性断言(spec:1034 / 1065 / 1248)。
+              它从「虚线胶囊」降成**弱按钮**(纯文字 + hover 才有底色):它是维护性动作,不该与筛选同权。 */}
+        <button
+          type="button"
+          className="rb-resort"
+          data-rb-stale={orderStale || undefined}
+          aria-label="按当前的贴纸数量重新排序"
+          onClick={() => setSortTick((count) => count + 1)}
+        >
+          {orderStale ? "有新贴纸 · 重新排序" : "重新排序"}
+        </button>
+        {/* 出图是这一排里唯一的主操作 —— 给品牌色实底。
+            ⚠ 改版前它用 `--selected` / `--selected-line`(= #388452 绿),用户读成「绿色胶囊」,
+              而绿色与红黑榜的红黑语义毫无关系(2026-09-29,PLAN-20260929172651 §2)。 */}
         <button
           ref={shareBtnRef}
           type="button"
@@ -953,6 +991,13 @@ export function RedBlackPage() {
         >
           生成分享图
         </button>
+        {/* 说明文字**独占一行**(CSS 里靠 `flex-basis: 100%` 换行):
+            原来它贴在「重新排序」右侧,两者视觉上连成一个组,被读成「一个奇怪的胶囊按钮」——
+            而它根本不是按钮(用户 2026-09-29)。 */}
+        <p className="rb-sort-hint">
+          {mode === "total" ? "按贴纸总数" : mode === "red" ? "按红贴纸数" : "按黑贴纸数"}
+          从高到低；贴纸变化不会打乱当前顺序
+        </p>
       </div>
 
       {/* 空榜引导。⚠ 条件**只能**看全站票数(`totals.total`),**不能**掺「我标记了几片」
@@ -1147,7 +1192,10 @@ const RbCard = memo(function RbCard({
           </button>
           {counts.red > 0 && <span className="rb-chip rb-chip--red">红 {counts.red}</span>}
           {counts.black > 0 && <span className="rb-chip rb-chip--black">黑 {counts.black}</span>}
-          {/* 一枚都没有时不出现:点开只会看到一块空画布 */}
+          {/* 一枚都没有时不出现:点开只会看到一块空画布。
+              ⚠ 文案带上枚数:原来只写「看全部」,用户 2026-09-29 反馈「建议明确其功能
+              (是『查看全部贴纸分布』还是『查看该影片完整详情』)」—— 它开的是**贴纸分布**弹层,
+              写上枚数就不再歧义。动的是可见文案;`aria-label` 早就写全了,E2E 也按它定位。 */}
           {all.total > 0 && (
             <button
               ref={zoomBtnRef}
@@ -1156,22 +1204,33 @@ const RbCard = memo(function RbCard({
               aria-label={`放大查看《${film.zh}》的全部 ${all.total} 枚贴纸`}
               onClick={() => setZoomOpen(true)}
             >
-              看全部
+              看全部 {all.total} 枚
             </button>
           )}
         </p>
         {/* 暂存区(海报下方那两枚):点一下 → 随机贴到画布;拖到画布 → 落在松手那一点。
             ⚠ 这里**不写状态文案**(2026-09-16 用户:「太占空间」):
             按钮亮着就说明能贴、暗了就是贴过了 —— 靠形态表达,不靠解释。 */}
-        {/* ⚠ 只加 `aria-disabled`(而不是 `disabled`):按钮**仍要能点** —— 点了才有
-            「已经贴了一枚」/「换成 X 色」那句提示与动作,真 `disabled` 掉等于把出口关了
-            (2026-09-28,PLAN-20260928102019 ⑫)。 */}
-        <div className="rb-tray" aria-label={`《${film.zh}》的贴纸暂存区`}>
+        {/* ⚠ 未标记「看过」时是**真 `disabled`**(2026-09-29,PLAN-20260929172651 §4,用户要求):
+            过去只有 CSS 置灰、按钮**仍能点**,点了才弹「先标记看过」—— 用户要的是
+            「查看 → 标记看过 → 选红黑」这条**单向流**,不要一个「看着能点、点了被拒」的假出口。
+            ⚠ 这**只推翻** 2026-09-28 决策(PLAN-20260928102019 ⑫)里「未标记也留点击出口」那一半:
+            「**已贴之后**点另一色 = 原地换色」与它的撤销出口**原样保留**(见 `place` 的 `canPlace` 分支),
+            那才是那条决策真正要保的东西 —— 所以判据是 `!marked`,**不是** `spent`。
+            ⚠ 真 `disabled` 会一并掐掉 `onPointerDown`:未标记时本来也不该能拖。
+            ⚠ 提示改挂**暂存区容器**的 `title`:`disabled` 的按钮在浏览器里不弹 `title`,
+              挂容器才能让 hover 那一片仍然说得出「为什么点不动」。 */}
+        <div
+          className="rb-tray"
+          aria-label={`《${film.zh}》的贴纸暂存区`}
+          title={marked ? undefined : "先点「标记看过」，就能贴了"}
+        >
           <button
             type="button"
             className="rb-src rb-src--red"
             data-rb-spent={redSpent || undefined}
             aria-disabled={redSpent || undefined}
+            disabled={!marked}
             title={placedType === "black" ? "点一下把贴纸换成红色（位置不变）" : undefined}
             aria-label={`给《${film.zh}》贴红贴纸（点一下随机贴，也可以拖到右边画布上）`}
             onClick={(event) => onPlaceByTap(film.key, "red", event.detail)}
@@ -1184,6 +1243,7 @@ const RbCard = memo(function RbCard({
             className="rb-src rb-src--black"
             data-rb-spent={blackSpent || undefined}
             aria-disabled={blackSpent || undefined}
+            disabled={!marked}
             title={placedType === "red" ? "点一下把贴纸换成黑色（位置不变）" : undefined}
             aria-label={`给《${film.zh}》贴黑贴纸（点一下随机贴，也可以拖到右边画布上）`}
             onClick={(event) => onPlaceByTap(film.key, "black", event.detail)}
@@ -1236,9 +1296,16 @@ const RbCard = memo(function RbCard({
             }}
           />
         ))}
+        {/* 没有票时的引导。⚠ **未标记**那一档默认不显形(2026-09-29,PLAN-20260929172651 §3):
+            用户反馈「未标记看过的卡片右侧空白区域**重复出现了大量灰色的**『标记「看过」后就能贴』字样,
+            显得画面略为繁复」—— 现在它只在卡片 hover / `:focus-within` 时淡入(触屏 `hover: none` 下常显),
+            由 CSS 的 `.rb-canvas-hint` 管,JS 这边一个字都不用改。
+            ⚠ 节点**仍然渲染**,不要顺手加条件:除了「已标记」那档本来就有用之外,
+              E2E 也按 `toHaveCount` 数它(`spec:595` 数的正是「未标记但空」这一档)。
+            文案顺势收短。 */}
         {myStickers.length === 0 && others.total === 0 && (
           <span className="rb-canvas-hint">
-            {marked ? "点左边的红 / 黑，或把贴纸拖进来" : "标记「看过」后就能贴"}
+            {marked ? "点左边的红 / 黑，或把贴纸拖进来" : "标记「看过」即可贴"}
           </span>
         )}
       </div>
