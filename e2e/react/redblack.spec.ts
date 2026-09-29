@@ -46,6 +46,24 @@ async function paintedCanvas(card: Locator): Promise<Locator> {
  *    等不到就照常往下走:后面那些 `hover()` / 断言自己会重试,卡死在这里反而更糟。
  *  ⚠ 只等、**不要**在这里挪指针(试过 `mouse.move(2, 2)`:它会把后面量到的坐标全废掉,
  *    「跨片拖拽」「拖出张贴区」随即以「指针不在画布内」失败)。 */
+/** `boundingBox()` 的坐标 → **页面坐标**(`elementFromPoint` 吃的那一套)。
+ *
+ *  ⚠ 移动端模拟下这两套**不是同一个空间**:实测 Pixel 7 + `mobile-chromium`,把卡片滚进视口之后
+ *    `window.visualViewport.offsetTop` 是 **98**(不是 0),而
+ *    `getBoundingClientRect()` = `boundingBox()` + 这个偏移 —— 于是拿 `boundingBox()` 的坐标去问
+ *    `elementFromPoint()` 会落到**元素上方 98px** 的地方(实测拿到 `.rb-card-info` / `.rb-zoom`,
+ *    也就是画布上方那一块,而且**稳定复现**,不是「还没落定」)。桌面端两个偏移恒为 0,
+ *    所以这条只在手机上现形。
+ *  ⚠ **指针那一侧不需要换算**:`page.mouse.move()` 用的是与 `boundingBox()` 同一套坐标,
+ *    实测把鼠标挪到它的中心,`:hover` 命中的正是那个元素。 */
+async function toPagePoint(page: Page, point: { x: number; y: number }) {
+  const offset = await page.evaluate(() => ({
+    x: window.visualViewport?.offsetLeft ?? 0,
+    y: window.visualViewport?.offsetTop ?? 0,
+  }));
+  return { x: point.x + offset.x, y: point.y + offset.y };
+}
+
 async function quiet(page: Page) {
   await expect(page.locator("[role=alertdialog]"))
     .toHaveCount(0, { timeout: 6000 })
@@ -659,35 +677,97 @@ test("拖出张贴区:先给「会被收回」的提示,拖回来立刻消失,�
   const mine = card.locator(".rb-dot");
   await expect(mine).toHaveCount(1);
 
-  // 三个点都要在视口里:`elementFromPoint` 与指针坐标都按视口算(实测过假绿)
-  // ⚠ 用 `block: "center"` 而不是 `scrollIntoViewIfNeeded`(2026-09-28):后者只滚到「刚好
-  //   露出来」,卡片会停在视口底缘 —— 而贴纸落点是随机的,那一枚就可能落在 `vh` 之下,
-  //   下面那条前置断言会偶发假红(手机上一张卡近 300px 高,底缘那一截正好是提示条的地盘)。
-  await card.evaluate((node) => node.scrollIntoView({ block: "center" }));
+  // 三个点都要在视口里:`elementFromPoint` 与指针坐标都按视口算(实测过假绿)。
+  // ⚠ 起手**不再用 `hover()`**(2026-09-29,窄屏改上下布局之后才暴露):`hover()` 会按需滚动,
+  //   而单列卡片一滚就是几百像素 —— 量好的坐标当场作废:起手那次 `mouse.move` 被判成「出界」
+  //   (`.rb-ghost` 一上来就带 `rb-ghost--out`),或者画布整块被推到视口之外
+  //   (实测 `canvas y=766 h=150`,而 `vh=839`)。改成把整张卡**钉进视口**再按坐标起手。
+  // ⚠ 必须**收敛式**滚:`content-visibility: auto` 会在滚动中用真实高替换屏外卡的估算高,
+  //   一次滚不收敛(spec:821 那条用例踩过同一个坑),所以最多试 6 轮。
+  //   贴纸就在卡片里,整卡可见 ⇒ 贴纸必然可命中 —— `hover()` 原本想保证的正是这件事。
+  // ⚠ 先等提示条退场:它挂在视口底部、`role=alertdialog`,而且**接得住指针**(见文件头 `quiet` 的说明),
+  //   手机上它正好盖住卡片下半截 —— 那正是画布与暂存区的地盘。
+  await quiet(page);
+  const vh = page.viewportSize()!.height;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const box = (await card.boundingBox())!;
+    if (box.y >= 0 && box.y + box.height <= vh) break;
+    await card.evaluate((node) => node.scrollIntoView({ block: "start" }));
+  }
   const canvas = (await card.locator(".rb-canvas").boundingBox())!;
   const dot = (await mine.boundingBox())!;
   const info = (await card.locator(".rb-card-info").boundingBox())!;
-  const vh = page.viewportSize()!.height;
-  for (const box of [canvas, dot, info]) {
-    expect(box.y).toBeGreaterThan(0);
-    expect(box.y + box.height).toBeLessThan(vh);
+  // ⚠ 断言带上**是哪个盒子、值是多少**:这条断言在窄屏上翻过车(2026-09-29 单列布局),
+  //   而原来只说「Expected: < 839 / Received: 884」—— 三个盒子里是哪个出界、出到哪儿,全靠猜。
+  const boxes: Array<[string, { x: number; y: number; width: number; height: number }]> = [
+    ["canvas", canvas],
+    ["dot", dot],
+    ["info", info],
+  ];
+  for (const [name, box] of boxes) {
+    const detail = `${name}=${JSON.stringify(box)} vh=${vh}`;
+    expect(box.y, `${name} 跑到视口上方:${detail}`).toBeGreaterThan(0);
+    expect(box.y + box.height, `${name} 底部出了视口:${detail}`).toBeLessThan(vh);
   }
   const inCanvas = { x: canvas.x + canvas.width / 2, y: canvas.y + canvas.height / 2 };
-  // 出界点取**卡片左侧信息列的上缘**(海报区):不是画布、也不是任何按钮 —— 松手就是收回
+  // 出界点取**信息列的上缘**:不是画布、也不是任何按钮 —— 松手就是收回。
+  // ⚠ 判据是「不在画布矩形里」,与方向无关;只是窄屏改成上下布局之后,这一列跑到了画布**上方**
+  //   (原来叫「卡片左侧信息列」),所以这里改的是描述,不是行为。
   const outside = { x: info.x + info.width / 2, y: info.y + 16 };
 
   const ghost = page.locator(".rb-ghost");
   const hint = page.locator(".rb-drag-hint");
   const tray = card.locator(".rb-tray");
 
-  // ⚠ 起手用 `hover()` 而不是「先量坐标再 `mouse.move`」:点「标记看过 / 贴红」之后的那次
-  //   重渲染可能在量完坐标之后才提交,量到的位置就过期了(实测偶发:按下没落在贴纸上,
-  //   手势压根没起,报出来的却是「`.rb-drag-hint` 找不到」这种看不出根因的错)。
-  await mine.hover();
+  // ⚠ 起手:先把指针**挪到贴纸正中**再按下。
+  //   借 `hover()` 不行(它会滚动,见上面那段说明);只按不挪也不行
+  //   (`mouse.down` 会落在指针上一次停留的地方 —— 那多半不是这枚贴纸)。
+  let dotMid = { x: dot.x + dot.width / 2, y: dot.y + dot.height / 2 };
+  await page.mouse.move(dotMid.x, dotMid.y);
+  // ⚠ 起手**前**必须确认这一下真的落在贴纸上,而且要**重试到落定**(2026-09-29 实测定位):
+  //   这条用例在 `mobile-webkit` 上偶发「`.rb-ghost` 数 0」(`--repeat-each=8` 红 2~4 次),
+  //   根因不是坐标过期 —— 把命中结果当场量出来,拿到的是
+  //   `<html class="wf-loading … chyGla_toast-remove">`:**S2 的提示条进出场走 View Transitions,
+  //   过渡那几帧整页被一层快照盖住**(文件头 `quiet()` 的说明里记着同一个坑,spec:237 也踩过)。
+  //   起手落在那层快照上,`pointerdown` 到不了贴纸,`.rb-ghost` 自然不出现。
+  //   过渡是**暂时**的 ⇒ 用 `expect.poll` 重试(与 spec:237 那条修法一致),而不是加固定等待。
+  // ⚠ 另一条独立的成因(2026-09-29,这条用例在 `mobile-chromium` 上**每次**都红):
+  //   上面那次 `boundingBox()` 量出来的坐标**不是** `elementFromPoint()` 那一套(移动端模拟下
+  //   差一个 `visualViewport.offsetTop`,实测 98)—— 于是命中测试稳定落在画布**上方**那一块
+  //   (拿到 `.rb-card-info` / `.rb-zoom`),而指针其实是落在贴纸上的(见 `toPagePoint` 的说明)。
+  //   所以这里:① 把「量位置 + 挪指针」放进 poll 里重试(版面万一还在落定也不怕);
+  //   ② 命中测试把坐标**换算到页面空间**再问。
+  await expect
+    .poll(
+      async () => {
+        const box = (await mine.boundingBox())!;
+        dotMid = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+        await page.mouse.move(dotMid.x, dotMid.y);
+        return page.evaluate(
+          ({ x, y }) => {
+            const el = document.elementFromPoint(x, y) as HTMLElement | null;
+            return el ? `${el.tagName}.${el.className}` : "null";
+          },
+          await toPagePoint(page, dotMid),
+        );
+      },
+      { timeout: 10_000, message: `起手点一直没落在贴纸上:dotMid=${JSON.stringify(dotMid)}` },
+    )
+    .toContain("rb-dot");
   await page.mouse.down();
 
-  // ① 起手仍在本片画布内:浮标正常、卡片亮着、暂存区不亮、没有说话
-  await page.mouse.move(inCanvas.x, inCanvas.y, { steps: 4 });
+  // ① 起手仍在本片画布内:浮标正常、卡片亮着、暂存区不亮、没有说话。
+  // ⚠ 这一段的目标点**不能取画布中心**(2026-09-29 踩的第三个几何坑):起手位移必须明确超过
+  //   `DRAG_SLOP_TOUCH`(触屏 10px),否则手势被判成「点一下」,`.rb-ghost` 压根不会出现 ——
+  //   报出来的是「`ghost` 数 0」这种看不出根因的错(实测 `--repeat-each=6` 红 2 次)。
+  //   而落点分布改成「中间密」之后,贴纸落在画布中心附近的概率明显变高,两个点几乎重合。
+  //   改成往**离贴纸最远的那个角**走:位移至少是画布尺寸的一半,且内缩 24px 仍在张贴区内
+  //   (所以「卡片照常亮灯」这条断言不受影响)。
+  const far = {
+    x: dotMid.x < canvas.x + canvas.width / 2 ? canvas.x + canvas.width - 24 : canvas.x + 24,
+    y: dotMid.y < canvas.y + canvas.height / 2 ? canvas.y + canvas.height - 24 : canvas.y + 24,
+  };
+  await page.mouse.move(far.x, far.y, { steps: 4 });
   await expect(ghost).toHaveCount(1);
   await expect(ghost).not.toHaveClass(/rb-ghost--out/);
   await expect(hint).toBeHidden();
