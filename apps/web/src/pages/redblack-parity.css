@@ -11,6 +11,12 @@
 :root {
   --rb-red: #cf3b52;
   --rb-black: #2f2f36;
+  /* 中心微图标的墨色(2026-09-29,PLAN-20260929195500)。红贴上是接近纯白、黑贴上是**灰白** ——
+   * 后者刻意压到 72%:纯白压在 `#2f2f36` 上对比过硬,读起来像「贴纸破了个洞」而不是「印上去的图案」。
+   * ⚠ 它同时被 `sticker-sprite.ts::readPalette` 读走(canvas 上的群点要同一份墨色)——
+   *   色值只在这一处表达(AGENTS.md §5)。 */
+  --rb-icon-red: rgb(255 255 255 / 92%);
+  --rb-icon-black: rgb(255 255 255 / 72%);
   /* 规则浮层的底色(2026-09-29)。⚠ 也走 token 而不是就地写死(AGENTS.md §5):
    * 它是**深色浮层 + 白字**,在亮 / 暗两种主题下都成立,所以不随主题翻转 ——
    * 但颜色仍然只在这一处表达,将来要调只改这里。 */
@@ -741,29 +747,48 @@
  *   那边是照抄这一节的形状与质感画进离屏 sprite 的,**改这里要同步改那边**,否则两者会长得不一样。
  *   ⚠ **唯一例外**:`.rb-dot` 那圈**常驻纸白边**(2026-09-23)—— 它是我贴的那一枚的辨识,别同步过去。 */
 
+/* 我贴的那一枚。**外层只管「它是我贴的」那几件事**:纸白边、落影、歪斜、拖拽光标。
+ * 外形与质感交给内层 `.rb-dot__face` —— 2026-09-29 起贴纸有一族**异形轮廓**
+ * (票根 / 胶片齿孔 / 胶片残片…),CSS 的 `border-radius` 表达不了,只能用 `clip-path: path()`。
+ * ⚠ 所以外层必须 `overflow: visible`**且不能自己带 `clip-path`**:两者都会把那圈向外的
+ *   纸白边与落影一起裁掉,而纸白边正是 E2E `redblack.spec.ts` 断言的那条 `/1.5px/`。 */
 .rb-dot {
   position: absolute;
-  /* ⚠ 20px 与 `sticker-sprite.ts::STICKER_SIZE` **必须逐字一致**(2026-09-28 由 26 缩到 20,
-   *   见 PLAN-20260928003736):canvas 上的群点走 sprite,这一枚走 DOM,尺寸只此两处表达。 */
-  width: 20px;
-  height: 20px;
+  /* ⚠ 32px 与 `sticker-sprite.ts::STICKER_SIZE` **必须逐字一致**:canvas 上的群点走 sprite,
+   *   这一枚走 DOM,尺寸只此两处表达。
+   *   2026-09-28 曾由 26 缩到 20(PLAN-20260928003736,为了「容纳更多」);
+   *   2026-09-29 又回到 32(PLAN-20260929195500):异形轮廓与中心微图标在 20px 下糊成一粒点。 */
+  width: 32px;
+  height: 32px;
   /* 这枚贴纸是 `<button>`(它可单击收回,顺带让键盘也能收回):把按钮的默认外观清干净,
-   * 否则自带的 padding / 边框会把 20px 的方框撑坏 */
+   * 否则自带的 padding / 边框会把 32px 的方框撑坏 */
   appearance: none;
   padding: 0;
   border: 0;
-  border-radius: 48% 52% 45% 55% / 52% 46% 54% 48%;
+  background: none;
+  overflow: visible;
+  /* ⚠ 它**不是**贴纸的形状,只用来给 `outline`(`[data-rb-fresh]` 与 `:focus-visible`)一个圆角走势 ——
+   *   `outline` 吃 `border-radius` 但**不吃 `clip-path`**,而真轮廓又只能由 `clip-path` 表达
+   *   (把 `clip-path` 挪到这一层会把纸白边与落影一并裁掉)。取 `50%` 是「近似圆」的折中:
+   *   形状族里三款本就是圆盘,票根 / 胶片残片只是轮廓更方一些,一圈圆环仍然读得出「套在这枚上」。 */
+  border-radius: 50%;
   /* ⚠ 第二层 `0 0 0 1.5px` 的**纸白边**是我贴的那一枚**独有**的**常驻**标记(2026-09-23):
    *   一片同色同尺寸的群点里(拉平口径见 `.rb-ink` 的说明),得先**找得到**自己那枚,
    *   「自己的贴纸始终能被自己拖动」才成立 —— 只有“刚贴”那 2.4s 有描边是不够的。
    *   群点是 canvas 画的,`sticker-sprite.ts` 里**没有**这一层,所以这个差异恒定、不依赖任何状态。
    *   为什么是白而不是 `--brand`:品牌红 `#ce1e36` 与红贴纸 `--rb-red` `#cf3b52` 几乎同色,
-   *   红圈画在红贴上等于没画;白圈在红贴 / 黑贴、亮色 / 暗色主题下都成立。 */
+   *   红圈画在红贴上等于没画;白圈在红贴 / 黑贴、亮色 / 暗色主题下都成立。
+   * ⚠ 落影是**三层**(2026-09-29):近层收边、中层过渡、远层扩散 —— 三层才读得出「有厚度」,
+   *   两层只是普通下投影。三层必须与 `sticker-sprite.ts::SHADOWS` 逐条对应,且
+   *   `SPRITE_PAD` 要容得下最外那层(offsetY 3 + blur 7 ≈ 10px 外扩)。
+   * ⚠ 那一圈 `inset 0 0 0 1px` 的**内描边已挪到 `.rb-dot__edge`**:它原本贴着方框四边,
+   *   在圆形贴纸上恰好像轮廓,在票根 / 胶片残片上就会露出「方框的一角」——
+   *   真轮廓描边只能沿着路径走(sprite 那边也是 `clip` + `stroke(路径)`)。 */
   box-shadow:
-    inset 0 0 0 1px rgb(255 255 255 / 18%),
     0 0 0 1.5px rgb(255 255 255 / 88%),
-    0 1px 1px rgb(0 0 0 / 16%),
-    0 2px 4px rgb(0 0 0 / 12%);
+    0 1px 1px rgb(0 0 0 / 18%),
+    0 2px 3px rgb(0 0 0 / 14%),
+    0 3px 7px rgb(0 0 0 / 10%);
   transform: translate(-50%, -50%) rotate(var(--rb-tilt, 0deg));
   cursor: grab;
   touch-action: none;
@@ -773,18 +798,60 @@
   cursor: grabbing;
 }
 
-.rb-dot--red {
+/* 贴纸的**本体**:外形 + 底色 + 质感。`--rb-shape` 由 React 按贴纸 id 推导后写成内联变量
+ * (`redblack.ts` 那一族:形状由 id 确定性推导,不入库)。
+ * ⚠ 这里**只允许** `var(--rb-shape)`,不许出现任何写死的路径 ——
+ *   `tests/sticker-shape.test.ts` 会机械守住这一条(形状只有 `sticker-shape.ts` 一处实现)。 */
+.rb-dot__face {
+  position: absolute;
+  inset: 0;
+  display: block;
+  clip-path: var(--rb-shape);
+}
+
+/* 沿**真轮廓**的内描边:把同样一条路径描 2px 的线,再由上面那层 `clip-path` 裁掉外侧一半,
+ * 可见的就是内侧那一像素 —— 与 `sticker-sprite.ts` 的第 ⑥ 步逐字同一手法。 */
+.rb-dot__edge {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: rgb(255 255 255 / 18%);
+  stroke-width: 2;
+  pointer-events: none;
+}
+
+/* 中心微图标。⚠ 边长**不由这里定** —— 它由 `StickerFace` 按 `sticker-glyph.ts::ICON_RATIO`
+ * 写成内联 width/height(canvas 那两侧读的是同一个常量,写死在这里就又成了两份口径);
+ * CSS 只负责「居中 + 不吃指针」。 */
+.rb-dot__icon {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  pointer-events: none;
+}
+
+.rb-dot--red .rb-dot__face {
   background-color: var(--rb-red);
   background-image:
     repeating-linear-gradient(115deg, rgb(255 255 255 / 5%) 0 1px, transparent 1px 3px),
     radial-gradient(circle at 34% 28%, rgb(255 255 255 / 14%), transparent 62%);
 }
 
-.rb-dot--black {
+.rb-dot--red .rb-dot__icon {
+  fill: var(--rb-icon-red);
+}
+
+.rb-dot--black .rb-dot__face {
   background-color: var(--rb-black);
   background-image:
     repeating-linear-gradient(115deg, rgb(255 255 255 / 5%) 0 1px, transparent 1px 3px),
     radial-gradient(circle at 34% 28%, rgb(255 255 255 / 10%), transparent 62%);
+}
+
+.rb-dot--black .rb-dot__icon {
+  fill: var(--rb-icon-black);
 }
 
 /* 「刚贴下的那一枚」:在**常驻纸白边之外**再套一圈更亮的描边
@@ -840,12 +907,15 @@
   top: 0;
   left: 0;
   z-index: 60;
-  /* ⚠ 跟着 `.rb-dot` 一起缩(2026-09-28):它比贴纸本体大 2px(26→28 / 现在是 20→22),
+  /* ⚠ 跟着 `.rb-dot` 一起走(2026-09-28 缩、2026-09-29 放):它比贴纸本体大 2px(32 → 34),
    *   这个「浮起来显得大一点」的相对关系保持不变;margin 恒为负的半径,把浮标中心对准指针。 */
-  width: 22px;
-  height: 22px;
-  margin: -11px 0 0 -11px;
-  border-radius: 48% 52% 45% 55% / 52% 46% 54% 48%;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  /* ⚠ 浮标**刻意不是**形状族的一员(所以这里是正圆而不是 `clip-path`):
+   *   它代表的那枚贴纸**还不存在** —— id 要到松手落库时才生成,形状与图标都还没有。
+   *   给它固定一种轮廓,等于在承诺一个不会兑现的外观(松手可能落在别处、也可能是另一种形状)。 */
+  border-radius: 50%;
   box-shadow: 0 6px 14px rgb(0 0 0 / 30%);
   opacity: 0.95;
   pointer-events: none;
@@ -904,15 +974,18 @@
   position: absolute;
   top: 0;
   left: 0;
-  width: 20px;
-  height: 20px;
+  /* ⚠ 32px 与 `.rb-dot` 同尺寸(2026-09-29 由 20 提到 32):它标的是「贴纸**落下去**的位置」,
+   *   尺寸不一致会让人以为落点被压缩/放大了。 */
+  width: 32px;
+  height: 32px;
   /* ⚠ 居中用负 margin,把 `transform` **整个**留给位移:拖拽期间每帧要写的是位移,而
    * `left` / `top` 是**布局属性** —— 每帧写它们等于每帧把这张卡拖进一次 layout 重算,
    * 正好抵消掉本轮「不再每帧做全页命中测试」省下来的那点开销。
    * `transform` 只走合成层,不碰布局(与 `.rb-ghost` 同一手法)。 */
-  margin: -10px 0 0 -10px;
+  margin: -16px 0 0 -16px;
   border: 1.5px dashed var(--rb-red);
-  border-radius: 48% 52% 45% 55% / 52% 46% 54% 48%;
+  /* 与 `.rb-ghost` 同一理由:预览标的是一枚**尚未生成**的贴纸,不该承诺某个具体轮廓 */
+  border-radius: 50%;
   opacity: 0.75;
   pointer-events: none;
 }

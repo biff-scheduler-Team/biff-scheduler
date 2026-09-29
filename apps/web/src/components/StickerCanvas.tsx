@@ -22,6 +22,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { countsSignature, crowdStickers, tiltOf, type StickerCounts } from "../redblack";
 import { observeResize } from "../shared-resize-observer";
 import { needsRedraw, type DrawKey } from "../sticker-canvas-guard";
+import { glyphOf } from "../sticker-glyph";
+import { shapeOf } from "../sticker-shape";
 import { onSpriteInvalidate, spriteEpoch, STICKER_SIZE, stickerSprite } from "../sticker-sprite";
 import { useDpr } from "../use-dpr";
 
@@ -113,7 +115,9 @@ function paint(
   // 贴纸坐标是**中心**的百分比(与 DOM 版的 translate(-50%,-50%) 同一口径)
   const half = STICKER_SIZE / 2;
   for (const sticker of crowdStickers(filmKey, counts)) {
-    const sprite = stickerSprite(sticker.type, dpr);
+    // 形状与图标**由 id 确定性推导**(与 `tiltOf` 同一模式),所以这里不需要任何额外状态,
+    // 也不必并进 `DrawKey`:`counts` + `filmKey` 已经唯一决定了这一整组贴纸长什么样。
+    const sprite = stickerSprite(sticker.type, shapeOf(sticker.id, sticker.type), glyphOf(sticker.id, sticker.type), dpr);
     ctx.save();
     ctx.translate(sticker.posX * cssWidth, sticker.posY * cssHeight);
     ctx.rotate((tiltOf(sticker.id) * Math.PI) / 180);

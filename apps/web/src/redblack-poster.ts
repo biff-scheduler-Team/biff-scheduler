@@ -28,7 +28,8 @@ import {
   posterScale,
   roundRectPath,
 } from "./poster-brush";
-import { blobPath } from "./sticker-shape";
+import { glyphOf, glyphPath, glyphPlacement, type StickerGlyph } from "./sticker-glyph";
+import { shapeOf, shapePath, type StickerShape } from "./sticker-shape";
 import { dateInfo } from "./util";
 import {
   boardFilms,
@@ -261,7 +262,8 @@ const FIELD_H = 88;
 const FIELD_TOP = 8;
 /** 文字列与贴纸区之间的最小间距 */
 const COL_GAP = 28;
-/** 贴纸区里一枚贴纸的边长 —— 比卡片上的 26 小一号(那块画布更大,而这里的行高只有 104) */
+/** 贴纸区里一枚贴纸的边长 —— 比卡片上的 32 小一号(这里的行高只有 104,一行还要塞下别的字)。
+ *  ⚠ 它只是**尺寸**,形状仍然是 `sticker-shape.ts` 那一份(经 `shapePath(shape, size)` 等比换算)。 */
 const FIELD_STICKER = 14;
 
 /** 分享图总高(逻辑像素,含上下品牌红条)—— 行数决定高度,故必须与 `drawRbPoster` 同源。
@@ -293,6 +295,53 @@ function drawCounts(ctx: CanvasRenderingContext2D, row: RbPosterRow, x: number, 
   }
 }
 
+/* ---------------- 贴纸的形状与微图标(与页面四条渲染路径同源,2026-09-29) ---------------- */
+
+/** 轮廓 `Path2D` 缓存。一行里几十枚贴纸各要一条路径,而同形状同尺寸的只有那么几种 ——
+ *  按 `形状@尺寸` 存一次就够。
+ *  ⚠ 尺寸必须显式传:形状的**唯一来源是 32 设计盒**,海报这边是 14 / 24,
+ *    一律靠 `shapePath(shape, size)` 等比换算 —— 不要为小尺寸另描一份路径。 */
+const bodyCache = new Map<string, Path2D>();
+
+function stickerBody(shape: StickerShape, size: number): Path2D {
+  const key = `${shape}@${size}`;
+  const hit = bodyCache.get(key);
+  if (hit) return hit;
+  const built = new Path2D(shapePath(shape, size));
+  bodyCache.set(key, built);
+  return built;
+}
+
+/** 微图标 `Path2D` 缓存(图形本身与尺寸无关,缩放交给绘制时的 `ctx.scale`)。 */
+const iconCache = new Map<StickerGlyph, Path2D>();
+
+function stickerIcon(glyph: StickerGlyph): Path2D {
+  const hit = iconCache.get(glyph);
+  if (hit) return hit;
+  const built = new Path2D(glyphPath(glyph));
+  iconCache.set(glyph, built);
+  return built;
+}
+
+/** 把微图标印在**已经平移到贴纸左上角**的坐标系里(那一格是 `0..size`)。
+ *  ⚠ 走 `ctx.scale` 而不是重算路径:图形只有 24 盒那一份,缩放是它唯一的尺寸口径。
+ *  ⚠ 落点必须走 `glyphPlacement`,**不能**只平移到中心再 `scale` —— 那是绕原点缩的,
+ *    会把图案推到右下角(2026-09-29 踩过,见 `sticker-glyph.ts::glyphPlacement`)。 */
+function drawStickerIcon(
+  ctx: CanvasRenderingContext2D,
+  glyph: StickerGlyph,
+  size: number,
+  color: string,
+): void {
+  const spot = glyphPlacement(size);
+  ctx.save();
+  ctx.translate(spot.x, spot.y);
+  ctx.scale(spot.scale, spot.scale);
+  ctx.fillStyle = color;
+  ctx.fill(stickerIcon(glyph));
+  ctx.restore();
+}
+
 /** **专门的贴纸区**(右侧那一列):把这一行的全部票摊在一块矩形里 —— 数字回答「多少」,
  *  这里回答「长什么样」。
  *
@@ -317,30 +366,31 @@ function drawField(ctx: CanvasRenderingContext2D, row: RbPosterRow, x: number, t
   ctx.clip();
   const half = FIELD_STICKER / 2;
   row.stickers.forEach((s, i) => {
+    // 形状与微图标**由 id 确定性推导** —— 与卡片画布 / 弹层 / 页面那枚共用同一套函数,
+    // 所以同一部片在分享图与页面上摊出来的是**同一堆贴纸**(连轮廓都一致)。
+    const body = stickerBody(shapeOf(s.id, s.type), FIELD_STICKER);
     ctx.save();
-    // ⚠ 相对坐标映射到**去掉一枚贴纸之后**的范围:卡片画布比自己高得多,26px 贴纸压不出边界;
-    //   这块区只有 80px,照搬「中心 = posY × 高」会让上下沿的贴纸被切平(一排平顶)。
-    //   收进区内之后,`clip()` 只剩兜底(歪斜后的圆角仍可能探出去一点)。
+    // ⚠ 相对坐标映射到**去掉一枚贴纸之后**的范围:这块区只有 88px,照搬「中心 = posY × 高」
+    //   会让上下沿的贴纸被切平(一排平顶);收进区内之后,`clip()` 只剩兜底。
     ctx.translate(x + half + s.posX * (FIELD_W - FIELD_STICKER), top + half + s.posY * (FIELD_H - FIELD_STICKER));
     ctx.rotate((s.tilt * Math.PI) / 180);
     ctx.translate(-half, -half);
     ctx.fillStyle = s.type === "red" ? C.red : C.stickerBlack;
-    blobPath(ctx, FIELD_STICKER);
-    ctx.fill();
+    ctx.fill(body);
     if (s.type === "black") {
       // 深底上的黑贴纸要靠一圈亮边才认得出(理由同 `poster-brush.ts::COLORS.stickerBlack`)
       ctx.strokeStyle = C.muted;
       ctx.lineWidth = 0.8;
-      blobPath(ctx, FIELD_STICKER);
-      ctx.stroke();
+      ctx.stroke(body);
     }
     if (i === row.mineIndex) {
       // 我那一枚:一圈亮边 —— 与「我贴过的」那一节左侧的圆点同一个含义(这是我的票)
       ctx.strokeStyle = C.ink;
       ctx.lineWidth = 1.6;
-      blobPath(ctx, FIELD_STICKER);
-      ctx.stroke();
+      ctx.stroke(body);
     }
+    // 中心微图标:与页面上是同一族图形(同样由 id 推导),墨色用深底海报专属的那一档
+    drawStickerIcon(ctx, glyphOf(s.id, s.type), FIELD_STICKER, C.stickerInk);
     ctx.restore();
   });
   ctx.restore();
@@ -363,18 +413,23 @@ function drawRow(
   if (withMine && row.mine) {
     const size = 24;
     const isRed = row.mine === "red";
+    // 这一枚就是「我贴的那一张」的缩略:直接拿它在贴纸区里的那一枚来推形状与图标,
+    // 而不是另起一个 id —— 否则同一个意思会在这张图上出现两种轮廓。
+    const mineSticker = row.mineIndex >= 0 ? row.stickers[row.mineIndex] : null;
+    const body = stickerBody(mineSticker ? shapeOf(mineSticker.id, mineSticker.type) : "torn", size);
     ctx.save();
     // 与片名那一行**视觉居中对齐**(基线往上约 9px 是字身中心,而不是整行居中)
     ctx.translate(PAD, textBase - 9 - size / 2);
     ctx.fillStyle = isRed ? C.red : C.stickerBlack;
-    blobPath(ctx, size);
-    ctx.fill();
+    ctx.fill(body);
     if (!isRed) {
       // 深底上的黑贴纸必须靠一圈亮边才认得出(见 `poster-brush.ts::COLORS.stickerBlack`)
       ctx.strokeStyle = C.ink2;
       ctx.lineWidth = 1.5;
-      blobPath(ctx, size);
-      ctx.stroke();
+      ctx.stroke(body);
+    }
+    if (mineSticker) {
+      drawStickerIcon(ctx, glyphOf(mineSticker.id, mineSticker.type), size, C.stickerInk);
     }
     ctx.restore();
   } else {

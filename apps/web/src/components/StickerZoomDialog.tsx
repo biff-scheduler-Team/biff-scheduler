@@ -22,7 +22,10 @@
 import type { CSSProperties } from "react";
 import type { FilmNode } from "../app/model";
 import { countsOf, othersOf, tiltOf, type Sticker, type StickerCounts } from "../redblack";
+import { glyphOf } from "../sticker-glyph";
+import { shapeClipVar, shapeOf } from "../sticker-shape";
 import { StickerCanvas } from "./StickerCanvas";
+import { StickerFace } from "./StickerFace";
 import { Button, ButtonGroup, Content, Dialog, DialogContainer, Heading } from "./spectrum";
 
 interface StickerZoomDialogProps {
@@ -40,6 +43,10 @@ export function StickerZoomDialog({ film, counts, mine, onDismiss }: StickerZoom
   // 「别人的」= 全体 − 我那一枚。⚠ 服务端那份**含我**,不减掉就会把我画两遍;
   //   上报还没落地时会被夹到 0,这时画布上少一枚、由下面那枚 DOM 补上,两个方向都对。
   const others = othersOf(counts, countsOf(mine ? [mine] : []));
+  // 形状与中心图标由 id 确定性推导 —— 与卡片上那枚**同一套函数**(所以两处长得一模一样)。
+  // ⚠ 不在这里另算一套「弹层专用」的轮廓:那正是「四条渲染路径各描一份」的老毛病。
+  const mineShape = mine ? shapeOf(mine.id, mine.type) : null;
+  const mineGlyph = mine ? glyphOf(mine.id, mine.type) : null;
 
   return (
     <DialogContainer onDismiss={onDismiss}>
@@ -52,9 +59,10 @@ export function StickerZoomDialog({ film, counts, mine, onDismiss }: StickerZoom
           {/* 弹层里的画布永远在视口内,`inView` 恒为 true(不需要视口观测) */}
           <div className="rb-zoom-stage">
             <StickerCanvas filmKey={film.key} counts={others} inView />
-            {mine && (
+            {mine && mineShape && mineGlyph && (
               // ⚠ 这里**只读**:它拖不动、也点不收(那是卡片上的能力),所以不带 `grab` 光标 ——
-              //   见 `.rb-dot--still` 的说明。位置/歪斜与卡片上那枚共用同一套写法。
+              //   见 `.rb-dot--still` 的说明。位置/歪斜/外形与卡片上那枚共用同一套写法,
+              //   连本体都是同一个 `<StickerFace>`(所以白边、轮廓、微图标只有一处实现)。
               <span
                 className={`rb-dot rb-dot--${mine.type} rb-dot--still`}
                 aria-hidden="true"
@@ -63,9 +71,12 @@ export function StickerZoomDialog({ film, counts, mine, onDismiss }: StickerZoom
                     left: `${mine.posX * 100}%`,
                     top: `${mine.posY * 100}%`,
                     "--rb-tilt": `${tiltOf(mine.id)}deg`,
+                    "--rb-shape": shapeClipVar(mineShape),
                   } as CSSProperties
                 }
-              />
+              >
+                <StickerFace shape={mineShape} glyph={mineGlyph} />
+              </span>
             )}
           </div>
         </Content>

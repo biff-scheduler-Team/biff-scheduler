@@ -361,9 +361,24 @@ test("「别人的贴纸」与我贴的那枚同尺寸,只差常驻纸白边与�
   const mine = card.locator(".rb-dot");
   await expect(mine).toHaveCount(1);
   // 尺寸口径同源两处:CSS 的 `.rb-dot` 与 canvas sprite 的 `sticker-sprite.ts::STICKER_SIZE`
-  // (2026-09-28 由 26 缩到 20,PLAN-20260928003736;单测守着 sprite 那一侧,这里守 DOM 这一侧)
-  await expect(mine.first()).toHaveCSS("width", "20px");
+  // (2026-09-28 由 26 缩到 20,PLAN-20260928003736;2026-09-29 又放回 32,PLAN-20260929195500
+  //  —— 异形轮廓与中心微图标在 20px 下糊成一粒点。单测守着 sprite 那一侧,这里守 DOM 这一侧)
+  await expect(mine.first()).toHaveCSS("width", "32px");
   await expect(mine.first()).toHaveCSS("cursor", "grab");
+
+  // 贴纸本体(2026-09-29):外形**不是** `border-radius`,而是内联 `--rb-shape` 交给 `clip-path`;
+  // 中心微图标与沿轮廓的内描边是两枚 SVG。三者都必须真的渲染出来 —— 少一个不是报错,
+  // 而是贴纸悄悄退回「纯色圆点」,只有人眼看得出来。
+  await expect(mine.first().locator(".rb-dot__face")).toHaveCount(1);
+  await expect(mine.first().locator(".rb-dot__face")).toHaveCSS("clip-path", /path\(/);
+  await expect(mine.first().locator(".rb-dot__edge path")).toHaveCount(1);
+  await expect(mine.first().locator(".rb-dot__icon path")).toHaveCount(1);
+  // 「形状只有一处实现」的端到端守卫:内联变量里的那条路径必须**就是**描边 SVG 用的那条,
+  // 否则就是「CSS 一套、SVG 另一套」——那正是这次改造要消灭的老毛病。
+  const shapeVar = await mine.first().evaluate((node) => node.style.getPropertyValue("--rb-shape"));
+  const edgePath = await mine.first().locator(".rb-dot__edge path").getAttribute("d");
+  expect(edgePath).toBeTruthy();
+  expect(shapeVar).toContain(edgePath as string);
 
   // **常驻纸白边**(2026-09-23):我贴的那一枚独有,群点那边(canvas / sprite)不许有这一层 ——
   // 票数一多,同色同尺寸的点里根本认不出自己那枚,「自己贴的贴纸始终能被自己拖动」就先卡在“找不到”。
@@ -1523,12 +1538,19 @@ test("贴纸上没有任何浮层:悬停 / 聚焦都不弹东西出来", async (
   const dot = card.locator(".rb-dot");
   await expect(dot).toHaveCount(1);
 
-  // 贴纸是**空的 `<button>`** —— 评语不在它里面(「不要放在贴纸上,不然很乱」)
-  await expect(dot.locator("*")).toHaveCount(0);
+  // 贴纸里只有**画它自己的那 5 个节点** —— 评语不在它里面(「不要放在贴纸上,不然很乱」)。
+  // ⚠ 2026-09-29 起贴纸**不再是空的 `<button>`**:异形轮廓与中心微图标必须是它的子节点
+  //   (`.rb-dot__face` → `.rb-dot__edge` / `.rb-dot__icon`,各带一个 `<path>`)。
+  //   所以判据从「子元素数为 0」换成「**逐个点名**」—— 这条用例要守的东西一个字没变
+  //   (里面不许出现评语或任何浮层),而点名比数个数更严:多塞任何一个节点都会红。
+  await expect(dot.locator(".rb-dot__face")).toHaveCount(1);
+  await expect(dot.locator(".rb-dot__face .rb-dot__edge path")).toHaveCount(1);
+  await expect(dot.locator(".rb-dot__face .rb-dot__icon path")).toHaveCount(1);
+  await expect(dot.locator("*")).toHaveCount(5);
   await quiet(page);
   await dot.hover();
   await dot.focus();
-  await expect(dot.locator("*")).toHaveCount(0);
+  await expect(dot.locator("*")).toHaveCount(5);
   await expect(card.locator(".rb-say, [role=tooltip], [role=dialog]")).toHaveCount(0);
   // 评语区在页面上、但**不在**卡片里(页面级模块)
   await expect(page.locator(".rb-say")).toHaveCount(1);

@@ -30,6 +30,7 @@ import {
 import { ToastQueue } from "../components/spectrum";
 import { QuerySearchField } from "../components/QuerySearchField";
 import { StickerCanvas } from "../components/StickerCanvas";
+import { StickerFace } from "../components/StickerFace";
 import { FilmCommentsPanel, type MyFilmRow } from "../components/FilmCommentsPanel";
 import type { FilmNode } from "../app/model";
 import { searchFilm } from "../app/model";
@@ -80,6 +81,8 @@ import {
   scheduleFilmVotesPing,
   type FilmVoteCounts,
 } from "../film-votes";
+import { glyphOf } from "../sticker-glyph";
+import { shapeClipVar, shapeOf } from "../sticker-shape";
 import { useInView } from "../use-in-view";
 import "./redblack-parity.css";
 
@@ -149,6 +152,16 @@ const EMPTY_STICKERS: readonly Sticker[] = [];
 const FRESH_MS = 2400;
 const FRESH_BLINK_MS = 800;
 const FRESH_BLINKS = 3;
+
+/** 落地动效时长(ms)。
+ *  ⚠ 380ms 取的是「拟物/实体感」那一档(300–500ms)—— 比常规微交互(150–250ms)长,
+ *    因为这里要读的是**重量**:从 120px 高处落下来再回弹,太快就没有「戳下去」的手感。
+ *  ⚠ 只动 `.rb-dot__face`(**不**动外层那枚 `<button>`)—— 见落地 effect 里的说明。 */
+const LAND_MS = 380;
+/** 落地时额外的随机自转(±度):模仿「捏着贴纸随手按下去」,而不是机械对齐。
+ *  ⚠ 它只是**动效的起点**,落定后那一枚的歪斜仍是 `tiltOf(id)` 推出来的确定值 ——
+ *    随机数不进任何持久化状态,刷新后贴纸不会「换个角度」。 */
+const LAND_SPIN = 12;
 /** 判定「算拖、不算点」的位移阈值(px)。手指比鼠标抖得多:4px 在触屏上几乎必然越过,
  *  于是「想点一下收回」会变成「挪了个位置」—— 所以触屏放宽到 10px。
  *  ⚠ 鼠标这一侧 2026-09-28 由 4px 放宽到 8px(PLAN-20260928120415):4px 比系统的双击容差还小,
@@ -1187,6 +1200,39 @@ const RbCard = memo(function RbCard({
     );
   }, [fresh]);
 
+  // 落地动效:刚贴下的那一枚**从上方带弹簧落下来**(2026-09-29,PLAN-20260929195500)。
+  // 用户要的是「贴上去的瞬间有爽快感」:从高处落下 → 过冲约 8% → 回弹 → 落定,落定时还带一点自转。
+  //
+  // ⚠ **动的是 `.rb-dot__face`,不是外层那枚 `<button>`** —— 这一条是硬约束,不是偏好:
+  //   外层的盒子就是**命中区与落库坐标的基准**(拖拽起手、`elementFromPoint` 判落点、
+  //   E2E 量 `boundingBox()` 都读它)。让它飞 380ms 等于这期间「贴纸在哪」与「点在哪儿」
+  //   是两个答案 —— 拖动会抖、单测会飘,而且用户点的是**空位**。
+  //   动的只有那张「画」,槽位始终在原地等它落进来。
+  // ⚠ 一枚只落一次:拖动会换 `posX/posY`(→ `myStickers` 是新数组 → 本 effect 会再跑),
+  //   不拦就会「每拖动一帧重新落一次」。用 id 记账,不引入任何持久状态。
+  const landedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const sticker = myStickers[0];
+    // ⚠ 取面而不是按钮:见上。`querySelector` 每枚只跑一次(由 `landedRef` 拦住)
+    const face = freshRef.current?.querySelector(".rb-dot__face");
+    if (!fresh || !sticker || !face) return;
+    if (landedRef.current === sticker.id) return;
+    landedRef.current = sticker.id;
+    // 动效敏感:不做任何过渡,贴纸直接以终态出现(CSS 里也没有别的位移,天然就是终态)
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const spin = (Math.random() * 2 - 1) * LAND_SPIN;
+    face.animate(
+      [
+        { transform: `translateY(-120px) rotate(${spin}deg) scale(0.86)`, easing: "cubic-bezier(0.2, 0.86, 0.3, 1)" },
+        { transform: `translateY(6px) rotate(${spin * 0.2}deg) scale(1.06)`, offset: 0.62, easing: "ease-out" },
+        { transform: `translateY(-2px) rotate(0deg) scale(0.98)`, offset: 0.84, easing: "ease-in-out" },
+        { transform: "translateY(0) rotate(0deg) scale(1)" },
+      ],
+      { duration: LAND_MS },
+    );
+  }, [fresh, myStickers]);
+
   return (
     <article
       ref={cardRef}
@@ -1299,7 +1345,12 @@ const RbCard = memo(function RbCard({
             只读、不挂 pointerdown —— 位置由 (影片 key, 序号) 确定性推导,
             用随机坐标的话每次重排这些点都会换地方,看着像在跳。 */}
         <StickerCanvas filmKey={film.key} counts={others} inView={inView} />
-        {myStickers.map((sticker) => (
+        {myStickers.map((sticker) => {
+          // 形状与中心图标**由 id 确定性推导**(与 `tiltOf` 同一模式,不入库):
+          // 刷新 / 换设备 / 分享图里都是同一枚,不需要任何额外状态。
+          const shape = shapeOf(sticker.id, sticker.type);
+          const glyph = glyphOf(sticker.id, sticker.type);
+          return (
           // ⚠ 必须是 `<button>` 而不是 `<span role="img">`:它现在**可单击**(收回),把点击处理
           //   挂在非交互语义的元素上是 a11y 缺陷;顺带让键盘也能收回(Enter / Space 原生可用)
           <button
@@ -1313,6 +1364,9 @@ const RbCard = memo(function RbCard({
                 left: `${sticker.posX * 100}%`,
                 top: `${sticker.posY * 100}%`,
                 "--rb-tilt": `${tiltOf(sticker.id)}deg`,
+                // 异形轮廓经**内联变量**进来:CSS 里只写 `clip-path: var(--rb-shape)`,
+                // 样式表里不出现任何写死的路径(形状只有 `sticker-shape.ts` 一处实现)
+                "--rb-shape": shapeClipVar(shape),
               } as CSSProperties
             }
             aria-label={`${sticker.type === "red" ? "红" : "黑"}贴纸；单击收回暂存区，拖动或按方向键可在《${film.zh}》自己的张贴区里挪位置，拖出这张画布也是收回`}
@@ -1326,8 +1380,11 @@ const RbCard = memo(function RbCard({
               const step = event.shiftKey ? NUDGE_STEP_LARGE : NUDGE_STEP;
               onNudge(film.key, sticker, delta.dx * step, delta.dy * step);
             }}
-          />
-        ))}
+          >
+            <StickerFace shape={shape} glyph={glyph} />
+          </button>
+          );
+        })}
         {/* 没有票时的引导。⚠ **未标记**那一档默认不显形(2026-09-29,PLAN-20260929172651 §3):
             用户反馈「未标记看过的卡片右侧空白区域**重复出现了大量灰色的**『标记「看过」后就能贴』字样,
             显得画面略为繁复」—— 现在它只在卡片 hover / `:focus-within` 时淡入(触屏 `hover: none` 下常显),

@@ -79,8 +79,12 @@ export type CrowdCounts = Map<string, StickerCounts>;
 
 /* ---------------- 位置与角度 ---------------- */
 
-/** 字符串 → 稳定哈希(角度 / 落点 / 演示数据都用它推导,保证同一份输入每次结果一样) */
-function hashOf(text: string): number {
+/** 字符串 → 稳定哈希(角度 / 落点 / 演示数据都用它推导,保证同一份输入每次结果一样)。
+ *
+ *  ⚠ 2026-09-29 起**对外导出**:贴纸的**形状族与中心微图标**也要从 id 推导
+ *    (`sticker-shape.ts::shapeOf` / `sticker-glyph.ts::glyphOf`),而哈希只允许一处实现
+ *    (AGENTS §5)—— 另写一份「差不多的哈希」迟早两处对不上。 */
+export function hashOf(text: string): number {
   let hash = 2166136261;
   for (let i = 0; i < text.length; i++) {
     hash ^= text.charCodeAt(i);
