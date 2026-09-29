@@ -19,6 +19,27 @@ export type FilmVoteCounts = Record<string, { red: number; black: number }>;
 /** 单次上报的影片上限（与 api 侧 `MAX_VOTES_PER_PING` 对齐） */
 export const MAX_VOTES_PER_PING = 500;
 
+/** 上报载荷里的一票 —— `{ 片 key, 红黑, 评语 }`（2026-09-29,PLAN-20260929181900）。
+ *
+ * ⚠ **`comment` 字段必须在每一条上出现**（没有评语时是 `null`）。服务端靠「这一份里有没有
+ *   任何一个 `comment` 字段」分辨新版 / 旧版前端：一个都没带时它**一个字都不碰**评语列
+ *   （老客户端的一次普通上报不能把用户写过的评语静默清空）。
+ *   所以这里用 `dedupeVotes` 把「省略字段」一律补成 `null`，而不是把它透传下去。 */
+export interface FilmVotePayload {
+  key: string;
+  vote: "red" | "black";
+  comment: string | null;
+}
+
+/** 调用方**交进来**的一票 —— `comment` 可省（`dedupeVotes` 会补成 `null`）。
+ *  与 `FilmVotePayload` 分开写，是为了让「省略字段」只出现在**入口**，
+ *  进了这条链路之后一定是「字段齐全」的那个形状。 */
+export interface FilmVoteInput {
+  key: string;
+  vote: "red" | "black";
+  comment?: string | null;
+}
+
 let cache: FilmVoteCounts | null = null;
 let loading: Promise<FilmVoteCounts> | null = null;
 // ⚠ 类型写 `ReturnType<typeof setTimeout>` 而不是 `number`：本模块会被跑在 node 环境下的单测引用，
@@ -145,11 +166,18 @@ export async function loadFilmVotes(force = false): Promise<FilmVoteCounts> {
   return loading;
 }
 
-/** 一份票 → 去掉重复（同一部片只留最后一条，防抖窗口内后到的覆盖先到的） */
-function dedupeVotes(
-  votes: Iterable<{ key: string; vote: "red" | "black" }>,
-): Array<{ key: string; vote: "red" | "black" }> {
-  return [...new Map([...votes].map((entry) => [entry.key, entry])).values()];
+/** 一份票 → 去掉重复（同一部片只留最后一条，防抖窗口内后到的覆盖先到的），
+ *  并把 `comment` 一律归成 `string | null`（缺字段 / 空串 → `null`）。
+ *
+ * ⚠ **不许在 dedupe 之后省掉 `comment` 键**：见 `FilmVotePayload` 的说明 —— 少带字段
+ *   会被服务端读成「旧版前端」，那次上报的评语一个都写不进去（而且不报错）。 */
+function dedupeVotes(votes: Iterable<FilmVoteInput>): FilmVotePayload[] {
+  const out = new Map<string, FilmVotePayload>();
+  for (const entry of votes) {
+    const comment = typeof entry.comment === "string" && entry.comment.trim() ? entry.comment : null;
+    out.set(entry.key, { key: entry.key, vote: entry.vote, comment });
+  }
+  return [...out.values()];
 }
 
 /** 把一份票发给服务端，返回它顺手回的全量（老服务端没这个字段 → `null`）。
@@ -162,9 +190,7 @@ function dedupeVotes(
  *   300 部），这条路径平时走不到；它存在的意义是「万一走到，也不静默丢票」。
  * ⚠ 串行发送：并发写同一个 contributor 的行会互相覆盖，落库顺序无法保证。
  * ⚠ 空表也是合法输入（我撤回了全部票）—— 它发一条空数组，服务端据此清掉我的所有票。 */
-async function sendVotes(
-  list: readonly { key: string; vote: "red" | "black" }[],
-): Promise<unknown | null> {
+async function sendVotes(list: readonly FilmVotePayload[]): Promise<unknown | null> {
   const total = list.length;
   for (
     let end = Math.min(MAX_VOTES_PER_PING, total);
@@ -187,10 +213,10 @@ async function sendVotes(
 /** 上报我的投票。**发全量**（1200ms 防抖）—— 服务端按整份替换，
  *  所以断网一段时间后重新上报一次就能自愈，不需要在本地记「待同步队列」。
  *  ⚠ 用全局 `setTimeout` 而不是 `window.setTimeout`：与 `screening-counts.ts` 同一条理由
- *    （模块可能被跑在 node 环境里的单测引用）。 */
-export function scheduleFilmVotesPing(
-  votes: Iterable<{ key: string; vote: "red" | "black" }>,
-): void {
+ *    （模块可能被跑在 node 环境里的单测引用）。
+ *  ⚠ 载荷里的 `comment` 由 `dedupeVotes` 统一补成 `null`/字符串（**每条都带字段**），
+ *    所以调用方哪怕只给 `{key, vote}` 也不会踩到「服务端当成旧版前端」那条坑。 */
+export function scheduleFilmVotesPing(votes: Iterable<FilmVoteInput>): void {
   const list = dedupeVotes(votes);
   clearTimeout(pingTimer);
   pingTimer = setTimeout(() => {

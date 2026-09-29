@@ -187,9 +187,12 @@ test("标记「看过」→ 贴一枚红:画布上立刻出现,并上报给服�
   await expect(card.locator(".rb-canvas-hint")).toHaveCount(0);
 
   // 上报是整份替换,载荷里就是「我贴出来的那几枚」
+  // ⚠ `comment: null` 必须**在**载荷里(2026-09-29,PLAN-20260929181900):服务端靠
+  //   「这一份里有没有 `comment` 字段」分辨新版 / 旧版前端 —— 一条都没带时它一个字都不碰评语列
+  //   (老客户端一次普通上报不能静默清空用户写过的评语)。所以省略字段是**错**的,`null` 是对的。
   await expect
     .poll(() => pings.at(-1)?.votes ?? null, { timeout: 8000 })
-    .toEqual([{ key, vote: "red" }]);
+    .toEqual([{ key, vote: "red", comment: null }]);
 });
 
 test("服务端的全体票数渲染成卡片上的红黑数字与只读小点", async ({ page }) => {
@@ -1306,4 +1309,147 @@ test("重拉同一份票数不算「有新贴纸」:数量没变就不提示重�
   // 给 setVotes → 重渲染留一拍:修复前这里会亮起「有新贴纸」(votes 换了新对象)
   await page.waitForTimeout(500);
   await expect(resort).not.toHaveAttribute("data-rb-stale");
+});
+
+/* ---------------- 「大家说」评语模块(2026-09-29,PLAN-20260929181900) ----------------
+ * 四件事各自钉一条:
+ *   ① 读:列表能出、匿名显示「匿名观众」、片名由 `filmKey` 反查目录、游标翻页;
+ *   ② 写:ping 载荷里**真的带了 `comment` 字段**(漏了 = 评语永远写不进去,且服务端不报错);
+ *   ③ 降级:接口 500 时模块走空态,红黑榜照常可用;
+ *   ④ 形态:贴纸上**没有任何浮层**(用户口径:「不要放在贴纸上,不然很乱」)。
+ * ⚠ 评语区是**页面级**的(在 `.rb-grid` 之外、`.rb-page` 之内),不在任何一张卡里。 */
+
+/** 评语读接口返回一页(等价于「接口已上线 + 已经有评语」) */
+async function stubComments(
+  page: Page,
+  body: { items: unknown[]; nextCursor?: string | null },
+) {
+  await page.route("**/api/stats/film-comments**", (route) =>
+    route.fulfill({
+      json: { edition: "biff-2026", items: body.items, nextCursor: body.nextCursor ?? null },
+    }),
+  );
+}
+
+test("「大家说」:列出评语、匿名显示「匿名观众」、按游标翻页", async ({ page }) => {
+  await stubEmpty(page);
+  const key = keyOf("008");
+  // 第一页给 nextCursor,第二页给最后一条 —— 「加载更多」是**唯一**的翻页方式
+  let first = true;
+  const cursors: string[] = [];
+  await page.route("**/api/stats/film-comments**", (route) => {
+    cursors.push(new URL(route.request().url()).searchParams.get("cursor") ?? "");
+    if (first) {
+      first = false;
+      return route.fulfill({
+        json: {
+          edition: "biff-2026",
+          items: [
+            { filmKey: key, vote: "red", comment: "拉片细节绝了", displayName: null },
+            { filmKey: key, vote: "black", comment: "节奏太慢", displayName: "阿柴" },
+          ],
+          nextCursor: "C1",
+        },
+      });
+    }
+    return route.fulfill({
+      json: {
+        edition: "biff-2026",
+        items: [{ filmKey: keyOf("033"), vote: "black", comment: "音效炸裂", displayName: "小满" }],
+        nextCursor: null,
+      },
+    });
+  });
+  await ready(page, "/redblack");
+
+  const say = page.locator(".rb-say");
+  await expect(say.getByRole("heading", { name: "大家说" })).toBeVisible();
+  await expect(say.locator(".rb-say-item")).toHaveCount(2);
+  // 匿名(displayName 为 null)→「匿名观众」,而不是一行空白
+  await expect(say.locator(".rb-say-item").first()).toContainText("拉片细节绝了");
+  await expect(say.locator(".rb-say-item").first()).toContainText("匿名观众");
+  await expect(say.locator(".rb-say-item").nth(1)).toContainText("阿柴");
+  // 片名由 `filmKey` 走本地目录反查(服务端**不 join 影片库**)
+  await expect(say.locator(".rb-say-item").first()).toContainText("《");
+
+  await say.getByRole("button", { name: "加载更多" }).click();
+  await expect(say.locator(".rb-say-item")).toHaveCount(3);
+  expect(cursors.at(-1)).toBe("C1");
+  // 服务端说没有下一页了(nextCursor 为 null)→ 按钮整颗消失
+  await expect(say.getByRole("button", { name: "加载更多" })).toHaveCount(0);
+});
+
+test("写一条评语:ping 载荷里真的带了 comment 字段", async ({ page }) => {
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  const pings: Array<{ votes: Array<Record<string, unknown>> }> = [];
+  // ⚠ 注册在 `stubEmpty` **之后**:Playwright 后注册的路由优先,而
+  //   `**/api/stats/film-votes**` 也匹配 `…-ping` —— 顺序反了这里就收不到载荷
+  await page.route("**/api/stats/film-votes-ping", async (route) => {
+    pings.push(JSON.parse(route.request().postData() ?? "{}") as { votes: Array<Record<string, unknown>> });
+    await route.fulfill({ json: { ok: true, count: 1, votes: {} } });
+  });
+  await ready(page, "/redblack");
+
+  const key = keyOf("008");
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await card.getByRole("button", { name: /贴红贴纸/ }).click();
+
+  const say = page.locator(".rb-say");
+  await expect(say.getByRole("combobox")).toBeEnabled();
+  await say.getByLabel("给哪一部写").selectOption(key);
+  await say.getByLabel("你的评语").fill("拉片细节绝了");
+  await say.getByRole("button", { name: "保存评语" }).click();
+
+  // 1200ms 防抖之后才发出去
+  await expect.poll(() => pings.length, { timeout: 8000 }).toBeGreaterThan(0);
+  const votes = pings.at(-1)!.votes;
+  const mine = votes.find((entry) => entry.key === key);
+  expect(mine?.comment).toBe("拉片细节绝了");
+  // ⚠ 每一条都必须带字段:一条都没有 = 服务端读成「旧版前端」,那一整份的评语一个字都不碰
+  for (const entry of votes) expect("comment" in entry).toBe(true);
+});
+
+test("评语接口 500:模块走空态,红黑榜照常可用(静默降级)", async ({ page }) => {
+  await stubEmpty(page);
+  await page.route("**/api/stats/film-comments**", (route) =>
+    route.fulfill({ status: 500, json: { error: "BOOM" } }),
+  );
+  await ready(page, "/redblack");
+
+  // 空态要**说清为什么空**,不是留一块空白
+  await expect(page.locator(".rb-say-empty")).toBeVisible();
+  await expect(page.locator(".rb-say-list")).toHaveCount(0);
+
+  const key = keyOf("008");
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await card.getByRole("button", { name: /贴红贴纸/ }).click();
+  await expect(card.locator(".rb-dot--red")).toHaveCount(1);
+});
+
+test("贴纸上没有任何浮层:悬停 / 聚焦都不弹东西出来", async ({ page }) => {
+  await stubEmpty(page);
+  await stubComments(page, {
+    items: [{ filmKey: keyOf("008"), vote: "red", comment: "好看", displayName: null }],
+  });
+  await ready(page, "/redblack");
+
+  const key = keyOf("008");
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await card.getByRole("button", { name: /贴红贴纸/ }).click();
+  const dot = card.locator(".rb-dot");
+  await expect(dot).toHaveCount(1);
+
+  // 贴纸是**空的 `<button>`** —— 评语不在它里面(「不要放在贴纸上,不然很乱」)
+  await expect(dot.locator("*")).toHaveCount(0);
+  await quiet(page);
+  await dot.hover();
+  await dot.focus();
+  await expect(dot.locator("*")).toHaveCount(0);
+  await expect(card.locator(".rb-say, [role=tooltip], [role=dialog]")).toHaveCount(0);
+  // 评语区在页面上、但**不在**卡片里(页面级模块)
+  await expect(page.locator(".rb-say")).toHaveCount(1);
 });

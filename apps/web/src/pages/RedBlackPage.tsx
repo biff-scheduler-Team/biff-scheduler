@@ -30,6 +30,7 @@ import {
 import { ToastQueue } from "../components/spectrum";
 import { QuerySearchField } from "../components/QuerySearchField";
 import { StickerCanvas } from "../components/StickerCanvas";
+import { FilmCommentsPanel, type MyFilmRow } from "../components/FilmCommentsPanel";
 import type { FilmNode } from "../app/model";
 import { searchFilm } from "../app/model";
 import { useQuery } from "../app/hooks";
@@ -55,6 +56,7 @@ import {
   saveWatched,
   scheduleSaveStickers,
   scoreOf,
+  setStickerComment,
   sortByCounts,
   takeSticker,
   tallyOf,
@@ -442,6 +444,20 @@ export function RedBlackPage() {
     [sorted],
   );
 
+  /** 「大家说」写入口的候选：**我贴过的那些片**（一人一片一票一评，没贴过就不能评）。
+   *  ⚠ 依赖票签名而不是 `board`：拖动只挪坐标，不该让这个列表重算。
+   *  ⚠ 顺带带上本地已写的那份评语 —— 列表里认不出自己那条（服务端不回身份），
+   *    「改我自己的评语」只能靠它预填文本框。 */
+  const myFilms = useMemo<MyFilmRow[]>(() => {
+    const rows: MyFilmRow[] = [];
+    for (const [key, list] of board) {
+      const sticker = list[0];
+      if (sticker) rows.push({ key, type: sticker.type, comment: sticker.comment });
+    }
+    return rows;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只读票与评语，与坐标无关
+  }, [votesKey]);
+
   // ⚠ 下面几个回调**必须是稳定引用**(`useCallback([])` / 依赖同样稳定的东西),否则 `RbCard`
   //   的 `memo` 全废 —— 而 memo 正是「贴一枚只重渲染那一张」的前提,也是本轮修卡顿的关键
   //   (PLAN-20260922145815)。它们又要读**最新**状态(board / watched / tallies / filmByKey),
@@ -475,6 +491,17 @@ export function RedBlackPage() {
     undoRef.current = null;
     commitBoard(target);
   }, [commitBoard]);
+
+  /** 「大家说」里保存 / 清空评语（空串 = 清掉）。
+   *  ⚠ 它只改**本地那一份**：评语随票在 1200ms 防抖后**同一次整份替换**里上报
+   *    （见 `film-votes.ts` 与 `redblack.ts::votesOf`），所以这里不需要第二条上报路径 ——
+   *    而 `votesSignature` 把评语串进了签名，改评语才会真的触发那次上报（否则永远上不去）。 */
+  const saveComment = useCallback(
+    (filmKey: string, comment: string) => {
+      commitBoard(setStickerComment(latest.current.board, filmKey, comment));
+    },
+    [commitBoard],
+  );
 
   // 刚贴下的那一枚(见 `RbCard` 里的动效说明)。⚠ 必须声明在 `place` **之前** ——
   // `place` 的依赖数组在渲染期求值,放到后面会撞上 TDZ。
@@ -1045,6 +1072,11 @@ export function RedBlackPage() {
           })}
         </div>
       )}
+
+      {/* 「大家说」—— 榜单**下方**的页面级评语模块(2026-09-29,PLAN-20260929181900)。
+          ⚠ 它**不在** `.rb-grid` 里:评语是「一眼看到全场在说什么」,不该被塞进某张卡;
+            也因此贴纸上仍然没有任何浮层(本轮的形态口径,由 E2E 守住)。 */}
+      <FilmCommentsPanel mine={myFilms} onSaveComment={saveComment} />
 
       {shareOpen && (
         // ⚠ `Suspense` 写在条件**内部**:`shareOpen` 为假时连它都不挂,不多包一层没有内容的边界

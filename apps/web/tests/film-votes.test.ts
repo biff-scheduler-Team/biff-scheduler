@@ -144,6 +144,35 @@ describe("scheduleFilmVotesPing", () => {
     });
   });
 
+  // 评语字段(2026-09-29,PLAN-20260929181900)。
+  // 为什么单测它:服务端靠「这一份里有没有 `comment` 字段」分辨新版 / 旧版前端 ——
+  // **一条都没带**时它一个字都不碰评语列(老客户端的一次普通上报不能静默清空用户写过的评语)。
+  // 反过来说:新版前端要是漏了字段,评语就**永远写不进去**,而且服务端不报错。
+  it("每一条都带 comment 字段:没有评语时补 null,不是省略", async () => {
+    vi.resetModules();
+    const fetchMock = vi.fn(() => okJson({ ok: true, votes: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { scheduleFilmVotesPing } = await import("../src/film-votes");
+
+    // 只给 {key, vote}(老调用形状)→ 也要补成 null
+    scheduleFilmVotesPing([{ key: "a", vote: "red" }]);
+    // 给了评语 → 原样带上
+    scheduleFilmVotesPing([
+      { key: "a", vote: "red", comment: "好看" },
+      { key: "b", vote: "black" },
+    ]);
+    await vi.advanceTimersByTimeAsync(1200);
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const votes = (JSON.parse(String(init.body)) as { votes: Array<Record<string, unknown>> })
+      .votes;
+    expect(votes).toEqual([
+      { key: "a", vote: "red", comment: "好看" },
+      { key: "b", vote: "black", comment: null },
+    ]);
+    for (const entry of votes) expect("comment" in entry).toBe(true);
+  });
+
   it("超过上限不丢票:按**累积前缀**分批,最后一批才是全量(服务端是整份替换语义)", async () => {
     vi.resetModules();
     const fetchMock = vi.fn((_url: string, _init?: RequestInit) => okJson({ ok: true, votes: {} }));

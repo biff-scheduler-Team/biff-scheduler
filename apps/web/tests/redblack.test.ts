@@ -34,6 +34,7 @@ import {
   saveWatched,
   scheduleSaveStickers,
   scoreOf,
+  setStickerComment,
   sortByCounts,
   spotOf,
   takeSticker,
@@ -264,9 +265,27 @@ describe("对接服务端票数", () => {
       ["c", []],
     ] as never);
     expect(votesOf(board)).toEqual([
-      { key: "a", vote: "red" },
-      { key: "b", vote: "black" },
+      { key: "a", vote: "red", comment: null },
+      { key: "b", vote: "black", comment: null },
     ]);
+  });
+
+  // 评语随票一起上报(2026-09-29,PLAN-20260929181900)。
+  // 为什么单测它:**少带 `comment` 字段**会被服务端读成「旧版前端」→ 这一整份的评语一个字都不碰
+  // (那是**有意的**数据保护:老客户端一次普通上报不能静默清空用户写过的评语)。
+  // 于是「字段漏了」的症状是「评语永远写不进去」,而且服务端不报错 —— 只能靠断言钉住。
+  it("votesOf:每一条都带 comment 字段(没写评语时是 null,不是省略)", () => {
+    const board: StickerBoard = new Map([
+      ["a", [sticker("x", "red", 0.5, 0.5)]],
+      ["b", [{ ...sticker("y", "black"), comment: "稳" }]],
+    ] as never);
+    const payload = votesOf(board);
+    expect(payload).toEqual([
+      { key: "a", vote: "red", comment: null },
+      { key: "b", vote: "black", comment: "稳" },
+    ]);
+    // 逐条断言「字段真的在」——`toEqual` 里 `comment: undefined` 与「没有这个键」是两回事
+    for (const entry of payload) expect("comment" in entry).toBe(true);
   });
 });
 
@@ -724,6 +743,21 @@ describe("votesSignature:票的签名与坐标无关", () => {
     const ba = placeSticker(placeSticker(new Map(), "b", sticker("s2", "black")), "a", sticker("s1", "red"));
     expect(votesSignature(ba)).toBe(votesSignature(ab));
   });
+
+  // ⚠ 评语必须进签名(2026-09-29,PLAN-20260929181900):这一份签名就是上报 effect 的依赖
+  // (`RedBlackPage.tsx` 的 `votesKey`)。漏掉评语时,用户写完一句**永远不会上报** ——
+  // 界面一切正常,只是那句话谁也看不到,且没有任何报错。
+  it("评语变了 → 签名也变(否则写完那句话永远上不去服务端)", () => {
+    const one = placeSticker(new Map(), "a", sticker("s1", "red"));
+    expect(votesSignature(setStickerComment(one, "a", "好看"))).not.toBe(votesSignature(one));
+    expect(votesSignature(setStickerComment(one, "a", "好看"))).not.toBe(
+      votesSignature(setStickerComment(one, "a", "一般")),
+    );
+    // 清空评语同样是「变了」(服务端要据此把那一列清掉)
+    expect(votesSignature(setStickerComment(setStickerComment(one, "a", "好看"), "a", ""))).toBe(
+      votesSignature(one),
+    );
+  });
 });
 
 // 原地换色(2026-09-28,PLAN-20260928102019 ⑧)。
@@ -786,5 +820,87 @@ describe("scheduleSaveStickers:延后写盘", () => {
     saveStickers(placeSticker(new Map(), "a", sticker("s1", "red")));
     flushPendingStickers();
     expect(loadStickers().has("a")).toBe(true);
+  });
+});
+
+// 评语存在**本地那一枚贴纸上**(2026-09-29,PLAN-20260929181900)。
+// 为什么它必须在本地:公开读接口**刻意不回身份**(`contributor` 那条硬约束),
+// 所以「大家说」列表里认不出哪条是我写的 —— 「改我自己的评语」只能靠本地这一份。
+// 判错的后果都是静默的:改了不生效、或者一刷新评语就没了(而服务端那份还在,改起来更困惑)。
+describe("setStickerComment:本地那份评语", () => {
+  const base = (): StickerBoard => placeSticker(new Map(), "a", sticker("s1", "red", 0.3, 0.7));
+
+  it("写上 / 改掉:只动那一枚的评语,位置与颜色原样保留", () => {
+    const written = setStickerComment(base(), "a", "拉片细节绝了");
+    expect(written.get("a")).toEqual([
+      { id: "s1", type: "red", posX: 0.3, posY: 0.7, comment: "拉片细节绝了" },
+    ]);
+    expect(setStickerComment(written, "a", "再看一遍还是好").get("a")![0].comment).toBe(
+      "再看一遍还是好",
+    );
+  });
+
+  it("去掉首尾空白;纯空白当作「没写」(不报一个空串上去)", () => {
+    expect(setStickerComment(base(), "a", "  好看  ").get("a")![0].comment).toBe("好看");
+    expect("comment" in setStickerComment(base(), "a", "   ").get("a")![0]).toBe(false);
+  });
+
+  it("传空串 = 清掉评语(键整个消失,不是留一个 undefined)", () => {
+    const written = setStickerComment(base(), "a", "好看");
+    expect("comment" in setStickerComment(written, "a", "").get("a")![0]).toBe(false);
+  });
+
+  it("内容没变 → 返回**同一个引用**(调用方据此知道「这次什么也没做」)", () => {
+    const written = setStickerComment(base(), "a", "好看");
+    expect(setStickerComment(written, "a", "好看")).toBe(written);
+    expect(setStickerComment(written, "a", " 好看 ")).toBe(written);
+    // 从头就没写过 → 再写一个空串也是「什么也没做」
+    const fresh = base();
+    expect(setStickerComment(fresh, "a", "")).toBe(fresh);
+  });
+
+  it("那一部没贴过 → 原样返回(评语挂在票上,没票就无处可挂)", () => {
+    const board = base();
+    expect(setStickerComment(board, "nope", "好看")).toBe(board);
+  });
+
+  it("不改原 board(不可变)", () => {
+    const board = base();
+    setStickerComment(board, "a", "好看");
+    expect("comment" in board.get("a")![0]).toBe(false);
+  });
+});
+
+describe("评语落盘:原样存取", () => {
+  it("写盘再读回,评语一个字节都不丢", () => {
+    const board = setStickerComment(
+      placeSticker(new Map(), "cat:f001", sticker("s1", "black", 0.2, 0.7)),
+      "cat:f001",
+      "稳",
+    );
+    saveStickers(board);
+    expect(loadStickers()).toEqual(board);
+    expect(loadStickers().get("cat:f001")![0].comment).toBe("稳");
+  });
+
+  it("坏数据里的评语(非字符串 / 空白)静默丢弃,不影响那一枚贴纸本身", () => {
+    mem.set(
+      LS_V2,
+      JSON.stringify({
+        a: [{ id: "s1", type: "red", posX: 0.5, posY: 0.5, comment: 42 }],
+        b: [{ id: "s2", type: "red", posX: 0.5, posY: 0.5, comment: "   " }],
+      }),
+    );
+    const board = loadStickers();
+    expect("comment" in board.get("a")![0]).toBe(false);
+    expect("comment" in board.get("b")![0]).toBe(false);
+    expect(board.size).toBe(2);
+  });
+
+  it("老数据(没有 comment 字段)照旧读得回来 —— 加可空字段是向后兼容的", () => {
+    mem.set(LS_V2, JSON.stringify({ a: [{ id: "s1", type: "red", posX: 0.5, posY: 0.5 }] }));
+    expect(loadStickers().get("a")).toEqual([
+      { id: "s1", type: "red", posX: 0.5, posY: 0.5 },
+    ]);
   });
 });

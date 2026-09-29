@@ -952,3 +952,215 @@
 @media (pointer: coarse) {
   .rb-src { min-width: 44px; min-height: 44px; }
 }
+
+/* ---------- 「大家说」评语模块(2026-09-29,PLAN-20260929181900) ----------
+ * 独立成块的**页面级**区域(不在 `.rb-grid` 里、也不挂在贴纸上):
+ * 贴纸只管「贴了什么」,评语只管「说了什么」—— 两件事不再互相牵制。
+ * ⚠ 颜色一律走既有 token(`--brand` / `--line` / `--surface` / `--raised` / `--muted` / `--ink`),
+ *   在本文件之外不新增色值(AGENTS §5:token 是唯一色源)。 */
+
+.rb-say {
+  display: grid;
+  gap: 12px;
+  padding: 20px 22px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+}
+
+.rb-say-head {
+  display: grid;
+  gap: 4px;
+}
+
+.rb-say-title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.rb-say-lede {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 还没贴过任何片:给一句**怎么开始**,而不是渲染一个空的 select */
+.rb-say-note {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.rb-say-form {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--raised);
+}
+
+.rb-say-label {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.rb-say-select,
+.rb-say-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  /* `font: inherit` 不能省:原生控件默认走系统字号,与页面其余部分不一致 */
+  font: inherit;
+  font-size: 13px;
+}
+
+.rb-say-input {
+  min-height: 56px;
+  line-height: 1.5;
+  /* 竖着拉可以,横着拉会把版面撑破 */
+  resize: vertical;
+}
+
+.rb-say-input:disabled {
+  opacity: 0.6;
+}
+
+.rb-say-select:focus-visible,
+.rb-say-input:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+
+.rb-say-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.rb-say-count {
+  color: var(--muted);
+  font-size: 11px;
+  /* 等宽数字:否则「9/140」变「10/140」时这一小块会跳一下 */
+  font-variant-numeric: tabular-nums;
+}
+
+/* 模块里唯一的主操作 —— 与「生成分享图」同一条:品牌色实底,其余都是弱按钮 */
+.rb-say-save {
+  padding: 6px 16px;
+  border: 1px solid var(--brand);
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rb-say-save:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.rb-say-save:disabled,
+.rb-say-more:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rb-say-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.rb-say-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* 一行 = 红/黑徽章 + 正文 + (片名 · 昵称) */
+.rb-say-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--raised);
+}
+
+.rb-say-vote {
+  grid-row: span 2;
+  align-self: start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.rb-say-vote--red {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+.rb-say-vote--black {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.rb-say-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  /* 用户能写长串英文 / 链接:宁可断词也不要把这一行撑出去 */
+  overflow-wrap: anywhere;
+}
+
+.rb-say-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.rb-say-film {
+  color: var(--ink);
+}
+
+/* 「加载更多」—— 它是弱动作(翻页),不抢「保存评语」的权重 */
+.rb-say-more {
+  justify-self: center;
+  padding: 6px 18px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.rb-say-more:hover:not(:disabled) {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+/* 窄屏:模块内边距收一档(与 `.rb-card` 那条 560px 断点同一处口径) */
+@media (max-width: 560px) {
+  .rb-say {
+    padding: 16px 14px;
+  }
+}

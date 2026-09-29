@@ -15,12 +15,21 @@ import { removeWorkspaceItem, writeWorkspaceItem } from "./workspace-storage";
 export type StickerType = "red" | "black";
 
 /** 一枚已贴的贴纸。`posX` / `posY` 是**画布内的相对坐标(0..1)** —— 存像素会在换屏 /
- *  换列数之后跑到画布外面去(卡片宽度本来就不是定值)。 */
+ *  换列数之后跑到画布外面去(卡片宽度本来就不是定值)。
+ *
+ *  ⚠ `comment`(2026-09-29,PLAN-20260929181900)是**可选**字段 —— 加可空字段是**向后兼容**的,
+ *    不触发 AGENTS §5 那条「改结构必须新 key + 一次性迁移 + 删旧 key」(那条管的是**不兼容**变更):
+ *    老数据里没有它就是「这一票还没写评语」,读回来照旧能贴能拖。
+ *
+ *  ⚠ 为什么评语要存在本地:公开读接口`刻意不回身份`(`film-vote-store.ts` 的硬约束),
+ *    于是「大家说」列表里**认不出哪条是我写的** —— 「改我自己的评语」只能靠本地这一份。
+ *    它同时是上报载荷里 `comment` 的来源(见 `votesOf`)。 */
 export interface Sticker {
   id: string;
   type: StickerType;
   posX: number;
   posY: number;
+  comment?: string;
 }
 
 /** 影片 key → 已贴贴纸(每种颜色最多 `MAX_PER_COLOR` 枚) */
@@ -333,12 +342,19 @@ export function crowdSignature(counts: CrowdCounts): string {
     .join("|");
 }
 
-/** 我自己贴出来的那几枚 → 上报载荷。一人一部一票,所以每部只取那一枚的颜色。 */
-export function votesOf(board: StickerBoard): Array<{ key: string; vote: StickerType }> {
-  const out: Array<{ key: string; vote: StickerType }> = [];
+/** 我自己贴出来的那几枚 → 上报载荷。一人一部一票,所以每部只取那一枚的颜色。
+ *
+ *  ⚠ **`comment` 字段一条都不能省**(2026-09-29,PLAN-20260929181900):服务端靠「这一份里
+ *    有没有 `comment`」分辨**新版前端**与**旧版前端** —— 一个都没带时它一个字都不碰评语列
+ *    (否则老客户端一次普通上报就会**静默清空**用户写过的评语)。所以没有评语时送 `null`,
+ *    而不是省略字段。 */
+export function votesOf(
+  board: StickerBoard,
+): Array<{ key: string; vote: StickerType; comment: string | null }> {
+  const out: Array<{ key: string; vote: StickerType; comment: string | null }> = [];
   for (const [key, list] of board) {
     const sticker = list[0];
-    if (sticker) out.push({ key, vote: sticker.type });
+    if (sticker) out.push({ key, vote: sticker.type, comment: sticker.comment ?? null });
   }
   return out;
 }
@@ -350,12 +366,16 @@ export function votesOf(board: StickerBoard): Array<{ key: string; vote: Sticker
  * ② 让「我的票」/ 修正票数 / 自己的配额 / 顶部统计全部重算一遍 —— 全都是白做。
  * 签名把「票变了」与「只是挪了个位置」分开,只有前者才让下游动。
  *
- * ⚠ 先按 key 排序再拼:`board` 的迭代序是插入序,换个插入顺序不该算「票变了」。 */
+ * ⚠ 先按 key 排序再拼:`board` 的迭代序是插入序,换个插入顺序不该算「票变了」。
+ *
+ * ⚠ **评语必须进签名**(2026-09-29,PLAN-20260929181900):签名是上报 effect 的依赖
+ *   (`RedBlackPage.tsx` 的 `votesKey`)。只串 key 与颜色的话,**改评语不会触发上报** ——
+ *   用户写完一句,那句话永远上不去服务端(而且不报错、界面照旧)。 */
 export function votesSignature(board: StickerBoard): string {
   const parts: string[] = [];
   for (const [key, list] of board) {
     const sticker = list[0];
-    if (sticker) parts.push(`${key}:${sticker.type}`);
+    if (sticker) parts.push(`${key}:${sticker.type}:${sticker.comment ?? ""}`);
   }
   return parts.sort().join("|");
 }
@@ -431,6 +451,40 @@ export function retintSticker(
   return next;
 }
 
+/** 评语归一(本地这一侧):去掉首尾空白,**空串当作「没写」**。
+ *
+ * ⚠ **不在这里截断长度** —— 长度上限的**唯一收口在服务端**(`film-vote-stats.ts::normalizeComment`,
+ *   按码点算 140)。在本地再定一个常量就是同一口径的第二份实现(AGENTS §5),
+ *   而两处一旦漂移,「本地看着存下了、服务端截掉了」这种不一致极难解释。
+ *   输入侧的上限由表单的 `maxLength` 承担(它只是**体验**上拦住,不是权威)。 */
+export function normalizeStickerComment(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+/** 给**已经贴着的那一枚**写 / 改 / 清空评语。一人一片一票一评,所以只动那一枚。
+ *
+ * ⚠ 与 `moveSticker` / `retintSticker` 同一条:**不可变**;内容没变时返回**同一个引用** ——
+ *   调用方(以及 `votesSignature` 那条上报链路)靠 `next === board` 就知道「这次什么也没做」,
+ *   不必自己再比一次。
+ * ⚠ 传空串 = **清掉评语**(写下去的是 `null`,服务端据此把那一列清空)。 */
+export function setStickerComment(board: StickerBoard, key: string, comment: string): StickerBoard {
+  const current = board.get(key)?.[0];
+  if (!current) return board;
+  const next = normalizeStickerComment(comment);
+  if ((current.comment ?? undefined) === next) return board;
+  const out = cloneBoard(board);
+  const target = out.get(key);
+  if (!target?.[0]) return board;
+  // 先摘掉旧评语再按需写回:`comment` 是可选字段,清空时**删键**而不是留一个 `undefined`
+  // (JSON.stringify 会丢掉 undefined,但内存里那份与读到的那份应当同形)。
+  const kept = { ...target[0] };
+  delete kept.comment;
+  target[0] = next === undefined ? kept : { ...kept, comment: next };
+  return out;
+}
+
 /* ---------------- 持久化 ----------------
  * v2(自由坐标)与 v1(槽位)结构不兼容 → **新键 + 一次性迁移 + 删旧键**(仓库惯例,见 `state.ts`)。
  * 读取端一律白名单 + 兜底:未知字段忽略,非法条目静默丢弃。 */
@@ -460,7 +514,12 @@ function parseV2(raw: unknown): StickerBoard {
       // 一部只留第一枚:数据损坏 / 旧模型残留时,宁可少一枚,也不要卡片上飘出两三枚贴纸
       if (list.length >= MAX_PER_FILM) continue;
       const spot = clampSpot(s.posX, s.posY);
-      list.push({ id: s.id, type: s.type, ...spot });
+      // 评语(2026-09-29):可选字段,过一遍本地归一(非字符串 / 空白串 = 没写),
+      // 免得手改过的 localStorage 把「一个空串」当成一句评语报上去
+      const comment = normalizeStickerComment(s.comment);
+      list.push(comment === undefined
+        ? { id: s.id, type: s.type, ...spot }
+        : { id: s.id, type: s.type, ...spot, comment });
     }
     if (list.length) board.set(key, list);
   }
