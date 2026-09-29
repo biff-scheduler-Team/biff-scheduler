@@ -236,9 +236,12 @@
         "apps/web/src/sticker-shape.ts",
         "apps/web/src/components/share-image.ts",
         "apps/web/src/film-votes.ts",
+        "apps/web/src/film-comments.ts",
+        "apps/web/src/components/FilmCommentsPanel.tsx",
         "apps/api/src/film-vote-stats.ts",
         "apps/api/src/film-vote-store.ts",
-        "apps/api/migrations/0006_ordinary_silvermane.sql"
+        "apps/api/migrations/0006_ordinary_silvermane.sql",
+        "apps/api/migrations/0011_lucky_spitfire.sql"
       ],
       "specs": [
         "redblack"
