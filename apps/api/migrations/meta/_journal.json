@@ -71,6 +71,13 @@
       "when": 1790145165413,
       "tag": "0010_mushy_master_mold",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1790678768865,
+      "tag": "0011_lucky_spitfire",
+      "breakpoints": true
     }
   ]
 }

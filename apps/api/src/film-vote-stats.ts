@@ -116,3 +116,118 @@ export function voteScore(counts: VoteCounts): number | null {
   if (total <= 0) return null;
   return Math.round((counts.red / total) * 100) / 10;
 }
+
+/* ---------------- 评语（2026-09-29,PLAN-20260929181900） ----------------
+ * 「一人一片一票一评」：评语**挂在票上**，不是独立的一条记录 ——
+ * 所以它没有自己的表，撤票 / 改色走 `replaceContributorVotes` 时评语自然跟着走（不留孤儿）。 */
+
+/** 评语长度上限，按 **Unicode 码点**算（用户 2026-09-29 定 140 字）。 */
+export const MAX_COMMENT_LENGTH = 140;
+
+/** 昵称快照的长度上限。账号系统那边的上限未知，这里只做防御性截断 ——
+ *  它是**展示用**的字段，超长会把「大家说」那一行整个挤爆。 */
+export const MAX_DISPLAY_NAME_LENGTH = 40;
+
+/** 按**码点**截断，而不是 `String.prototype.slice`。
+ *  ⚠ `slice` 按 UTF-16 码元切：140 个 emoji 会被劈成半个代理对，存进去就是乱码。
+ *    这条在「用户能自由输入、且要公开显示」的字段上是必须的。 */
+function clampCodePoints(text: string, max: number): string {
+  const points = [...text];
+  return points.length > max ? points.slice(0, max).join("") : text;
+}
+
+/** 评语归一：去首尾空白 → **空串归一成 `null`**（「从来没写」与「写了又清空」同值，
+ *  两者对读的人没有区别）→ 超长按码点截断。非字符串一律当没写。 */
+export function normalizeComment(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return clampCodePoints(trimmed, MAX_COMMENT_LENGTH);
+}
+
+/** 昵称快照归一：与 `normalizeComment` 同一套（截断用同一个码点口径）。 */
+export function normalizeDisplayName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return clampCodePoints(trimmed, MAX_DISPLAY_NAME_LENGTH);
+}
+
+/** 公开读接口回给浏览器的一行。
+ *  ⚠ **刻意不含 `contributor`** —— 与 `VoteAuditRow` / `VoteAdminRow` 是同一条约束：
+ *    身份标识绝不出公开接口（见 `film-vote-store.ts` 上那段原话）。
+ *    这里连**读**都不读它（调用方的 SQL 也不该 select 它）。 */
+export interface CommentItem {
+  filmKey: string;
+  vote: FilmVote;
+  comment: string;
+  /** 写入时的昵称快照；匿名 / 未登录时为 `null`（前端显示「匿名观众」）。 */
+  displayName: string | null;
+}
+
+/** 库里的行 → 公开 DTO。**白名单收口在这一处**（与其它读路径同一道）：
+ *  - `vote` 非红非黑 → 丢（被人工改过的坏行一律不猜、不展示）；
+ *  - `comment` 空 → 丢（没评语的行回来也没有内容可展示，白白放大响应体）。 */
+export function toCommentItems(
+  rows: Iterable<{ film_key: string; vote: unknown; comment: unknown; display_name: unknown }>,
+): CommentItem[] {
+  const out: CommentItem[] = [];
+  for (const row of rows) {
+    if (!isFilmVote(row.vote)) continue;
+    const comment = normalizeComment(row.comment);
+    if (!comment) continue;
+    out.push({
+      filmKey: row.film_key,
+      vote: row.vote,
+      comment,
+      displayName: normalizeDisplayName(row.display_name),
+    });
+  }
+  return out;
+}
+
+/** 「大家说」的分页游标：`(updated_at, film_key)`。 */
+export interface CommentCursor {
+  updatedAt: number;
+  filmKey: string;
+}
+
+/** 游标 → **不透明串**。
+ *
+ *  ⚠ 为什么绕这一层而不是直接把 `{updatedAt, filmKey}` 明文回给前端：
+ *    游标是**公开响应体的一部分**。明文对象意味着「将来有人往里塞个 `contributor` 方便排序」
+ *    只要改一行、而且**看不出来** —— 编码之后，「谁也不许往里加字段」这条约束才落在代码形状上
+ *    （解析端是白名单，见 `decodeCommentCursor`）。
+ *  ⚠ 先 `encodeURIComponent` 再 `btoa`：`btoa` 只吃 latin1，中文 filmKey 会直接抛。 */
+export function encodeCommentCursor(cursor: CommentCursor | null): string | null {
+  if (!cursor) return null;
+  return btoa(encodeURIComponent(JSON.stringify([cursor.updatedAt, cursor.filmKey])));
+}
+
+/** 不透明串 → 游标。**任何异常都当作「没有游标」**（从头开始），
+ *  而不是让整个接口 400 —— 用户手上的那一页可能是上一版前端生成的，不该因此什么都读不到。
+ *  ⚠ 白名单取字段、逐个校验，不做 `as` 强转。 */
+export function decodeCommentCursor(raw: unknown): CommentCursor | null {
+  if (typeof raw !== "string" || !raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(decodeURIComponent(atob(raw)));
+    if (!Array.isArray(parsed) || parsed.length !== 2) return null;
+    const [updatedAt, filmKey] = parsed as [unknown, unknown];
+    if (typeof updatedAt !== "number" || !Number.isFinite(updatedAt)) return null;
+    if (typeof filmKey !== "string" || !filmKey || filmKey.length > MAX_FILM_KEY_LENGTH) return null;
+    return { updatedAt: Math.max(0, Math.trunc(updatedAt)), filmKey };
+  } catch {
+    return null;
+  }
+}
+
+/** 一页最多回多少条评语（服务端夹紧，不信前端传的数）。 */
+export const COMMENT_PAGE_SIZE = 20;
+export const MAX_COMMENT_PAGE_SIZE = 50;
+
+/** 把前端的 `limit` 夹进 `[1, MAX_COMMENT_PAGE_SIZE]`，缺省 `COMMENT_PAGE_SIZE`。 */
+export function clampCommentLimit(raw: unknown): number {
+  const value = typeof raw === "string" ? Number(raw) : raw;
+  if (typeof value !== "number" || !Number.isFinite(value)) return COMMENT_PAGE_SIZE;
+  return Math.min(MAX_COMMENT_PAGE_SIZE, Math.max(1, Math.trunc(value)));
+}

@@ -189,6 +189,8 @@ export function createStatSchema(sqlite: DatabaseSync): void {
       film_key TEXT NOT NULL,
       contributor TEXT NOT NULL,
       vote TEXT NOT NULL,
+      comment TEXT,
+      display_name TEXT,
       updated_at INTEGER NOT NULL,
       PRIMARY KEY(edition, film_key, contributor)
     );

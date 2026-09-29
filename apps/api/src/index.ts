@@ -7,13 +7,24 @@ import { pickFilmKeysFromRecords, wantWeightFor } from "./want-stats";
 import { DEFAULT_EDITION, EDITIONS, isEdition } from "@biff/contracts/edition";
 import { LOOKUP_RATE_LIMIT, PING_RATE_LIMIT, createRateLimiter } from "./rate-limit";
 import { readWantCounts, replaceContributorWants } from "./want-store";
-import { MAX_FILM_KEY_LENGTH, MAX_VOTES_PER_PING, normalizeVotes } from "./film-vote-stats";
+import {
+  clampCommentLimit,
+  decodeCommentCursor,
+  encodeCommentCursor,
+  MAX_FILM_KEY_LENGTH,
+  MAX_VOTES_PER_PING,
+  normalizeComment,
+  normalizeDisplayName,
+  normalizeVotes,
+  toCommentItems,
+} from "./film-vote-stats";
 import {
   ANON_PREFIX,
   auditVoteRows,
   claimContributorVotes,
   exposeVoteRows,
   MAX_VOTE_ROWS,
+  readRecentComments,
   readVoteCounts,
   readVoteRows,
   removeContributorVote,
@@ -579,7 +590,18 @@ const filmVotePingSchema = z
   .object({
     edition: z.enum(EDITIONS).optional().default(DEFAULT_EDITION),
     votes: z
-      .array(z.object({ key: z.string().min(1).max(128), vote: z.enum(["red", "black"]) }).strict())
+      .array(
+        z
+          .object({
+            key: z.string().min(1).max(128),
+            vote: z.enum(["red", "black"]),
+            // 评语（2026-09-29,PLAN-20260929181900）。⚠ 这里只挡「大得离谱」的输入：
+            // 真正的长度收口在 `normalizeComment`，而且按**码点**算 —— zod 的 `.max()` 数的是
+            // UTF-16 码元，两处各定一条上限迟早不一致（emoji / 星号面就是踩点）。
+            comment: z.string().max(1000).optional(),
+          })
+          .strict(),
+      )
       .max(MAX_VOTES_PER_PING),
   })
   .strict();
@@ -622,13 +644,62 @@ app.post("/api/stats/film-votes-ping", limited(pingLimiter), async (c) => {
   }
   // 归一化兜一层:zod 挡结构,这里挡「同一部片发了两条」这类语义重复(以最后一条为准)
   const normalized = normalizeVotes(votes);
-  await replaceContributorVotes(db, edition, contributor, normalized);
+  // 评语(2026-09-29,PLAN-20260929181900):与票在**同一次整份替换**里写下去,
+  // 所以撤票 / 改色时它自然跟着走,不会留孤儿。
+  // ⚠ `normalizeComment` 是**唯一**的收口(码点截断 / 空白归一 / 空串 → `null`)——
+  //   zod 那边只管形状,别在两处各定一条长度规则。
+  //
+  // ⚠⚠ **「载荷里一个 `comment` 字段都没有」与「带了一个空评语」是两件事**:
+  //   - **一个都没有** → 这是**旧版前端**(用户浏览器缓存里还是没这个字段的老代码)。
+  //     此时必须**一个字都不碰评语** —— 否则用户升级前写的评语会被一次普通上报全部清空,
+  //     而且是**静默**的(他甚至没改过评语)。这条不是「兼容性洁癖」,是数据安全。
+  //   - 只要**有一条带**了(新版前端每一条都带,没评语时是 `null`)→ 按整份替换语义走。
+  const carriesComments = votes.some((entry) => "comment" in entry);
+  const comments = carriesComments
+    ? new Map(votes.map((entry) => [entry.key, normalizeComment(entry.comment)]))
+    : undefined;
+  // 昵称:反馈板 / 讨论区那两处直接取 `c.get("profile").displayName` —— 它们挂了
+  // `requireIdentity`,中间件**已经**替它们解析过身份。而这条 ping 必须支持匿名(口径 1),
+  // 中间件不会替它解析,所以这里自己来一次。
+  // ⚠ 只在**这次真的带了评语**时解析:纯贴纸的上报(绝大多数)不该为它多一次上游往返。
+  // ⚠ 未登录 / 解析失败 → `null`(前端显示「匿名观众」),**不阻塞写票** ——
+  //   昵称是展示用的附加信息,为它把「贴纸没贴上去」当掉不划算。
+  const hasComment = comments ? [...comments.values()].some((text) => text !== null) : false;
+  let displayName: string | null = null;
+  if (session && hasComment) {
+    const outcome = await resolveIdentity(
+      c.env,
+      getCookie(c, sessionCookieName(config)),
+      c.req.header("cf-connecting-ip"),
+      session,
+    );
+    if (!("failure" in outcome)) displayName = normalizeDisplayName(outcome.profile.displayName);
+  }
+  await replaceContributorVotes(db, edition, contributor, normalized, { comments, displayName });
   // ⚠ 顺手把**最新聚合**一起回给客户端（2026-09-28）：前端本来就要在「上报成功后」再 GET 一次
   //   `/api/stats/film-votes` 才能看到自己这一票体现在榜上 —— 那是多出来的一整个 RTT，
   //   弱网下尤其明显。这里多读一次聚合（与读接口同一条 `readVoteCounts`，同一份一致性口径），
   //   前端就能少走一次往返。老客户端不看这个字段，多带一份数据对它没有影响。
   const counts = await readVoteCounts(db, edition);
   return c.json({ ok: true, count: normalized.size, votes: counts });
+});
+
+/** 「大家说」—— 跨片按时间倒序读一页评语(2026-09-29,PLAN-20260929181900)。
+ *
+ *  读公开(评语本来就是给大家看的),与 `/api/stats/film-votes` 一样**不挂 `requireIdentity`**:
+ *  未登录也要能看。⚠ 游标是**不透明串**,不含任何身份标识(编解码见 `film-vote-stats.ts`)。
+ *  ⚠ 响应体里**没有 `contributor`**:`toCommentItems` 是白名单收口,连读都不读它。 */
+app.get("/api/stats/film-comments", async (c) => {
+  const edition = editionParam(c.req.query("edition"));
+  if (!edition) return c.json({ error: "INVALID_EDITION" }, 422);
+  const cursor = decodeCommentCursor(c.req.query("cursor"));
+  const limit = clampCommentLimit(c.req.query("limit"));
+  const { rows, nextCursor } = await readRecentComments(database(c.env.DB), edition, cursor, limit);
+  return c.json({
+    edition,
+    items: toCommentItems(rows),
+    nextCursor: encodeCommentCursor(nextCursor),
+  });
 });
 
 /* ---------------- 红黑榜投票行自查(2026-09-23,PLAN-20260923124402) ----------------
@@ -719,7 +790,15 @@ app.post("/api/admin/film-vote-contributions/claim", async (c) => {
   const parsed = claimVotesSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "INVALID_CLAIM" }, 422);
   const { edition, from, to, dryRun } = parsed.data;
-  return c.json(await claimContributorVotes(database(c.env.DB), edition, from, to, { dryRun }));
+  // ⚠ 把**当前登录身份的昵称**传下去：认领过来的评语要署上正确的名字，
+  //   否则那几条会一直显示「匿名观众」（评语本身还在，见 `claimContributorVotes` 的说明）。
+  //   这里能直接取 `c.get("profile")` —— `/api/admin/*` 挂了 `requireIdentity`，中间件已经解析过。
+  return c.json(
+    await claimContributorVotes(database(c.env.DB), edition, from, to, {
+      dryRun,
+      displayName: normalizeDisplayName(c.get("profile").displayName),
+    }),
+  );
 });
 
 /** 管理端「我是不是管理员」：前端据此决定渲染什么。

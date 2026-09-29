@@ -7,7 +7,7 @@
  *   此前是「读出来在 JS 里加减再写回」，两人同时投同一部片会丢票且永不自愈。
  */
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { database } from "./db";
 import { filmVoteContribution, filmVoteStat } from "./db/schema";
 import {
@@ -15,6 +15,7 @@ import {
   formatVoteCounts,
   isFilmVote,
   mergeVoteBoards,
+  type CommentCursor,
   type FilmVote,
 } from "./film-vote-stats";
 import { kstDay } from "./day";
@@ -29,6 +30,20 @@ import {
 
 type Db = ReturnType<typeof database>;
 
+/** 评语随票一起写（2026-09-29,PLAN-20260929181900）。
+ *
+ *  ⚠ **`comments` 给不给是两件事**：
+ *   - **不给**（`undefined`）→ 一个字都不碰评语列。认领迁移 / 管理端删票走这条 ——
+ *     那些路径不该顺手把别人写过的评语清掉；
+ *   - **给了**（哪怕是空 Map）→ 按**整份替换**语义：这一份里没有评语 ⇒ 该清空。
+ *  靠这一处区分，而不是让每条路径各写一份「改评语」的实现（那样迟早两处口径打架）。 */
+export interface VoteExtras {
+  /** filmKey → 评语（`null` = 这一票没有评语） */
+  comments?: ReadonlyMap<string, string | null>;
+  /** 写入时快照的昵称；`null` = 匿名 / 未登录（前端显示「匿名观众」） */
+  displayName?: string | null;
+}
+
 /** 用「这个贡献者最新的全部投票」替换他此前的投票，并同步聚合表。
  *  ⚠ 语义是**整份替换**而不是增量：前端每次都把「我贴出来的那些」全量发上来，
  *    这样断网 / 换设备之后重新登录也能靠一次上报把服务端校正回一致。 */
@@ -37,21 +52,40 @@ export async function replaceContributorVotes(
   edition: string,
   contributor: string,
   votes: ReadonlyMap<string, FilmVote>,
+  extras?: VoteExtras,
 ): Promise<void> {
   const existing = await db
-    .select({ film_key: filmVoteContribution.film_key, vote: filmVoteContribution.vote })
+    .select({
+      film_key: filmVoteContribution.film_key,
+      vote: filmVoteContribution.vote,
+      comment: filmVoteContribution.comment,
+    })
     .from(filmVoteContribution)
     .where(
       and(eq(filmVoteContribution.edition, edition), eq(filmVoteContribution.contributor, contributor)),
     )
     .all();
   const previous = new Map<string, FilmVote>();
+  const prevComments = new Map<string, string | null>();
   for (const row of existing) {
     // 未知取值（被人工改过的坏行）直接丢掉：它没有对应的聚合列可减
-    if (isFilmVote(row.vote)) previous.set(row.film_key, row.vote);
+    if (isFilmVote(row.vote)) {
+      previous.set(row.film_key, row.vote);
+      prevComments.set(row.film_key, row.comment ?? null);
+    }
   }
   const { removed, added } = diffVotes(previous, votes);
-  if (!removed.length && !added.length) return;
+  const edits = extras?.comments;
+  const addedKeys = new Set(added.map((entry) => entry.key));
+  // 票**没变**、只有评语变了的那些行 —— `diffVotes` 看不见它们。
+  // ⚠ 必须单独算出来：下面那句「票没变就整体返回」在加评语之前是对的，现在会把
+  //   「只改评语」这一次**合法编辑**整个吞掉（用户点了保存却什么都没发生）。
+  const commentEdits = edits
+    ? [...votes.keys()].filter(
+        (key) => !addedKeys.has(key) && (edits.get(key) ?? null) !== (prevComments.get(key) ?? null),
+      )
+    : [];
+  if (!removed.length && !added.length && !commentEdits.length) return;
   const now = Date.now();
   // 日桶用同一时刻算日界（`day.ts`：KST，只能服务端算）
   const day = kstDay(now);
@@ -147,16 +181,54 @@ export async function replaceContributorVotes(
     writes.push({
       statement: db
         .insert(filmVoteContribution)
-        .values({ edition, film_key: entry.key, contributor, vote: entry.vote, updated_at: now })
+        .values({
+          edition,
+          film_key: entry.key,
+          contributor,
+          vote: entry.vote,
+          // 调用方给了评语这一份 → 用它；没给（认领迁移 / 管理端删票）→ 原样保留库里那一份
+          comment: edits ? (edits.get(entry.key) ?? null) : (prevComments.get(entry.key) ?? null),
+          display_name: extras?.displayName ?? null,
+          updated_at: now,
+        })
         .onConflictDoUpdate({
           target: [
             filmVoteContribution.edition,
             filmVoteContribution.film_key,
             filmVoteContribution.contributor,
           ],
-          set: { vote: entry.vote, updated_at: now },
+          // ⚠ SET 里**只放调用方真的想改的列**：没给 `comments` 就不写 `comment`，
+          //   否则「改色」会把这一票的评语顺手抹掉。
+          set: {
+            vote: entry.vote,
+            ...(edits ? { comment: edits.get(entry.key) ?? null } : {}),
+            ...(extras?.displayName !== undefined ? { display_name: extras.displayName } : {}),
+            updated_at: now,
+          },
         }),
     });
+  }
+  // 只改了评语的那几票：票的 diff 里没有它们，要单独补一条 UPDATE
+  // ⚠ 一并刷新 `updated_at` —— 「大家说」按它倒序，改了评语就该排到最前。
+  if (edits) {
+    for (const filmKey of commentEdits) {
+      writes.push({
+        statement: db
+          .update(filmVoteContribution)
+          .set({
+            comment: edits.get(filmKey) ?? null,
+            ...(extras?.displayName !== undefined ? { display_name: extras.displayName } : {}),
+            updated_at: now,
+          })
+          .where(
+            and(
+              eq(filmVoteContribution.edition, edition),
+              eq(filmVoteContribution.film_key, filmKey),
+              eq(filmVoteContribution.contributor, contributor),
+            ),
+          ),
+      });
+    }
   }
   for (const entry of removed) removeVote(entry.key, entry.vote, -1);
   for (const entry of added) addVote(entry.key, entry.vote, 1);
@@ -184,6 +256,11 @@ export interface VoteRow {
   film_key: string;
   contributor: string;
   vote: string;
+  /** 评语与昵称快照（2026-09-29,PLAN-20260929181900）：**只有 `readContributorVotes` 会带**它们 ——
+   *  认领迁移（匿名 → 登录）要把评语跟着票一起搬，否则用户写过的评语会丢。
+   *  ⚠ 声明成**可选**：`readVoteRows`（自查接口）那条路径不读它们，也不该被逼着读。 */
+  comment?: string | null;
+  display_name?: string | null;
   updated_at: number;
 }
 
@@ -306,6 +383,10 @@ export async function readContributorVotes(
       film_key: filmVoteContribution.film_key,
       contributor: filmVoteContribution.contributor,
       vote: filmVoteContribution.vote,
+      // 评语与昵称：认领迁移要拿它们去搬（见 `claimContributorVotes`）。
+      // ⚠ 只在这条「按身份读自己那一份」的路径上读；自查接口那条例外见 `VoteRow` 的说明。
+      comment: filmVoteContribution.comment,
+      display_name: filmVoteContribution.display_name,
       updated_at: filmVoteContribution.updated_at,
     })
     .from(filmVoteContribution)
@@ -313,6 +394,64 @@ export async function readContributorVotes(
       and(eq(filmVoteContribution.edition, edition), eq(filmVoteContribution.contributor, contributor)),
     )
     .all();
+}
+
+/** 「大家说」读出来的一行。⚠ **不含 `contributor`** —— 连 select 都不 select 它。 */
+export interface CommentRow {
+  film_key: string;
+  vote: string;
+  comment: string | null;
+  display_name: string | null;
+  updated_at: number;
+}
+
+/** 「大家说」读一页：只取**写了评语**的行，按 `(updated_at, film_key)` 倒序。
+ *
+ *  ⚠ `contributor` **一个字都不读**：它是身份标识（见本文件 `VoteAuditRow` 那段说明），
+ *    不让它进 select 列表，「顺手带进响应体」这条路就从源头断了。
+ *  ⚠ 游标分页而**不是 offset**：这份数据是持续在长的，offset 在「有人刚写了一条」时
+ *    会漏行 / 重行；游标按 `(updated_at, film_key)` 走就不会。
+ *  ⚠ 多取一条当「还有没有下一页」的探针，返回前切掉。 */
+export async function readRecentComments(
+  db: Db,
+  edition: string,
+  cursor: CommentCursor | null,
+  limit: number,
+): Promise<{ rows: CommentRow[]; nextCursor: CommentCursor | null }> {
+  // 严格小于游标：`(updated_at, film_key)` 是**复合序** —— 先比时间，时间相同再比 key
+  // （同一毫秒里两个人给两片写评语是可能的，只比时间会漏行）
+  const afterCursor = cursor
+    ? sql`(${filmVoteContribution.updated_at} < ${cursor.updatedAt}
+        OR (${filmVoteContribution.updated_at} = ${cursor.updatedAt}
+            AND ${filmVoteContribution.film_key} < ${cursor.filmKey}))`
+    : undefined;
+  const rows = await db
+    .select({
+      film_key: filmVoteContribution.film_key,
+      vote: filmVoteContribution.vote,
+      comment: filmVoteContribution.comment,
+      display_name: filmVoteContribution.display_name,
+      updated_at: filmVoteContribution.updated_at,
+    })
+    .from(filmVoteContribution)
+    .where(
+      and(
+        eq(filmVoteContribution.edition, edition),
+        // 没写评语的行不该出现在这一页：它们没有内容可展示，只会白占额度
+        isNotNull(filmVoteContribution.comment),
+        afterCursor,
+      ),
+    )
+    .orderBy(desc(filmVoteContribution.updated_at), desc(filmVoteContribution.film_key))
+    .limit(limit + 1)
+    .all();
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  const last = page[page.length - 1];
+  return {
+    rows: page,
+    nextCursor: hasMore && last ? { updatedAt: last.updated_at, filmKey: last.film_key } : null,
+  };
 }
 
 /** 贡献行 → votes Map(白名单外的坏行丢弃 —— 与 `replaceContributorVotes` 的读侧同一道收口)。 */
@@ -366,7 +505,7 @@ export async function claimContributorVotes(
   edition: string,
   from: string,
   to: string,
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean; displayName?: string | null } = {},
 ): Promise<ClaimOutcome> {
   const [fromRows, toRows] = await Promise.all([
     readContributorVotes(db, edition, from),
@@ -374,9 +513,22 @@ export async function claimContributorVotes(
   ]);
   const source = votesMapOf(fromRows);
   const { merged, moved, alreadyHad, conflicts } = mergeVoteBoards(votesMapOf(toRows), source);
+  // 评语跟着票一起搬（2026-09-29,PLAN-20260929181900）：认领之后源行会被清掉，
+  // 不搬的话**票还在、评语没了**，而且不给用户任何提示。
+  // ⚠ 冲突口径与票一致 —— **目标优先**（见 `mergeVoteBoards` 的说明）：同一部片两边都写过时保留目标那份，
+  //   所以先铺源、再让目标覆盖。
+  const comments = new Map<string, string | null>();
+  for (const row of fromRows) comments.set(row.film_key, row.comment ?? null);
+  for (const row of toRows) comments.set(row.film_key, row.comment ?? null);
   const dryRun = options.dryRun === true;
   if (!dryRun) {
-    await replaceContributorVotes(db, edition, to, merged);
+    await replaceContributorVotes(db, edition, to, merged, {
+      comments,
+      // 认领之后这些票归**登录身份**，署名也该跟着换（匿名 → 真实昵称）。
+      // ⚠ 调用方不给 `displayName` 就**不动**昵称列 —— 传 `undefined` 与传 `null` 是两件事
+      //   （后者会把昵称清成「匿名观众」）。
+      ...(options.displayName !== undefined ? { displayName: options.displayName } : {}),
+    });
     await replaceContributorVotes(db, edition, from, new Map());
   }
   return {

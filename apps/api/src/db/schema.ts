@@ -147,10 +147,21 @@ export const filmVoteContribution = sqliteTable("film_vote_contribution", {
   film_key: text().notNull(),
   contributor: text().notNull(),
   vote: text().notNull(), // "red" | "black";白名单收口在 film-vote-stats.ts，不写 CHECK（旧行迁移过来时更宽松）
+  /** 评语正文（2026-09-29，PLAN-20260929181900）。`null` = 只贴了纸、没写评语
+   *  （「从来没写」与「写了又清空」同值 —— 两者对读的人没有区别）。 */
+  comment: text(),
+  /** 写入时**快照**的账号昵称；匿名 / 未登录时为 `null`（前端显示「匿名观众」）。
+   *  ⚠ 与 `contributor` 是**两件事**：那个是身份标识、绝不外发（见 `film-vote-store.ts` 的说明）；
+   *    这个就是给人看的名字，可以公开。用快照而不是 join 账号表：
+   *    ① 昵称会变，评语读的是「当时那句话是谁说的」；② 公开接口不必碰账号库。 */
+  display_name: text(),
   updated_at: integer().notNull(),
 }, (table) => [
   primaryKey({ columns: [table.edition, table.film_key, table.contributor] }),
   index("film_vote_contribution_contributor").on(table.edition, table.contributor),
+  // 「大家的评语」按时间倒序拉取走这条（2026-09-29）。上面那条是「按人查我的票」，
+  // 查询形状完全不同、走不上 —— 不加索引会全表扫。
+  index("film_vote_contribution_recent").on(table.edition, table.updated_at),
 ]);
 
 /** 每部影片的红 / 黑票数，供榜单读取（O(影片数)）。**不做加权** —— 贴纸是「一人一枚」的离散
