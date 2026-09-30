@@ -1265,6 +1265,14 @@ const RbCard = memo(function RbCard({
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** 长按期间挪过没有：挪过就说明用户想的是「拖」，不是在求换款。 */
   const pressMoved = useRef(false);
+  /** 最近一次指针**是不是触屏**。
+   *  ⚠ 触屏上「轻点」也会让按钮获得焦点，而 **WebKit 把点按也算 `:focus-visible`**
+   *    （2026-09-30 CI `mobile-webkit` 实测）：于是「轻点什么都不做」这条契约在 iPhone 上
+   *    会变成「轻点弹出换款轮盘」—— 真机上同样会犯，不是模拟器的怪癖。
+   *    触屏要换款走**长按**那条路，所以这里把触屏来的聚焦挡掉。
+   *  ⚠ 只挡**指针**来的那一次：键盘（Tab）压根不经过 `pointerdown`，这个 ref 保持 `false`，
+   *    键盘聚焦照常开环（`spec` 里那条「键盘也能走完」守着）。 */
+  const pointerTouch = useRef(false);
 
   const closeWheel = useCallback(() => {
     clearTimeout(openTimer.current);
@@ -1558,6 +1566,9 @@ const RbCard = memo(function RbCard({
             aria-label={`${sticker.type === "red" ? "红" : "黑"}贴纸；双击收回暂存区，悬停、长按或聚焦可换一款皮肤，拖动或按方向键可在《${film.zh}》自己的张贴区里挪位置，拖出这张画布也是收回`}
             onPointerDown={(event) => {
               onBeginDrag(event, sticker.type, film.key, sticker.id);
+              // ⚠ 记下这一次指针是不是触屏 —— 紧接着的聚焦会用到(见 `pointerTouch`)。
+              //   浏览器把「获得焦点」排在 `pointerdown` 的默认动作里,所以这里先写、后面读得到。
+              pointerTouch.current = event.pointerType !== "mouse";
               // ⚠ 所有指针类型都重置一遍。它只被下面那个**触屏长按**定时器读,而定时器只在
               //   非鼠标那支起 —— 所以重置严格说只有那一支需要。全类型重置是**保险**:
               //   让「这一次手势有没有挪动」在每次按下时都有个确定的起点,不依赖上一次的残留值。
@@ -1590,6 +1601,9 @@ const RbCard = memo(function RbCard({
             onFocus={(event) => {
               // 关环时我们自己把焦点塞回来过一次 —— 那一拍不算「用户键盘走过来」
               if (restoreGuard.current) return;
+              // ⚠ 触屏来的聚焦也不算（见 `pointerTouch`）：WebKit 把**点按**也算 `:focus-visible`，
+              //   不挡的话「轻点什么都不做」在 iPhone 上会变成「轻点就弹环」。
+              if (pointerTouch.current) return;
               // `:focus-visible` 是**唯一**能区分「键盘 Tab 过来」与「鼠标点了一下」的判据
               if (!event.target.matches(":focus-visible") || fresh || wheelOpen) return;
               openWheel(sticker.id, true);

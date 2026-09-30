@@ -144,10 +144,16 @@ test("点「标记看过」不会把整页顶上去", async ({ page }) => {
   expect(place?.topQuarter).toBe(true);
   expect(place?.inside).toBe(true);
 
+  // ⚠ 量基线**之前**先等 WebFont 换完(2026-09-30,CI 三个浏览器齐红,`176 → 178`):
+  //   页眉与栅格**之间**那段工具栏里有小字走 `line-height: normal`,换字体的那一刻行盒高会变
+  //   (**实测 +2px**)—— 量「两者之间的距离」并不能免疫它,因为那 2px 正好长在这两者之间。
+  await page.evaluate(() => document.fonts.ready.then(() => true));
   const before = await aboveGrid();
   await card.getByRole("button", { name: /^标记《/ }).click();
   await expect(card).toHaveAttribute("data-rb-marked", "true");
-  expect(await aboveGrid()).toBe(before);
+  // ⚠ 再用 `poll` 收掉剩下的抖动(字体可能是**后到**的懒加载字面)。
+  //   真正的回归是**持续**的 —— 引导条一收一放 = 53px,它不会因为重试就消失,照样红。
+  await expect.poll(aboveGrid, { timeout: 5000 }).toBe(before);
   // 引导条还在(它只随「全站有没有贴纸」变,与本地的「我看过」无关)
   await expect(page.locator(".rb-hint")).toBeVisible();
 
@@ -533,7 +539,10 @@ test("讨论区:数字与卡片一致、按片读、只列写了评语的人、E
 // 我贴的那一枚的交互(2026-09-22 建 · 2026-09-30 改口径):
 //  ① **双击收回** —— 原先是单击。用户 2026-09-30 要求改成双击:单击太容易误触
 //     (尤其「拖完松手」浏览器补发的那一次 click,得靠 `movedRef` 之类的旁证去挡)。
-//     于是单击必须有个**真**含义,不能变成「点了没反应」—— 它现在是**打开换款轮盘**。
+//     于是单击必须有个**真**含义,不能变成「点了没反应」—— 它现在是**什么都不做**:
+//     换款另有悬停 / 触屏长按 / 键盘聚焦三条入口(第一版曾让单击开环,用户看过之后否掉了)。
+//     ⚠ 触屏上「轻点」还会顺带聚焦,而 WebKit 把点按也算 `:focus-visible` —— 实现在
+//       `RedBlackPage.tsx::pointerTouch` 里把触屏来的聚焦挡掉了,否则这条在 iPhone 上必红。
 //  ② **拖一下不能顺手收走** —— `pointerup` 之后浏览器还会补一次 `click`,
 //     不做区分的话「微调位置」会变成「撤销」。
 test("双击自己贴的那一枚才收回;单击什么都不做", async ({ page }) => {
