@@ -28,17 +28,22 @@ import {
   posterScale,
   roundRectPath,
 } from "./poster-brush";
-import { blobPath } from "./sticker-shape";
+import { glyphPath, glyphPlacement, type StickerGlyph } from "./sticker-glyph";
+import { paintMaterial } from "./sticker-material";
+import { shapePath, type StickerShape } from "./sticker-shape";
+import { resolveSkin, skinSpec, type StickerSkin } from "./sticker-skin";
 import { dateInfo } from "./util";
 import {
   boardFilms,
   countsOf,
   crowdStickers,
   othersOf,
+  othersSkins,
   sortByCounts,
   sortMetric,
   tiltOf,
   type CrowdCounts,
+  type FilmSkinCounts,
   type SortMode,
   type Sticker,
   type StickerBoard,
@@ -67,6 +72,9 @@ export interface RbPosterSticker {
   posY: number;
   /** 角度(度),±15 */
   tilt: number;
+  /** 这一枚的**皮肤**（2026-09-29）。⚠ 在模型里就**解析成确定值**（而不是留 `skin?`）：
+   *  分享图是**死像素**，没有 hover 也没有回落余地 —— 画的时候再解析一次就是第二处口径。 */
+  skin: StickerSkin;
 }
 
 export interface RbPosterRow {
@@ -119,6 +127,10 @@ export interface RbPosterModel {
 export interface RbPosterInput {
   films: readonly FilmNode[];
   crowd: CrowdCounts;
+  /** 影片 key → 该片**按款**票数（2026-09-29）。**含我自己那一枚**，用前 `othersSkins` 扣。
+   *  ⚠ 缺席是**合法状态**（老接口 / 最小模型）：群点退回「按 id 兜底」，
+   *    观感与加皮肤前一致 —— 不知道就别装作知道。 */
+  skins?: FilmSkinCounts;
   board: StickerBoard;
   /** 页面 hero 那份「全站」统计 —— **传进来而不是重算**,分享图与页面才会是同一些数字 */
   site: { total: number; red: number; black: number };
@@ -160,16 +172,36 @@ function isoDate(d: Date): string {
 }
 
 function toSticker(s: Sticker): RbPosterSticker {
-  return { id: s.id, type: s.type, posX: s.posX, posY: s.posY, tilt: tiltOf(s.id) };
+  return {
+    id: s.id,
+    type: s.type,
+    posX: s.posX,
+    posY: s.posY,
+    tilt: tiltOf(s.id),
+    // 与页面**同一套解析**（存了用存的、没存按 id 兜底），所以分享图和卡片上长得一样
+    skin: resolveSkin(s.id, s.skin),
+  };
 }
 
-function toRow(film: FilmNode, crowd: CrowdCounts, board: StickerBoard): RbPosterRow {
+function toRow(
+  film: FilmNode,
+  crowd: CrowdCounts,
+  board: StickerBoard,
+  skins: FilmSkinCounts,
+): RbPosterRow {
   const counts: StickerCounts = crowd.get(film.key) ?? { total: 0, red: 0, black: 0 };
   const placed = board.get(film.key) ?? [];
   const mine = countsOf(placed);
   // 群点 = 「别人的」(全体 − 我),与卡片画布同一条口径;我那一枚**追加在末尾** ——
   // 绘制顺序决定压叠次序,卡片上也是它压在群点之上(用户 2026-09-22 的口径)。
-  const stickers = crowdStickers(film.key, othersOf(counts, mine)).map(toSticker);
+  // ⚠ 按款分布同样要**扣掉我自己那一枚**（与卡片里 `crowdSkins` 同一条口径、同一支函数）。
+  //   不扣的话分享图会比卡片多画一枚 —— 而它恰好是我的款与色，看起来还挺合理，
+  //   所以只能靠这条口径挡住：**两条路径的扣减必须来自同一个函数**。
+  const stickers = crowdStickers(
+    film.key,
+    othersOf(counts, mine),
+    othersSkins(skins[film.key], board.get(film.key) ?? []),
+  ).map(toSticker);
   // 一部只有一枚贴纸(`MAX_PER_FILM = 1`),取第一枚就是「我贴的那一色」
   const mySticker = placed[0];
   const mineIndex = mySticker ? stickers.push(toSticker(mySticker)) - 1 : -1;
@@ -197,7 +229,7 @@ function toRow(film: FilmNode, crowd: CrowdCounts, board: StickerBoard): RbPoste
  *  ② 三榜都取**前 `TOP_N`**;「我贴过的」那一节**不截断**。
  */
 export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
-  const { films, crowd, board, site, mine, today } = input;
+  const { films, crowd, board, skins = {}, site, mine, today } = input;
   const picked = input.sections ?? allSections();
   const candidates = boardFilms(films);
 
@@ -210,7 +242,7 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
         entry.mode,
       )
         .slice(0, TOP_N)
-        .map((film) => toRow(film, crowd, board));
+        .map((film) => toRow(film, crowd, board, skins));
       return { ...entry, rows };
     })
     .filter((entry) => entry.rows.length > 0);
@@ -221,7 +253,7 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
     crowd,
     "total",
   );
-  const myRows = picked.has("mine") ? placedFilms.map((film) => toRow(film, crowd, board)) : [];
+  const myRows = picked.has("mine") ? placedFilms.map((film) => toRow(film, crowd, board, skins)) : [];
 
   return {
     eyebrow: `${EDITION.replace("-", " ").toUpperCase()} · 观影红黑榜`,
@@ -261,7 +293,8 @@ const FIELD_H = 88;
 const FIELD_TOP = 8;
 /** 文字列与贴纸区之间的最小间距 */
 const COL_GAP = 28;
-/** 贴纸区里一枚贴纸的边长 —— 比卡片上的 26 小一号(那块画布更大,而这里的行高只有 104) */
+/** 贴纸区里一枚贴纸的边长 —— 比卡片上的 32 小一号(这里的行高只有 104,一行还要塞下别的字)。
+ *  ⚠ 它只是**尺寸**,形状仍然是 `sticker-shape.ts` 那一份(经 `shapePath(shape, size)` 等比换算)。 */
 const FIELD_STICKER = 14;
 
 /** 分享图总高(逻辑像素,含上下品牌红条)—— 行数决定高度,故必须与 `drawRbPoster` 同源。
@@ -293,6 +326,53 @@ function drawCounts(ctx: CanvasRenderingContext2D, row: RbPosterRow, x: number, 
   }
 }
 
+/* ---------------- 贴纸的形状与微图标(与页面四条渲染路径同源,2026-09-29) ---------------- */
+
+/** 轮廓 `Path2D` 缓存。一行里几十枚贴纸各要一条路径,而同形状同尺寸的只有那么几种 ——
+ *  按 `形状@尺寸` 存一次就够。
+ *  ⚠ 尺寸必须显式传:形状的**唯一来源是 32 设计盒**,海报这边是 14 / 24,
+ *    一律靠 `shapePath(shape, size)` 等比换算 —— 不要为小尺寸另描一份路径。 */
+const bodyCache = new Map<string, Path2D>();
+
+function stickerBody(shape: StickerShape, size: number): Path2D {
+  const key = `${shape}@${size}`;
+  const hit = bodyCache.get(key);
+  if (hit) return hit;
+  const built = new Path2D(shapePath(shape, size));
+  bodyCache.set(key, built);
+  return built;
+}
+
+/** 微图标 `Path2D` 缓存(图形本身与尺寸无关,缩放交给绘制时的 `ctx.scale`)。 */
+const iconCache = new Map<StickerGlyph, Path2D>();
+
+function stickerIcon(glyph: StickerGlyph): Path2D {
+  const hit = iconCache.get(glyph);
+  if (hit) return hit;
+  const built = new Path2D(glyphPath(glyph));
+  iconCache.set(glyph, built);
+  return built;
+}
+
+/** 把微图标印在**已经平移到贴纸左上角**的坐标系里(那一格是 `0..size`)。
+ *  ⚠ 走 `ctx.scale` 而不是重算路径:图形只有 24 盒那一份,缩放是它唯一的尺寸口径。
+ *  ⚠ 落点必须走 `glyphPlacement`,**不能**只平移到中心再 `scale` —— 那是绕原点缩的,
+ *    会把图案推到右下角(2026-09-29 踩过,见 `sticker-glyph.ts::glyphPlacement`)。 */
+function drawStickerIcon(
+  ctx: CanvasRenderingContext2D,
+  glyph: StickerGlyph,
+  size: number,
+  color: string,
+): void {
+  const spot = glyphPlacement(size);
+  ctx.save();
+  ctx.translate(spot.x, spot.y);
+  ctx.scale(spot.scale, spot.scale);
+  ctx.fillStyle = color;
+  ctx.fill(stickerIcon(glyph));
+  ctx.restore();
+}
+
 /** **专门的贴纸区**(右侧那一列):把这一行的全部票摊在一块矩形里 —— 数字回答「多少」,
  *  这里回答「长什么样」。
  *
@@ -317,30 +397,33 @@ function drawField(ctx: CanvasRenderingContext2D, row: RbPosterRow, x: number, t
   ctx.clip();
   const half = FIELD_STICKER / 2;
   row.stickers.forEach((s, i) => {
+    // 形状与微图标**由 id 确定性推导** —— 与卡片画布 / 弹层 / 页面那枚共用同一套函数,
+    // 所以同一部片在分享图与页面上摊出来的是**同一堆贴纸**(连轮廓都一致)。
+    const body = stickerBody(skinSpec(s.skin).shape, FIELD_STICKER);
     ctx.save();
-    // ⚠ 相对坐标映射到**去掉一枚贴纸之后**的范围:卡片画布比自己高得多,26px 贴纸压不出边界;
-    //   这块区只有 80px,照搬「中心 = posY × 高」会让上下沿的贴纸被切平(一排平顶)。
-    //   收进区内之后,`clip()` 只剩兜底(歪斜后的圆角仍可能探出去一点)。
+    // ⚠ 相对坐标映射到**去掉一枚贴纸之后**的范围:这块区只有 88px,照搬「中心 = posY × 高」
+    //   会让上下沿的贴纸被切平(一排平顶);收进区内之后,`clip()` 只剩兜底。
     ctx.translate(x + half + s.posX * (FIELD_W - FIELD_STICKER), top + half + s.posY * (FIELD_H - FIELD_STICKER));
     ctx.rotate((s.tilt * Math.PI) / 180);
     ctx.translate(-half, -half);
     ctx.fillStyle = s.type === "red" ? C.red : C.stickerBlack;
-    blobPath(ctx, FIELD_STICKER);
-    ctx.fill();
+    ctx.fill(body);
+    // 材质与页面同源（同一份配方）；⚠ 分享图恒为深底，所以材质的白/黑颗粒在这里仍然成立
+    paintMaterial(ctx, skinSpec(s.skin).material, body, FIELD_STICKER);
     if (s.type === "black") {
       // 深底上的黑贴纸要靠一圈亮边才认得出(理由同 `poster-brush.ts::COLORS.stickerBlack`)
       ctx.strokeStyle = C.muted;
       ctx.lineWidth = 0.8;
-      blobPath(ctx, FIELD_STICKER);
-      ctx.stroke();
+      ctx.stroke(body);
     }
     if (i === row.mineIndex) {
       // 我那一枚:一圈亮边 —— 与「我贴过的」那一节左侧的圆点同一个含义(这是我的票)
       ctx.strokeStyle = C.ink;
       ctx.lineWidth = 1.6;
-      blobPath(ctx, FIELD_STICKER);
-      ctx.stroke();
+      ctx.stroke(body);
     }
+    // 中心微图标:与页面上是同一族图形(同样由款决定),墨色用深底海报专属的那一档
+    drawStickerIcon(ctx, skinSpec(s.skin).glyph, FIELD_STICKER, C.stickerInk);
     ctx.restore();
   });
   ctx.restore();
@@ -363,18 +446,26 @@ function drawRow(
   if (withMine && row.mine) {
     const size = 24;
     const isRed = row.mine === "red";
+    // 这一枚就是「我贴的那一张」的缩略:直接拿它在贴纸区里的那一枚来推形状与图标,
+    // 而不是另起一个 id —— 否则同一个意思会在这张图上出现两种轮廓。
+    const mineSticker = row.mineIndex >= 0 ? row.stickers[row.mineIndex] : null;
+    // 没有那一枚时用契约层的兜底款（`torn`）—— 与 `resolveSkin` 的兜底不是同一条路径，
+    // 但这里只是「连票都没有时的占位形状」，不会出现在有票的行上。
+    const mineSkin: StickerSkin = mineSticker?.skin ?? "torn";
+    const body = stickerBody(skinSpec(mineSkin).shape, size);
     ctx.save();
     // 与片名那一行**视觉居中对齐**(基线往上约 9px 是字身中心,而不是整行居中)
     ctx.translate(PAD, textBase - 9 - size / 2);
     ctx.fillStyle = isRed ? C.red : C.stickerBlack;
-    blobPath(ctx, size);
-    ctx.fill();
+    ctx.fill(body);
     if (!isRed) {
       // 深底上的黑贴纸必须靠一圈亮边才认得出(见 `poster-brush.ts::COLORS.stickerBlack`)
       ctx.strokeStyle = C.ink2;
       ctx.lineWidth = 1.5;
-      blobPath(ctx, size);
-      ctx.stroke();
+      ctx.stroke(body);
+    }
+    if (mineSticker) {
+      drawStickerIcon(ctx, skinSpec(mineSkin).glyph, size, C.stickerInk);
     }
     ctx.restore();
   } else {

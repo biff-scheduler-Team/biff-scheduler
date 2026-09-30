@@ -220,8 +220,21 @@ function Shell() {
             回到旧版
           </RouterLink>
           <DataUpdateButton />
+          {/* 「重叠 N」是**冲突提示**,不是导航:当前行程里有 N 处时间重叠,点进去处理。
+              ⚠ 2026-09-29 用户:「『重叠 4』按钮与灰色胶囊样式(如『回到旧版』、『数据更新』)
+                混在一起」—— 它原来和那两个中性链接同一副面孔,分不出「这是提醒」还是「这是入口」。
+              ⚠ **不**按用户设想的「放进更隐蔽的下拉菜单」:它是用户**排片时**要一眼看到的信号,
+                藏起来等于把提醒关掉 —— 要解决的是「它和中性链接长得一样」,不是「它太显眼」。
+              ⚠ 形态走 `--conflict` / `--conflict-line`:这对 token 的语义本来就是「时间重叠」
+                (`.gantt-slot` / `.screening-card.in-conf` 同源),不是为顶栏另造的颜色,暗色自动跟随。
+              ⚠ 传的是 `UNSAFE_className` 而**不是** `className`:S2 的 `ActionButton` 不接受
+                `className`(实测 typecheck 直接以 TS2322 打回),自定义类名只能走这个逃生舱 ——
+                它把类**合并**进组件自己的哈希类名里(产物 JS 里有运行时读它的分支)。 */}
           {conflictCount > 0 && (
-            <ActionButton onPress={() => navigate(`/agenda${searchFor("/agenda")}`)}>
+            <ActionButton
+              UNSAFE_className="header-conflict"
+              onPress={() => navigate(`/agenda${searchFor("/agenda")}`)}
+            >
               重叠 {conflictCount}
             </ActionButton>
           )}

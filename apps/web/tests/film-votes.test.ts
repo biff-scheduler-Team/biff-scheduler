@@ -43,6 +43,58 @@ describe("parseVotes 白名单", () => {
   });
 });
 
+// 按款分布（2026-09-29，PLAN-20260929195500）。它只决定**群点长什么样**，
+// 所以坏数据不能让它抛错；但也**不能猜** —— 猜出来的群点会理直气壮地错。
+describe("parseFilmSkins 白名单", () => {
+  it("★ 不认识的款**整条丢掉**，而不是回退成某一款", async () => {
+    const { parseFilmSkins } = await import("../src/film-votes");
+    expect(
+      parseFilmSkins({
+        a: { stub: { red: 2, black: 1 }, "not-a-skin": { red: 9, black: 9 } },
+      }),
+    ).toEqual({ a: { stub: { red: 2, black: 1 } } });
+    // 整部片的款都不认识 → 这一部干脆不进表（画布走「按 id 兜底」）
+    expect(parseFilmSkins({ a: { nope: { red: 1, black: 0 } } })).toEqual({});
+  });
+
+  it("计数照 `wholeCount` 同一口径：字符串数字认、负数夹回 0、全 0 的桶不输出", async () => {
+    const { parseFilmSkins } = await import("../src/film-votes");
+    expect(
+      parseFilmSkins({
+        a: { stub: { red: "2", black: -5 }, reel: { red: 0, black: 0 } },
+      }),
+    ).toEqual({ a: { stub: { red: 2, black: 0 } } });
+  });
+
+  it("非对象 / 缺字段 / 半截响应一律当没有，不抛错", async () => {
+    const { parseFilmSkins } = await import("../src/film-votes");
+    expect(parseFilmSkins(undefined)).toEqual({});
+    expect(parseFilmSkins(null)).toEqual({});
+    expect(parseFilmSkins("nope")).toEqual({});
+    expect(parseFilmSkins({ a: null, b: "nope", c: { stub: null } })).toEqual({});
+  });
+});
+
+describe("loadFilmVotes 会把按款分布一起收下", () => {
+  it("★ 与两色总数在**同一次**响应里到达（分两个接口会多一次 RTT、还可能差一拍）", async () => {
+    vi.resetModules();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        okJson({
+          edition: "biff-2026",
+          votes: { a: { red: 2, black: 0 } },
+          skins: { a: { stub: { red: 1, black: 0 } } },
+        }),
+      ),
+    );
+    const { loadFilmVotes, peekFilmSkins, peekFilmVotes } = await import("../src/film-votes");
+    await loadFilmVotes();
+    expect(peekFilmVotes()).toEqual({ a: { red: 2, black: 0 } });
+    expect(peekFilmSkins()).toEqual({ a: { stub: { red: 1, black: 0 } } });
+  });
+});
+
 // 「服务端已确认含我」的那份快照(2026-09-23,PLAN-20260923182810)。
 // 为什么单测它:它是画布扣减的**基准** —— 记错只会表现为「画布上多一枚 / 少一枚点」,
 // 没有异常、没有报错,而且要等 1200ms 上报 + 重拉之后才可能自愈(用户看到的正是「过一会儿才刷新」)。
@@ -142,6 +194,66 @@ describe("scheduleFilmVotesPing", () => {
         { key: "b", vote: "red" },
       ],
     });
+  });
+
+  // 评语字段(2026-09-29,PLAN-20260929181900)。
+  // 为什么单测它:服务端靠「这一份里有没有 `comment` 字段」分辨新版 / 旧版前端 ——
+  // **一条都没带**时它一个字都不碰评语列(老客户端的一次普通上报不能静默清空用户写过的评语)。
+  // 反过来说:新版前端要是漏了字段,评语就**永远写不进去**,而且服务端不报错。
+  it("每一条都带 comment 字段:没有评语时补 null,不是省略", async () => {
+    vi.resetModules();
+    const fetchMock = vi.fn(() => okJson({ ok: true, votes: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { scheduleFilmVotesPing } = await import("../src/film-votes");
+
+    // 只给 {key, vote}(老调用形状)→ 也要补成 null
+    scheduleFilmVotesPing([{ key: "a", vote: "red" }]);
+    // 给了评语 → 原样带上
+    scheduleFilmVotesPing([
+      { key: "a", vote: "red", comment: "好看" },
+      { key: "b", vote: "black" },
+    ]);
+    await vi.advanceTimersByTimeAsync(1200);
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const votes = (JSON.parse(String(init.body)) as { votes: Array<Record<string, unknown>> })
+      .votes;
+    expect(votes).toEqual([
+      { key: "a", vote: "red", comment: "好看", skin: null },
+      { key: "b", vote: "black", comment: null, skin: null },
+    ]);
+    for (const entry of votes) expect("comment" in entry).toBe(true);
+  });
+
+  // 贴纸款字段(2026-09-29,PLAN-20260929195500)。**与 `comment` 逐字同一条规矩**:
+  // 服务端靠「这一份里有没有 `skin` 字段」分辨新版 / 旧版前端 —— 一条都没带时它一个字都不碰
+  // 款列(老客户端的一次普通上报不能把用户选过的款静默抹掉);反过来说新版前端漏了字段,
+  // 用户选的那款就**永远同步不上去**,而且服务端不报错。
+  it("每一条都带 skin 字段:没选款时补 null、脏值也归成 null,而不是省略", async () => {
+    vi.resetModules();
+    const fetchMock = vi.fn(() => okJson({ ok: true, votes: {}, skins: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { scheduleFilmVotesPing } = await import("../src/film-votes");
+
+    scheduleFilmVotesPing([
+      // 没给款(老调用形状)→ 补 null
+      { key: "a", vote: "red" },
+      // 给了款 → 原样带上
+      { key: "b", vote: "black", skin: "reel" },
+      // 脏值(不在契约层白名单里)→ 归成 null,而不是把它发上去让服务端丢整条
+      { key: "c", vote: "red", skin: "not-a-skin" as never },
+    ]);
+    await vi.advanceTimersByTimeAsync(1200);
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const votes = (JSON.parse(String(init.body)) as { votes: Array<Record<string, unknown>> })
+      .votes;
+    expect(votes).toEqual([
+      { key: "a", vote: "red", comment: null, skin: null },
+      { key: "b", vote: "black", comment: null, skin: "reel" },
+      { key: "c", vote: "red", comment: null, skin: null },
+    ]);
+    for (const entry of votes) expect("skin" in entry).toBe(true);
   });
 
   it("超过上限不丢票:按**累积前缀**分批,最后一批才是全量(服务端是整份替换语义)", async () => {

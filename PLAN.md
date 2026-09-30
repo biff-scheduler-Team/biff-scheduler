@@ -5,7 +5,22 @@
 > API `biff-scheduler` + 静态资源 `biff-scheduler-web`)+ React / Router / Spectrum S2 + Vite + TS
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-28。**管理后台两处结构改动**(用户「admin 页面总是一下在刷新确认权限,每次一刷新
+> 最后更新:2026-09-29。**红黑榜评语「大家说」**(用户 2026-09-29:「评语我觉得单独做一个模块吧
+> 不要放在贴纸上 不然很乱」,见 `PLAN-20260929181900` + 前端交接 `PLAN-20260929185557`):评语**挂在票上**
+> (一人一片一票一评,不新开表 —— 撤票 / 改色走同一个整份替换,自动跟着走);D1 迁移
+> `0011_lucky_spitfire.sql` 给 `film_vote_contribution` 加 `comment` / `display_name`(都可空)+ 索引
+> `(edition, updated_at)`;写路径每条 vote **必须带 `comment` 字段**(少带 = 被读成「旧版前端」→
+> 那一整份的评语一个字都不碰,这是防「老客户端静默清空评语」的保护);新公开读接口
+> `GET /api/stats/film-comments`(**跨片**、按 `updated_at` 倒序、不透明游标分页,**不含 `contributor`**
+> —— `display_name` 是写入时快照);前端新增 `film-comments.ts` + `components/FilmCommentsPanel.tsx`
+> (榜单下方的页面级 `.rb-say` 模块:列表 + 「我来评一句」表单 + 「加载更多」),贴纸仍是**纯视觉**
+> (E2E 守着「贴纸上没有任何浮层」)。同分支还带上 2026-09-29 的**红黑榜信息层级与操作流重排**
+> (`PLAN-20260929172651`:全站 / 我的分卡、分段控件、hero 文案收短、窄屏上下布局)与**顶栏分层**。
+> 单测 **109 通过**(红黑榜三份)、`e2e/react/redblack.spec.ts` **三浏览器各 34 条全绿(102 通过)**;
+> 顺带修掉一条**既有**的窄屏假红(见 `PLAN-20260929185557` 实施记录:移动端模拟下 `boundingBox()` 与
+> `elementFromPoint()` 差一个 `visualViewport.offsetTop`)。⚠ 本分支涉及 `apps/api` + D1 迁移,
+> 按 §4.5 **走 PR**(不直接推 `main`)。
+> 前次更新:2026-09-28。**管理后台两处结构改动**(用户「admin 页面总是一下在刷新确认权限,每次一刷新
 > 这个过程就无法操作;数据体检(聚合对账)太长了」,见 `PLAN-20260928101634`):权限探测改**按身份主体
 > 判重**(不再被 20s 例行同步触发)、重探**不再把整屏换回 loading**(原先每 20 秒拆屏重挂一次);
 > 对账从 `/api/admin/overview` 拆成 `GET /api/admin/audit`,前端独立成 `AdminAuditPanel`(会话内缓存 +

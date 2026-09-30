@@ -783,6 +783,45 @@
   · **贴纸可用键盘挪位置**:方向键每次 `NUDGE_STEP = 2%`(按住 Shift 走 `NUDGE_STEP_LARGE = 8%`),
     `preventDefault` 吃掉翻页 —— 它原本只能被指针拖。「刚贴」的高亮从单个 key 改成 `Set`(`freshKeys`):
     连着贴两部时不再互相顶掉。
+- **★ 红黑榜评语「大家说」口径(2026-09-29,`PLAN-20260929181900` + 交接 `PLAN-20260929185557`)**:
+  把「有多少人贴」变成「大家说了什么」。**一人一片一票一评**,评语**挂在票上** ——
+  不新开表,撤票 / 改色走同一个 `replaceContributorVotes`(整份替换),评语自动跟着走、不留孤儿。
+  · **不匿名?能贴就能说**:不需要登录,匿名评语**也公开**,列表里只显示「匿名观众」+ 正文。
+    与「不登录也能贴纸」同源。
+  · **身份与展示名解耦(本需求的核心约束)**:`contributor`(登录 subject / 匿名 `anon:<hash>`)
+    **绝不出公开接口** —— 这条是既有的硬约束(`film-vote-store.ts` 上那段原话),公开读接口
+    `toCommentItems` 连**读**都不读它。对外展示走**写入时快照**的 `display_name`(可空)+ `comment`。
+    ⚠ 游标也是公开响应体的一部分,**不许夹带 `contributor`** —— 所以游标编码成**不透明串**
+    (`film-vote-stats.ts::encode/decodeCommentCursor`):编码之后「谁也不许往里加字段」才落在代码形状上,
+    而不是靠人记得。前端**原样回传**,不解析、不自己拼。
+  · **长度与归一**:上限 **140 字,按 Unicode 码点算**(`normalizeComment` 用 `[...text]` 而不是 `slice`)——
+    `slice` 数的是 UTF-16 码元,140 个 emoji 会被劈成半个代理对。去首尾空白、空串归一成 `null`。
+    ⚠ zod 那边只挡「大得离谱」的输入(`.max(1000)`),**真正的收口只有 `normalizeComment` 一处**;
+    前端表单的 `maxLength` 只是体验拦截,不算权威。
+  · **写路径**:`POST /api/stats/film-votes-ping` 的每条 vote **必须带 `comment` 字段**(没评语时传 `null`)。
+    ⚠⚠ **少带字段会被读成「旧版前端」→ 那一整份的评语一个字都不碰**(`index.ts` 的 `carriesComments` 那段):
+    这是有意的数据保护(老客户端一次普通上报不能静默清空用户写过的评语),代价是**新版前端漏字段 =
+    评语永远写不进去,而且不报错**。前端由 `film-votes.ts::dedupeVotes` 统一补 `null`。
+  · **读路径**:`GET /api/stats/film-comments?edition=&cursor=&limit=`,按 `updated_at` 倒序回**跨片**的一页
+    (只回**有评语**的行);`limit` 服务端夹在 `1..50`(缺省 20);新索引 `(edition, updated_at)`
+    (原索引是 `(edition, contributor)`,跨片按时间拉取走不上它)。**不 join 账号库、也不 join 影片库** ——
+    前端本来就有完整目录,拿 `filmKey` 走 `useCatalog()` 反查片名。
+  · **呈现口径**:评语**独立成一个区域**(`.rb-say`,榜单下方的页面级模块),**不挂在贴纸上** ——
+    用户原话「评语我觉得单独做一个模块吧 不要放在贴纸上 不然很乱」。于是贴纸回到纯视觉:
+    画布上没有 Popover / 悬停命中 / 重叠聚拢那一套(「点不中重叠的点」这个问题随之消失),
+    E2E 有断言守着(`.rb-dot` 底下**没有子元素**、hover / focus 都不弹东西)。
+    **不显示时间**(`updated_at` 只做服务端排序,不进 UI)、**不做**评语点赞 / 热度排序 / 头像(占位用昵称 +
+    品牌色圆底留给下一轮)。行 = 红/黑徽章 + 正文 + (片名 · 昵称)。
+  · **写入口在模块里**(`.rb-say-form`):从**本地 `board` 里我贴过的片**里选一部(一人一片一票一评,
+    没贴过就不能评;一部都没贴过时给一句引导,不渲染空的 select),文本框 + 保存。
+    ⚠ **列表里不标「这条是我写的」** —— 服务端给不出这个信息,前端也不许拿「片名 + 正文相同」去猜;
+    想改自己的评语就在表单里选那部片,文本框**预填本地那一份**(`redblack.ts::setStickerComment`)。
+  · **评语存本地**:`Sticker` 加**可选**字段 `comment`(加可空字段是向后兼容的,不触发 §5 那条
+    「改结构必须新 key + 一次性迁移 + 删旧 key」)。⚠ 它**必须进 `votesSignature`** —— 那是上报 effect 的依赖,
+    只串 `key:type` 的话「改评语」不会触发上报,那句话永远上不去(而且不报错)。
+  · **翻页用「加载更多」按钮**(游标),**不做无限滚动** —— 它落在页面最底部,触底加载在窄屏上不稳。
+    `film-comments.ts` 单例缓存 + 广播:失败**静默降级**成空页(`loadFilmVotes` 同一条
+    「接口没上线也能用」原则),按**已取过的游标**去重(不按内容去重 —— 那会把「两个人恰好同名同评语」丢掉)。
 - **★ 场次讨论 / 讨论区 —— 前端已整体下线(2026-09-22,`PLAN-20260922101227`,用户「去掉讨论区入口 相关组件也去掉」)**:
   导航项、`/discussions` 路由、`pages/DiscussionsPage.tsx`、`components/ScreeningDiscussionDialog.tsx`
   (以及它的 `DiscussionEntry`)、`screening-discussion.ts`、`screening-social.css` 里整批 `discussion*` 选择器、

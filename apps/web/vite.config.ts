@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, URL } from "node:url";
 import tailwindcss from "@tailwindcss/postcss";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
@@ -17,6 +18,73 @@ function legacyRedirect(
   response.statusCode = 308;
   response.setHeader("Location", `/legacy/${query ? `?${query}` : ""}`);
   response.end();
+}
+
+// Mock API 中间件（仅 dev）：拦截 /api/stats/film-votes，返回本地生成的假票数。
+//
+// ✏️  想调整数据分布 → 直接改 `mock/redblack-config.json`，刷新页面立刻生效，无需重启。
+// 🧪  想注入「看过」标记 + 自己的贴纸 → 浏览器访问 /mock-redblack.html，点按钮注入。
+//
+// 配置格式（mock/redblack-config.json）：
+//   tiers: 档位数组，按顺序累加 pct（总计应 = 100）
+//     pct   — 落在该档位的影片百分比
+//     red   — [最小, 最大] 红票区间（含）
+//     black — [最小, 最大] 黑票区间（含），[0, N] 时低端可为 0
+//
+// 数据生成方式：确定性 hash（片序 → 档位 → 票数），同一 films.json 每次结果相同。
+// 没人投的片（red=0 且 black=0）不写入 votes，与真实 API 行为一致。
+function mockFilmVotes(
+  request: IncomingMessage,
+  response: ServerResponse,
+  next: () => void,
+) {
+  const [pathname] = (request.url ?? "").split("?");
+  if (pathname !== "/api/stats/film-votes") return next();
+
+  // 每次请求都重新读文件 —— 改完配置刷新页面即可，不需要重启 dev server
+  const configPath = fileURLToPath(new URL("./mock/redblack-config.json", import.meta.url));
+  const filmsPath = fileURLToPath(new URL("./public/films.json", import.meta.url));
+
+  const config = JSON.parse(readFileSync(configPath, "utf8")) as {
+    tiers: { pct: number; red: [number, number]; black: [number, number] }[];
+  };
+  const raw = JSON.parse(readFileSync(filmsPath, "utf8")) as {
+    films: { id: string }[];
+  };
+
+  // 累加档位阈值，方便后面按 tier < threshold 判断
+  let cumulative = 0;
+  const thresholds = config.tiers.map((t) => {
+    cumulative += t.pct;
+    return { threshold: cumulative, ...t };
+  });
+
+  const votes: Record<string, { red: number; black: number }> = {};
+  raw.films.forEach((f, i) => {
+    const key = `cat:${f.id}`;
+    // 确定性 hash：同一 films.json 顺序每次结果相同
+    const h1 = (((i + 1) * 2654435761) >>> 0);
+    const h2 = ((h1 ^ 0xdeadbeef) * 1664525 + 1013904223) >>> 0;
+    const h3 = ((h2 ^ 0xcafebabe) * 22695477 + 1) >>> 0;
+
+    const tierPct = h1 % 100;
+    const tier = thresholds.find((t) => tierPct < t.threshold) ?? thresholds[thresholds.length - 1];
+
+    const [rMin, rMax] = tier.red;
+    const [bMin, bMax] = tier.black;
+    const red = rMax > rMin ? rMin + (h2 % (rMax - rMin + 1)) : rMin;
+    const black = bMax > bMin ? bMin + (h3 % (bMax - bMin + 1)) : bMin;
+
+    if (red > 0 || black > 0) {
+      votes[key] = { red, black };
+    }
+  });
+
+  const body = JSON.stringify({ votes });
+  response.statusCode = 200;
+  response.setHeader("Content-Type", "application/json");
+  response.setHeader("Content-Length", Buffer.byteLength(body));
+  response.end(body);
 }
 
 // ── IDE 安全垫片阈值(2026-09-11)────────────────────────────────────────────
@@ -75,6 +143,7 @@ export default defineConfig({
     {
       name: "legacy-entry-redirect",
       configureServer(server) {
+        server.middlewares.use(mockFilmVotes);
         server.middlewares.use(legacyRedirect);
       },
       configurePreviewServer(server) {

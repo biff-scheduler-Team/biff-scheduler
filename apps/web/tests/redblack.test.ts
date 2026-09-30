@@ -29,11 +29,13 @@ import {
   placeSticker,
   purgeDemoLeavings,
   reconcile,
+  reskinSticker,
   retintSticker,
   saveStickers,
   saveWatched,
   scheduleSaveStickers,
   scoreOf,
+  setStickerComment,
   sortByCounts,
   spotOf,
   takeSticker,
@@ -117,13 +119,28 @@ describe("位置与角度", () => {
   });
 
   it("makeSticker:不给 spot 时落点随机但在安全区内;给了 spot 就用它并钳进安全区", () => {
-    const seq = [0.25, 0.9, 0.1];
-    let i = 0;
-    const s = makeSticker("black", undefined, () => seq[i++ % seq.length]);
+    // ⚠ 这里**不再**硬算那一串 `0.08 + u * 0.84`(2026-09-29 改):那是旧口径(矩形均匀)的公式,
+    //    而公式本身在 `redblack.ts::discSpot` 里已经有一份 —— 测试再抄一份,落点分布一改就得跟着改,
+    //    而且抄错了也只会让测试变绿。改成断**性质**:落点始终在圆盘内。
+    const s = makeSticker("black", undefined, () => 0.5);
     expect(s.type).toBe("black");
     expect(s.id).not.toBe("");
-    expect(s.posX).toBeCloseTo(0.08 + 0.9 * 0.84, 6);
-    expect(s.posY).toBeCloseTo(0.08 + 0.1 * 0.84, 6);
+    expect(s.posX).toBeGreaterThanOrEqual(0.08);
+    expect(s.posX).toBeLessThanOrEqual(0.92);
+    expect(s.posY).toBeGreaterThanOrEqual(0.08);
+    expect(s.posY).toBeLessThanOrEqual(0.92);
+
+    // 与 `spotOf` **同一套分布**(`softSpot`):随手撒 200 枚,一枚都不许出安全区 ——
+    // 两处分家的话,「群点挤在中间、我刚贴的那一枚偏偏跑到角上」当场可见。
+    let seed = 1;
+    const lcg = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+    for (let k = 0; k < 200; k += 1) {
+      const one = makeSticker("red", undefined, lcg);
+      expect(one.posX).toBeGreaterThanOrEqual(0.08);
+      expect(one.posX).toBeLessThanOrEqual(0.92);
+      expect(one.posY).toBeGreaterThanOrEqual(0.08);
+      expect(one.posY).toBeLessThanOrEqual(0.92);
+    }
 
     // 从暂存区拖到画布上松手 → 落在松手那一点(越界则钳回安全区)
     const dropped = makeSticker("red", { posX: 0.3, posY: 0.4 });
@@ -249,9 +266,79 @@ describe("对接服务端票数", () => {
       ["c", []],
     ] as never);
     expect(votesOf(board)).toEqual([
-      { key: "a", vote: "red" },
-      { key: "b", vote: "black" },
+      { key: "a", vote: "red", comment: null, skin: null },
+      { key: "b", vote: "black", comment: null, skin: null },
     ]);
+  });
+
+  // 评语随票一起上报(2026-09-29,PLAN-20260929181900)。
+  // 为什么单测它:**少带 `comment` 字段**会被服务端读成「旧版前端」→ 这一整份的评语一个字都不碰
+  // (那是**有意的**数据保护:老客户端一次普通上报不能静默清空用户写过的评语)。
+  // 于是「字段漏了」的症状是「评语永远写不进去」,而且服务端不报错 —— 只能靠断言钉住。
+  it("votesOf:每一条都带 comment 字段(没写评语时是 null,不是省略)", () => {
+    const board: StickerBoard = new Map([
+      ["a", [sticker("x", "red", 0.5, 0.5)]],
+      ["b", [{ ...sticker("y", "black"), comment: "稳" }]],
+    ] as never);
+    const payload = votesOf(board);
+    expect(payload).toEqual([
+      { key: "a", vote: "red", comment: null, skin: null },
+      { key: "b", vote: "black", comment: "稳", skin: null },
+    ]);
+    // 逐条断言「字段真的在」——`toEqual` 里 `comment: undefined` 与「没有这个键」是两回事
+    for (const entry of payload) expect("comment" in entry).toBe(true);
+  });
+
+  // 贴纸款随票一起上报(2026-09-29)。**与 `comment` 逐字同一条理由** ——
+  // 少带 `skin` 字段会被服务端读成「旧版前端」,那一整份的款一个字都不碰。
+  it("votesOf:每一条都带 skin 字段(没说款时是 null,不是省略)", () => {
+    const board: StickerBoard = new Map([
+      ["a", [{ ...sticker("x", "red"), skin: "reel" as const }]],
+      ["b", [sticker("y", "black")]],
+    ] as never);
+    const payload = votesOf(board);
+    expect(payload).toEqual([
+      { key: "a", vote: "red", comment: null, skin: "reel" },
+      { key: "b", vote: "black", comment: null, skin: null },
+    ]);
+    for (const entry of payload) expect("skin" in entry).toBe(true);
+  });
+
+  it("★ 只换了一款皮肤 → 票签名**必须变**（否则这次编辑永远同步不上去）", () => {
+    // 页面那条上报 effect 依赖的正是票签名（不是 board 的引用），签名不变 = 不上报
+    const before: StickerBoard = new Map([["a", [{ ...sticker("x", "red"), skin: "torn" as const }]]] as never);
+    const after: StickerBoard = new Map([["a", [{ ...sticker("x", "red"), skin: "reel" as const }]]] as never);
+    expect(votesSignature(after)).not.toBe(votesSignature(before));
+    // 反面对照：同样的款 → 签名必须一致（否则每次 render 都会白上报一次）
+    expect(votesSignature(before)).toBe(
+      votesSignature(new Map([["a", [{ ...sticker("x", "red"), skin: "torn" as const }]]] as never)),
+    );
+  });
+});
+
+// 换皮肤(2026-09-29)：与 `retintSticker`(换色)**逐字同一套范式** ——
+// 不可变、同引用短路、位置与 id 都保留。为什么单测它:短路写错的话,
+// 「点了一下同款」会被当成一次真编辑 → 白触发一次防抖上报,而且用户看不出哪里不对。
+describe("reskinSticker:原地换一款", () => {
+  const board = (): StickerBoard =>
+    new Map([["a", [{ id: "x", type: "red", posX: 0.3, posY: 0.4, skin: "torn" }]]] as never);
+
+  it("★ 同款 → 返回**同一个引用**（调用方靠它知道「这次什么也没做」）", () => {
+    const before = board();
+    expect(reskinSticker(before, "a", "x", "torn")).toBe(before);
+  });
+
+  it("换款 → 新 board、位置与 id 与颜色都不动，只有 skin 变", () => {
+    const after = reskinSticker(board(), "a", "x", "reel");
+    expect(after.get("a")?.[0]).toEqual({ id: "x", type: "red", posX: 0.3, posY: 0.4, skin: "reel" });
+    // 不可变：原来那份没被改
+    expect(board().get("a")?.[0]?.skin).toBe("torn");
+  });
+
+  it("片不存在 / 贴纸不存在 → 原样返回同一个引用", () => {
+    const before = board();
+    expect(reskinSticker(before, "zzz", "x", "reel")).toBe(before);
+    expect(reskinSticker(before, "a", "zzz", "reel")).toBe(before);
   });
 });
 
@@ -352,7 +439,7 @@ describe("别人的贴纸:票数几枚就画几枚", () => {
 // 叠放顺序(2026-09-28,PLAN-20260928003736)。
 // 为什么单测它:用户报「黑色的贴纸总是会压住红色的贴纸」—— 根因是生成时**红票整段排在黑票之前**,
 // 而 canvas 与分享图都是画家算法(后画的盖住先画的),于是黑票永远在最上层。三处消费同一份数组
-// (卡片画布 / 「看全部」弹层 / 分享图),所以这是**一处实现、三处中招**。
+// (卡片画布 / 分享图),所以这是**一处实现、两处中招**。
 // ⚠ 口径是「按落点纵坐标」(用户 2026-09-28 拍板),**不是**「按贴票时间」:
 //   服务端只回聚合计数(没有时间),真按时间排要回 O(票数) 个时间戳,与量级目标冲突(见 PLAN)。
 describe("别人的贴纸:叠放顺序按落点纵坐标", () => {
@@ -406,6 +493,28 @@ describe("spotOf:落点要真的铺开", () => {
       expect(spread(key, "posY").span).toBeGreaterThan(0.5);
       expect(spread(key, "posX").span).toBeGreaterThan(0.5);
     }
+  });
+
+  // 「铺开」的反面同样是口径(2026-09-29 / 2026-09-30,经三轮修订):
+  // 用户先反馈「几乎铺满了矩形各个角……让中间密、边缘留白多一点」——
+  // 第一版把它做成了**圆盘撒点**:四角是空了,却撒出一条看得见的**椭圆边界**,
+  // 用户当场反问「为什么现在贴纸聚成椭圆形了」。
+  // ⇒ 口径定稿:**形状仍是矩形**(边缘不许成片空白),变的只是**密度**(中间密、四周疏)。
+  // ⚠ 2026-09-30 三次修订:`SPOT_CENTER_BIAS` 从 0.5 降到 0.22(用户反馈「空白的地方太多了」),
+  //   向心变弱,阈值也跟着放宽 —— 与 `redblack.ts` 里那条注释同一次改动,不要只改一处。
+  it("中间密、四周疏,但**没有椭圆边界**:边缘照样有点", () => {
+    const spots = Array.from({ length: 400 }, (_, i) => spotOf(`cat:f001#crowd-${i}`));
+
+    // ① 铺遍整个安全区 —— 圆盘版会在四角留下成片空白,那条边界就是「椭圆」的来源
+    const inCorners = spots.filter(
+      (p) => (p.posX < 0.15 || p.posX > 0.85) && (p.posY < 0.15 || p.posY > 0.85),
+    );
+    expect(inCorners.length).toBeGreaterThan(0);
+
+    // ② 但确实向心:横向偏离的中位数要明显小于**均匀**分布(纯均匀时是 0.25;
+    //    本实现(bias=0.22)实测 ≈ 0.18,取 0.22 作阈值留出余量,同时仍然区分得开)
+    const devs = spots.map((p) => Math.abs(p.posX - 0.5)).sort((a, b) => a - b);
+    expect(devs[199]).toBeLessThan(0.22);
   });
 });
 
@@ -689,6 +798,21 @@ describe("votesSignature:票的签名与坐标无关", () => {
     const ba = placeSticker(placeSticker(new Map(), "b", sticker("s2", "black")), "a", sticker("s1", "red"));
     expect(votesSignature(ba)).toBe(votesSignature(ab));
   });
+
+  // ⚠ 评语必须进签名(2026-09-29,PLAN-20260929181900):这一份签名就是上报 effect 的依赖
+  // (`RedBlackPage.tsx` 的 `votesKey`)。漏掉评语时,用户写完一句**永远不会上报** ——
+  // 界面一切正常,只是那句话谁也看不到,且没有任何报错。
+  it("评语变了 → 签名也变(否则写完那句话永远上不去服务端)", () => {
+    const one = placeSticker(new Map(), "a", sticker("s1", "red"));
+    expect(votesSignature(setStickerComment(one, "a", "好看"))).not.toBe(votesSignature(one));
+    expect(votesSignature(setStickerComment(one, "a", "好看"))).not.toBe(
+      votesSignature(setStickerComment(one, "a", "一般")),
+    );
+    // 清空评语同样是「变了」(服务端要据此把那一列清掉)
+    expect(votesSignature(setStickerComment(setStickerComment(one, "a", "好看"), "a", ""))).toBe(
+      votesSignature(one),
+    );
+  });
 });
 
 // 原地换色(2026-09-28,PLAN-20260928102019 ⑧)。
@@ -751,5 +875,87 @@ describe("scheduleSaveStickers:延后写盘", () => {
     saveStickers(placeSticker(new Map(), "a", sticker("s1", "red")));
     flushPendingStickers();
     expect(loadStickers().has("a")).toBe(true);
+  });
+});
+
+// 评语存在**本地那一枚贴纸上**(2026-09-29,PLAN-20260929181900)。
+// 为什么它必须在本地:公开读接口**刻意不回身份**(`contributor` 那条硬约束),
+// 所以「大家说」列表里认不出哪条是我写的 —— 「改我自己的评语」只能靠本地这一份。
+// 判错的后果都是静默的:改了不生效、或者一刷新评语就没了(而服务端那份还在,改起来更困惑)。
+describe("setStickerComment:本地那份评语", () => {
+  const base = (): StickerBoard => placeSticker(new Map(), "a", sticker("s1", "red", 0.3, 0.7));
+
+  it("写上 / 改掉:只动那一枚的评语,位置与颜色原样保留", () => {
+    const written = setStickerComment(base(), "a", "拉片细节绝了");
+    expect(written.get("a")).toEqual([
+      { id: "s1", type: "red", posX: 0.3, posY: 0.7, comment: "拉片细节绝了" },
+    ]);
+    expect(setStickerComment(written, "a", "再看一遍还是好").get("a")![0].comment).toBe(
+      "再看一遍还是好",
+    );
+  });
+
+  it("去掉首尾空白;纯空白当作「没写」(不报一个空串上去)", () => {
+    expect(setStickerComment(base(), "a", "  好看  ").get("a")![0].comment).toBe("好看");
+    expect("comment" in setStickerComment(base(), "a", "   ").get("a")![0]).toBe(false);
+  });
+
+  it("传空串 = 清掉评语(键整个消失,不是留一个 undefined)", () => {
+    const written = setStickerComment(base(), "a", "好看");
+    expect("comment" in setStickerComment(written, "a", "").get("a")![0]).toBe(false);
+  });
+
+  it("内容没变 → 返回**同一个引用**(调用方据此知道「这次什么也没做」)", () => {
+    const written = setStickerComment(base(), "a", "好看");
+    expect(setStickerComment(written, "a", "好看")).toBe(written);
+    expect(setStickerComment(written, "a", " 好看 ")).toBe(written);
+    // 从头就没写过 → 再写一个空串也是「什么也没做」
+    const fresh = base();
+    expect(setStickerComment(fresh, "a", "")).toBe(fresh);
+  });
+
+  it("那一部没贴过 → 原样返回(评语挂在票上,没票就无处可挂)", () => {
+    const board = base();
+    expect(setStickerComment(board, "nope", "好看")).toBe(board);
+  });
+
+  it("不改原 board(不可变)", () => {
+    const board = base();
+    setStickerComment(board, "a", "好看");
+    expect("comment" in board.get("a")![0]).toBe(false);
+  });
+});
+
+describe("评语落盘:原样存取", () => {
+  it("写盘再读回,评语一个字节都不丢", () => {
+    const board = setStickerComment(
+      placeSticker(new Map(), "cat:f001", sticker("s1", "black", 0.2, 0.7)),
+      "cat:f001",
+      "稳",
+    );
+    saveStickers(board);
+    expect(loadStickers()).toEqual(board);
+    expect(loadStickers().get("cat:f001")![0].comment).toBe("稳");
+  });
+
+  it("坏数据里的评语(非字符串 / 空白)静默丢弃,不影响那一枚贴纸本身", () => {
+    mem.set(
+      LS_V2,
+      JSON.stringify({
+        a: [{ id: "s1", type: "red", posX: 0.5, posY: 0.5, comment: 42 }],
+        b: [{ id: "s2", type: "red", posX: 0.5, posY: 0.5, comment: "   " }],
+      }),
+    );
+    const board = loadStickers();
+    expect("comment" in board.get("a")![0]).toBe(false);
+    expect("comment" in board.get("b")![0]).toBe(false);
+    expect(board.size).toBe(2);
+  });
+
+  it("老数据(没有 comment 字段)照旧读得回来 —— 加可空字段是向后兼容的", () => {
+    mem.set(LS_V2, JSON.stringify({ a: [{ id: "s1", type: "red", posX: 0.5, posY: 0.5 }] }));
+    expect(loadStickers().get("a")).toEqual([
+      { id: "s1", type: "red", posX: 0.5, posY: 0.5 },
+    ]);
   });
 });

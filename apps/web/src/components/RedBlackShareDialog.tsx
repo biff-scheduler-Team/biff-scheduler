@@ -27,7 +27,7 @@ import {
   TOP_N,
   type RbPosterSection,
 } from "../redblack-poster";
-import type { CrowdCounts, StickerBoard } from "../redblack";
+import type { CrowdCounts, FilmSkinCounts, StickerBoard } from "../redblack";
 import { copyImageOrDownload } from "./share-image";
 import {
   ActionButton,
@@ -46,6 +46,10 @@ const FILE_NAME = "BIFF2026-红黑榜.png";
 interface RedBlackShareDialogProps {
   films: readonly FilmNode[];
   crowd: CrowdCounts;
+  /** 影片 key → 该片**按款**票数（2026-09-29，含我）。缺席 = 没有款数据 → 群点按 id 兜底。
+   *  ⚠ 这里给的是**全量**（不是只有当前榜单那几部）：分享图要画整份影片库，
+   *    与 `crowd` 给 `reconciledCrowd` 而不是 `filmCounts` 是同一条理由。 */
+  skins?: FilmSkinCounts;
   board: StickerBoard;
   /** 与页面 hero 同一份数字(传进来而不是重算 —— 图里的数必须与页面上看到的一字不差) */
   site: { total: number; red: number; black: number };
@@ -56,6 +60,7 @@ interface RedBlackShareDialogProps {
 export function RedBlackShareDialog({
   films,
   crowd,
+  skins,
   board,
   site,
   mine,
@@ -66,7 +71,7 @@ export function RedBlackShareDialog({
   const [error, setError] = useState("");
   // 数据快照:只在挂载时取一次(见文件头)。用 `useState` 的惰性初值而不是 `useMemo([])`,
   // 就是为了明确表达「这是个初值,不是派生量」。
-  const [snapshot] = useState(() => ({ films, crowd, board, site, mine, today: new Date() }));
+  const [snapshot] = useState(() => ({ films, crowd, skins, board, site, mine, today: new Date() }));
   const [sections, setSections] = useState<Set<RbPosterSection>>(allSections);
   const model = useMemo(
     () => buildRbPosterModel({ ...snapshot, sections }),

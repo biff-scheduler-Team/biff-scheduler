@@ -7,14 +7,18 @@
  *   此前是「读出来在 JS 里加减再写回」，两人同时投同一部片会丢票且永不自愈。
  */
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import type { StickerSkin } from "@biff/contracts/sticker";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { database } from "./db";
-import { filmVoteContribution, filmVoteStat } from "./db/schema";
+import { filmVoteContribution, filmVoteSkinStat, filmVoteStat } from "./db/schema";
 import {
   diffVotes,
+  formatSkinCounts,
   formatVoteCounts,
   isFilmVote,
   mergeVoteBoards,
+  normalizeSkin,
+  type CommentCursor,
   type FilmVote,
 } from "./film-vote-stats";
 import { kstDay } from "./day";
@@ -29,6 +33,23 @@ import {
 
 type Db = ReturnType<typeof database>;
 
+/** 评语随票一起写（2026-09-29,PLAN-20260929181900）。
+ *
+ *  ⚠ **`comments` 给不给是两件事**：
+ *   - **不给**（`undefined`）→ 一个字都不碰评语列。认领迁移 / 管理端删票走这条 ——
+ *     那些路径不该顺手把别人写过的评语清掉；
+ *   - **给了**（哪怕是空 Map）→ 按**整份替换**语义：这一份里没有评语 ⇒ 该清空。
+ *  靠这一处区分，而不是让每条路径各写一份「改评语」的实现（那样迟早两处口径打架）。 */
+export interface VoteExtras {
+  /** filmKey → 评语（`null` = 这一票没有评语） */
+  comments?: ReadonlyMap<string, string | null>;
+  /** 写入时快照的昵称；`null` = 匿名 / 未登录（前端显示「匿名观众」） */
+  displayName?: string | null;
+  /** filmKey → 这一票选的**贴纸款**（`null` = 没带款；旧客户端 / 迁移前的旧票）。
+   *  ⚠ 语义与 `comments` **完全一致**（见上）——给不给是两件事，别在这里另立一套。 */
+  skins?: ReadonlyMap<string, StickerSkin | null>;
+}
+
 /** 用「这个贡献者最新的全部投票」替换他此前的投票，并同步聚合表。
  *  ⚠ 语义是**整份替换**而不是增量：前端每次都把「我贴出来的那些」全量发上来，
  *    这样断网 / 换设备之后重新登录也能靠一次上报把服务端校正回一致。 */
@@ -37,21 +58,63 @@ export async function replaceContributorVotes(
   edition: string,
   contributor: string,
   votes: ReadonlyMap<string, FilmVote>,
+  extras?: VoteExtras,
 ): Promise<void> {
   const existing = await db
-    .select({ film_key: filmVoteContribution.film_key, vote: filmVoteContribution.vote })
+    .select({
+      film_key: filmVoteContribution.film_key,
+      vote: filmVoteContribution.vote,
+      comment: filmVoteContribution.comment,
+      skin: filmVoteContribution.skin,
+    })
     .from(filmVoteContribution)
     .where(
       and(eq(filmVoteContribution.edition, edition), eq(filmVoteContribution.contributor, contributor)),
     )
     .all();
   const previous = new Map<string, FilmVote>();
+  const prevComments = new Map<string, string | null>();
+  /** 库里那一票上一份的款。⚠ **必须过白名单**（与读侧同一道收口），坏行不许往聚合里塞垃圾。
+   *
+   *  ⚠ **已知残留（有意的，不是 bug 忘了修）**：一旦库里那一行的款是白名单外的值，
+   *    这里归一出 `null`，于是**无从知道该从哪个桶里减** —— 旧的按款聚合行会留下来，
+   *    表现为「群点比卡片上的数字多一枚」。它只可能来自**人工改库**：正常写路径
+   *    （本函数 + 认领迁移 + 管理端删票）落进去的款一定过白名单。
+   *  ⚠⇒ **操作约束：将来删掉某一款皮肤时，必须一并清理 `film_vote_contribution.skin`
+   *    与 `film_vote_skin_stat`**（迁移里做），否则那一款留下的桶永远减不掉。
+   *    这与 `stat-batch.ts` 的 `stat_drift` 是同一类「人工干预留下的痕迹」，
+   *    不在这里静默吃掉 —— 吃掉的后果是漂移永远查不出来。 */
+  const prevSkins = new Map<string, StickerSkin | null>();
   for (const row of existing) {
     // 未知取值（被人工改过的坏行）直接丢掉：它没有对应的聚合列可减
-    if (isFilmVote(row.vote)) previous.set(row.film_key, row.vote);
+    if (isFilmVote(row.vote)) {
+      previous.set(row.film_key, row.vote);
+      prevComments.set(row.film_key, row.comment ?? null);
+      prevSkins.set(row.film_key, normalizeSkin(row.skin));
+    }
   }
   const { removed, added } = diffVotes(previous, votes);
-  if (!removed.length && !added.length) return;
+  const edits = extras?.comments;
+  const skinPayload = extras?.skins;
+  const addedKeys = new Set(added.map((entry) => entry.key));
+  /** 这一票**下一份**的款。
+   *  · 调用方给了 `skins` → 用它（这一份里没有 = 没带款）；
+   *  · 没给（认领迁移 / 管理端删票）→ **原样保留库里那一份**，与 `comment` 同一条规矩：
+   *    那些路径不该顺手把别人选过的款抹掉。 */
+  const nextSkins = new Map<string, StickerSkin | null>();
+  for (const key of votes.keys()) {
+    nextSkins.set(key, skinPayload ? normalizeSkin(skinPayload.get(key)) : (prevSkins.get(key) ?? null));
+  }
+  // 票**没变**、只有评语或款变了的那些行 —— `diffVotes` 看不见它们。
+  // ⚠ 必须单独算出来：下面那句「票没变就整体返回」在加评语之前是对的，现在会把
+  //   「只改评语 / 只换一款」这些**合法编辑**整个吞掉（用户操作了却什么都没发生）。
+  const extrasEdits = [...votes.keys()].filter((key) => {
+    if (addedKeys.has(key)) return false;
+    if (edits && (edits.get(key) ?? null) !== (prevComments.get(key) ?? null)) return true;
+    if (skinPayload && nextSkins.get(key) !== (prevSkins.get(key) ?? null)) return true;
+    return false;
+  });
+  if (!removed.length && !added.length && !extrasEdits.length) return;
   const now = Date.now();
   // 日桶用同一时刻算日界（`day.ts`：KST，只能服务端算）
   const day = kstDay(now);
@@ -129,6 +192,61 @@ export async function replaceContributorVotes(
     );
   };
 
+  /* ---------------- 按款聚合（2026-09-29） ----------------
+   * 与 `film_vote_stat` 是「同一件事的细分」：那边两色总数是**权威**（旧票也在内），
+   * 这边只覆盖**带款**的那些票。所以两者的加减必须同源同拍，否则群点会比数字多或少。
+   *
+   * ⚠ **不进日账本**（`stat-daily`）：账本要回答的是「今天红黑各涨了多少」，而款是展示细节；
+   *   把款并进桶会让桶数乘 5，且白名单那边本来就只有「颜色」这一维的口径。 */
+  const skinKey = (filmKey: string, skin: StickerSkin, vote: FilmVote) =>
+    and(
+      eq(filmVoteSkinStat.edition, edition),
+      eq(filmVoteSkinStat.film_key, filmKey),
+      eq(filmVoteSkinStat.skin, skin),
+      eq(filmVoteSkinStat.vote, vote),
+    );
+
+  /** 按款加一票：与 `addVote` 同形，多一个 `skin` 维、列名是 `count`。 */
+  const addSkinCount = (filmKey: string, skin: StickerSkin, vote: FilmVote, delta: number): void => {
+    writes.push({
+      statement: db
+        .insert(filmVoteSkinStat)
+        .values({ edition, film_key: filmKey, skin, vote, count: delta, updated_at: now })
+        .onConflictDoUpdate({
+          target: [
+            filmVoteSkinStat.edition,
+            filmVoteSkinStat.film_key,
+            filmVoteSkinStat.skin,
+            filmVoteSkinStat.vote,
+          ],
+          set: { count: clampAddInt(filmVoteSkinStat.count, delta), updated_at: now },
+        }),
+    });
+  };
+
+  /** 按款撤一票：探测负漂移 → 钳零写入 → 归零即删行（顺序不可换，与 `removeVote` 同一手）。 */
+  const removeSkinCount = (filmKey: string, skin: StickerSkin, vote: FilmVote, delta: number): void => {
+    const key = skinKey(filmKey, skin, vote);
+    writes.push({
+      statement: db
+        .update(filmVoteSkinStat)
+        .set({ updated_at: sql`${filmVoteSkinStat.updated_at}` })
+        .where(and(key, wouldGoNegativeInt(filmVoteSkinStat.count, delta))),
+      drift: `${edition}/${filmKey}/${skin}/${vote}`,
+    });
+    writes.push({
+      statement: db
+        .update(filmVoteSkinStat)
+        .set({ count: clampAddInt(filmVoteSkinStat.count, delta), updated_at: now })
+        .where(key),
+    });
+    writes.push({
+      statement: db
+        .delete(filmVoteSkinStat)
+        .where(and(key, isNonPositiveInt(filmVoteSkinStat.count))),
+    });
+  };
+
   // 顺序要紧：先把贡献行落定，再动聚合 —— 中途失败时聚合顶多短暂偏小，不会多算。
   for (const entry of removed) {
     writes.push({
@@ -147,19 +265,83 @@ export async function replaceContributorVotes(
     writes.push({
       statement: db
         .insert(filmVoteContribution)
-        .values({ edition, film_key: entry.key, contributor, vote: entry.vote, updated_at: now })
+        .values({
+          edition,
+          film_key: entry.key,
+          contributor,
+          vote: entry.vote,
+          // 调用方给了评语这一份 → 用它；没给（认领迁移 / 管理端删票）→ 原样保留库里那一份
+          comment: edits ? (edits.get(entry.key) ?? null) : (prevComments.get(entry.key) ?? null),
+          // 款同理：`nextSkins` 在「没给这一份」时已经回落到库里那一份
+          skin: nextSkins.get(entry.key) ?? null,
+          display_name: extras?.displayName ?? null,
+          updated_at: now,
+        })
         .onConflictDoUpdate({
           target: [
             filmVoteContribution.edition,
             filmVoteContribution.film_key,
             filmVoteContribution.contributor,
           ],
-          set: { vote: entry.vote, updated_at: now },
+          // ⚠ SET 里**只放调用方真的想改的列**：没给 `comments` / `skins` 就不写对应列，
+          //   否则「改色」会把这一票的评语与款顺手抹掉。
+          set: {
+            vote: entry.vote,
+            ...(edits ? { comment: edits.get(entry.key) ?? null } : {}),
+            ...(skinPayload ? { skin: nextSkins.get(entry.key) ?? null } : {}),
+            ...(extras?.displayName !== undefined ? { display_name: extras.displayName } : {}),
+            updated_at: now,
+          },
         }),
     });
   }
+  // 票**没变**、只有评语 / 款变了的那些行：票的 diff 里没有它们，要单独补一条 UPDATE。
+  // ⚠ 一并刷新 `updated_at` —— 「大家说」按它倒序，改了评语就该排到最前。
+  // ⚠ SET 里同样只放调用方真给的那几列（同上面那条说明）。
+  for (const filmKey of extrasEdits) {
+    const vote = votes.get(filmKey);
+    if (!vote) continue;
+    writes.push({
+      statement: db
+        .update(filmVoteContribution)
+        .set({
+          ...(edits ? { comment: edits.get(filmKey) ?? null } : {}),
+          ...(skinPayload ? { skin: nextSkins.get(filmKey) ?? null } : {}),
+          ...(extras?.displayName !== undefined ? { display_name: extras.displayName } : {}),
+          updated_at: now,
+        })
+        .where(
+          and(
+            eq(filmVoteContribution.edition, edition),
+            eq(filmVoteContribution.film_key, filmKey),
+            eq(filmVoteContribution.contributor, contributor),
+          ),
+        ),
+    });
+  }
+  // 两色总数 —— **权威那一本账**（旧票也在内，见 `filmVoteSkinStat` 的说明）。
   for (const entry of removed) removeVote(entry.key, entry.vote, -1);
   for (const entry of added) addVote(entry.key, entry.vote, 1);
+  // 按款细分：撤的按**旧款**减、加的按**新款**加 —— 改款自然落成「旧款 −1 / 新款 +1」。
+  // ⚠ 必须与上面那两行**同源同拍**：少减一次，群点就会比卡片上的数字多一枚，且永不自愈。
+  for (const entry of removed) {
+    const skin = prevSkins.get(entry.key) ?? null;
+    if (skin) removeSkinCount(entry.key, skin, entry.vote, -1);
+  }
+  for (const entry of added) {
+    const skin = nextSkins.get(entry.key) ?? null;
+    if (skin) addSkinCount(entry.key, skin, entry.vote, 1);
+  }
+  // 只换了款（票与颜色都没动）的那几票：`removed` / `added` 里没有它们，得自己算。
+  for (const filmKey of extrasEdits) {
+    const vote = votes.get(filmKey);
+    if (!vote) continue;
+    const before = prevSkins.get(filmKey) ?? null;
+    const after = nextSkins.get(filmKey) ?? null;
+    if (before === after) continue;
+    if (before) removeSkinCount(filmKey, before, vote, -1);
+    if (after) addSkinCount(filmKey, after, vote, 1);
+  }
 
   await flushStatBatch(db, writes);
 }
@@ -184,6 +366,15 @@ export interface VoteRow {
   film_key: string;
   contributor: string;
   vote: string;
+  /** 评语与昵称快照（2026-09-29,PLAN-20260929181900）：**只有 `readContributorVotes` 会带**它们 ——
+   *  认领迁移（匿名 → 登录）要把评语跟着票一起搬，否则用户写过的评语会丢。
+   *  ⚠ 声明成**可选**：`readVoteRows`（自查接口）那条路径不读它们，也不该被逼着读。 */
+  comment?: string | null;
+  display_name?: string | null;
+  /** 这一票选的贴纸款（2026-09-29）。与 `comment` 同理：**只有 `readContributorVotes` 会带**，
+   *  因为认领迁移要把款跟着票一起搬；`readVoteRows`（自查接口）不读它。
+   *  `null` / `undefined` = 没带款（旧票 / 旧客户端）。 */
+  skin?: string | null;
   updated_at: number;
 }
 
@@ -306,6 +497,11 @@ export async function readContributorVotes(
       film_key: filmVoteContribution.film_key,
       contributor: filmVoteContribution.contributor,
       vote: filmVoteContribution.vote,
+      // 评语、昵称与贴纸款：认领迁移要拿它们去搬（见 `claimContributorVotes`）。
+      // ⚠ 只在这条「按身份读自己那一份」的路径上读；自查接口那条例外见 `VoteRow` 的说明。
+      comment: filmVoteContribution.comment,
+      display_name: filmVoteContribution.display_name,
+      skin: filmVoteContribution.skin,
       updated_at: filmVoteContribution.updated_at,
     })
     .from(filmVoteContribution)
@@ -313,6 +509,72 @@ export async function readContributorVotes(
       and(eq(filmVoteContribution.edition, edition), eq(filmVoteContribution.contributor, contributor)),
     )
     .all();
+}
+
+/** 「大家说」读出来的一行。⚠ **不含 `contributor`** —— 连 select 都不 select 它。 */
+export interface CommentRow {
+  film_key: string;
+  vote: string;
+  comment: string | null;
+  display_name: string | null;
+  updated_at: number;
+}
+
+/** 「大家说」读一页：只取**写了评语**的行，按 `(updated_at, film_key)` 倒序。
+ *
+ *  ⚠ `contributor` **一个字都不读**：它是身份标识（见本文件 `VoteAuditRow` 那段说明），
+ *    不让它进 select 列表，「顺手带进响应体」这条路就从源头断了。
+ *  ⚠ 游标分页而**不是 offset**：这份数据是持续在长的，offset 在「有人刚写了一条」时
+ *    会漏行 / 重行；游标按 `(updated_at, film_key)` 走就不会。
+ *  ⚠ 多取一条当「还有没有下一页」的探针，返回前切掉。 */
+export async function readRecentComments(
+  db: Db,
+  edition: string,
+  cursor: CommentCursor | null,
+  limit: number,
+  options: { filmKey?: string | null } = {},
+): Promise<{ rows: CommentRow[]; nextCursor: CommentCursor | null }> {
+  // 按片读（2026-09-29）：卡片级讨论区问的是「**这一部**的评语」，而这条读接口原本是跨片的。
+  // ⚠ 加过滤而不是新写一条读路径：读出形状、白名单、游标语义全部不变，
+  //   只是多一个 `WHERE film_key = ?` —— 另写一份迟早两处口径打架（红线 5）。
+  const onlyFilm = options.filmKey ? eq(filmVoteContribution.film_key, options.filmKey) : undefined;
+  // 严格小于游标：`(updated_at, film_key)` 是**复合序** —— 先比时间，时间相同再比 key
+  // （同一毫秒里两个人给两片写评语是可能的，只比时间会漏行）
+  const afterCursor = cursor
+    ? sql`(${filmVoteContribution.updated_at} < ${cursor.updatedAt}
+        OR (${filmVoteContribution.updated_at} = ${cursor.updatedAt}
+            AND ${filmVoteContribution.film_key} < ${cursor.filmKey}))`
+    : undefined;
+  const rows = await db
+    .select({
+      film_key: filmVoteContribution.film_key,
+      vote: filmVoteContribution.vote,
+      comment: filmVoteContribution.comment,
+      display_name: filmVoteContribution.display_name,
+      updated_at: filmVoteContribution.updated_at,
+    })
+    .from(filmVoteContribution)
+    .where(
+      and(
+        eq(filmVoteContribution.edition, edition),
+        // 没写评语的行不该出现在这一页：它们没有内容可展示，只会白占额度
+        // ⚠ **口径就是「只列写了评语的人」**（用户 2026-09-29 拍板）—— 别为了让
+        //    「大家贴了什么」更完整而放开它：那等于把「谁贴了什么」变成公开名单。
+        isNotNull(filmVoteContribution.comment),
+        onlyFilm,
+        afterCursor,
+      ),
+    )
+    .orderBy(desc(filmVoteContribution.updated_at), desc(filmVoteContribution.film_key))
+    .limit(limit + 1)
+    .all();
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  const last = page[page.length - 1];
+  return {
+    rows: page,
+    nextCursor: hasMore && last ? { updatedAt: last.updated_at, filmKey: last.film_key } : null,
+  };
 }
 
 /** 贡献行 → votes Map(白名单外的坏行丢弃 —— 与 `replaceContributorVotes` 的读侧同一道收口)。 */
@@ -366,7 +628,7 @@ export async function claimContributorVotes(
   edition: string,
   from: string,
   to: string,
-  options: { dryRun?: boolean } = {},
+  options: { dryRun?: boolean; displayName?: string | null } = {},
 ): Promise<ClaimOutcome> {
   const [fromRows, toRows] = await Promise.all([
     readContributorVotes(db, edition, from),
@@ -374,9 +636,29 @@ export async function claimContributorVotes(
   ]);
   const source = votesMapOf(fromRows);
   const { merged, moved, alreadyHad, conflicts } = mergeVoteBoards(votesMapOf(toRows), source);
+  // 评语跟着票一起搬（2026-09-29,PLAN-20260929181900）：认领之后源行会被清掉，
+  // 不搬的话**票还在、评语没了**，而且不给用户任何提示。
+  // ⚠ 冲突口径与票一致 —— **目标优先**（见 `mergeVoteBoards` 的说明）：同一部片两边都写过时保留目标那份，
+  //   所以先铺源、再让目标覆盖。
+  const comments = new Map<string, string | null>();
+  for (const row of fromRows) comments.set(row.film_key, row.comment ?? null);
+  for (const row of toRows) comments.set(row.film_key, row.comment ?? null);
+  // 贴纸款同样跟着票搬（2026-09-29）。不搬的后果与评语一样：票还在、**款变回默认**，
+  // 而且按款聚合会当场偏掉（源的款没被减、目标的款没被加）。
+  // ⚠ 冲突口径与票、评语一致 —— **目标优先**：先铺源、再让目标覆盖。
+  const skins = new Map<string, StickerSkin | null>();
+  for (const row of fromRows) skins.set(row.film_key, normalizeSkin(row.skin));
+  for (const row of toRows) skins.set(row.film_key, normalizeSkin(row.skin));
   const dryRun = options.dryRun === true;
   if (!dryRun) {
-    await replaceContributorVotes(db, edition, to, merged);
+    await replaceContributorVotes(db, edition, to, merged, {
+      comments,
+      skins,
+      // 认领之后这些票归**登录身份**，署名也该跟着换（匿名 → 真实昵称）。
+      // ⚠ 调用方不给 `displayName` 就**不动**昵称列 —— 传 `undefined` 与传 `null` 是两件事
+      //   （后者会把昵称清成「匿名观众」）。
+      ...(options.displayName !== undefined ? { displayName: options.displayName } : {}),
+    });
     await replaceContributorVotes(db, edition, from, new Map());
   }
   return {
@@ -403,4 +685,28 @@ export async function readVoteCounts(db: Db, edition: string): Promise<Record<st
     .where(eq(filmVoteStat.edition, edition))
     .all();
   return formatVoteCounts(rows);
+}
+
+/** 榜单读取：一次拿到这个 edition 下**每部片每款各几票**（2026-09-29）。
+ *
+ *  只服务一件事：展板上的群点要画出「大家各自选了什么款」。
+ *  ⚠ 与 `readVoteCounts` 一样是**稀疏**的：没有款的票不在这里（它们在总数那本账里），
+ *    调用方必须按「总数 − 各款之和 = 没带款的票」自己兜底，而不是假定两者相等。
+ *  ⚠ 与 `readVoteCounts` 是**两次独立查询**：D1 没有跨语句事务，两者可能读到相差一拍的快照。
+ *    这是可接受的（下一拍就自愈），但**不要在服务端把两者相减后当成不变量去断言**。 */
+export async function readSkinCounts(
+  db: Db,
+  edition: string,
+): Promise<Record<string, Partial<Record<StickerSkin, { red: number; black: number }>>>> {
+  const rows = await db
+    .select({
+      film_key: filmVoteSkinStat.film_key,
+      skin: filmVoteSkinStat.skin,
+      vote: filmVoteSkinStat.vote,
+      count: filmVoteSkinStat.count,
+    })
+    .from(filmVoteSkinStat)
+    .where(eq(filmVoteSkinStat.edition, edition))
+    .all();
+  return formatSkinCounts(rows);
 }

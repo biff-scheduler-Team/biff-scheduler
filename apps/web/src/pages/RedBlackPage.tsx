@@ -4,7 +4,7 @@
 //   · 卡片**左**边是海报与影片信息,**右**边一大片留白就是贴纸画布;
 //   · 在左侧标记「看过」解锁,点红 / 黑按钮 → 画布上**随机位置生成**一枚(允许重叠、±15° 歪斜);
 //   · 已贴的贴纸可以在**这一部自己的**张贴区里拖动微调 —— 张贴区**按片独立**(2026-09-23:
-//     「贴纸张贴区应该是电影之间独立的」),别片的画布不是落点;拖出这张画布、或**单击**它,都收回暂存区;
+//     「贴纸张贴区应该是电影之间独立的」),别片的画布不是落点;拖出这张画布、或**双击**它,都收回暂存区;
 //   · 一部片**只有一枚**(2026-09-16 用户:「标记看过只能选一个贴纸」)—— 红 / 黑 是同一个名额的
 //     两种取舍,不是可以并存的两色(旧版「红黑各一枚、同框双色并存」的口径已作废);
 //   · 刚贴下的那一枚会**闪一下描边**告诉用户它落在哪(票多时否则根本找不着);闪完仍留一圈
@@ -16,6 +16,7 @@
 //   监听器在 pointerdown 里**同步挂上**、`pointermove` 合并到一帧一次(见 `beginDrag`)。
 
 import {
+  Fragment,
   lazy,
   memo,
   Suspense,
@@ -27,9 +28,16 @@ import {
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+// 皮肤的中文名走契约层（与上报载荷同一个白名单），不在页面里另写一份
+import { stickerSkinLabel } from "@biff/contracts/sticker";
 import { ToastQueue } from "../components/spectrum";
 import { QuerySearchField } from "../components/QuerySearchField";
 import { StickerCanvas } from "../components/StickerCanvas";
+import { StickerFace } from "../components/StickerFace";
+// ⚠ 轮盘**不做懒加载**(与两个弹层不同):它是「悬停自己那枚贴纸」的即时反馈,
+//   点开才下载会让第一次悬停慢半拍 —— 而那一下正是它唯一存在的意义。
+import { StickerSkinWheel } from "../components/StickerSkinWheel";
+
 import type { FilmNode } from "../app/model";
 import { searchFilm } from "../app/model";
 import { useQuery } from "../app/hooks";
@@ -47,14 +55,18 @@ import {
   makeSticker,
   moveSticker,
   othersOf,
+  othersSkins,
   placeSticker,
   purgeDemoLeavings,
   reconcile,
+  reskinSticker,
   retintSticker,
   saveStickers,
   saveWatched,
   scheduleSaveStickers,
   scoreOf,
+  setStickerComment,
+  skinsSignature,
   sortByCounts,
   takeSticker,
   tallyOf,
@@ -62,6 +74,7 @@ import {
   votesOf,
   votesSignature,
   type CrowdCounts,
+  type SkinCrowdCounts,
   type SortMode,
   type Sticker,
   type StickerBoard,
@@ -73,11 +86,14 @@ import {
   loadFilmVotes,
   onFilmVotesChange,
   onFilmVotesPingFailure,
+  peekFilmSkins,
   peekFilmVotes,
   peekSyncedVotes,
   scheduleFilmVotesPing,
+  type FilmSkinCounts,
   type FilmVoteCounts,
 } from "../film-votes";
+import { resolveSkin, type StickerSkin } from "../sticker-skin";
 import { useInView } from "../use-in-view";
 import "./redblack-parity.css";
 
@@ -85,15 +101,15 @@ import "./redblack-parity.css";
  *
  * 为什么:`RedBlackShareDialog` 一条链上带着 `redblack-poster.ts`(约 9KB gz)+ 自己(约 3KB gz),
  * 而进红黑榜的人多数不会点「生成分享图」—— 同步 import 等于让**每个人**先下载它再进页面;
- * 「放大看全部」同理(约 2.3KB gz)。两者都是**点了才挂**(见 JSX 里的 `shareOpen && …` / `zoomOpen && …`),
+ * 讨论区同理。两者都是**点了才挂**(见 JSX 里的 `shareOpen && …` / `talkOpen && …`),
  * 所以懒加载只是把那次网络往返挪到点击那一刻;再点第二次时模块已在缓存里,零成本。
  * ⚠ 两个组件都是**具名导出**,而 `lazy` 要的是 `{ default }` —— 所以这里包一层,不动组件文件。
  * ⚠ **不给 loading 占位**:同源、体积小,加载是毫秒级;给个 spinner 反而闪一下更难读。 */
 const RedBlackShareDialog = lazy(() =>
   import("../components/RedBlackShareDialog").then((m) => ({ default: m.RedBlackShareDialog })),
 );
-const StickerZoomDialog = lazy(() =>
-  import("../components/StickerZoomDialog").then((m) => ({ default: m.StickerZoomDialog })),
+const LazyFilmCommentsDialog = lazy(() =>
+  import("../components/FilmCommentsDialog").then((m) => ({ default: m.FilmCommentsDialog })),
 );
 
 const SORTS: Array<[SortMode, string]> = [
@@ -147,6 +163,29 @@ const EMPTY_STICKERS: readonly Sticker[] = [];
 const FRESH_MS = 2400;
 const FRESH_BLINK_MS = 800;
 const FRESH_BLINKS = 3;
+
+/** 落地动效时长(ms)。
+ *  ⚠ 380ms 取的是「拟物/实体感」那一档(300–500ms)—— 比常规微交互(150–250ms)长,
+ *    因为这里要读的是**重量**:从 120px 高处落下来再回弹,太快就没有「戳下去」的手感。
+ *  ⚠ 只动 `.rb-dot__face`(**不**动外层那枚 `<button>`)—— 见落地 effect 里的说明。 */
+const LAND_MS = 380;
+/** 落地时额外的随机自转(±度):模仿「捏着贴纸随手按下去」,而不是机械对齐。
+ *  ⚠ 它只是**动效的起点**,落定后那一枚的歪斜仍是 `tiltOf(id)` 推出来的确定值 ——
+ *    随机数不进任何持久化状态,刷新后贴纸不会「换个角度」。 */
+const LAND_SPIN = 12;
+
+/** 悬停多久才弹出换款轮盘(ms)。
+ *  ⚠ 必须有这个延时:榜单上近 300 张卡,指针横穿页面时会**一路划过**好几枚贴纸,
+ *    不给延时就是一路弹环。160ms 略高于「扫过」、明显低于「停住想看」的体感点。 */
+const HOVER_MS = 160;
+/** 触屏长按多久算「要换款」(ms)。
+ *  ⚠ 触屏没有 hover,而**轻点已经是「收回」**了(2026-09-28 的既有契约,E2E 守着)——
+ *    所以换款只能另占一个手势:长按。500ms 是系统里「长按」的通用量级。 */
+const PRESS_MS = 500;
+/** 指针离开贴纸 / 环之后，隔多久把环关掉(ms)。
+ *  ⚠ 必须留这段宽限：贴纸与节点之间隔了 26px 的空隙，指针穿过它时会先触发贴纸的
+ *    `pointerleave` —— 当场关掉的话，「从贴纸移向节点」这个**唯一**的使用动作永远走不通。 */
+const WHEEL_GRACE_MS = 260;
 /** 判定「算拖、不算点」的位移阈值(px)。手指比鼠标抖得多:4px 在触屏上几乎必然越过,
  *  于是「想点一下收回」会变成「挪了个位置」—— 所以触屏放宽到 10px。
  *  ⚠ 鼠标这一侧 2026-09-28 由 4px 放宽到 8px(PLAN-20260928120415):4px 比系统的双击容差还小,
@@ -169,6 +208,10 @@ interface RbCardProps {
    *  ⚠ 不要直接传服务端那份原始 counts:那样在「我刚收回、服务端还没撤」的窗口里,
    *    卡片内的 `othersOf` 会把我那一票当成别人的票画出来(用户 2026-09-23 报的「仍残留」)。 */
   counts: StickerCounts;
+  /** 这一部**按款**的票数（服务端聚合，2026-09-29）。稀疏：没有款数据的片是 `undefined`。
+   *  ⚠ 与 `counts` 不同，它**原样来自服务端**（**含我自己那一枚** —— 服务端不知道谁是「我」），
+   *    所以用之前必须在卡片内 `othersSkins` 扣掉；页面那层不替它做 `reconcile`。 */
+  skins?: SkinCrowdCounts;
   /** 这一部是不是「刚贴下那一枚」的持有者 —— 只有它**多一圈会起伏的亮描边**;
    *  ⚠ 与「常驻纸白边」是两回事:后者在 `.rb-dot` 上恒有,不靠这个 prop(见 CSS 里的说明) */
   fresh: boolean;
@@ -184,10 +227,17 @@ interface RbCardProps {
     srcKey: string,
     fromId: string | null,
   ) => void;
-  /** 单击「我贴的那一枚」→ 收回暂存区(拖出画布是同一个出口,见 `takeBack`)。
+  /** **双击**「我贴的那一枚」→ 收回暂存区(拖出画布是同一个出口,见 `takeBack`)。
+   *  ⚠ **单击什么都不做**(卡片那边直接 `return`,见 `RbCard` 的 `onClick`)—— 所以这条回调
+   *    收到 `detail === 1` 说明调用方漏拦了,不是正常路径。
    *  `detail` 直接透传 `MouseEvent.detail` —— 调用方靠它区分「指针来的 click」与
    *  键盘 / `element.click()`(后者恒为 0),见 `takeBackByTap`。 */
   onTakeBack: (filmKey: string, stickerId: string, detail: number) => void;
+  /** 换一枚贴纸的**款**（轮盘点选落定，2026-09-29）。⚠ 与其它回调一样必须是**稳定引用**。 */
+  onReskin: (filmKey: string, stickerId: string, skin: StickerSkin) => void;
+  /** 保存这一部的评语（讨论区弹层里那个表单）。空串 = 清掉。
+   *  ⚠ 与其它回调一样必须是**稳定引用**——它是 `useCallback([commitBoard])`,满足。 */
+  onSaveComment: (filmKey: string, comment: string) => void;
   /** 方向键微调「我贴的那一枚」的落点(比例增量,见 `NUDGE_KEYS`) */
   onNudge: (filmKey: string, sticker: Sticker, dx: number, dy: number) => void;
 }
@@ -245,7 +295,7 @@ export function RedBlackPage() {
   );
   // 「生成分享图」弹层。⚠ 焦点归还必须在弹层**真正卸载之后**再做(S2 `DialogContainer`
   // 自己也会 restoreFocus,而 WebKit 上点按钮不会让按钮获得焦点、它记下的原焦点是 body)——
-  // 所以放 `useEffect` 而不是写在 onDismiss 里,与卡片上的「放大看全部」同一手法。
+  // 所以放 `useEffect` 而不是写在 onDismiss 里,与卡片上的讨论区同一个手法。
   const [shareOpen, setShareOpen] = useState(false);
   const shareBtnRef = useRef<HTMLButtonElement | null>(null);
   const shareWasOpenRef = useRef(false);
@@ -259,6 +309,9 @@ export function RedBlackPage() {
   // ⚠ 数字**不再**等这一秒(2026-09-23):页面拿 `reconcile` 把「我这一票」当场算进去 / 减出来,
   //   所以贴一枚立刻 +1、收回立刻 −1;那一秒只是把本地视角换成服务端确认过的真值,画面不跳。
   const [votes, setVotes] = useState<FilmVoteCounts>(() => peekFilmVotes());
+  /** 服务端回的**按款**分布（2026-09-29）。只用来画群点 —— 它与 `votes` 在同一个响应体里到达，
+   *  所以必须**同一拍**换：分批换会让群点短暂画在「新数字 + 旧分布」上（多一枚或少一枚）。 */
+  const [filmSkins, setFilmSkins] = useState<FilmSkinCounts>(() => peekFilmSkins());
   // 「服务端那份 counts 里属于我的那部分」(见 `film-votes.ts::synced`)。卡片 / hero / 分享图
   // 扣减它来得到「以本地视角修正过的全站票数」(`redblack.ts::reconcile`)。
   //
@@ -277,11 +330,13 @@ export function RedBlackPage() {
   useEffect(() => {
     void loadFilmVotes().then((next) => {
       setVotes(next);
+      setFilmSkins(peekFilmSkins());
       setSyncedVotes(peekSyncedVotes());
       setVotesSettled(true);
     });
     return onFilmVotesChange(() => {
       setVotes(peekFilmVotes());
+      setFilmSkins(peekFilmSkins());
       setSyncedVotes(peekSyncedVotes());
     });
   }, []);
@@ -325,7 +380,7 @@ export function RedBlackPage() {
   const actedRef = useRef(false);
   /** 本次手势**是不是一次拖**(而不是点)。
    *  ⚠ 浏览器在 `pointerup` 之后仍会补派发一次 `click`,所以「我贴的那一枚」上
-   *    「单击=收回」与「拖动=挪位置」必须靠它区分,否则拖完顺手把贴纸收走了。
+   *    「双击=收回」与「拖动=挪位置」必须靠它区分,否则拖完顺手把贴纸收走了。
    *  ⚠ 它只回答「刚刚那一次指针手势是不是拖」,所以**只有指针来的 click 才该问它** ——
    *    键盘 / `element.click()` 不经过 `pointerdown`,问它等于让上一次拖拽把后来的一次收回吞掉
    *    (判据见 `takeBackByTap`)。 */
@@ -415,6 +470,24 @@ export function RedBlackPage() {
       ),
     [sorted, reconciledCrowd],
   );
+  /** 卡片要的**按款**分布（2026-09-29）。与 `reconciledCrowd` 同一手法：值没变就**沿用旧对象**。
+   *
+   *  ⚠ 这里**不做** `reconcile` 那套「减服务端确认的那份、加我当前的」—— 按款分布只用来决定
+   *    「别人的贴纸长什么样」，而我贴的那一枚是**单独画的 DOM**、根本不进群点。
+   *    扣我自己的动作在 `RbCard` 里做（`othersSkins`），那里才同时知道「我的款」与「我的色」。
+   *  ⚠ 稀疏：没有款数据的片**不进这张表**（`get` 得到 `undefined`），卡片那边正好走
+   *    「按 id 兜底」那条分支 —— 与老接口 / 还没拉到时的行为一致。 */
+  const filmSkinCache = useRef(new Map<string, SkinCrowdCounts>());
+  const filmSkinsByKey = useMemo(() => {
+    const cache = filmSkinCache.current;
+    const next = new Map<string, SkinCrowdCounts>();
+    for (const [key, value] of Object.entries(filmSkins)) {
+      const prev = cache.get(key);
+      next.set(key, prev && skinsSignature(prev) === skinsSignature(value) ? prev : value);
+    }
+    filmSkinCache.current = next;
+    return next;
+  }, [filmSkins]);
   const totals = useMemo(() => {
     // 「我的」那份:只回答「标记了几部 / 贴了几枚 / 还能贴几枚」(hero 里那行小字)
     let marked = 0;
@@ -476,6 +549,17 @@ export function RedBlackPage() {
     commitBoard(target);
   }, [commitBoard]);
 
+  /** 「大家说」里保存 / 清空评语（空串 = 清掉）。
+   *  ⚠ 它只改**本地那一份**：评语随票在 1200ms 防抖后**同一次整份替换**里上报
+   *    （见 `film-votes.ts` 与 `redblack.ts::votesOf`），所以这里不需要第二条上报路径 ——
+   *    而 `votesSignature` 把评语串进了签名，改评语才会真的触发那次上报（否则永远上不去）。 */
+  const saveComment = useCallback(
+    (filmKey: string, comment: string) => {
+      commitBoard(setStickerComment(latest.current.board, filmKey, comment));
+    },
+    [commitBoard],
+  );
+
   // 刚贴下的那一枚(见 `RbCard` 里的动效说明)。⚠ 必须声明在 `place` **之前** ——
   // `place` 的依赖数组在渲染期求值,放到后面会撞上 TDZ。
   // ⚠ 是 **Set** 而不是单个 key(2026-09-28):连着给两部贴时,原来后一部会把前一部的高亮顶掉。
@@ -490,7 +574,7 @@ export function RedBlackPage() {
   }, []);
   useEffect(() => () => clearTimeout(freshTimerRef.current), []);
 
-  /** 收回暂存区的**唯一实现** —— 「拖出画布」与「单击那枚贴纸」是同一个出口,
+  /** 收回暂存区的**唯一实现** —— 「拖出画布」与「双击那枚贴纸」是同一个出口,
    *  文案与落库口径只此一处(§5 口径单一来源)。 */
   const takeBack = useCallback(
     (filmKey: string, stickerId: string) => {
@@ -513,8 +597,13 @@ export function RedBlackPage() {
     [commitBoard, undoLast],
   );
 
-  /** 卡片上那枚贴纸的**单击**入口。
-   *  ⚠ 必须吃掉「拖完之后浏览器补的那一次 click」:否则拖一下微调位置会顺手把贴纸收走 ——
+  /** 收回「我贴的那一枚」—— **双击**（2026-09-30，用户要求；此前是单击）。
+   *
+   * ⚠ `detail` 是这里的判据（`MouseEvent.detail`）：
+   *   · `0` = 键盘（Enter / Space）与 `element.click()` —— **一次就算**；
+   *   · `1` = 单击 —— **什么都不做**，卡片那边已经 `return` 了，走不到这里；
+   *   · `≥ 2` = 双击 —— 收回。
+   * ⚠ 必须吃掉「拖完之后浏览器补的那一次 click」:否则拖一下微调位置会顺手把贴纸收走 ——
    *    `movedRef` 在 `pointermove` 越过阈值那一刻置位,下一次 `pointerdown` 才复位。
    *  ⚠ 但**只吞指针来的那一次**(`detail > 0`):键盘 `Enter` / 空格与 `element.click()`
    *    的 `event.detail` 恒为 0,它们不经过 `pointerdown`、也就谈不上「刚刚那次是拖」——
@@ -564,18 +653,46 @@ export function RedBlackPage() {
     [commitBoard],
   );
 
+  /** 换一枚贴纸的**款**（2026-09-29，轮盘点选落定）。
+   *
+   *  ⚠ 它和 `place` 里那条「换色」是**同一类动作**：改掉一枚已有贴纸的信息 →
+   *    同样给撤销、同样标 fresh（闪一下让人看清改的是哪一枚）。所以这里照那条写，
+   *    连提示的措辞结构都对齐（「…换成「X」了」+ 撤销）。
+   *  ⚠ `reskinSticker` 对「同一款」**返回同一个引用**（不可变 + 同引用短路）——
+   *    所以不必自己判重：点中当前那一款时下面整段都不会发生（不写盘、不弹提示、不触发上报）。
+   *  ⚠ 立刻写盘、**不走延后**：换款是明确的语义操作，崩溃时丢不起（与 `nudge` 的取舍相反）。 */
+  const reskin = useCallback(
+    (filmKey: string, stickerId: string, skin: StickerSkin) => {
+      const { board, filmByKey } = latest.current;
+      const next = reskinSticker(board, filmKey, stickerId, skin);
+      if (next === board) return;
+      commitBoard(next);
+      undoRef.current = board;
+      markFresh(filmKey);
+      const name = filmByKey.get(filmKey)?.zh ?? "这部";
+      ToastQueue.neutral(`《${name}》的贴纸换成「${stickerSkinLabel(skin)}」了。`, {
+        actionLabel: "撤销",
+        onAction: undoLast,
+      });
+    },
+    [commitBoard, markFresh, undoLast],
+  );
+
   /** 贴一枚:点一下 → 落点随机;从暂存区拖进来 → 落在松手那一点 */
   const place = useCallback(
     (filmKey: string, type: StickerType, spot?: { posX: number; posY: number }) => {
       const { board, tallies, filmByKey } = latest.current;
       const name = filmByKey.get(filmKey)?.zh ?? "这部";
       const tally = tallies.get(filmKey);
+      // ⚠ 这一支已经是**防御性**的(2026-09-29,PLAN-20260929172651 §4):未标记时红 / 黑按钮是
+      //   真 `disabled`,指针与拖动两条入口都到不了这里。留着它是因为 `place` 是**纯逻辑出口**,
+      //   将来多一条调用路径(快捷键 / 键盘直达)时不该静默什么都不做。
       if (!tally?.marked) {
         ToastQueue.neutral(`先给《${name}》标一下「看过」，就能贴了。`, { timeout: 4000 });
         return;
       }
       // ⚠ 已经贴过这一部:点**另一色** = **原地换色**(保留位置与 id),点**同色**才是「什么也没发生」。
-      //   这是 2026-09-28 新增的出口 —— 过去贴错颜色只能「先单击收回、再从暂存区重贴」,
+      //   这是 2026-09-28 新增的出口 —— 过去贴错颜色只能「先收回、再从暂存区重贴」,
       //   而重贴会换一个随机落点,等于顺手把位置也丢了(PLAN-20260928102019 ⑧)。
       if (!tally.canPlace) {
         const existing = board.get(filmKey)?.[0];
@@ -632,7 +749,7 @@ export function RedBlackPage() {
     //    **直接改记到《B》头上**(`moveSticker` 的跨片分支,已删);现在别片的画布与页面空白同一类。
     if (!spotInsideSrc(rect, x, y)) {
       // 已经贴着的那一枚 → 出界就是收回(用户口径:「贴纸拖到外面就需要取消」),
-      //   与「单击那枚贴纸」共用 `takeBack`(文案与落库口径只此一处)
+      //   与「双击那枚贴纸」共用 `takeBack`(文案与落库口径只此一处)
       if (meta.fromId) takeBack(meta.srcKey, meta.fromId);
       else if (canvasAt(x, y)) {
         // 从暂存区拖出来、却落在别片的画布上 → 什么都不做(它本来就在暂存区),但要讲清为什么。
@@ -665,7 +782,9 @@ export function RedBlackPage() {
   /** 开始一次拖拽。
    *  ⚠ 监听器在 pointerdown 里**同步挂上**(不再经 `drag` state + `useEffect`):后者要等这次
    *    `setDrag` 渲染提交、副作用跑完才生效,起手那几帧的 `pointermove` 会被丢掉 ——
-   *    表现一是「拖起来慢半拍」,二是**松手时被判成一次「单击」,那枚贴纸被收回**(`takeBackByTap`)。
+   *    表现一是「拖起来慢半拍」,二是**松手那一下被判成一次「单击」而走掉**(`takeBackByTap`)。
+   *    ⚠ 2026-09-30 起单击不再收回(要双击),所以这里描述的那条症状**已经不成立**;
+   *      但「起手几帧的 `pointermove` 会被丢掉」这个成因仍在,记录保留。
    *  ⚠ 顺带把 `drag` state 一起去掉了:它只被那个 effect 用、JSX 里根本没用,而那次 `setState`
    *    换来的只是「父组件跑一遍 + 300 次 `memo` 浅比较」—— 卡片**不会**重渲染(见 `RbCard` 的
    *    memo 说明;`placed` / `counts` / `marked` / `canPlace` / `fresh` 在拖拽起手时都没变),
@@ -885,66 +1004,101 @@ export function RedBlackPage() {
           <p className="rb-eyebrow">看过就贴</p>
           <h1>红黑榜</h1>
           <p className="rb-lede">
-            一部电影一枚贴纸：标记「看过」，点红或黑，贴纸就落在右边的空地上；大家的票一起排榜。
+            一部电影一枚贴纸：标记「看过」，再点红或黑。
+            {/* 完整规则收进 `?`(2026-09-29,PLAN-20260929172651 §1):正文只留一句话,把版面让出来。
+                ⚠ 展开走**纯 CSS** 的 `:hover` + `:focus-within`,不引 JS 状态 —— `:focus-within` 让触屏
+                也「点一下 `?`」就能看,键盘 Tab 进来同样展开;`aria-describedby` 让读屏也拿得到全文
+                (所以 CSS 里**不能**用 `visibility: hidden` / `display: none`,那会把内容从无障碍树里摘掉)。 */}
+            <span className="rb-rule">
+              <button type="button" className="rb-rule-btn" aria-describedby="rb-rule-full">
+                ?
+              </button>
+              <span className="rb-rule-pop" id="rb-rule-full">
+                在卡片上点「标记看过」解锁它，再挑一枚红或黑贴上去；贴纸落在右边那块空地上，可以拖动微调位置，
+                双击它、或拖出那块空地都是收回。一部片只有一枚，红黑是同一个名额的两种取舍。大家的票一起排榜。
+              </span>
+            </span>
           </p>
         </div>
         <div className="rb-totals" aria-live="polite">
-          {/* 大字是**全站**的:榜本来就看大家贴了什么(改版前这三格全是我的) */}
-          <span className="rb-global">
-            <strong className="rb-global-num">{totals.total}</strong>
-            <span className="rb-global-label">全站贴纸</span>
+          {/* 全站那份:榜本来就看大家贴了什么 —— 给它一个**卡片**(用户 2026-09-29:「建议通过卡片化或
+              微缩标签(Badge)样式将其整理,区分『全局数据』与『个人数据』」),不再只靠字号与 opacity 区分。
+              大字仍是**全站总票数**(改版前这三格全是我的)。 */}
+          <div className="rb-stat-card">
+            <span className="rb-stat-head">全站</span>
+            {/* ⚠ `.rb-global` 这一层保留:它承载 `redblack-poster.ts` 之外唯一的「全站数字」口径,
+                样式改版不该顺手改结构(颜色 / 字号仍由既有的 `.rb-global-*` 管) */}
+            <span className="rb-global">
+              <strong className="rb-global-num">{totals.total}</strong>
+              <span className="rb-global-label">枚贴纸</span>
+            </span>
             <span className="rb-global-split">
               红 {totals.red} · 黑 {totals.black}
             </span>
-          </span>
-          {/* 我自己那份收成一行小字:它只回答「我还能不能贴」 */}
-          <p className="rb-mine">
-            我的：标记看过 {totals.marked} · 已贴 {totals.placed} · 还能贴 {totals.quota}
-          </p>
+          </div>
+          {/* 我自己那份:Badge 组 —— 它只回答「我还能不能贴」,不是榜单主角 */}
+          <div className="rb-badges">
+            <span className="rb-badge">
+              标记看过 <strong>{totals.marked}</strong>
+            </span>
+            <span className="rb-badge">
+              已贴 <strong>{totals.placed}</strong>
+            </span>
+            {/* ⚠ `data-rb-empty` = **存在即真**(只有配额见底时才写):`CSS` 靠它决定要不要把
+                这枚 Badge 顶出来,值本身不参与判断 */}
+            <span
+              className="rb-badge rb-badge--quota"
+              data-rb-empty={totals.quota === 0 || undefined}
+            >
+              还能贴 <strong>{totals.quota}</strong>
+            </span>
+          </div>
         </div>
       </header>
 
       <div className="rb-controls">
-        <QuerySearchField
-          label="搜索影片或场次编号"
-          placeholder="片名 / 场次 code，如 0412"
-        />
-        <div className="rb-sort" role="group" aria-label="榜单排序">
+        {/* ⚠ 文案按用户 2026-09-29 的建议收短(`label` 是同一句话的长版本,留给读屏) */}
+        <QuerySearchField label="搜索影片或场次编号" placeholder="搜索影片 / 场次编号" />
+        {/* 排序:三档互斥 → **一个**分段控件(Segmented Control),不再是三个各自带边框的胶囊。
+            ⚠ `role=group` + `aria-pressed` 一个都不能少:分段控件只是视觉形态,语义上它仍是
+              「一组互斥选项」(用户 2026-09-29:「筛选切换(总数、红榜、黑榜)保持统一的分段控件样式」)。 */}
+        <div className="rb-seg" role="group" aria-label="榜单排序">
           {SORTS.map(([value, label]) => (
             <button
               key={value}
               type="button"
-              className="rb-sort-btn"
+              className="rb-seg-btn"
               aria-pressed={mode === value}
               onClick={() => update({ sort: value === "total" ? null : value }, true)}
             >
               {label}
             </button>
           ))}
-          <button
-            type="button"
-            className="rb-resort"
-            data-rb-stale={orderStale || undefined}
-            aria-label="按当前的贴纸数量重新排序"
-            onClick={() => setSortTick((count) => count + 1)}
-          >
-            {orderStale ? "有新贴纸 · 重新排序" : "重新排序"}
-          </button>
-          <span className="rb-sort-hint">
-            {mode === "total" ? "按贴纸总数" : mode === "red" ? "按红贴纸数" : "按黑贴纸数"}
-            从高到低；贴纸变化不会打乱当前顺序
-          </span>
         </div>
         {/* 筛选是**另一个视野**,不是排序的第四档 —— 所以留在排序组外面 */}
         <button
           type="button"
-          className="rb-sort-btn"
+          className="rb-filter"
           aria-pressed={onlyMine}
           onClick={() => update({ only: onlyMine ? null : "mine" }, true)}
         >
           只看我贴过
         </button>
-        {/* 出图入口与筛选同排:它是「把这页拿出去给朋友看」,既不是排序也不是筛选 */}
+        {/* 「重新排序」:顺序被冻住之后,重排要由用户主动触发(贴纸变化不自动重排,见页面注释)。
+            ⚠ 类名与 `data-rb-stale` **不许动**:E2E 按 `.rb-resort` + 该属性断言(spec:1034 / 1065 / 1248)。
+              它从「虚线胶囊」降成**弱按钮**(纯文字 + hover 才有底色):它是维护性动作,不该与筛选同权。 */}
+        <button
+          type="button"
+          className="rb-resort"
+          data-rb-stale={orderStale || undefined}
+          aria-label="按当前的贴纸数量重新排序"
+          onClick={() => setSortTick((count) => count + 1)}
+        >
+          {orderStale ? "有新贴纸 · 重新排序" : "重新排序"}
+        </button>
+        {/* 出图是这一排里唯一的主操作 —— 给品牌色实底。
+            ⚠ 改版前它用 `--selected` / `--selected-line`(= #388452 绿),用户读成「绿色胶囊」,
+              而绿色与红黑榜的红黑语义毫无关系(2026-09-29,PLAN-20260929172651 §2)。 */}
         <button
           ref={shareBtnRef}
           type="button"
@@ -953,6 +1107,13 @@ export function RedBlackPage() {
         >
           生成分享图
         </button>
+        {/* 说明文字**独占一行**(CSS 里靠 `flex-basis: 100%` 换行):
+            原来它贴在「重新排序」右侧,两者视觉上连成一个组,被读成「一个奇怪的胶囊按钮」——
+            而它根本不是按钮(用户 2026-09-29)。 */}
+        <p className="rb-sort-hint">
+          {mode === "total" ? "按贴纸总数" : mode === "red" ? "按红贴纸数" : "按黑贴纸数"}
+          从高到低；贴纸变化不会打乱当前顺序
+        </p>
       </div>
 
       {/* 空榜引导。⚠ 条件**只能**看全站票数(`totals.total`),**不能**掺「我标记了几片」
@@ -989,11 +1150,14 @@ export function RedBlackPage() {
                 /* ⚠ 直接传 `board.get(...)` 的结果(可能 undefined),不要 `?? []` —— 那会每次造新数组,memo 失效 */
                 placed={board.get(film.key)}
                 counts={filmCounts.get(film.key)!}
+                skins={filmSkinsByKey.get(film.key)}
                 fresh={freshKeys.has(film.key)}
                 onToggleWatched={toggleWatched}
                 onPlaceByTap={placeByTap}
                 onBeginDrag={beginDrag}
                 onTakeBack={takeBackByTap}
+                onReskin={reskin}
+                onSaveComment={saveComment}
                 onNudge={nudge}
               />
             );
@@ -1011,6 +1175,10 @@ export function RedBlackPage() {
                ⚠ 给它的是 `reconciledCrowd`(全量)而不是 `filmCounts`(只有当前榜单那几部)——
                搜索过滤后 `sorted` 会变小,而分享图要画的是**整份**影片库 */
             crowd={reconciledCrowd}
+            /* ⚠ 给**全量**按款分布(不是只有当前榜单那几部):分享图要画整份影片库,
+               与上面 `crowd` 给 `reconciledCrowd` 而不是 `filmCounts` 是同一条理由。
+               ⚠ 它是**服务端原样那份**(含我)—— 海报那边自己 `othersSkins` 扣掉。 */
+            skins={filmSkins}
             board={board}
             site={{ total: totals.total, red: totals.red, black: totals.black }}
             mine={{ marked: totals.marked, placed: totals.placed, quota: totals.quota }}
@@ -1041,12 +1209,15 @@ const RbCard = memo(function RbCard({
   canPlace,
   placed,
   counts,
+  skins,
   fresh,
   onToggleWatched,
   onPlaceByTap,
   onBeginDrag,
   onTakeBack,
   onNudge,
+  onReskin,
+  onSaveComment,
 }: RbCardProps) {
   // 视口按需渲染:屏幕外的卡**一枚贴纸都不画**(见 `useInView` 与 PLAN-20260922145815)。
   // ⚠ 贴纸是绝对定位,稍后补画不触发兄弟节点回流 —— 所以「滚到才画」不会引起版面跳动。
@@ -1062,14 +1233,104 @@ const RbCard = memo(function RbCard({
   const others = othersOf(counts, mine);
   // 这一部**自己的**评分(红票占比折算 0–10);还没有人贴过 → null(显示成「—」)
   const filmScore = scoreOf(counts);
+
   const myStickers = placed ?? EMPTY_STICKERS;
+  // 「别人的贴纸**各是什么款**」= 服务端按款分布 − 我自己那一枚（口径在 `redblack.ts::othersSkins`）。
+  // ⚠ 必须跟着 `othersOf` 一起扣：不扣的话我自己那一桶会留在分布里，群点会**多画一枚**
+  //   （多出来那枚恰好是我的款与色，看起来还挺合理 —— 所以只能靠这条口径挡住）。
+  // ⚠ 没有分布数据时 `othersSkins` 原样返回 `undefined` → 画布走「按 id 兜底」那条正常分支。
+  const crowdSkins = othersSkins(skins, myStickers);
+
+  /* ---------------- 换款轮盘（2026-09-29，PLAN-20260929195500） ----------------
+   * 三种打开方式，各自绕开一个已经存在的坑：
+   *   · 鼠标 `pointerenter` → 延时 `HOVER_MS`：不延时的话指针扫过整屏会**一路弹环**；
+   *   · 键盘 `focus`，但**必须是 `:focus-visible`**：鼠标点击也会让按钮获得焦点，
+   *     不筛这一步就会「点一下收回 + 同时弹出一个环」；
+   *   · 触屏**长按 `PRESS_MS` 且中途没挪动**（轻点现在也能开环，见 `onClick`；长按保留是因为
+   *     它更稳 —— 轻点的第一下与「双击收回」的第一下长得一模一样）
+   *     （2026-09-28 的既有契约，E2E 守着），换款只能另占一个手势。
+   * ⚠ 刚贴下的那 `FRESH_MS` **不弹**：松手时指针正落在这枚贴纸上，那一瞬间弹环纯属噪音。
+   *   直接用 `fresh` 这个已有状态、不另记时间戳 —— 它表达的就是「刚才那一下落在这枚」。 */
+  const [wheelFor, setWheelFor] = useState<{ id: string; x: number; y: number } | null>(null);
+  /** 轮盘里悬停 / 聚焦的那一款（还没落定）。`null` = 没有预览，贴纸显示它真正的款。 */
+  const [preview, setPreview] = useState<StickerSkin | null>(null);
+  /** 这次是**键盘**开的环吗 —— 是的话要把焦点收进环里（鼠标悬停开环**不能**抢焦点）。
+   *  ⚠ 用 ref 而不是 state：`closeWheel` 需要在**同一次调用里**读它来决定要不要把焦点还回去，
+   *    而 state 在 `useCallback([])` 里是闭包里的旧值。它只在「开 / 关的同一拍」被读，ref 够。 */
+  const wheelByKeyboard = useRef(false);
+  /** 我们自己刚把焦点塞回贴纸 —— 那一拍不许被 `onFocus` 当成「用户键盘走过来」（见 `closeWheel`）。 */
+  const restoreGuard = useRef(false);
+  const openTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** 长按期间挪过没有：挪过就说明用户想的是「拖」，不是在求换款。 */
+  const pressMoved = useRef(false);
+
+  const closeWheel = useCallback(() => {
+    clearTimeout(openTimer.current);
+    clearTimeout(pressTimer.current);
+    clearTimeout(closeTimer.current);
+    const restoreFocus = wheelByKeyboard.current;
+    wheelByKeyboard.current = false;
+    setWheelFor(null);
+    setPreview(null);
+    // ⚠ 键盘开的环必须把焦点**还给那一枚贴纸**：环一卸载，焦点就落回 `body`，
+    //   键盘用户会被丢到文档开头（下一次 Tab 从页头开始）。鼠标开的环**不能**抢焦点。
+    // ⚠ 还要挡一拍：程序化 `focus()` 在「最近一次交互是键盘」时**会**匹配 `:focus-visible`，
+    //   于是 `onFocus` 会立刻把环又开回来（按 Escape 变成关不掉）。这一拍由 `restoreGuard` 挡。
+    if (restoreFocus) {
+      restoreGuard.current = true;
+      freshRef.current?.focus();
+      // `focus()` 是**同步**派发事件的，所以 `onFocus` 已经跑完了 —— 下一拍放开即可
+      setTimeout(() => {
+        restoreGuard.current = false;
+      }, 0);
+    }
+  }, []);
+
+  // 指针离开（贴纸或环）→ **宽限一拍再关**：贴纸与节点之间隔了 26px 的空隙
+  // （`WHEEL_RADIUS - STICKER_SIZE / 2 - NODE_SIZE / 2`），指针穿过去的那一瞬
+  // 会先触发贴纸的 `pointerleave` —— 当场关掉的话这个环永远也用不上。
+  const cancelClose = useCallback(() => clearTimeout(closeTimer.current), []);
+  const scheduleClose = useCallback(() => {
+    clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(closeWheel, WHEEL_GRACE_MS);
+  }, [closeWheel]);
+
+  // 卸载时收掉三个计时器 —— 否则它们会在组件没了之后各触发一次 `setState`
+  // （榜单滚动时卡片会被卸载，这条路径不是理论上的）
+  useEffect(
+    () => () => {
+      clearTimeout(openTimer.current);
+      clearTimeout(pressTimer.current);
+      clearTimeout(closeTimer.current);
+    },
+    [],
+  );
+
+  // 环开着的那枚贴纸**没了**（被收回 / 被换掉）→ 环跟着关。
+  // ⚠ 不靠 `takeBack` 那边通知：收回有好几条入口（双击 / 拖出画布 / 取消「看过」），
+  //   在这里盯「这一枚还存不存在」是唯一不会漏的判据。
+  useEffect(() => {
+    if (wheelFor && !myStickers.some((sticker) => sticker.id === wheelFor.id)) closeWheel();
+  }, [wheelFor, myStickers, closeWheel]);
+
+  const openWheel = useCallback((id: string, byKeyboard: boolean) => {
+    const node = freshRef.current;
+    if (!node) return;
+    wheelByKeyboard.current = byKeyboard;
+    // ⚠ 只量**这一刻**的矩形：之后滚动 / 缩放一律直接关掉（见轮盘组件里的说明）——
+    //   逐帧重测等于每帧读一次布局，而这只是个一闪而过的选择器。
+    const rect = node.getBoundingClientRect();
+    setWheelFor({ id, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+  }, []);
   // 暂存区里哪一枚算「已用掉」(2026-09-28,PLAN-20260928102019 ⑧):淡掉的只有**当前已贴的那一色**,
   // 另一色**保持正常** —— 点它就是原地换色,那是一个真能用的动作,不该被读成「不能点」。
   const placedType = myStickers[0]?.type;
   const redSpent = !canPlace && placedType === "red";
   const blackSpent = !canPlace && placedType === "black";
-  // 「放大看全部」画的是**全部**(群点 + 我贴的那一枚),不是卡片上那份「别人的」——
-  // 点进来看全部却少了自己那一枚,数字会跟卡片对不上。
+  // 讨论区顶上那行「红 N · 黑 N」画的是**全部**(群点 + 我贴的那一枚),不是卡片上那份「别人的」——
+  // 打开讨论区却少了自己那一票,那行数字会跟卡片当场对不上。
   // ⚠ 相加不会重复计数:页面给的 `counts` 已按本地视角修正(`reconcile`)**恒含我这一枚**,
   //   而 `others` 就是它减掉 `mine` —— 加回来正好是那份全站数,上报前后都不多不少。
   const all: StickerCounts = {
@@ -1077,18 +1338,18 @@ const RbCard = memo(function RbCard({
     red: others.red + mine.red,
     black: others.black + mine.black,
   };
-  const [zoomOpen, setZoomOpen] = useState(false);
-  const zoomBtnRef = useRef<HTMLButtonElement | null>(null);
-  const zoomWasOpenRef = useRef(false);
+  const [talkOpen, setTalkOpen] = useState(false);
+  const talkBtnRef = useRef<HTMLButtonElement | null>(null);
+  const talkWasOpenRef = useRef(false);
   // 焦点归还(§5 硬约束):必须在弹层**真正卸载之后**再夺回焦点 ——
   // ⚠ S2 的 `DialogContainer` 自己也会 restoreFocus,而 WebKit 上点按钮**不会**让按钮获得焦点,
   //   于是它记下的「原焦点」是 body:在 `onDismiss` 里直接 `focus()` 会被它的 cleanup 覆盖掉
   //   (实测 iOS WebKit 上焦点落到 body,Chromium 上因为按钮本来就聚焦所以看不出问题)。
   //   放到 `useEffect`(跑在所有 layout effect 之后)才稳。
   useEffect(() => {
-    if (zoomWasOpenRef.current && !zoomOpen) zoomBtnRef.current?.focus();
-    zoomWasOpenRef.current = zoomOpen;
-  }, [zoomOpen]);
+    if (talkWasOpenRef.current && !talkOpen) talkBtnRef.current?.focus();
+    talkWasOpenRef.current = talkOpen;
+  }, [talkOpen]);
 
   // 刚贴下的那一枚:**闪一下描边**告诉用户它落在哪。
   // 为什么需要它:点红 / 黑贴下去的那一枚会被丢进一片点里(压测里最多 160 枚),原来**没有任何线索**
@@ -1110,6 +1371,39 @@ const RbCard = memo(function RbCard({
     );
   }, [fresh]);
 
+  // 落地动效:刚贴下的那一枚**从上方带弹簧落下来**(2026-09-29,PLAN-20260929195500)。
+  // 用户要的是「贴上去的瞬间有爽快感」:从高处落下 → 过冲约 8% → 回弹 → 落定,落定时还带一点自转。
+  //
+  // ⚠ **动的是 `.rb-dot__face`,不是外层那枚 `<button>`** —— 这一条是硬约束,不是偏好:
+  //   外层的盒子就是**命中区与落库坐标的基准**(拖拽起手、`elementFromPoint` 判落点、
+  //   E2E 量 `boundingBox()` 都读它)。让它飞 380ms 等于这期间「贴纸在哪」与「点在哪儿」
+  //   是两个答案 —— 拖动会抖、单测会飘,而且用户点的是**空位**。
+  //   动的只有那张「画」,槽位始终在原地等它落进来。
+  // ⚠ 一枚只落一次:拖动会换 `posX/posY`(→ `myStickers` 是新数组 → 本 effect 会再跑),
+  //   不拦就会「每拖动一帧重新落一次」。用 id 记账,不引入任何持久状态。
+  const landedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const sticker = myStickers[0];
+    // ⚠ 取面而不是按钮:见上。`querySelector` 每枚只跑一次(由 `landedRef` 拦住)
+    const face = freshRef.current?.querySelector(".rb-dot__face");
+    if (!fresh || !sticker || !face) return;
+    if (landedRef.current === sticker.id) return;
+    landedRef.current = sticker.id;
+    // 动效敏感:不做任何过渡,贴纸直接以终态出现(CSS 里也没有别的位移,天然就是终态)
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const spin = (Math.random() * 2 - 1) * LAND_SPIN;
+    face.animate(
+      [
+        { transform: `translateY(-120px) rotate(${spin}deg) scale(0.86)`, easing: "cubic-bezier(0.2, 0.86, 0.3, 1)" },
+        { transform: `translateY(6px) rotate(${spin * 0.2}deg) scale(1.06)`, offset: 0.62, easing: "ease-out" },
+        { transform: `translateY(-2px) rotate(0deg) scale(0.98)`, offset: 0.84, easing: "ease-in-out" },
+        { transform: "translateY(0) rotate(0deg) scale(1)" },
+      ],
+      { duration: LAND_MS },
+    );
+  }, [fresh, myStickers]);
+
   return (
     <article
       ref={cardRef}
@@ -1118,60 +1412,86 @@ const RbCard = memo(function RbCard({
       data-rb-marked={marked || undefined}
     >
       <div className="rb-card-info">
-        {film.poster ? (
-          /* `decoding="async"`:解码挪到后台线程。榜单一次有上百张海报,同步解码会在主线程上
-             一顿一顿地抢滚动 —— 这个属性只影响解码时机,不改变任何布局或优先级 */
-          <img className="rb-poster" src={film.poster} loading="lazy" decoding="async" alt="" />
-        ) : (
-          <span className="rb-poster rb-poster--none" aria-hidden="true">
-            {film.zh.slice(0, 1)}
-          </span>
-        )}
-        <h2 className="rb-title">{film.zh}</h2>
-        {film.en && film.en !== film.zh && <p className="rb-en">{film.en}</p>}
-        <p className="rb-chips">
+        {/* 海报 + **右上角评分角标**(2026-09-30,用户:「能收起就收起,比如打分就可以放到海报右上角」)。
+            ⚠ 角标只写数字、不写「评分」两个字 —— 名字交给 `title` 与 `aria-label`,
+              它们是同一句话的两种呈现(看得见的越短越好,读屏的仍然完整)。
+            ⚠ 包一层 `.rb-poster-box` 才能让角标定位到海报的角上(海报本身是 `<img>`,不能有子节点)。 */}
+        <div className="rb-poster-box">
+          {film.poster ? (
+            /* `decoding="async"`:解码挪到后台线程。榜单一次有上百张海报,同步解码会在主线程上
+               一顿一顿地抢滚动 —— 这个属性只影响解码时机,不改变任何布局或优先级 */
+            <img className="rb-poster" src={film.poster} loading="lazy" decoding="async" alt="" />
+          ) : (
+            <span className="rb-poster rb-poster--none" aria-hidden="true">
+              {film.zh.slice(0, 1)}
+            </span>
+          )}
           <span
-            className="rb-chip rb-chip--score"
-            title="这部片的红票占比折算成 0–10 分；还没有人贴时不显示分数"
+            className="rb-poster-score"
+            title="这部片的红票占比折算成 0–10 分；还没有人贴时是「—」"
+            aria-label={`评分 ${filmScore === null ? "还没有" : filmScore.toFixed(1)}`}
           >
-            评分 {filmScore === null ? "—" : filmScore.toFixed(1)}
+            {filmScore === null ? "—" : filmScore.toFixed(1)}
           </span>
+          {/* 「看过」标记 —— 2026-09-30 从胶囊收成**海报左下角的角标**（用户:「海报下面还是太乱了」）。
+              ⚠ 它与右上角的评分是同一类东西（**状态**，不是一句要读的话），摆在一列里会把
+                「红黑数字 + 讨论区」那一行挤断（实测三颗胶囊要 205px，而这一列只有 158px）。
+              ⚠ 字没了 → `title` / `aria-label` 是它**唯一**的解释，两个都必须写全；
+                两个状态靠**形态**区分（虚线空心 = 可以点 / 实心填色 = 已标记），不靠字。
+              ⚠ 画布里的提示「标记「看过」即可贴」仍在原地指路，所以「找不到入口」的风险有兜底。 */}
           <button
             type="button"
             className="rb-mark"
             aria-pressed={marked}
             aria-label={`${marked ? "取消标记" : "标记"}《${film.zh}》看过`}
+            title={marked ? `取消《${film.zh}》的「看过」` : `标记《${film.zh}》看过，就能贴贴纸了`}
             onClick={() => onToggleWatched(film)}
           >
-            {marked ? "看过 ✓" : "标记看过"}
+            {marked ? "✓" : "＋"}
           </button>
-          {counts.red > 0 && <span className="rb-chip rb-chip--red">红 {counts.red}</span>}
-          {counts.black > 0 && <span className="rb-chip rb-chip--black">黑 {counts.black}</span>}
-          {/* 一枚都没有时不出现:点开只会看到一块空画布 */}
-          {all.total > 0 && (
-            <button
-              ref={zoomBtnRef}
-              type="button"
-              className="rb-zoom"
-              aria-label={`放大查看《${film.zh}》的全部 ${all.total} 枚贴纸`}
-              onClick={() => setZoomOpen(true)}
-            >
-              看全部
-            </button>
+        </div>
+        <h2 className="rb-title">{film.zh}</h2>
+        {film.en && film.en !== film.zh && <p className="rb-en">{film.en}</p>}
+        <p className="rb-chips">
+          {/* 红黑**合成一颗**(2026-09-30,用户:「把『红 166』『黑 73』合成一颗」)。
+              ⚠ 0 的那一侧不出现(原来两颗也是各自这样判的):「红 166 · 黑 73」/「红 3」/「黑 2」;
+                两颗都是 0 时整颗不渲染。
+              ⚠ 里面是**三个 span 而不是一个字符串**:红 / 黑各自的颜色线索必须留着
+                (原来是两颗各带配色的胶囊,合成一颗不该把这条线索丢掉)。
+              ⚠ 分隔符的文本就是 `{" · "}` —— 一个字符都不多不少:`textContent` 会拼成
+                「红 166 · 黑 73」,而 E2E 是**逐字**比对它的(换行与缩进都会算进去,所以
+                这几个 span 写在同一行、不加任何额外空白)。 */}
+          {(counts.red > 0 || counts.black > 0) && (
+            <span className="rb-chip rb-chip--tally">
+              {counts.red > 0 && <span className="rb-tally__red">红 {counts.red}</span>}
+              {counts.red > 0 && counts.black > 0 && <span className="rb-tally__sep">{" · "}</span>}
+              {counts.black > 0 && <span className="rb-tally__black">黑 {counts.black}</span>}
+            </span>
           )}
         </p>
         {/* 暂存区(海报下方那两枚):点一下 → 随机贴到画布;拖到画布 → 落在松手那一点。
             ⚠ 这里**不写状态文案**(2026-09-16 用户:「太占空间」):
             按钮亮着就说明能贴、暗了就是贴过了 —— 靠形态表达,不靠解释。 */}
-        {/* ⚠ 只加 `aria-disabled`(而不是 `disabled`):按钮**仍要能点** —— 点了才有
-            「已经贴了一枚」/「换成 X 色」那句提示与动作,真 `disabled` 掉等于把出口关了
-            (2026-09-28,PLAN-20260928102019 ⑫)。 */}
-        <div className="rb-tray" aria-label={`《${film.zh}》的贴纸暂存区`}>
+        {/* ⚠ 未标记「看过」时是**真 `disabled`**(2026-09-29,PLAN-20260929172651 §4,用户要求):
+            过去只有 CSS 置灰、按钮**仍能点**,点了才弹「先标记看过」—— 用户要的是
+            「查看 → 标记看过 → 选红黑」这条**单向流**,不要一个「看着能点、点了被拒」的假出口。
+            ⚠ 这**只推翻** 2026-09-28 决策(PLAN-20260928102019 ⑫)里「未标记也留点击出口」那一半:
+            「**已贴之后**点另一色 = 原地换色」与它的撤销出口**原样保留**(见 `place` 的 `canPlace` 分支),
+            那才是那条决策真正要保的东西 —— 所以判据是 `!marked`,**不是** `spent`。
+            ⚠ 真 `disabled` 会一并掐掉 `onPointerDown`:未标记时本来也不该能拖。
+            ⚠ 提示改挂**暂存区容器**的 `title`:`disabled` 的按钮在浏览器里不弹 `title`,
+              挂容器才能让 hover 那一片仍然说得出「为什么点不动」。 */}
+        <div
+          className="rb-tray"
+          aria-label={`《${film.zh}》的贴纸暂存区`}
+          title={marked ? undefined : "先点「标记看过」，就能贴了"}
+        >
           <button
             type="button"
             className="rb-src rb-src--red"
             data-rb-spent={redSpent || undefined}
             aria-disabled={redSpent || undefined}
+            disabled={!marked}
             title={placedType === "black" ? "点一下把贴纸换成红色（位置不变）" : undefined}
             aria-label={`给《${film.zh}》贴红贴纸（点一下随机贴，也可以拖到右边画布上）`}
             onClick={(event) => onPlaceByTap(film.key, "red", event.detail)}
@@ -1184,6 +1504,7 @@ const RbCard = memo(function RbCard({
             className="rb-src rb-src--black"
             data-rb-spent={blackSpent || undefined}
             aria-disabled={blackSpent || undefined}
+            disabled={!marked}
             title={placedType === "red" ? "点一下把贴纸换成黑色（位置不变）" : undefined}
             aria-label={`给《${film.zh}》贴黑贴纸（点一下随机贴，也可以拖到右边画布上）`}
             onClick={(event) => onPlaceByTap(film.key, "black", event.detail)}
@@ -1206,12 +1527,23 @@ const RbCard = memo(function RbCard({
         {/* 别人的贴纸:整层交给 canvas(票数几枚就画几枚,不再有每卡上限)。
             只读、不挂 pointerdown —— 位置由 (影片 key, 序号) 确定性推导,
             用随机坐标的话每次重排这些点都会换地方,看着像在跳。 */}
-        <StickerCanvas filmKey={film.key} counts={others} inView={inView} />
-        {myStickers.map((sticker) => (
-          // ⚠ 必须是 `<button>` 而不是 `<span role="img">`:它现在**可单击**(收回),把点击处理
-          //   挂在非交互语义的元素上是 a11y 缺陷;顺带让键盘也能收回(Enter / Space 原生可用)
+        <StickerCanvas filmKey={film.key} counts={others} skins={crowdSkins} inView={inView} />
+        {myStickers.map((sticker) => {
+          // 这一枚用哪款：存了就用存的，没存就按 id 兜底（老贴纸 / 刚迁移过来）。
+          // ⚠ 解析只有这一处（`resolveSkin` 内含白名单），不要在这里自己写 `sticker.skin ?? …`。
+          const skin = resolveSkin(sticker.id, sticker.skin);
+          const wheelOpen = wheelFor?.id === sticker.id;
+          // 轮盘里预览某款时，**本体跟着预览走**——这就是「所见即所得」那一半。
+          // ⚠ 预览只是本地状态：不写 board、不改 `sticker.skin`、也就不触发上报
+          //   （上报依赖票签名，而票签名只看存下来的 `skin`）。
+          const shown = wheelOpen && preview ? preview : skin;
+          return (
+          <Fragment key={sticker.id}>
+          {/* ⚠ 必须是 `<button>` 而不是 `<span role="img">`:它**要接双击**(收回)与键盘激活,
+             把点击处理挂在非交互语义的元素上是 a11y 缺陷;顺带让 Enter / Space 原生可用。
+             ⚠ 单击**什么都不做**(见 `onClick`)—— 但按钮仍然是块**可聚焦**的交互元素,
+             「聚焦开环」正靠它成立,所以它不该退回 `<span>`。 */}
           <button
-            key={sticker.id}
             ref={freshRef}
             type="button"
             className={`rb-dot rb-dot--${sticker.type}`}
@@ -1223,9 +1555,57 @@ const RbCard = memo(function RbCard({
                 "--rb-tilt": `${tiltOf(sticker.id)}deg`,
               } as CSSProperties
             }
-            aria-label={`${sticker.type === "red" ? "红" : "黑"}贴纸；单击收回暂存区，拖动或按方向键可在《${film.zh}》自己的张贴区里挪位置，拖出这张画布也是收回`}
-            onPointerDown={(event) => onBeginDrag(event, sticker.type, film.key, sticker.id)}
-            onClick={(event) => onTakeBack(film.key, sticker.id, event.detail)}
+            aria-label={`${sticker.type === "red" ? "红" : "黑"}贴纸；双击收回暂存区，悬停、长按或聚焦可换一款皮肤，拖动或按方向键可在《${film.zh}》自己的张贴区里挪位置，拖出这张画布也是收回`}
+            onPointerDown={(event) => {
+              onBeginDrag(event, sticker.type, film.key, sticker.id);
+              // ⚠ 所有指针类型都重置一遍。它只被下面那个**触屏长按**定时器读,而定时器只在
+              //   非鼠标那支起 —— 所以重置严格说只有那一支需要。全类型重置是**保险**:
+              //   让「这一次手势有没有挪动」在每次按下时都有个确定的起点,不依赖上一次的残留值。
+              pressMoved.current = false;
+              // 触屏才起长按计时；鼠标那条路走 hover（见 `PRESS_MS` 的说明）
+              if (event.pointerType === "mouse") return;
+              clearTimeout(pressTimer.current);
+              pressTimer.current = setTimeout(() => {
+                if (!pressMoved.current) openWheel(sticker.id, false);
+              }, PRESS_MS);
+            }}
+            onPointerMove={() => {
+              // 挪过就不再是长按（是拖）—— 顺便把计时器收掉，免得它半路又开着环弹出来
+              pressMoved.current = true;
+              clearTimeout(pressTimer.current);
+            }}
+            onPointerUp={() => clearTimeout(pressTimer.current)}
+            onPointerCancel={() => clearTimeout(pressTimer.current)}
+            onPointerEnter={(event) => {
+              // 指针回到贴纸这一带 → 取消「正要关掉环」那一次（从环上走回来不该把它关掉）
+              cancelClose();
+              if (event.pointerType !== "mouse" || fresh || wheelOpen) return;
+              clearTimeout(openTimer.current);
+              openTimer.current = setTimeout(() => openWheel(sticker.id, false), HOVER_MS);
+            }}
+            onPointerLeave={() => {
+              clearTimeout(openTimer.current);
+              if (wheelOpen) scheduleClose();
+            }}
+            onFocus={(event) => {
+              // 关环时我们自己把焦点塞回来过一次 —— 那一拍不算「用户键盘走过来」
+              if (restoreGuard.current) return;
+              // `:focus-visible` 是**唯一**能区分「键盘 Tab 过来」与「鼠标点了一下」的判据
+              if (!event.target.matches(":focus-visible") || fresh || wheelOpen) return;
+              openWheel(sticker.id, true);
+            }}
+            onClick={(event) => {
+              // ⚠ 2026-09-30 用户口径（改过一版）：收回是**双击**，而单击**什么都不做** ——
+              //   这枚贴纸本质是一根拖拽手柄；「换款」另有**悬停 / 触屏长按 / 键盘聚焦**三条入口，
+              //   不必再借用单击。第一版曾让单击「延迟 260ms 开环」，用户看过之后否掉了：
+              //   单击在这枚贴纸上就该是「按住/拖」的起手，而不是又一个动作。
+              // ⚠ 双击**立即**收回：不再需要「等一等看会不会来第二下」——那是给单击留时机才有的开销。
+              // ⚠ 键盘（Enter / Space）的 `detail` 恒为 0，**保持一次激活就收回**：
+              //   键盘没有误触这回事，而聚焦已经被「开环」占了 —— 不给它一条收回路径，
+              //   键盘用户就只剩「拖出画布」那个相当隐蔽的手势（2026-09-23 review 的老结论）。
+              if (event.detail === 1) return;
+              onTakeBack(film.key, sticker.id, event.detail);
+            }}
             onKeyDown={(event) => {
               const delta = NUDGE_KEYS[event.key];
               if (!delta) return;
@@ -1234,27 +1614,81 @@ const RbCard = memo(function RbCard({
               const step = event.shiftKey ? NUDGE_STEP_LARGE : NUDGE_STEP;
               onNudge(film.key, sticker, delta.dx * step, delta.dy * step);
             }}
-          />
-        ))}
+          >
+            <StickerFace skin={shown} />
+          </button>
+          {/* 轮盘自己 portal 到 `body`（理由见组件文件头）：写在这里只是「谁开的环」的归属，
+              它的节点**不在**这张卡里，也不在那枚 `<button>` 里 —— 所以 E2E 那两条
+              「贴纸里只有 5 个节点」「贴纸里没有浮层」的判据都不受影响。 */}
+          {wheelOpen && wheelFor && (
+            <StickerSkinWheel
+              anchor={wheelFor}
+              current={skin}
+              tint={sticker.type}
+              autoFocus={wheelByKeyboard.current}
+              onPreview={setPreview}
+              onPick={(picked) => {
+                // ⚠ 先关环、再落定：落定会让这一枚换款（React 重渲染），
+                //   环留在原地会在那一瞬间指向一个已经换了内容的锚点。
+                closeWheel();
+                onReskin(film.key, sticker.id, picked);
+              }}
+              onDismiss={closeWheel}
+              onPointerEnter={cancelClose}
+              onPointerLeave={scheduleClose}
+            />
+          )}
+          </Fragment>
+          );
+        })}
+        {/* 没有票时的引导。⚠ **未标记**那一档默认不显形(2026-09-29,PLAN-20260929172651 §3):
+            用户反馈「未标记看过的卡片右侧空白区域**重复出现了大量灰色的**『标记「看过」后就能贴』字样,
+            显得画面略为繁复」—— 现在它只在卡片 hover / `:focus-within` 时淡入(触屏 `hover: none` 下常显),
+            由 CSS 的 `.rb-canvas-hint` 管,JS 这边一个字都不用改。
+            ⚠ 节点**仍然渲染**,不要顺手加条件:除了「已标记」那档本来就有用之外,
+              E2E 也按 `toHaveCount` 数它(`spec:595` 数的正是「未标记但空」这一档)。
+            文案顺势收短。 */}
         {myStickers.length === 0 && others.total === 0 && (
           <span className="rb-canvas-hint">
-            {marked ? "点左边的红 / 黑，或把贴纸拖进来" : "标记「看过」后就能贴"}
+            {marked ? "点左边的红 / 黑，或把贴纸拖进来" : "标记「看过」即可贴"}
           </span>
         )}
       </div>
 
-      {zoomOpen && (
-        // ⚠ `mine` 必须传:弹层里我那一枚是**独立的只读 DOM 元素**(与卡片同一组成,见该组件),
-        //   不传的话它只会以「别人的点」的身份出现,既没有那圈白边、也不是它的真实位置。
+      {talkOpen && (
+        // ⚠ `Suspense` 写在条件**内部**:不打开时连边界都不挂,不多包一层没有内容的边界
         <Suspense fallback={null}>
-          <StickerZoomDialog
+          <LazyFilmCommentsDialog
             film={film}
+            /* ⚠ 给**这一部的全体票数**(`all`,已按本地视角修正过):讨论区顶上那行
+               「红 N · 黑 N」必须与卡片上那两个数字**同源**,否则刚贴一枚还没上报时两处会打架。 */
             counts={all}
+            /* ⚠ `mine` 只用来**预填文本框**:列表里认不出自己那条(服务端不回身份),
+               本地是唯一知道「我写了什么」的地方;没贴过就是 `undefined`(不能评)。 */
             mine={myStickers[0]}
-            onDismiss={() => setZoomOpen(false)}
+            onSaveComment={onSaveComment}
+            onDismiss={() => setTalkOpen(false)}
           />
         </Suspense>
       )}
+
+      {/* 讨论区入口 —— ⚠ **挂在卡片上,不挂在信息列里**(2026-09-30,用户:
+          「讨论区放卡片右上角,这样贴贴纸的区域就大一点了」)。
+          它原本与信息列里那串数字胶囊挤同一行,而那一行要 146px —— 信息列因此定在 158px,
+          信息列的宽**就是**画布的宽。搬到角上之后列宽收到 128px,画布于是宽了 30px。
+          ⚠ **恒显**(2026-09-29):0 票的片也有讨论区 ——「还没人评过」本身就是信息,
+            而且第一句评语要有个入口。
+          ⚠ 位置写在 `.rb-talk` 里(绝对定位到卡片右上角,压在画布角上,所以那一小块是点击死区);
+            焦点归还靠 `talkBtnRef`,它搬到哪儿都跟着。 */}
+      <button
+        ref={talkBtnRef}
+        type="button"
+        className="rb-talk"
+        aria-label={`打开《${film.zh}》的讨论区`}
+        onClick={() => setTalkOpen(true)}
+      >
+        讨论区
+      </button>
     </article>
   );
 });
