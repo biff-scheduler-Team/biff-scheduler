@@ -54,7 +54,7 @@ export function StickerCanvas({ filmKey, counts, skins, inView }: StickerCanvasP
   const dpr = useDpr();
   // 贴纸**外观**版本(token 变了就 +1,见 `sticker-sprite.ts::invalidate`)。
   // ⚠ 重绘守护只比尺寸与票数,看不见配色:不订阅它、不把它并进 `DrawKey`,配色一变画布就不会重画
-  //   (`--rb-red` / `--rb-black` 目前没有暗色覆盖,所以这条今天还看不出差别 —— 它是为那次覆盖准备的)。
+  //   (`--rb-black` 已于 2026-09-30 补上暗色覆盖,所以这条今天**真的**在起作用 —— 切主题必须重画群点)。
   const [epoch, setEpoch] = useState(() => spriteEpoch());
 
   useEffect(() => onSpriteInvalidate(() => setEpoch(spriteEpoch())), []);
