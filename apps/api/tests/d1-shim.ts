@@ -151,7 +151,7 @@ export function createAdminSchema(sqlite: DatabaseSync): void {
   `);
 }
 
-/** 计数聚合相关表的建表 DDL（与 `migrations/0003`、`0006`、`0007`、`0008`、`0010` 逐字一致）。 */
+/** 计数聚合相关表的建表 DDL（与 `migrations/0003`、`0006`、`0007`、`0008`、`0010`、`0011`、`0012` 逐字一致）。 */
 export function createStatSchema(sqlite: DatabaseSync): void {
   sqlite.exec(`
     CREATE TABLE film_want_contribution (
@@ -191,6 +191,7 @@ export function createStatSchema(sqlite: DatabaseSync): void {
       vote TEXT NOT NULL,
       comment TEXT,
       display_name TEXT,
+      skin TEXT,
       updated_at INTEGER NOT NULL,
       PRIMARY KEY(edition, film_key, contributor)
     );
@@ -201,6 +202,15 @@ export function createStatSchema(sqlite: DatabaseSync): void {
       black_count INTEGER DEFAULT 0 NOT NULL,
       updated_at INTEGER NOT NULL,
       PRIMARY KEY(edition, film_key)
+    );
+    CREATE TABLE film_vote_skin_stat (
+      edition TEXT NOT NULL,
+      film_key TEXT NOT NULL,
+      skin TEXT NOT NULL,
+      vote TEXT NOT NULL,
+      count INTEGER DEFAULT 0 NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(edition, film_key, skin, vote)
     );
     CREATE TABLE screening_ticket_contribution (
       edition TEXT NOT NULL,

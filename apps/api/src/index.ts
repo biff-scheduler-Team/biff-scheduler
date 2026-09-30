@@ -15,6 +15,7 @@ import {
   MAX_VOTES_PER_PING,
   normalizeComment,
   normalizeDisplayName,
+  normalizeSkin,
   normalizeVotes,
   toCommentItems,
 } from "./film-vote-stats";
@@ -25,6 +26,7 @@ import {
   exposeVoteRows,
   MAX_VOTE_ROWS,
   readRecentComments,
+  readSkinCounts,
   readVoteCounts,
   readVoteRows,
   removeContributorVote,
@@ -599,6 +601,12 @@ const filmVotePingSchema = z
             // 真正的长度收口在 `normalizeComment`，而且按**码点**算 —— zod 的 `.max()` 数的是
             // UTF-16 码元，两处各定一条上限迟早不一致（emoji / 星号面就是踩点）。
             comment: z.string().max(1000).optional(),
+            // 贴纸款（2026-09-29）。⚠ 与 `comment` 同一条口径：这里只管**形状**（是字符串、别超长），
+            // 真正的白名单收口在 `normalizeSkin`（`@biff/contracts/sticker`，前后端唯一来源）——
+            // 在这里再抄一份 id 列表，加一款时漏改一处就会「合法的款被判成非法」。
+            // ⚠ `.strict()` 要求它必须**显式出现**在这里：不声明的话整个载荷 422，
+            //   连票都存不上（这也是「后端必须先上线」那条顺序约束的由来）。
+            skin: z.string().max(40).optional(),
           })
           .strict(),
       )
@@ -609,8 +617,12 @@ const filmVotePingSchema = z
 app.get("/api/stats/film-votes", async (c) => {
   const edition = editionParam(c.req.query("edition"));
   if (!edition) return c.json({ error: "INVALID_EDITION" }, 422);
-  const votes = await readVoteCounts(database(c.env.DB), edition);
-  return c.json({ edition, votes });
+  const db = database(c.env.DB);
+  // 一次请求把「两色总数」与「按款细分」一起回（2026-09-29）：前端要按真实分布画群点，
+  // 分两个接口就得两次往返、而且两次快照可能差一拍。
+  // ⚠ 两者仍是**两次独立查询**（D1 无跨语句事务），别把它们相减当成不变量去断言。
+  const [votes, skins] = await Promise.all([readVoteCounts(db, edition), readSkinCounts(db, edition)]);
+  return c.json({ edition, votes, skins });
 });
 
 app.post("/api/stats/film-votes-ping", limited(pingLimiter), async (c) => {
@@ -658,6 +670,13 @@ app.post("/api/stats/film-votes-ping", limited(pingLimiter), async (c) => {
   const comments = carriesComments
     ? new Map(votes.map((entry) => [entry.key, normalizeComment(entry.comment)]))
     : undefined;
+  // 贴纸款（2026-09-29）：**与上面评语逐字同一套规矩**，包括那条数据安全的理由 ——
+  // 一个 `skin` 都没带的载荷是**旧版前端**，此时一个字都不许碰款列，
+  // 否则用户升级前选的款会被一次普通上报静默抹成默认款。
+  const carriesSkins = votes.some((entry) => "skin" in entry);
+  const skins = carriesSkins
+    ? new Map(votes.map((entry) => [entry.key, normalizeSkin(entry.skin)]))
+    : undefined;
   // 昵称:反馈板 / 讨论区那两处直接取 `c.get("profile").displayName` —— 它们挂了
   // `requireIdentity`,中间件**已经**替它们解析过身份。而这条 ping 必须支持匿名(口径 1),
   // 中间件不会替它解析,所以这里自己来一次。
@@ -675,13 +694,15 @@ app.post("/api/stats/film-votes-ping", limited(pingLimiter), async (c) => {
     );
     if (!("failure" in outcome)) displayName = normalizeDisplayName(outcome.profile.displayName);
   }
-  await replaceContributorVotes(db, edition, contributor, normalized, { comments, displayName });
+  await replaceContributorVotes(db, edition, contributor, normalized, { comments, displayName, skins });
   // ⚠ 顺手把**最新聚合**一起回给客户端（2026-09-28）：前端本来就要在「上报成功后」再 GET 一次
   //   `/api/stats/film-votes` 才能看到自己这一票体现在榜上 —— 那是多出来的一整个 RTT，
   //   弱网下尤其明显。这里多读一次聚合（与读接口同一条 `readVoteCounts`，同一份一致性口径），
   //   前端就能少走一次往返。老客户端不看这个字段，多带一份数据对它没有影响。
-  const counts = await readVoteCounts(db, edition);
-  return c.json({ ok: true, count: normalized.size, votes: counts });
+  // 按款聚合也一并回（2026-09-29）：前端上报成功后要立刻按**真实分布**重画群点，
+  // 而它刚选的那一款正是这次上报写进去的 —— 不回就得再等一次 GET 才看得到自己改了款。
+  const [counts, skinCounts] = await Promise.all([readVoteCounts(db, edition), readSkinCounts(db, edition)]);
+  return c.json({ ok: true, count: normalized.size, votes: counts, skins: skinCounts });
 });
 
 /** 「大家说」—— 跨片按时间倒序读一页评语(2026-09-29,PLAN-20260929181900)。
@@ -694,7 +715,14 @@ app.get("/api/stats/film-comments", async (c) => {
   if (!edition) return c.json({ error: "INVALID_EDITION" }, 422);
   const cursor = decodeCommentCursor(c.req.query("cursor"));
   const limit = clampCommentLimit(c.req.query("limit"));
-  const { rows, nextCursor } = await readRecentComments(database(c.env.DB), edition, cursor, limit);
+  // 可选按片过滤（2026-09-29）：卡片级讨论区问的是「**这一部**的评语」。
+  // ⚠ 非法 / 超长的 filmKey 当作**没有过滤**（回全场），而不是 422 —— 参数是展示用的
+  //   筛选条件，为它把整页评语当掉不划算；这与 `decodeCommentCursor` 的容错同一条口径。
+  const rawFilm = c.req.query("filmKey");
+  const filmKey = rawFilm && rawFilm.length <= MAX_FILM_KEY_LENGTH ? rawFilm : null;
+  const { rows, nextCursor } = await readRecentComments(database(c.env.DB), edition, cursor, limit, {
+    filmKey,
+  });
   return c.json({
     edition,
     items: toCommentItems(rows),

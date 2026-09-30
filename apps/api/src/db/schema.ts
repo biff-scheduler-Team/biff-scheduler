@@ -155,6 +155,12 @@ export const filmVoteContribution = sqliteTable("film_vote_contribution", {
    *    这个就是给人看的名字，可以公开。用快照而不是 join 账号表：
    *    ① 昵称会变，评语读的是「当时那句话是谁说的」；② 公开接口不必碰账号库。 */
   display_name: text(),
+  /** 这一票选的贴纸**款**（2026-09-29）。`null` = 迁移前写下的旧票 / 旧客户端上报的票。
+   *  ⚠ 必须落在**贡献行**上，不能只存在按款聚合表里：`replaceContributorVotes` 走的是**差分**
+   *    （见 `film-vote-stats.ts::diffVotes`），要把聚合减回去就得知道「上一枚是什么款」——
+   *    不存这一列，改款时只能凭空猜一个旧值，聚合迟早对不上且永不自愈。
+   *  ⚠ 白名单收口在 `film-vote-stats.ts`（与 `vote` 同一道），这里不写 CHECK。 */
+  skin: text(),
   updated_at: integer().notNull(),
 }, (table) => [
   primaryKey({ columns: [table.edition, table.film_key, table.contributor] }),
@@ -174,6 +180,28 @@ export const filmVoteStat = sqliteTable("film_vote_stat", {
   updated_at: integer().notNull(),
 }, (table) => [
   primaryKey({ columns: [table.edition, table.film_key] }),
+]);
+
+/** 每部影片**按款**的票数（2026-09-29）。只服务一件事：展板上的群点要画出
+ *  「大家各自选了什么款」—— 而那不能靠每次 `GROUP BY` 贡献表（榜单一次要读几百部片，
+ *  与 `film_vote_stat` 存在的理由完全相同）。
+ *
+ *  ⚠ **这是聚合，不是名单**：主键里没有 `contributor`，公开读接口因此只可能回计数。
+ *    与 `film_vote_contribution` 那条「身份标识绝不出公开接口」的约束天然一致。
+ *  ⚠ 与 `film_vote_stat` 的关系是「同一件事的细分」：两表都按差分同步，
+ *    但 `film_vote_stat` 的红黑总数是**权威**（旧票也在内；本表只覆盖带款的那部分）。 */
+export const filmVoteSkinStat = sqliteTable("film_vote_skin_stat", {
+  edition: text().notNull(),
+  film_key: text().notNull(),
+  /** 皮肤 id，白名单收口在 `film-vote-stats.ts` */
+  skin: text().notNull(),
+  vote: text().notNull(), // "red" | "black"
+  count: integer().notNull().default(0),
+  updated_at: integer().notNull(),
+}, (table) => [
+  // ⚠ 主键带 `(skin, vote)` 两维，而不是「一款一行、红黑两列」：后者等于把「款」写进列名，
+  //   加一款就要改表。这样同一部片最多 5 款 × 2 色 = 10 行，仍然可枚举。
+  primaryKey({ columns: [table.edition, table.film_key, table.skin, table.vote] }),
 ]);
 
 /** 抢票结果：每位贡献者「每场最终怎样了」。形状与 `screening_attendance_contribution` 同构

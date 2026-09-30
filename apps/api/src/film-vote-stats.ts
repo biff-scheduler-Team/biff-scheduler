@@ -7,6 +7,8 @@
  * 防刷交给贡献表的 (edition, film_key, contributor) 唯一约束：同一个人再怎么点也只算一票。
  */
 
+import { isStickerSkin, type StickerSkin } from "@biff/contracts/sticker";
+
 export type FilmVote = "red" | "black";
 
 export const FILM_VOTES: readonly FilmVote[] = ["red", "black"];
@@ -115,6 +117,50 @@ export function voteScore(counts: VoteCounts): number | null {
   const total = counts.red + counts.black;
   if (total <= 0) return null;
   return Math.round((counts.red / total) * 100) / 10;
+}
+
+/* ---------------- 皮肤（2026-09-29） ----------------
+ * 贴纸从「按 id 自动交替长什么样」改成**每枚手选一款皮肤**，这一票选的款跟着上报载荷进来，
+ * 服务端按「每部片每款各几票」聚合 —— 展板上的群点因此画得出大家真正选了什么。
+ *
+ * ⚠ **这是聚合、不是名单**：下面读出来的只有计数，主键里没有 `contributor`。
+ *   与 `film-vote-store.ts` 那条「身份标识绝不出公开接口」是同一件事的两面。
+ * ⚠ 皮肤 id 的白名单在 `@biff/contracts/sticker`（前后端唯一来源），这里只做归一与收口。 */
+
+/** 上报载荷里的一票附带的款 → 白名单内的款或 `null`。
+ *  `null` = 这一票没带款（旧客户端 / 迁移前的旧票），**不是错误** —— 它照样计入红黑总数，
+ *  只是不落进按款聚合（那部分显示时按默认款画，见前端）。 */
+export function normalizeSkin(value: unknown): StickerSkin | null {
+  return isStickerSkin(value) ? value : null;
+}
+
+/** 库里按款聚合的一行。 */
+export interface SkinStatRow {
+  film_key: string;
+  skin: unknown;
+  vote: unknown;
+  count: number | string;
+}
+
+/** 按款聚合行 → 前端读的**稀疏**字典：`{ filmKey: { skin: { red, black } } }`。
+ *
+ *  ⚠ 与 `formatVoteCounts` 同一套口径：计数 ≤ 0 的桶不返回（回一个 `{red:0,black:0}`
+ *    只会让前端多一堆「有计数但为 0」的分支）。
+ *  ⚠ 白名单在同一处收口：款或颜色不在白名单里（被人工改过的坏行）直接丢弃，
+ *    与其它读路径一样**不猜**。 */
+export function formatSkinCounts(
+  rows: Iterable<SkinStatRow>,
+): Record<string, Partial<Record<StickerSkin, VoteCounts>>> {
+  const out: Record<string, Partial<Record<StickerSkin, VoteCounts>>> = Object.create(null);
+  for (const row of rows) {
+    if (!isStickerSkin(row.skin) || !isFilmVote(row.vote)) continue;
+    const count = Math.max(0, Math.trunc(Number(row.count) || 0));
+    if (count <= 0) continue;
+    const perFilm = (out[row.film_key] ??= {});
+    const bucket = (perFilm[row.skin] ??= { red: 0, black: 0 });
+    bucket[row.vote] += count;
+  }
+  return out;
 }
 
 /* ---------------- 评语（2026-09-29,PLAN-20260929181900） ----------------

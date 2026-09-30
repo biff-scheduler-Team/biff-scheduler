@@ -78,6 +78,13 @@
       "when": 1790678768865,
       "tag": "0011_lucky_spitfire",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1790690343971,
+      "tag": "0012_add_sticker_skin",
+      "breakpoints": true
     }
   ]
 }
