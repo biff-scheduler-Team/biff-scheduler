@@ -64,6 +64,10 @@ typecheck / lint / 单测仍是**部署前**门禁。详见 §2。
 
 `<type>(<scope>): <中文一句话描述>`,`type` ∈ `feat` `fix` `refactor` `perf` `style` `docs` `test` `chore` `data` `build`。
 
+- **提交前必过 code review Skill(用户约定)**:每次 `git commit` 之前必须调用 SKILL `code-review-skill`
+  审查本轮改动(`git diff` / `git diff --staged`),按结论**修完再提交**;不得跳过,也不得「先提交再补 review」。
+  **终止条件**:同一提交内最多两轮(第 1 轮全量 → 第 2 轮只审修复产生的增量),第 2 轮仍有问题就**停下来问人**,不递归。
+  **自指豁免**:改动本身就是 code review 规则 / 这个 SKILL 时,只做一次静态一致性检查,不递归(完整版见 `DEVELOPMENT-STANDARDS.md` §4.7.1)。
 - 一次提交只做一件事;body 写「为什么 + 验证结果」。
 - 禁止:提交临时文件 / `dist/` / `data/_cache/` / 密钥;`push --force` 到 `main`;amend 已推送提交;`--no-verify`;把他人改动搭车提交。
 - **会话草稿不落仓库根**:一律落 `.scratch/`(已 gitignore)。落点必须**工具中立** ——
