@@ -328,6 +328,29 @@ describe("scheduleFilmVotesPing", () => {
     expect(seen).toEqual([1, 2, 0]);
   });
 
+  // 2026-09-30:那次线上事故里每一次上报都被服务端 422 拒掉,而提示一直在说「请检查网络后重试」——
+  // 把人往错的方向带了整整一天。所以「服务端拒绝」与「请求压根没走通」必须分开报。
+  it("失败的**种类**一起报出来：服务端拒绝（非 2xx）≠ 网络不通", async () => {
+    vi.resetModules();
+    let rejected = true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => (rejected ? fail(422) : Promise.reject(new Error("offline")))),
+    );
+    const { onFilmVotesPingFailure, scheduleFilmVotesPing } = await import("../src/film-votes");
+    const kinds: Array<string | null> = [];
+    onFilmVotesPingFailure((_streak, kind) => kinds.push(kind));
+
+    scheduleFilmVotesPing([{ key: "a", vote: "red" }]);
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(kinds).toEqual(["rejected"]);
+
+    rejected = false;
+    scheduleFilmVotesPing([{ key: "a", vote: "red" }]);
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(kinds).toEqual(["rejected", "offline"]);
+  });
+
   it("上报成功 → 把刚发出去的这份记成「服务端已含我」,并顺手重拉一次", async () => {
     vi.resetModules();
     let reads = 0;

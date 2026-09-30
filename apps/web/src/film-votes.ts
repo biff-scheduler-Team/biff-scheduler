@@ -102,22 +102,43 @@ function emit(): void {
 /* ---------------- 上报失败的通知口(2026-09-28) ----------------
  * 由来:上报是 `fetch(...).catch(() => undefined)` —— 断网 / 被限流时用户以为榜上记了,
  * 其实没有。完全静默与「报错刷屏」都不对,这里只回答「**连续**失败了几次」,
- * 由视图层决定什么时候说一次(它才是知道「有没有说过」的那一层)。 */
+ * 由视图层决定什么时候说一次(它才是知道「有没有说过」的那一层)。
+ *
+ * ⚠ 2026-09-30 追加**失败种类**:过去只有「失败」这一个概念,视图层只好一律说
+ *   「请检查网络后重试」。而那次线上事故(ping 载荷的 `comment: null` 被 zod 拒 ⇒
+ *   每一次上报都 422)**根本不是网络问题** —— 提示把人往错的方向带了整整一天。
+ *   所以「服务端拒绝了这份载荷」与「请求压根没到」必须分开报。 */
 
-const failureListeners = new Set<(streak: number) => void>();
+/** 失败的两种性质。`rejected` = 服务端回了个非 2xx（多半是**我们自己的载荷/版本**对不上，
+ *  用户重试一万次也不会好）；`offline` = 请求没走通（断网 / 超时 / DNS）。 */
+export type FilmVotesPingFailureKind = "rejected" | "offline";
+
+/** 上报被服务端**拒绝**（非 2xx）。带状态码是为了日志里能一眼看出是 4xx 还是 5xx。 */
+export class FilmVotesPingRejectedError extends Error {
+  constructor(readonly status: number) {
+    super(`film-votes-ping ${status}`);
+    this.name = "FilmVotesPingRejectedError";
+  }
+}
+
+const failureListeners = new Set<
+  (streak: number, kind: FilmVotesPingFailureKind | null) => void
+>();
 let pingFailureStreak = 0;
 
-/** 订阅「上报连续失败了几次」。成功时会收到一次 `0`,供视图层复位「已提示过」。 */
-export function onFilmVotesPingFailure(listener: (streak: number) => void): () => void {
+/** 订阅「上报连续失败了几次」。成功时会收到一次 `0`（`kind` 为 `null`），供视图层复位「已提示过」。 */
+export function onFilmVotesPingFailure(
+  listener: (streak: number, kind: FilmVotesPingFailureKind | null) => void,
+): () => void {
   failureListeners.add(listener);
   return () => {
     failureListeners.delete(listener);
   };
 }
 
-function reportPingFailure(streak: number): void {
+function reportPingFailure(streak: number, kind: FilmVotesPingFailureKind | null): void {
   pingFailureStreak = streak;
-  for (const listener of failureListeners) listener(streak);
+  for (const listener of failureListeners) listener(streak, kind);
 }
 
 /** 已缓存的票数（同步读，未加载过则为空表） */
@@ -277,7 +298,10 @@ async function sendVotes(
       body: JSON.stringify({ edition: EDITION, votes: list.slice(0, end) }),
       signal: AbortSignal.timeout(12_000),
     });
-    if (!response.ok) throw new Error(`film-votes-ping ${response.status}`);
+    // ⚠ 抛**带种类的**错误（见 `FilmVotesPingRejectedError`）：视图层要靠它把
+    //   「服务端拒绝」与「网络不通」分开提示 —— 这一条正是 2026-09-30 那次
+    //   「提示说检查网络，其实是 422」的根因所在。
+    if (!response.ok) throw new FilmVotesPingRejectedError(response.status);
     const body = (await response.json()) as { votes?: unknown; skins?: unknown };
     if (end >= total) {
       // ⚠ 响应里**没有 `votes`** 才是「老服务端」的信号（它压根不回全量）→ 必须回 `null`，
@@ -311,14 +335,17 @@ export function scheduleFilmVotesPing(votes: Iterable<FilmVoteInput>): void {
         // ⚠ `skins` 也必须在**同一拍**换成新的：两本账来自同一个响应体，分批换会让群点
         //   短暂画在「新数字 + 旧分布」上 —— 那正是「群点比数字多/少一枚」的成因。
         adoptSyncedVotes(list);
-        reportPingFailure(0);
+        reportPingFailure(0, null);
         // ⚠ 新服务端在响应里顺手回了全量 → 直接用，省掉「上报成功再 GET 一次」的那个 RTT；
         //   老服务端（没这个字段）才退回去重拉。
         if (raw === null) return loadFilmVotes(true);
         return applyVotes(raw.votes, raw.skins);
       })
-      .catch(() => {
-        reportPingFailure(pingFailureStreak + 1);
+      .catch((error: unknown) => {
+        reportPingFailure(
+          pingFailureStreak + 1,
+          error instanceof FilmVotesPingRejectedError ? "rejected" : "offline",
+        );
       });
   }, 1200);
 }

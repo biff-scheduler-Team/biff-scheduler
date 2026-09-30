@@ -282,14 +282,23 @@ export function RedBlackPage() {
   const pingFailedRef = useRef(false);
   useEffect(
     () =>
-      onFilmVotesPingFailure((streak) => {
+      onFilmVotesPingFailure((streak, kind) => {
         if (streak === 0) {
           pingFailedRef.current = false;
           return;
         }
         if (pingFailedRef.current) return;
         pingFailedRef.current = true;
-        ToastQueue.negative("贴纸没能同步到榜上，请检查网络后重试。", { timeout: 5000 });
+        // ⚠ 两种失败**分开说**（2026-09-30）:服务端**拒绝了**这份载荷时叫用户「检查网络」
+        //   是把人往错的方向带 —— 那次 422 事故里每一次上报都被拒,而提示一直在说网络,
+        //   于是没人会往「载荷 / 版本对不上」上想。`rejected` 的措辞要留一句「一直这样请告诉我们」:
+        //   那才是用户能把线索交回来的出口。
+        ToastQueue.negative(
+          kind === "rejected"
+            ? "贴纸没能同步到榜上：服务端拒绝了这次上报。稍后再试一次；一直这样请告诉我们。"
+            : "贴纸没能同步到榜上，请检查网络后重试。",
+          { timeout: 5000 },
+        );
       }),
     [],
   );
