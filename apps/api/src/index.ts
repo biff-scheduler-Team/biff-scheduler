@@ -600,13 +600,22 @@ const filmVotePingSchema = z
             // 评语（2026-09-29,PLAN-20260929181900）。⚠ 这里只挡「大得离谱」的输入：
             // 真正的长度收口在 `normalizeComment`，而且按**码点**算 —— zod 的 `.max()` 数的是
             // UTF-16 码元，两处各定一条上限迟早不一致（emoji / 星号面就是踩点）。
-            comment: z.string().max(1000).optional(),
+            //
+            // ⚠⚠ **必须是 `nullable()`**（2026-09-30 线上事故）:前端 `redblack.ts::votesOf`
+            //   每一条都带这个字段，没写评语时送的是 **`null`**，而不是省略字段 ——
+            //   服务端正是靠「字段在不在」分辨新旧前端（见下面 `carriesComments` 那段）。
+            //   而 `z.string()` **不收 `null`** ⇒ 整份载荷 422 ⇒ **连票都写不进去**。
+            //   症状:贴纸贴了榜上不涨、评语永远不出现在讨论区,而前端只会说一句
+            //   「正在同步到讨论区」—— 两边各自看都自洽,只有线上是坏的。
+            //   守它的是 `tests/film-vote-ping-contract.test.ts`（端点级，此前一个都没有）。
+            comment: z.string().max(1000).nullable().optional(),
             // 贴纸款（2026-09-29）。⚠ 与 `comment` 同一条口径：这里只管**形状**（是字符串、别超长），
             // 真正的白名单收口在 `normalizeSkin`（`@biff/contracts/sticker`，前后端唯一来源）——
             // 在这里再抄一份 id 列表，加一款时漏改一处就会「合法的款被判成非法」。
             // ⚠ `.strict()` 要求它必须**显式出现**在这里：不声明的话整个载荷 422，
             //   连票都存不上（这也是「后端必须先上线」那条顺序约束的由来）。
-            skin: z.string().max(40).optional(),
+            // ⚠ `nullable()` 与 `comment` 逐字同理：前端没选款时送 `null`（同上，字段不能省）。
+            skin: z.string().max(40).nullable().optional(),
           })
           .strict(),
       )
