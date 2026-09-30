@@ -250,7 +250,11 @@ test("标记「看过」→ 贴一枚红:画布上立刻出现,并上报给服�
   // ⚠ **不能写死是哪一款**:刚贴下那枚的款由 id 推导(而 id 带随机后缀),
   //   这里只断言「字段在,且是契约层白名单里的一款」—— 写死会变成一条看运气的断言。
   expect("skin" in sent[0]).toBe(true);
-  expect(String(sent[0].skin)).toMatch(/^(torn|stub|sprocket|scrap|reel)$/);
+  // ⚠ 这份名单**镜像契约层** `@biff/contracts/sticker` 的 `STICKER_SKIN_KEYS`
+  //   (E2E 里没有 workspace 包的 paths,引不进来,只能抄)。换款时必须跟着改 ——
+  //   2026-09-30 换款时就漏了这条(以及 `anotherSkin` 里那份),CI 一跑就红,
+  //   那条漏的已改成从 DOM 读;这条留着是因为这里**不开轮盘**,没有别的东西可对齐。
+  expect(String(sent[0].skin)).toMatch(/^(clap|palm|stub|scrap|sprocket)$/);
 });
 
 test("服务端的全体票数渲染成卡片上的红黑数字与只读小点", async ({ page }) => {
@@ -1687,7 +1691,13 @@ async function placeRedAndSettle(page: Page): Promise<{ card: Locator; dot: Loca
  *    写死某一款的话,新贴那枚的款由带随机后缀的 id 推导,这条用例就会变成看运气。 */
 async function anotherSkin(wheel: Locator): Promise<string> {
   const current = await wheel.getAttribute("data-rb-wheel");
-  const keys = ["torn", "stub", "sprocket", "scrap", "reel"];
+  // ⚠ **不再手抄一份名单**:2026-09-30 换款(`torn` / `reel` → `clap` / `palm`)时这里抄的那份
+  //   没跟着改,于是这条用例去点一个已经不存在的节点、红在「元素找不到」上 ——
+  //   而它想守的其实是「换一款给用户看」,与具体是哪五款无关。
+  //   现在名单从**轮盘自己渲染出来的节点**读:契约层换款,这条自动跟上。
+  const keys = await wheel
+    .locator("[data-rb-wheel-node]")
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-rb-wheel-node") ?? ""));
   const other = keys.find((skin) => skin !== current);
   expect(other).toBeTruthy();
   return other as string;

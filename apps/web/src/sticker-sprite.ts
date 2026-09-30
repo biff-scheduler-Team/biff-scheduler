@@ -7,8 +7,10 @@
  *
  * ⚠ 形状与质感必须与 `redblack-parity.css` 里的 `.rb-dot` **逐字对应**
  *   (用户 2026-09-22 选的是「预渲染 sprite,视觉几乎不变」):
- *   · 尺寸 32×32(`STICKER_SIZE`;2026-09-28 曾由 26 缩到 20,2026-09-29 又按用户要求放大到 32
- *     —— 为的是让**中心微图标**在卡片上读得出来);
+ *   · 尺寸由 `STICKER_SIZE` 给出(沿革 26 → 20 → 32 → 20,用户四轮改过;现在停在 20)。
+ *     ⚠ 这里原本写着「尺寸 32×32」——**过期了**:放大到 32 的那一轮事后被用户缩回 20,
+ *       「图标要读得出来」这件事现在由 `ICON_RATIO` 顶着(0.45 → 0.55,见 `sticker-glyph.ts`),
+ *       而不是靠贴纸本身变大;
  *   · 轮廓 —— 由 `sticker-shape.ts` 的**形状族**给出(`torn` / `stub` / `sprocket` / `scrap` / `reel`),
  *     不再是一条固定的 border-radius;
  *   · 三层外落影 + 一层内描边(`inset 0 0 0 1px rgb(255 255 255 / 18%)`);
@@ -40,7 +42,8 @@ import { skinSpec, type StickerSkin } from "./sticker-skin";
  *   26 → 20(2026-09-28,PLAN-20260928003736,为了「容纳更多」,纵向 8 行)
  *     → 32(2026-09-29 上午,为「像实体贴纸」:异形轮廓 + 微图标在 20px 下糊成一粒点)
  *     → **20**(2026-09-29 下午):用户看过 32 的实机效果后明确要求「都调小一点,20 左右差不多」。
- *   用户已知并接受的代价:微图标实际只有 `20 × 0.45 = 9px`,票根的 V 形撕口 / 齿孔只剩轮廓感;
+ *   用户已知并接受的代价:微图标实际只有 `20 × ICON_RATIO`(2026-09-30 起 = **11px**;
+ *   在那之前是 `20 × 0.45 = 9px`,五款图形糊成一粒噪点),票根的 V 形撕口 / 齿孔只剩轮廓感;
  *   细密那几层材质(胶片颗粒)在这个尺寸下落在 1px 以下,实际读作一层淡淡的色调。 */
 export const STICKER_SIZE = 20;
 
@@ -74,10 +77,14 @@ const cache = new Map<string, StickerSprite>();
 /** 「样式表还没生效」这一种意外用的中性灰 —— 一眼能看出不对 */
 const FALLBACK = "#8b8b8b";
 
-/** 贴纸用到的全部颜色,**一起读、一起失效**:底色的红黑、微图标的两种墨色。 */
+/** 贴纸用到的全部颜色,**一起读、一起失效**:底色的红黑、微图标的两种墨色,外加金棕榈的金。 */
 interface Palette {
   base: Record<StickerType, string>;
   icon: Record<StickerType, string>;
+  /** 金棕榈那枚叶子的金 —— 唯一一个**不跟纸色走**的图标墨色(见 CSS 里 `--rb-icon-gold` 的说明)。
+   *  ⚠ 它必须在这里一起读:canvas 上的群点与 DOM 上的贴纸是**同一款皮肤**,
+   *    两处取的墨色不一样就会出现「卡片上是金叶、群点上是白叶」。 */
+  iconGold: string;
 }
 
 let palette: Palette | null = null;
@@ -147,6 +154,7 @@ function readPalette(): Palette {
   palette = {
     base: { red: read("--rb-red"), black: read("--rb-black") },
     icon: { red: read("--rb-icon-red"), black: read("--rb-icon-black") },
+    iconGold: read("--rb-icon-gold"),
   };
   return palette;
 }
@@ -216,12 +224,16 @@ function build(type: StickerType, skin: StickerSkin, dpr: number): StickerSprite
   //    ⚠ 落点必须走 `glyphPlacement`:**不能**只平移到中心再 `scale`(那是绕原点缩的,
   //      会把整块图案推到右下角 —— 2026-09-29 踩过,见那个函数的说明)。
   const spot = glyphPlacement(size);
+  const glyph = skinSpec(skin).glyph;
   ctx.save();
   ctx.clip(body);
   ctx.translate(spot.x, spot.y);
   ctx.scale(spot.scale, spot.scale);
-  ctx.fillStyle = colors.icon[type];
-  ctx.fill(new Path2D(glyphPath(skinSpec(skin).glyph)));
+  // ⚠ 墨色按**图标**分档(与 CSS 里 `.rb-dot__face[data-rb-glyph="palm"]` 那条规则同一件事):
+  //   金棕榈的叶子红贴黑贴都是金的,其余图标仍跟纸色走。
+  //   `none`(留空)是空路径,画不出东西 —— 但这一支仍然照走,不必为它加特判。
+  ctx.fillStyle = glyph === "palm" ? colors.iconGold : colors.icon[type];
+  ctx.fill(new Path2D(glyphPath(glyph)));
   ctx.restore();
 
   // ⑥ 内描边(`inset 0 0 0 1px`):裁到形状内再描 2px 的线,可见的就是内侧那一像素

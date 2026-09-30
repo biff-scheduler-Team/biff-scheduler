@@ -17,7 +17,7 @@ const base: DrawKey = {
   counts: "5,3,2",
   // 按款分布签名（2026-09-29）。⚠ 它**必须单独一项**：「有人把红票从撕裂圆片换成票根」
   // 不改变两色总数，只看 `counts` 会把这次变化判成「不用重画」，画面会停在旧分布上。
-  skins: "torn:5,3,2|stub:0,0,0",
+  skins: "clap:5,3,2|stub:0,0,0",
   epoch: 0,
 };
 
@@ -60,6 +60,6 @@ describe("needsRedraw:该不该重画画布", () => {
   it("★ 只换了款(两色总数一模一样)→ 也要重画", () => {
     // 这是 2026-09-29 补的一条,与 `epoch` 那条同源:总数没动、款变了,
     // 若不看 `skins`,群点会一直画着旧分布 —— 而数字上一切正常,只有人眼看得出来。
-    expect(needsRedraw(base, { ...base, skins: "torn:4,3,1|stub:1,0,1" })).toBe(true);
+    expect(needsRedraw(base, { ...base, skins: "clap:4,3,1|stub:1,0,1" })).toBe(true);
   });
 });

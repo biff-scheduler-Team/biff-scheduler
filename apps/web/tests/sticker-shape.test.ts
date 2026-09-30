@@ -18,6 +18,9 @@ import {
   type StickerShape,
 } from "../src/sticker-shape";
 import { ALL_GLYPHS, GLYPH_BOX, ICON_RATIO, glyphPath, glyphPlacement } from "../src/sticker-glyph";
+// ⚠ 只为把「图标在**真贴纸**上有多大」也算进来(`STICKER_SIZE` 是全站唯一那份尺寸口径)。
+//   它在 node 里可 import:与 `sticker-material.test.ts` 同一条路,`createElement` 只在 `build()` 里调。
+import { STICKER_SIZE } from "../src/sticker-sprite";
 
 /** 取出 path `d` 里所有数字。 */
 function numbersIn(d: string): number[] {
@@ -71,9 +74,12 @@ describe("中心微图标的几何", () => {
     expect(new Set(ALL_GLYPHS.map((glyph) => glyphPath(glyph))).size).toBe(ALL_GLYPHS.length);
   });
 
-  it("图标占比是 45% —— 32px 贴纸上约 14px，再小就会被读成印刷瑕疵", () => {
-    expect(ICON_RATIO).toBeCloseTo(0.45, 5);
-    expect(Math.round(SHAPE_BOX * ICON_RATIO)).toBe(14);
+  // ⚠ 0.45 → 0.55(2026-09-30):0.45 那句「下限」是按 32px 写的，而贴纸实际是 20px
+  //   —— 9px 的图标五款全糊，见 `sticker-glyph.ts` 里 `ICON_RATIO` 的说明。
+  it("图标占比是 55% —— 20px 贴纸上约 11px，32px 形状盒上约 18px", () => {
+    expect(ICON_RATIO).toBeCloseTo(0.55, 5);
+    expect(Math.round(SHAPE_BOX * ICON_RATIO)).toBe(18);
+    expect(Math.round(STICKER_SIZE * ICON_RATIO)).toBe(11);
   });
 
   it("`glyphPlacement` 把图形摆在**正中** —— 这是 canvas 那一侧踩过的坑", () => {
@@ -86,7 +92,8 @@ describe("中心微图标的几何", () => {
       expect(x).toBeCloseTo(size - drawn - x, 6);
       expect(y).toBeCloseTo(size - drawn - y, 6);
     }
-    expect(glyphPlacement(SHAPE_BOX).x).toBeCloseTo(8.8, 6);
+    // (32 − 24 × (32 × 0.55 / 24)) / 2 = 7.2
+    expect(glyphPlacement(SHAPE_BOX).x).toBeCloseTo(7.2, 6);
   });
 });
 

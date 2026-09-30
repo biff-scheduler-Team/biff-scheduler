@@ -13,15 +13,23 @@
  *   将来若要单独统计材质就现成），但具体怎么呈现只在绘制侧定义。
  */
 
-/** 可选皮肤（本轮 5 款，**不新增形状** —— 场记板 / 桂冠等留作后续）。
+/** 可选皮肤（2026-09-30 定稿 5 款：**红黑同一套，只差颜色**）。
+ *
  *  ⚠ 数组顺序 = 轮盘里的排列顺序 = 群点分款时的稳定次序。不要为了好看重排：
- *    群点的落点由 id 推导，改顺序会让「同一个人同一票」在别人屏幕上换个位置。 */
+ *    群点的落点由 id 推导，改顺序会让「同一个人同一票」在别人屏幕上换个位置。
+ *
+ *  ⚠ 这一轮**换掉了两款**：`torn`（撕裂圆片）与 `reel`（胶卷盘）下线，新上
+ *    `clap`（场记板）与 `palm`（金棕榈）；`torn` 的**轮廓**没浪费 —— `palm` 复用它。
+ *    ⚠ 删款不是改这一行就完事：库里那两款的行**必须一起清**
+ *      （`film_vote_contribution.skin` + `film_vote_skin_stat`），
+ *      否则它们的桶永远减不掉、群点会比卡片上的数字多一枚
+ *      （操作约束原话见 `apps/api/src/film-vote-store.ts` 的 `prevSkins` 那段）。 */
 export const STICKER_SKINS = [
-  { key: "torn", label: "撕裂圆片" },
+  { key: "clap", label: "场记板" },
+  { key: "palm", label: "金棕榈" },
   { key: "stub", label: "票根" },
-  { key: "sprocket", label: "胶片齿孔" },
   { key: "scrap", label: "胶片残片" },
-  { key: "reel", label: "胶卷盘" },
+  { key: "sprocket", label: "胶片齿孔" },
 ] as const;
 
 export type StickerSkin = (typeof STICKER_SKINS)[number]["key"];
@@ -32,8 +40,11 @@ export const STICKER_SKIN_KEYS: readonly StickerSkin[] = STICKER_SKINS.map((skin
 /** 没存皮肤时的兜底款。
  *  ⚠ 用户说了「旧数据不用兼容、我会自己删」，所以这不是在迁旧数据 —— 它收的是**字段缺席**：
  *    旧客户端上报的票、迁移前写下的聚合行，读回来都没有款。让它们落在一个确定的款上，
- *    而不是渲染时抛错或画出一个不存在的形状。 */
-export const DEFAULT_STICKER_SKIN: StickerSkin = "torn";
+ *    而不是渲染时抛错或画出一个不存在的形状。
+ *  ⚠ 2026-09-30 换款时**它必须跟着换**：原来落 `torn`，而 `torn` 已下线 ——
+ *    留着一个不在白名单里的兜底款，等于每次兜底都要再走一次「白名单外的值怎么画」那条分支。
+ *    现在落 `stub`（票根）：五款里最中性的一枚，读起来正好像「没有特意挑过」。 */
+export const DEFAULT_STICKER_SKIN: StickerSkin = "stub";
 
 const skinSet = new Set<string>(STICKER_SKIN_KEYS);
 

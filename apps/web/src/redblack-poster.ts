@@ -31,7 +31,7 @@ import {
 import { glyphPath, glyphPlacement, type StickerGlyph } from "./sticker-glyph";
 import { paintMaterial } from "./sticker-material";
 import { shapePath, type StickerShape } from "./sticker-shape";
-import { resolveSkin, skinSpec, type StickerSkin } from "./sticker-skin";
+import { FALLBACK_SKIN, resolveSkin, skinSpec, type StickerSkin } from "./sticker-skin";
 import { dateInfo } from "./util";
 import {
   boardFilms,
@@ -343,6 +343,14 @@ function stickerBody(shape: StickerShape, size: number): Path2D {
   return built;
 }
 
+/** 图标墨色:金棕榈那枚叶子**恒为金**(与页面 `--rb-icon-gold` 是同一件事),
+ *  其余图形仍走深底海报专属的那一档白。
+ *  ⚠ 抽成一处的理由与页面侧一样:海报里画图标有两处(榜单行左侧那枚「我贴的」、
+ *    贴纸区里的每一枚),两处各写一遍 `glyph === "palm" ? … : …` 迟早会漏一处。 */
+function iconInk(glyph: StickerGlyph): string {
+  return glyph === "palm" ? C.stickerGold : C.stickerInk;
+}
+
 /** 微图标 `Path2D` 缓存(图形本身与尺寸无关,缩放交给绘制时的 `ctx.scale`)。 */
 const iconCache = new Map<StickerGlyph, Path2D>();
 
@@ -423,7 +431,8 @@ function drawField(ctx: CanvasRenderingContext2D, row: RbPosterRow, x: number, t
       ctx.stroke(body);
     }
     // 中心微图标:与页面上是同一族图形(同样由款决定),墨色用深底海报专属的那一档
-    drawStickerIcon(ctx, skinSpec(s.skin).glyph, FIELD_STICKER, C.stickerInk);
+    // (金棕榈除外 —— 它恒为金,见 `iconInk`)
+    drawStickerIcon(ctx, skinSpec(s.skin).glyph, FIELD_STICKER, iconInk(skinSpec(s.skin).glyph));
     ctx.restore();
   });
   ctx.restore();
@@ -449,9 +458,10 @@ function drawRow(
     // 这一枚就是「我贴的那一张」的缩略:直接拿它在贴纸区里的那一枚来推形状与图标,
     // 而不是另起一个 id —— 否则同一个意思会在这张图上出现两种轮廓。
     const mineSticker = row.mineIndex >= 0 ? row.stickers[row.mineIndex] : null;
-    // 没有那一枚时用契约层的兜底款（`torn`）—— 与 `resolveSkin` 的兜底不是同一条路径，
-    // 但这里只是「连票都没有时的占位形状」，不会出现在有票的行上。
-    const mineSkin: StickerSkin = mineSticker?.skin ?? "torn";
+    // 没有那一枚时用**契约层的兜底款常量**（`FALLBACK_SKIN`）—— 不许在这里写死某个款名：
+    // 2026-09-30 换款时这里正是写着 `"torn"`，而那一款被下线了，于是分享图上会画出一个
+    // 白名单里已经不存在的款（不报错，只是画错）。兜底款只允许有一处表述。
+    const mineSkin: StickerSkin = mineSticker?.skin ?? FALLBACK_SKIN;
     const body = stickerBody(skinSpec(mineSkin).shape, size);
     ctx.save();
     // 与片名那一行**视觉居中对齐**(基线往上约 9px 是字身中心,而不是整行居中)
@@ -465,7 +475,7 @@ function drawRow(
       ctx.stroke(body);
     }
     if (mineSticker) {
-      drawStickerIcon(ctx, skinSpec(mineSkin).glyph, size, C.stickerInk);
+      drawStickerIcon(ctx, skinSpec(mineSkin).glyph, size, iconInk(skinSpec(mineSkin).glyph));
     }
     ctx.restore();
   } else {

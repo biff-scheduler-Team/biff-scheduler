@@ -44,11 +44,14 @@ export interface SkinSpec {
 /** 皮肤 → 外观。⚠ 类型是 `Record<StickerSkin, …>`：`@biff/contracts/sticker` 里加一款而
  *  这里忘了登记，会**编译不过**（而不是运行时画出一个不存在的形状）。 */
 const SKINS: Record<StickerSkin, SkinSpec> = {
-  torn: { shape: "torn", glyph: "star", material: "screen" },
+  // 2026-09-30 定稿：场记板 / 金棕榈 / 票根 / 胶片残片 / 胶片齿孔（红黑同一套，只差颜色）。
+  // ⚠ `palm` 复用 `torn` 的**轮廓**：一款皮肤是「形状 + 图标 + 材质」的组合，
+  //   形状可以被多款复用 —— 所以这边少画一套轮廓，而「撕裂圆片」这个款名下线并不浪费它的形状。
+  clap: { shape: "clap", glyph: "none", material: "screen" },
+  palm: { shape: "torn", glyph: "palm", material: "ink" },
   stub: { shape: "stub", glyph: "heart", material: "ink" },
-  sprocket: { shape: "sprocket", glyph: "hole", material: "grain" },
   scrap: { shape: "scrap", glyph: "bolt", material: "grain" },
-  reel: { shape: "reel", glyph: "exit", material: "screen" },
+  sprocket: { shape: "sprocket", glyph: "hole", material: "grain" },
 };
 
 /** 全部可选皮肤，**按轮盘里的排列顺序**（顺序来自契约层，见那里的说明）。 */
@@ -67,5 +70,9 @@ export function resolveSkin(id: string, skin?: string | null): StickerSkin {
   return isStickerSkin(skin) ? skin : derivedSkin(id);
 }
 
-/** 兜底款（服务端 / 契约层定为 `torn`）。面板里需要一个「默认高亮」时用它。 */
+/** 兜底款（服务端 / 契约层定为 `stub`，见 `DEFAULT_STICKER_SKIN`）。
+ *  ⚠ 2026-09-30 换款时它**跟着换过**（原 `torn`，已下线）—— 这里如果写着旧款名，
+ *    下一个人会顺着它去找一个不存在的款。
+ *  ⚠ 它只用于「需要一个默认高亮」，**不是**「没存款时画哪一款」：
+ *    后者走 `resolveSkin` → 按 id 兜底（见那里的说明），比同一个值更耐看。 */
 export const FALLBACK_SKIN: StickerSkin = DEFAULT_STICKER_SKIN;

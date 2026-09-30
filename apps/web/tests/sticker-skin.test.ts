@@ -25,7 +25,9 @@ describe("皮肤的登记表", () => {
     for (const skin of ALL_SKINS) {
       const spec = skinSpec(skin);
       expect(ALL_SHAPES).toContain(spec.shape);
-      expect(ALL_GLYPHS).toContain(spec.glyph);
+      // ⚠ `none`（留空）**不在** `ALL_GLYPHS` 里：它不是「一个图形」，而是「这一款不印图形」——
+      //    场记板正是留空的那一款（2026-09-30，用户口径：板子自己就是内容）。
+      expect(spec.glyph === "none" || ALL_GLYPHS.includes(spec.glyph)).toBe(true);
       expect(STICKER_MATERIAL_LIST).toContain(spec.material);
     }
   });
@@ -52,7 +54,7 @@ describe("皮肤的登记表", () => {
 
 describe("取款：存了的用它，没存的按 id 兜底", () => {
   it("★ 存了且合法 → 用它", () => {
-    expect(resolveSkin("s-anything", "reel")).toBe("reel");
+    expect(resolveSkin("s-anything", "palm")).toBe("palm");
     expect(resolveSkin("s-anything", "stub")).toBe("stub");
   });
 

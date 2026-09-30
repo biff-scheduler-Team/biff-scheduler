@@ -18,8 +18,11 @@
  * ⚠ 纯函数 + 常量表,**import 期不碰 DOM**:可被 node 单测直接 import。
  */
 
-/** 形状族。⚠ 2026-09-29 起**红黑共用同一套**（见 `ALL_SHAPES`），不再按颜色拆子集。 */
-export type StickerShape = "torn" | "stub" | "sprocket" | "scrap" | "reel";
+/** 形状族。⚠ 2026-09-29 起**红黑共用同一套**（见 `ALL_SHAPES`），不再按颜色拆子集。
+ *  ⚠ 2026-09-30 换款：`reel`（胶卷盘）下线，新上 `clap`（场记板）；`torn` 留着 ——
+ *    它虽然不再是「一款皮肤」，但**金棕榈复用它当轮廓**（见 `sticker-skin.ts`），
+ *    所以形状与皮肤**不是一一对应**的关系：形状可以被多款复用，皮肤是「形状+图标+材质」的组合。 */
+export type StickerShape = "torn" | "stub" | "sprocket" | "scrap" | "clap";
 
 /** 设计盒边长。所有形状的顶点都在 `0..SHAPE_BOX` 内描画,与贴纸尺寸同值(32px)。 */
 export const SHAPE_BOX = 32;
@@ -186,21 +189,23 @@ function scrapVertices(): Vertex[] {
   return out;
 }
 
-/** 胶卷盘:圆盘外缘每隔三个顶点收一个浅齿口 —— 盘边卷齿的剪影。 */
-function reelVertices(): Vertex[] {
-  const out: Vertex[] = [];
-  const COUNT = 24;
-  for (let i = 0; i < COUNT; i++) {
-    const angle = (i / COUNT) * Math.PI * 2;
-    const notch = i % 4 === 2;
-    const radius = notch ? 13.1 : 14.6;
-    out.push({
-      x: SHAPE_BOX / 2 + Math.cos(angle) * radius,
-      y: SHAPE_BOX / 2 + Math.sin(angle) * radius,
-      sharp: notch,
-    });
-  }
-  return out;
+/** 场记板:板身 + 一条**斜的**顶条(挑出板外压住板子上沿) —— 32px 下就靠这两件事认出它。
+ *
+ *  ⚠ **不画顶条上的斜条纹**:条纹在这个尺寸上每道不足 1px,只会糊成一粒噪点,
+ *    反而把「板 + 斜条」这个唯一能读出的剪影搞脏(sprite / 分享图里更明显)。
+ *  ⚠ 斜度朝**右下**(与真实场记板一致:合板时那一侧先落)。⚠ 轮廓是**单一闭合环**,
+ *    做不出「挖空」的条纹 —— 要挖空得像形状族那样支持子路径,那是另一件事,不在本轮。 */
+function clapVertices(): Vertex[] {
+  return [
+    { x: 2.5, y: 4.5, sharp: true }, // 顶条左上
+    { x: 29.5, y: 8, sharp: true }, // 顶条右上(低 3.5 = 斜)
+    { x: 29.5, y: 14.5, sharp: true }, // 顶条右下
+    { x: 27.2, y: 14.2, sharp: true }, // 收进板身右缘(跟着斜边收)
+    { x: 27.2, y: 27.2 }, // 板身右下(圆角)
+    { x: 4.8, y: 27.2 }, // 板身左下(圆角)
+    { x: 4.8, y: 12.8, sharp: true }, // 板身左上(被顶条压住)
+    { x: 2.5, y: 11, sharp: true }, // 挑回顶条左下
+  ];
 }
 
 /** 形状 → 顶点环。⚠ 只在这里登记一次,`shapePath` 与单测都读它。 */
@@ -209,12 +214,12 @@ const VERTICES: Record<StickerShape, readonly Vertex[]> = {
   stub: stubVertices(),
   sprocket: sprocketVertices(),
   scrap: scrapVertices(),
-  reel: reelVertices(),
+  clap: clapVertices(),
 };
 
 /** 全部形状。⚠ 2026-09-29 起**不再按颜色分子集**：红黑共用同一套皮肤，只差底色
  *  （用户原话「只是红色跟黑色的区别」）。「哪个形状配哪款皮肤」在 `sticker-skin.ts`。 */
-export const ALL_SHAPES: readonly StickerShape[] = ["torn", "stub", "sprocket", "scrap", "reel"];
+export const ALL_SHAPES: readonly StickerShape[] = ["clap", "torn", "stub", "sprocket", "scrap"];
 
 /** 形状 → 该形状的 SVG path `d`(默认按 `SHAPE_BOX` 原尺寸)。
  *

@@ -293,12 +293,12 @@ describe("对接服务端票数", () => {
   // 少带 `skin` 字段会被服务端读成「旧版前端」,那一整份的款一个字都不碰。
   it("votesOf:每一条都带 skin 字段(没说款时是 null,不是省略)", () => {
     const board: StickerBoard = new Map([
-      ["a", [{ ...sticker("x", "red"), skin: "reel" as const }]],
+      ["a", [{ ...sticker("x", "red"), skin: "palm" as const }]],
       ["b", [sticker("y", "black")]],
     ] as never);
     const payload = votesOf(board);
     expect(payload).toEqual([
-      { key: "a", vote: "red", comment: null, skin: "reel" },
+      { key: "a", vote: "red", comment: null, skin: "palm" },
       { key: "b", vote: "black", comment: null, skin: null },
     ]);
     for (const entry of payload) expect("skin" in entry).toBe(true);
@@ -306,12 +306,12 @@ describe("对接服务端票数", () => {
 
   it("★ 只换了一款皮肤 → 票签名**必须变**（否则这次编辑永远同步不上去）", () => {
     // 页面那条上报 effect 依赖的正是票签名（不是 board 的引用），签名不变 = 不上报
-    const before: StickerBoard = new Map([["a", [{ ...sticker("x", "red"), skin: "torn" as const }]]] as never);
-    const after: StickerBoard = new Map([["a", [{ ...sticker("x", "red"), skin: "reel" as const }]]] as never);
+    const before: StickerBoard = new Map([["a", [{ ...sticker("x", "red"), skin: "clap" as const }]]] as never);
+    const after: StickerBoard = new Map([["a", [{ ...sticker("x", "red"), skin: "palm" as const }]]] as never);
     expect(votesSignature(after)).not.toBe(votesSignature(before));
     // 反面对照：同样的款 → 签名必须一致（否则每次 render 都会白上报一次）
     expect(votesSignature(before)).toBe(
-      votesSignature(new Map([["a", [{ ...sticker("x", "red"), skin: "torn" as const }]]] as never)),
+      votesSignature(new Map([["a", [{ ...sticker("x", "red"), skin: "clap" as const }]]] as never)),
     );
   });
 });
@@ -321,24 +321,24 @@ describe("对接服务端票数", () => {
 // 「点了一下同款」会被当成一次真编辑 → 白触发一次防抖上报,而且用户看不出哪里不对。
 describe("reskinSticker:原地换一款", () => {
   const board = (): StickerBoard =>
-    new Map([["a", [{ id: "x", type: "red", posX: 0.3, posY: 0.4, skin: "torn" }]]] as never);
+    new Map([["a", [{ id: "x", type: "red", posX: 0.3, posY: 0.4, skin: "clap" }]]] as never);
 
   it("★ 同款 → 返回**同一个引用**（调用方靠它知道「这次什么也没做」）", () => {
     const before = board();
-    expect(reskinSticker(before, "a", "x", "torn")).toBe(before);
+    expect(reskinSticker(before, "a", "x", "clap")).toBe(before);
   });
 
   it("换款 → 新 board、位置与 id 与颜色都不动，只有 skin 变", () => {
-    const after = reskinSticker(board(), "a", "x", "reel");
-    expect(after.get("a")?.[0]).toEqual({ id: "x", type: "red", posX: 0.3, posY: 0.4, skin: "reel" });
+    const after = reskinSticker(board(), "a", "x", "palm");
+    expect(after.get("a")?.[0]).toEqual({ id: "x", type: "red", posX: 0.3, posY: 0.4, skin: "palm" });
     // 不可变：原来那份没被改
-    expect(board().get("a")?.[0]?.skin).toBe("torn");
+    expect(board().get("a")?.[0]?.skin).toBe("clap");
   });
 
   it("片不存在 / 贴纸不存在 → 原样返回同一个引用", () => {
     const before = board();
-    expect(reskinSticker(before, "zzz", "x", "reel")).toBe(before);
-    expect(reskinSticker(before, "a", "zzz", "reel")).toBe(before);
+    expect(reskinSticker(before, "zzz", "x", "palm")).toBe(before);
+    expect(reskinSticker(before, "a", "zzz", "palm")).toBe(before);
   });
 });
 

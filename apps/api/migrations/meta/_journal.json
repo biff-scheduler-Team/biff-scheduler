@@ -85,6 +85,13 @@
       "when": 1790690343971,
       "tag": "0012_add_sticker_skin",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1790754663189,
+      "tag": "0013_drop_retired_sticker_skins",
+      "breakpoints": true
     }
   ]
 }
