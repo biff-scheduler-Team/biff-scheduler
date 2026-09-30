@@ -1532,7 +1532,7 @@
 
 .rb-talk-list {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1543,7 +1543,10 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 4px 10px;
-  padding: 10px 12px;
+  /* 2026-09-30:10/12 → **12/14**。行本身就是这张弹层的「卡片」,四周留够 12px 才读得出
+   * 它是一块独立的东西;10px 时上下两行的间距(见 `.rb-talk-list` 的 gap)与行内padding 几乎相等,
+   * 整列读起来是一条连续的灰块。 */
+  padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--raised);
@@ -1585,9 +1588,32 @@
   font-size: 11px;
 }
 
+/* 正文区的**块间节奏**（2026-09-30，用户:「讨论区有点丑」「之间也没有空隙」）。
+ *
+ * 旧版「大家说」是一个 `display: grid; gap: 12px` 的整块，标语 / 表单 / 列表 / 翻页之间
+ * 由那个 gap 统一撑开；这个弹层是**逐块搬过来的**（类名与每块的样式都 1:1），
+ * 但 S2 的 `Content` 不给兄弟节点加任何间距 —— 于是那 12px 在迁移里丢了：
+ * 标语贴着表单、表单贴着列表、列表贴着弹窗底边，整屏读成一大片。
+ * ⇒ 在这里把那 12px 补回来（旧版是 gap，这里用 margin，改的是**同一件事**）。
+ *
+ * ⚠ 位置必须排在 `.rb-talk-lede` / `.rb-talk-empty` 的 `margin: 0` **之后** —— 同权重下后者会赢。
+ * ⚠ 不加到 `Content` 上（`display: grid; gap`）：那要动 JSX 的 className，而 `.rb-talk-*`
+ *   这些类名是 E2E 的判据，能不碰就不碰。 */
+.rb-talk-lede,
+.rb-talk-form,
+.rb-talk-list,
+.rb-talk-empty,
+.rb-talk-note {
+  margin-bottom: 12px;
+}
+
 /* 「加载更多」—— 它是弱动作(翻页),不抢「保存评语」的权重 */
 .rb-talk-more {
+  /* ⚠ 居中要两种上下文都成立:`justify-self` 只在 grid 父级里有效（旧版那个模块是 grid），
+   *   而这个弹层的父级是块级 —— 那边得靠 `margin-inline: auto` + `fit-content`（见下）。 */
   justify-self: center;
+  margin: 4px auto 0;
+  width: fit-content;
   padding: 6px 18px;
   border: 1px solid var(--line);
   border-radius: 999px;
