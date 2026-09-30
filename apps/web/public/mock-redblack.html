@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>红黑榜 Mock 数据工具</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; background: #111; color: #eee; max-width: 640px; }
+    h2 { color: #e63; }
+    .tip { background: #1e1e1e; border-left: 3px solid #555; padding: 0.8rem 1rem;
+           margin: 1rem 0; border-radius: 4px; font-size: 14px; line-height: 1.7; }
+    .tip code { background: #333; padding: 1px 5px; border-radius: 3px; font-size: 13px; }
+    pre { background: #1a1a1a; padding: 1rem; border-radius: 6px; font-size: 13px;
+          border: 1px solid #333; white-space: pre-wrap; }
+    .row { display: flex; gap: 0.8rem; margin-top: 1.2rem; flex-wrap: wrap; }
+    button { padding: 0.6rem 1.4rem; border: none; border-radius: 6px;
+             cursor: pointer; font-size: 15px; }
+    .btn-inject { background: #e63; color: #fff; }
+    .btn-inject:hover { background: #c52; }
+    .btn-clear  { background: #444; color: #ccc; }
+    .btn-clear:hover  { background: #555; }
+  </style>
+</head>
+<body>
+<h2>🎬 红黑榜 Mock 数据工具</h2>
+
+<div class="tip">
+  <b>Crowd 票数</b>（别人贴的）由 dev server 自动提供，访问 <code>/redblack</code> 时自动拉取。<br>
+  想调整分布 → 改 <code>apps/web/mock/redblack-config.json</code>，刷新页面立刻生效，<b>无需重启</b>。
+</div>
+
+<div class="tip">
+  <b>本页作用</b>：往 localStorage 写入「看过」标记 + 自己的贴纸（每部 1 枚），<br>
+  让所有影片卡片都出现贴纸画布，方便预览整体效果。
+</div>
+
+<pre id="log">点击「注入并跳转」开始...</pre>
+
+<div class="row">
+  <button class="btn-inject" onclick="inject()">注入并跳转红黑榜</button>
+  <button class="btn-clear"  onclick="clearData()">清空 Mock 数据</button>
+</div>
+
+<script>
+function inject() {
+  var log = document.getElementById('log');
+
+  // 全部 247 部影片 key：cat:f001 ~ cat:f247
+  var wlist = [];
+  for (var i = 1; i <= 247; i++) {
+    var s = String(i);
+    while (s.length < 3) s = '0' + s;
+    wlist.push('cat:f' + s);
+  }
+  localStorage.setItem('biff.redblack.watched.v1', JSON.stringify(wlist));
+
+  // 每部贴 1 枚贴纸（约 2/3 红、1/3 黑），确定性坐标散布
+  var board = {};
+  for (var j = 1; j <= 247; j++) {
+    var ks = String(j);
+    while (ks.length < 3) ks = '0' + ks;
+    var key = 'cat:f' + ks;
+    var type = (j % 3 === 0) ? 'black' : 'red';
+    var h = ((j * 2654435761) >>> 0);
+    var px = 0.1 + ((h & 0xFF) / 255) * 0.8;
+    var py = 0.1 + (((h >>> 8) & 0xFF) / 255) * 0.8;
+    board[key] = [{ id: 's-mock-' + j, type: type, posX: px, posY: py }];
+  }
+  localStorage.setItem('biff.redblack.v2', JSON.stringify(board));
+
+  log.textContent = '✅ 注入完成\n'
+    + '  watched : ' + wlist.length + ' 部（全部 247 部）\n'
+    + '  stickers: ' + Object.keys(board).length + ' 枚（s-mock- 前缀）\n'
+    + '  crowd   : 由 /api/stats/film-votes mock 提供，页面加载时自动拉取\n\n'
+    + '→ 修改票数分布: apps/web/mock/redblack-config.json（改完刷新即可）\n\n'
+    + '2 秒后跳转...';
+
+  setTimeout(function() { window.location.href = '/redblack'; }, 2000);
+}
+
+function clearData() {
+  localStorage.removeItem('biff.redblack.watched.v1');
+  localStorage.removeItem('biff.redblack.v2');
+  localStorage.removeItem('biff.redblack.v1');
+  localStorage.removeItem('biff.redblack.seen.v1');
+  document.getElementById('log').textContent = '🗑 已清空所有红黑榜 mock 数据\n（biff.redblack.* 键全部移除）';
+}
+</script>
+</body>
+</html>
