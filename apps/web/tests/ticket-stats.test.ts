@@ -1,9 +1,9 @@
-// 抢票结果客户端缓存与上报单测（2026-09-20,PLAN-20260920161837）。
+// 抢票结果客户端缓存单测（2026-09-20,PLAN-20260920161837）。
 //
 // 重点与 `film-votes.test.ts` 一致：**容错**（接口没部署 / 断网 / 半截响应都不能把页面拖挂）
-// 与**隐私边界**（请求体只准带场次 code 与结果，不得夹带备注 / 片单 / 身份）。
+// 与取整口径。⚠ 上报端已于 2026-09-30 删除（`PLAN-20260930213528`），故这里只剩读取端。
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const okJson = (body: unknown) =>
   Promise.resolve({ ok: true, json: async () => body } as unknown as Response);
@@ -92,72 +92,7 @@ describe("loadTicketCounts 容错", () => {
   });
 });
 
-describe("scheduleTicketPing", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.useRealTimers();
-    vi.resetModules();
-  });
-
-  it("1200ms 防抖:窗口内多次调用只发一条,同一场以最后一次为准", async () => {
-    vi.resetModules();
-    const fetchMock = vi.fn(() => fail());
-    vi.stubGlobal("fetch", fetchMock);
-    const { scheduleTicketPing } = await import("../src/ticket-stats");
-
-    scheduleTicketPing([{ code: "001", state: "got" }]);
-    scheduleTicketPing([
-      { code: "001", state: "missed" }, // 同场后到者胜
-      { code: "002", state: "got", via: "transfer" },
-    ]);
-    expect(fetchMock).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(1200);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(String(url)).toContain("/api/stats/ticket-results-ping");
-    expect(JSON.parse(String(init.body))).toMatchObject({
-      entries: [
-        { code: "001", state: "missed" },
-        { code: "002", state: "got", via: "transfer" },
-      ],
-    });
-  });
-
-  it("隐私边界:请求体只有 edition + entries,且每条只有 code / state / via", async () => {
-    vi.resetModules();
-    const fetchMock = vi.fn(() => fail());
-    vi.stubGlobal("fetch", fetchMock);
-    const { scheduleTicketPing } = await import("../src/ticket-stats");
-
-    scheduleTicketPing([
-      { code: "001", state: "got" },
-      { code: "002", state: "dropped", via: "transfer" },
-    ]);
-    await vi.advanceTimersByTimeAsync(1200);
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    const body = JSON.parse(String(init.body)) as { edition: string; entries: unknown[] };
-    expect(Object.keys(body).sort()).toEqual(["edition", "entries"]);
-    for (const entry of body.entries) {
-      expect(Object.keys(entry as object).every((k) => ["code", "state", "via"].includes(k))).toBe(true);
-    }
-  });
-
-  it("上报条数截到 500(与 api 侧 MAX_TICKET_ENTRIES_PER_PING 对齐)", async () => {
-    vi.resetModules();
-    const fetchMock = vi.fn(() => fail());
-    vi.stubGlobal("fetch", fetchMock);
-    const { scheduleTicketPing, MAX_TICKET_ENTRIES_PER_PING } = await import("../src/ticket-stats");
-
-    expect(MAX_TICKET_ENTRIES_PER_PING).toBe(500);
-    scheduleTicketPing(
-      Array.from({ length: 600 }, (_, i) => ({ code: `c${i}`, state: "got" as const })),
-    );
-    await vi.advanceTimersByTimeAsync(1200);
-    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect((JSON.parse(String(init.body)) as { entries: unknown[] }).entries).toHaveLength(500);
-  });
-});
+/* `describe("scheduleTicketPing")` 的三个用例已于 2026-09-30 删除(`PLAN-20260930213528`):
+ * 上报端(`scheduleTicketPing` / `TicketEntry` / `MAX_TICKET_ENTRIES_PER_PING`)唯一的数据来源是
+ * 本地票务三态,而三态随卡片视图一并下线。读取端(上面那两个 describe)保留 ——
+ * 抢票分析链路仍按服务端返回的**存量**计数渲染。 */

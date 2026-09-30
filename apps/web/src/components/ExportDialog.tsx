@@ -112,7 +112,7 @@ function ImportData() {
   const applyTickets = () => {
     if (!ticketParsed?.ok) return;
     mergeScreenings(ticketRows.map((r) => r.code), keyOf);
-    applyTicketImport(ticketRows, true);
+    applyTicketImport(ticketRows);
     ToastQueue.positive(`已导入 ${ticketRows.length} 笔票务（${ticketSeats} 张）`, {
       timeout: 5000,
     });

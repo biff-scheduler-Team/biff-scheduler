@@ -5,7 +5,10 @@
 > API `biff-scheduler` + 静态资源 `biff-scheduler-web`)+ React / Router / Spectrum S2 + Vite + TS
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-09-30。**五款贴纸皮肤换新**(用户 2026-09-30:「参考戛纳金棕榈」,
+> 最后更新:2026-09-30(晚)。**「我的行程」只留日程表 + 转票场次改按场次编号添加**
+> (用户 2026-09-30,见 `PLAN-20260930213528`):卡片视图 / 抢票顺位 / 票务三态 / 按日折叠 /
+> 「仅看实际行程」整体下线,三只残留键载入即清;口径细节见 `docs/CONVENTIONS.md` 的 ★★ 条。
+> 同日早些时候:**五款贴纸皮肤换新**(用户 2026-09-30:「参考戛纳金棕榈」,
 > 见 `PLAN-20260930160000`):场记板 / 金棕榈 / 票根 / 胶片残片 / 胶片齿孔(红黑同一套,只差纸色);
 > 金棕榈**红贴黑贴都是金**(唯一不跟纸色走的墨色,DOM / 群点 sprite / 分享图三条路径同源);
 > `ICON_RATIO` 0.45 → 0.55(20px 贴纸上 9 → 11px —— 那句「0.45 是下限」是按 32px 写的,
@@ -517,7 +520,9 @@ public/douban-related.json = {
 
 **localStorage(访客片单唯一源;登录后镜像到云端)**:`biff.picks.v2` = `PickEntry[]`(`{key, picks:[{code}], note}` ——
 旧数据的 `group`(方案 A/B)/ `priority`(档位)字段读取时忽略,**零迁移**);
-另:`biff.settings.v1` / `biff.gvtalk.v1` / `biff.gvtalkmin.v1` / `biff.ranks.v1`(抢票顺位)/ `biff.agendafold.v1`。
+另:`biff.settings.v1` / `biff.gvtalk.v1` / `biff.gvtalkmin.v1`。
+**已下线(2026-09-30,`PLAN-20260930213528`)**:`biff.ranks.v1`(抢票顺位)/ `biff.agendafold.v1`(行程按日收起)/
+`biff.tickets.v1`(票务三态)—— 三套机制的代码已删,残留键在载入时由 `purgeRetiredKeys()` 清掉。
 **账号相关键刻意不在 `biff.*` 命名空间**(避免污染片单契约与备份导出):
 `iffday.workspace.owner.v1`(当前 owner)/ `iffday.workspace.cache.v1:<owner>`(每账号一份 base/local 缓存)/
 `iffday.workspace.import.v1:<owner>`(待导入的访客数据)/ `iffday.workspace.import-backup.v1:<owner>`。
@@ -636,8 +641,9 @@ public/douban-related.json = {
   ⚠ 边界:去重只作用在 picks 之间 —— 共同场次与某个 pick 同片时仍会重复,修它要先定义谁让路(未做)。
   选片 i 实际时段 = [start_i, end_i](end 已含 GV)
 - 允许明知冲突强加,但始终视觉标红;`OK_SLACK = 15`(util.ts)为转场余量阈值,agenda 三态(gapNote ok/tight/bad)与 grid gap-bar 共用
-- **顺位(抢票次序)是场次级**:`state.ts::rankOf: Map<code, number>`,独立键 `biff.ranks.v1`;
-  每次拖完由 `setRanks()` 把该组整组归一成 1..n(只存相对次序,不存绝对值);场次移出行程后自动 prune
+- ~~**顺位(抢票次序)是场次级**~~ —— **已于 2026-09-30 整体删除**(`PLAN-20260930213528`):
+  `state.ts::rankOf` / `setRanks` / `biff.ranks.v1` 与 `plans.ts` 的撞车检测 / 一键修复全部删除;
+  冲突组内次序改由**开场时间**唯一决定(见 `plans.ts::buildPlanSet` 的 `fallbackOrder`)
 - **.ics 一律导出 UTC(Z)**,提醒用相对 TRIGGER(`-PT45M` 可改);UID = `<code>@biff-2026`;
   **导出 / 分享按所选方案**(2026-09-12)—— `.ics` / 分享文案 / 行程图都只含该方案的场次;
   没有已保存方案时导出项禁用(先「保存当前方案」)
@@ -650,8 +656,8 @@ public/douban-related.json = {
   → **访客**清空片单后刷新 / 重新部署**不会复活**(旧版会从全局 `user_pick` 同步回来);
   ⚠ **登录状态下清空会同步到云端** —— 那是账号同步的预期行为(云端是本账号的副本),不是 bug。
 - localStorage keys:`biff.picks.v2`(片单唯一源)/ `biff.settings.v1` / `biff.gvtalk.v1` / `biff.gvtalkmin.v1` /
-  `biff.ranks.v1`(抢票顺位)/ `biff.savedplans.v1`(**已保存方案快照**,2026-09-12)/
-  `biff.agendafold.v1`(行程按日收起)/ `biff.pickerw.v1`(抽屉宽度);
+  `biff.savedplans.v1`(**已保存方案快照**,2026-09-12)/ `biff.ticketinfo.v3`(票据明细)/ `biff.pickerw.v1`(抽屉宽度);
+  `biff.ranks.v1` / `biff.agendafold.v1` / `biff.tickets.v1` **已于 2026-09-30 下线并在载入时清除**;
   `biff.plan.v1` / `biff.wish.v1` 是**一次性迁移源,迁移后即删**
 - `douban.json` 缺失 / 为空 = 零映射:弹层与影片库走中英文搜索兜底(不是错误态)
 

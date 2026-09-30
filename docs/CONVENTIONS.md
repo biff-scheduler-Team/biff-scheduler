@@ -288,6 +288,29 @@
       同一个后果**不连问两次**。不传 = 行为与旧版逐字一致。
   · 设置里「清空已排场次」对单场片同样**整条删**(弹层文案已同步说明);多场片仍是降级为「未排场」。
   · `legacy/` 不跟进(只读回退件,见 §5);登录后从云端**拉回**的记录不在补齐范围(只补载入那一刻的本地数据)。
+- **★★ 抢票顺位 / 行程卡片视图 / 票务三态 / 按日折叠 —— 已于 2026-09-30 整体下线**
+  (`PLAN-20260930213528`;用户原话:「我的行程里面只用保留日程表这种形式 然后把添加转票场次改成通过 Code 添加」)。
+  本文下文凡提到「顺位卡 / 组内拖拽 / `biff.ranks.v1` / `plans.ts::rankOf` / 顺位撞车 / `autoFixRanks` /
+  场次卡上的票务三态 / 「仅看实际行程」/ 按日折叠(`biff.agendafold.v1`)」的段落,都是**下线前**的口径记录 ——
+  一律以本条为准。改后的事实:
+  · 行程页只剩**日程表**一档(`AgendaPage` 的 `cards` 分支、`RankGroup`、`Gap`、视图切换全删);
+  · 顺位机制**连根删除**(`state.ts::rankOf` / `setRanks` / `biff.ranks.v1` / `plans.ts` 的
+    `detectRankClashes` / `autoFixRanks` / `PlanSet.rankOf` / `PlanSet.rankClashes`);
+    冲突组内次序改由**开场时间**唯一决定(`buildPlanSet` 的 `fallbackOrder`);
+  · 票务三态**连根删除**(`tickets.ts` / `state.ts::tickets` / `ScreeningTicketControl` / 转发用的
+    `biff.tickets.v1` / 上报端 `ticket-stats.ts::scheduleTicketPing`);「仅看实际行程」筛选随之删除。
+    ⚠ 服务端 `/api/stats/ticket-results-ping` 保留但不再被调用 —— 抢到率只有存量、不再更新;
+  · **「添加转票场次」改为按场次编号添加**(可一次输多枚,逗号 / 空格分隔),片名模糊搜索仍作兜底;
+    它**只把场次记入行程**,不再写任何票务状态;
+  · 三只残留键(`biff.ranks.v1` / `biff.agendafold.v1` / `biff.tickets.v1`)由
+    `state.ts::purgeRetiredKeys()` 在载入时清掉 —— **白名单式**,不碰其它 `biff.*` 键;
+  · **票据明细(`biff.ticketinfo.v3`)不受影响**:它仍挂在日程表格子上(右键 / 票按钮 → `TicketEditDialog`),
+    「共 N 张票」的口径改为**只数明细**。
+  · **「同场 N 人」保留**(2026-09-30 同日回搬,用户:「日程表还是可以加上同场 N 人」):宿主从场次卡换成
+    **日程表格子右下角**(`components/SameScreeningCount.tsx`,纯标签 + `pointer-events: none`,
+    不参与「点格子 = 移出行程」),**取数口径一个字没变**(还是 `screening-counts` 那个整站缓存)。
+  ⚠ **连带一起消失的能力**(用户看过效果后再决定是否补回):行程页的「定位当日」
+  (`navigation.ts::locateDate` 因此暂无调用方)、排片表整点筛选 → 行程场次卡的高亮联动。
 - **★ 抢票顺位 = 偏好次序(2026-09-11,`PLAN-20260911223000` 二改)**:`state.ts::rankOf: Map<code, number>`
   (场次级,独立键 `biff.ranks.v1`)。它**只回答「冲突组里先保哪一场」**,组内顺序即顺位;
   **它不决定分组、也不决定「哪套是方案几」**。
@@ -377,7 +400,8 @@
     历史形态(2026-09-15 上线:`/rush` 把行程场次按开票批次分组的一行一场紧凑清单,刻意不复用 `ScreeningCard`
     —— 用户原话「抢票和行程的 UI 重复太多了 … 把需要写的 code 和顺位写一写就行了」)
     只在 `PLAN-20260915234414` / `PLAN-20260916005951` 与 git 历史里。
-    · ⚠ **必须保留的能力**:`ScreeningTickets.tsx::ScreeningTicketControl`(票务三态)、`plans.ts::rankOf`
+    · ⚠ **当时必须保留的能力**:`ScreeningTickets.tsx::ScreeningTicketControl`(票务三态)、`plans.ts::rankOf`
+      (其中前两项已于 2026-09-30 整体下线,见本节开头那条 ★★;`extras.ts::ticketOpens` 一系照旧)
       (顺位,行程页冲突组内拖拽设置)、`extras.ts::ticketOpens` 一系(开票时间提醒)—— 它们只是**曾经**在抢票页有个出口。
     · ⚠ 顺位现在**唯一**的写点是行程页冲突组;不要再引入「另一个只读视图」来展示它。
   · **★ 行程页的「定位」与「讨论」入口口径(2026-09-21,`PLAN-20260921223658` 修订 1)**:

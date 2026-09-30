@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
-import { agendaCards, keyOf, openExport, openViewingPanel, ready, seed, storage } from "./helpers";
+import { keyOf, openExport, openViewingPanel, ready, seed, storage } from "./helpers";
 
 test("search, select a film, add a screening, edit notes, refresh and remove", async ({
   page,
@@ -28,14 +28,14 @@ test("search, select a film, add a screening, edit notes, refresh and remove", a
     page.getByRole("textbox", { name: "彼此的日夜 备注", exact: true }),
   ).toHaveValue("与朋友一起");
   await page.getByRole("navigation", { name: "主要导航" }).getByRole("link", { name: "我的行程", exact: true }).click();
-  // 场次卡只在「卡片」视图(2026-09-21 起「我的行程」默认日程表,见 PLAN-20260921223658)
-  await agendaCards(page);
-  await expect(
-    page
-      .getByRole("region", { name: "我的行程", exact: true })
-      .locator('[data-screening="001"]'),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "移出行程 场次 001", exact: true }).click();
+  // 行程只画我的场次:日程表格子上点一下 = 移出行程(2026-09-22 起先出站内确认,不再是即时动作)
+  const agenda = page.getByRole("region", { name: "我的行程", exact: true });
+  await expect(agenda.locator('[data-grid-code="001"]')).toBeVisible();
+  await agenda.locator('[data-grid-code="001"]').click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "移出行程", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { name: "还没有安排场次", exact: true }),
   ).toBeVisible();
@@ -69,11 +69,10 @@ test("a single-screening film goes straight into the agenda", async ({ page }) =
     .getByRole("navigation", { name: "主要导航" })
     .getByRole("link", { name: "我的行程", exact: true })
     .click();
-  await agendaCards(page);
   await expect(
     page
       .getByRole("region", { name: "我的行程", exact: true })
-      .locator('[data-screening="003"]'),
+      .locator('[data-grid-code="003"]'),
   ).toBeVisible();
 });
 
@@ -192,25 +191,11 @@ test("GV overrides update effective end time and calendar output", async ({
     ]),
   });
   await ready(page, "/agenda");
-  await agendaCards(page);
-  const card = page
-    .getByRole("region", { name: "我的行程", exact: true })
-    .locator('[data-screening="001"]');
-  await expect(card).toContainText("18:00–19:45");
-  await card
-    .locator("label")
-    .filter({
-      has: page.getByRole("checkbox", { name: "参加映后谈", exact: true }),
-    })
-    .click();
-  await expect(
-    card.getByRole("checkbox", { name: "参加映后谈", exact: true }),
-  ).not.toBeChecked();
-  await expect(card).toContainText("18:00–19:20");
-  expect(JSON.parse((await storage(page))["biff.gvtalk.v1"])["001"]).toBe(
-    false,
-  );
-  await card
+  const agenda = page.getByRole("region", { name: "我的行程", exact: true });
+  // 日程表把「正片」与「映后谈」画成**两段**:谈块存在 = 这一场按「参加」计
+  // (卡片视图曾把两者压成 `18:00–19:45` 一行 —— 那段随卡片视图下线,2026-09-30)。
+  await expect(agenda.locator(".gantt-talk")).toContainText("映后 25′"); // 默认 25 分钟
+  await agenda
     .getByRole("button", { name: "调整 001 映后时长", exact: true })
     .click();
   const gv = page.getByRole("dialog", { name: "001 映后谈", exact: true });
@@ -221,16 +206,10 @@ test("GV overrides update effective end time and calendar output", async ({
   await min.fill("40");
   await min.press("Tab");
   await gv.getByRole("button", { name: "保存映后时长", exact: true }).click();
-  await card
-    .locator("label")
-    .filter({
-      has: page.getByRole("checkbox", { name: "参加映后谈", exact: true }),
-    })
-    .click();
-  await expect(
-    card.getByRole("checkbox", { name: "参加映后谈", exact: true }),
-  ).toBeChecked();
-  await expect(card).toContainText("18:00–20:00");
+  // 谈块立刻跟着长 —— 它就是「有效结束时间」在画布上的那一段
+  await expect(agenda.locator(".gantt-talk")).toContainText("映后 40′");
+  expect(JSON.parse((await storage(page))["biff.gvtalkmin.v1"])["001"]).toBe(40);
+
   // 原先这里还点了「保存当前方案」再导出 —— 方案整体下线后(2026-09-22,`PLAN-20260922105228`)
   // 导出范围就是当前行程,这一步没有必要了。
   const dialog = await openExport(page);
@@ -244,58 +223,26 @@ test("GV overrides update effective end time and calendar output", async ({
   expect(text).toContain("DTSTART:20261006T090000Z");
   expect(text).toContain("DTEND:20261006T110000Z");
   expect(text).toContain("TRIGGER:-PT45M");
+
+  // ⚠ 「关掉参加」这一步刻意放在导出**之后**:ICS 的 DTEND 取的是**含谈**的有效结束时间,
+  //   先弃谈再导出就测不到那一段了(2026-09-30 改版时踩过的顺序坑)。
+  //   弃谈后谈块**仍在画布上**(只是 `talk-off` / `aria-pressed=false`)—— 那是 `ScheduleGantt`
+  //   的既有画法(谈长由 `gvTalkMin` 单独给,与「去不去」正交)。
+  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+  const talkButton = agenda.getByRole("button", { name: "001 参加映后谈", exact: true });
+  await talkButton.click();
+  await expect(talkButton).toHaveAttribute("aria-pressed", "false");
+  expect(JSON.parse((await storage(page))["biff.gvtalk.v1"])["001"]).toBe(false);
 });
 
-// ⚠ 原用例叫「conflict ranks determine the **saved plan** and survive reload」:它把「顺位落盘」
-// 与「保存方案」两条链绑在一起来断言。方案已于 2026-09-22 整体下线(`PLAN-20260922105228`),
-// 这里只留**顺位**那半段 —— 它与按日折叠的持久化一起,仍是本轮最该守的行为。
-test("conflict ranks survive reload and keep driving the card order", async ({
-  page,
-}) => {
-  await seed(page, {
-    "biff.picks.v2": JSON.stringify(
-      ["008", "033"].map((code) => ({
-        key: keyOf(code),
-        picks: [{ code }],
-        note: "",
-      })),
-    ),
-  });
-  await ready(page, "/agenda?date=2026-10-07");
-  // 「收起行程 N」/ 顺位卡都只在卡片视图 —— 顺位卡自 2026-09-22 起**只剩**这一个落点
-  // (画布上的顺位卡与「顺位撞车」提示都已下线,见 `PLAN-20260922123138`),日程表视图没有它。
-  await agendaCards(page);
-  await expect(page.getByRole("region", { name: /冲突组/ })).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "方案对比", exact: true }),
-  ).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "提高 033 顺位", exact: true })
-    .click();
-  const data = await storage(page);
-  expect(JSON.parse(data["biff.ranks.v1"])).toEqual({ "033": 1, "008": 2 });
-  await page.reload();
-  // 刷新后视图回默认「日程表」(视图选择只在会话内记着),再切回卡片继续断言
-  await agendaCards(page);
-  await expect(page.locator("[data-rank-code]").first()).toHaveAttribute(
-    "data-rank-code",
-    "033",
-  );
-  await page
-    .getByRole("button", { name: "收起行程 2026-10-07", exact: true })
-    .click();
-  await page.reload();
-  await agendaCards(page);
-  await expect(
-    page.getByRole("button", { name: "展开行程 2026-10-07", exact: true }),
-  ).toBeVisible();
-});
+/* 「conflict ranks survive reload and keep driving the card order」整条已删除
+ * (2026-09-30,`PLAN-20260930213528`):顺位机制(`biff.ranks.v1` / `setRanks` / 顺位卡)与
+ * 按日折叠(`biff.agendafold.v1`)随卡片视图一起整体下线,这条用例的两个宿主都没有了。 */
 
 test("imports ICS by file, previews invalid data, and merges without duplicates", async ({
   page,
 }) => {
   await ready(page, "/agenda");
-  await agendaCards(page);
   const dialog = await openExport(page);
   await dialog
     .getByRole("textbox", { name: "或粘贴备份 / 日历 / 票务内容", exact: true })
@@ -318,7 +265,7 @@ test("imports ICS by file, previews invalid data, and merges without duplicates"
   await expect(
     page
       .getByRole("region", { name: "我的行程", exact: true })
-      .locator('[data-screening="001"]'),
+      .locator('[data-grid-code="001"]'),
   ).toBeVisible();
   expect(JSON.parse((await storage(page))["biff.picks.v2"])).toEqual([
     { key: keyOf("001"), picks: [{ code: "001" }], note: "" },

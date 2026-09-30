@@ -15,6 +15,7 @@ import {
   ToggleButton,
 } from "./spectrum";
 import { Badges, FilmBadge, GvDurationButton } from "./ScreeningCard";
+import { SameScreeningCount } from "./SameScreeningCount";
 import { FilterBar } from "./FilterBar";
 import { useCatalog } from "../app/store";
 import { useQuery } from "../app/hooks";
@@ -655,6 +656,10 @@ export function ScheduleGantt({
                           </span>
                         </button>
                         <ScreeningInfoPopover screening={s} />
+                        {/* 「同场 N 人」(2026-09-30 从场次卡搬回日程表格子,`PLAN-20260930213528`;
+                            用户原话「日程表还是可以加上同场 N 人」)。⚠ 只挂行程档 ——
+                            排片表那档画的是全届排片,一堆「同场 N 人」只会挤掉片名与时间。 */}
+                        {agenda && <SameScreeningCount code={s.code} />}
                         {/* 票务标注(2026-09-24,`PLAN-20260924141442`)。两件都只挂行程档:
                             排片表那档画的是全届排片,一堆「N 张」只会挤掉片名与时间。
                             ⚠ 徽章只在**显式填过张数**时出现(`ticketBadgeText` 返回 null 即不渲染)——

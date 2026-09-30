@@ -1,51 +1,55 @@
 import { describe, expect, it } from "vitest";
-import { agendaItems, rankSpotOrder, topPlanCodes } from "../src/app/agenda-model";
+import { topPlanCodes } from "../src/app/agenda-model";
 import { computeConflicts } from "../src/conflict";
 import { buildPlanSet } from "../src/plans";
-import type { Screening } from "../src/types";
 
-function show(code: string, start = "09:00", date = "2026-10-07"): Screening {
-  return {
-    code, start_time: start, date, end_time: "11:00", duration_min: 120,
-    title_en: code, title_zh: code, title_kr: code,
-    venue_id: "b1", venue_display: "BCC 1", is_gv: false,
-  };
-}
-
-describe("legacy agenda decisions", () => {
-  it("keeps the actual first choices even when enumeration substitutes a different film", () => {
+describe("当前行程的取值口径", () => {
+  // 「导出范围 = 当前行程」走 `topPlanCodes`(唯一调用方是 `ExportDialog`)。
+  // 顺位下线后组内次序 = 开场时间,同刻再按 code 字典序 —— 所以「每组取哪一场」是可预期的。
+  it("topPlanCodes = 共同场次 + 每个冲突组的第一场", () => {
     const groups = [["008", "033"], ["143", "080"]];
-    const slots = groups.flatMap((group, i) => group.map((code) => ({
-      code, date: `2026-10-0${i + 7}`, start: 600, end: 720, venue: "b1",
-    })));
-    const plans = buildPlanSet(
-      ["common", ...groups.flat()], computeConflicts(slots, () => 0),
-      new Map(groups.flatMap((group) => group.map((code, i) => [code, i + 1] as const))),
-      () => 0, (code) => code === "143" ? "008" : code,
+    const slots = groups.flatMap((group, i) =>
+      group.map((code) => ({
+        code,
+        date: `2026-10-0${i + 7}`,
+        start: 600,
+        end: 720,
+        venue: "b1",
+      })),
     );
-    expect(plans.rankClashes.some((clash) => clash.layer === 1)).toBe(true);
-    expect(plans.options[0].codes).toEqual(["common", "008", "080"]);
-    expect(topPlanCodes(plans)).toEqual(["common", "008", "143"]);
-  });
-
-  it("a group yielding swaps exactly its two named spots without touching any others", () => {
-    const groups = [["a", "b", "c", "d"], ["e", "f"]];
-    expect(rankSpotOrder(groups, { group: 0, code: "b", alt: "d" })).toEqual(["a", "d", "c", "b"]);
-    expect(groups).toEqual([["a", "b", "c", "d"], ["e", "f"]]);
-    expect(rankSpotOrder(groups, { group: 0, code: "a", alt: null })).toBeNull();
-  });
-
-  it("does not manufacture a predecessor after a group, and resumes gaps between single screenings", () => {
-    const rows = ["before", "008", "033", "after", "later"].map((code) => show(code));
-    const items = agendaItems(rows, [["033", "008"]]);
-    expect(items).toEqual([
-      { kind: "screening", screening: rows[0], before: null },
-      { kind: "group", codes: ["033", "008"] },
-      { kind: "screening", screening: rows[3], before: null },
-      { kind: "screening", screening: rows[4], before: rows[3] },
+    const plans = buildPlanSet(
+      groups.flat(),
+      computeConflicts(slots, () => 0),
+      // 组内排序键统一 → 回落 code 字典序(store 里传的是开场时刻)
+      () => 0,
+      () => null,
+    );
+    expect(plans.groups).toEqual([
+      ["008", "033"],
+      ["080", "143"],
     ]);
+    expect(topPlanCodes(plans)).toEqual(["008", "080"]);
   });
 
-  // ⚠ 「方案快照的日期 / 缺片概要」那条用例随 `describeSavedPlan` 一起删除
-  //   (2026-09-22,`PLAN-20260922105228`):快照这个形态已经没有了。
+  it("共同场次原样并进结果,且排在冲突组取值之前", () => {
+    const plans = buildPlanSet(
+      ["a", "b", "c"],
+      computeConflicts(
+        [
+          { code: "a", date: "2026-10-07", start: 600, end: 700, venue: "b1" },
+          { code: "b", date: "2026-10-07", start: 650, end: 750, venue: "b1" },
+          { code: "c", date: "2026-10-08", start: 600, end: 700, venue: "b1" },
+        ],
+        () => 0,
+      ),
+      () => 0,
+      () => null,
+    );
+    expect(plans.common).toEqual(["c"]);
+    expect(topPlanCodes(plans)).toEqual(["c", "a"]);
+  });
 });
+
+/* `rankSpotOrder()` 与 `agendaItems()` 的用例已于 2026-09-30 一并删除
+ * (`PLAN-20260930213528`):前者服务的顺位撞车让路、后者服务的卡片视图按日条目拼装,
+ * 两套机制都已整体下线。 */

@@ -342,17 +342,14 @@ test("票务导入:并进空行程 + 标已抢到 + 写明细;不在排期里的
   });
   // ★ 账号只在本地键里(修订 7)—— 没写 account 的那笔不产生条目
   expect(JSON.parse((await localItem(page, ACCOUNT_KEY))!)).toEqual({ "008": "sample-account" });
-  // 三态跟着标上 —— 于是概览的「实际 N 场」立刻对得上
-  expect(JSON.parse(data["biff.tickets.v1"])).toEqual({
-    "003": { state: "got" },
-    "008": { state: "got" },
-  });
+  // ⚠ 票务三态(`biff.tickets.v1`)已整体下线(2026-09-30,`PLAN-20260930213528`):
+  //   导入票务只写**明细**,不再顺手把场次标成「已抢到」—— 概览里那条「实际 N 场」也随之删除。
+  expect(data["biff.tickets.v1"]).toBeUndefined();
 
   // ★ 最要紧的一条:刷新后明细**还在**(说明场次真的并行进了行程,没被 prune)
   await page.reload();
   await expect(page.locator('[data-grid-slot="008"] .gantt-ticket-badge')).toHaveText("2 张");
   await expect(page.locator('[data-grid-slot="003"] .gantt-ticket-badge')).toHaveText("2 张");
-  await expect(page.locator(".agenda-overview")).toContainText("实际 2 场");
   await expect(page.locator(".agenda-overview")).toContainText("共 4 张票");
   // 徽章 tooltip 从本地键取账号(它已不在 TicketInfo 上)
   await expect(page.locator('[data-grid-slot="008"] .gantt-ticket-badge')).toHaveAttribute(

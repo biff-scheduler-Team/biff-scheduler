@@ -1,7 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import {
-  agendaCards,
   headerAction,
   keyOf,
   legacyData,
@@ -25,14 +24,13 @@ test("all legacy storage keys survive initial load, navigation, and reload byte 
   await expect(
     page.getByRole("heading", { name: "我的行程", exact: true }),
   ).toBeVisible();
-  // 按日折叠 / 顺位卡只在卡片视图(2026-09-21 起默认日程表,见 PLAN-20260921223658)
-  await agendaCards(page);
   // ⚠ 「已保存方案」区块已整体下线(2026-09-22,`PLAN-20260922105228`):`legacyData` 里那份
   //   `biff.savedplans.v1`(方案 7)现在是个**废键** —— 种子里有它,但页面上不该再出现它。
   //   断言方向随之翻转(原先是 `toBeVisible`),它守的是「废键不得复活」。
   await expect(page.getByText("方案 7", { exact: true })).toHaveCount(0);
+  // 行程画布仍按旧数据画出来(2026-09-30 起这一页只有日程表一种形态,卡片视图已下线)
   await expect(
-    page.getByRole("button", { name: "展开行程 2026-10-07", exact: true }),
+    page.getByRole("region", { name: "我的行程", exact: true }).locator('[data-grid-code="001"]'),
   ).toBeVisible();
   if (!isMobile) {
     // 桌面 ≥1100：选片:排片 ≈ 1:3，宽度跟 flex 走，不再等于 biff.pickerw.v1
@@ -50,7 +48,9 @@ test("all legacy storage keys survive initial load, navigation, and reload byte 
   ).toContain("旧版备注");
   expect(old.gv["001"]).toBe(false);
   expect(old.gvMin["001"]).toBe(40);
-  expect(old.ranks["033"]).toBe(1);
+  // ⚠ 抢票顺位(`biff.ranks.v1`)已随卡片视图整体删除(2026-09-30,`PLAN-20260930213528`):
+  //   残留键在载入时被 `purgeRetiredKeys()` 清掉,所以**旧实现也读不到任何顺位**。
+  expect(old.ranks).toEqual({});
   await page.getByRole("link", { name: "影片库", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "彼此的日夜", exact: true }),
@@ -64,7 +64,7 @@ test("all legacy storage keys survive initial load, navigation, and reload byte 
 test("new UI writes remain readable by the original implementation", async ({
   page,
 }) => {
-  await seed(page, { ...legacyData, "biff.agendafold.v1": "[]" });
+  await seed(page, legacyData);
   await ready(page, "/picks?q=001");
   const note = page.getByRole("textbox", {
     name: "彼此的日夜 备注",
@@ -73,10 +73,6 @@ test("new UI writes remain readable by the original implementation", async ({
   await note.fill("React 改过的备注\n兼容旧版本");
   // /picks 整页时 FAB 隐藏：用主导航进行程，不依赖浮层
   await page.getByRole("navigation", { name: "主要导航" }).getByRole("link", { name: "我的行程", exact: true }).click();
-  await agendaCards(page);
-  await page
-    .getByRole("button", { name: "提高 008 顺位", exact: true })
-    .click();
   await headerAction(page, "设置");
   const dialog = page.getByRole("dialog", { name: "设置", exact: true });
   const alarm = dialog.getByRole("textbox", {
@@ -90,8 +86,8 @@ test("new UI writes remain readable by the original implementation", async ({
   expect(
     old.picks.find((p: { key: string }) => p.key === keyOf("001")).note,
   ).toBe("React 改过的备注\n兼容旧版本");
-  expect(old.ranks["008"]).toBe(1);
-  expect(old.ranks["033"]).toBe(2);
+  // ⚠ 顺位已整体下线(2026-09-30):旧实现同样读不到任何顺位 —— 残留键在载入时就被清掉了
+  expect(old.ranks).toEqual({});
   expect(old.settings.alarmMin).toBe(90);
   expect(old.settings.customPreference).toBe("preserve-me");
   expect((await storage(page))["biff.future.v9"]).toBe(
@@ -99,15 +95,11 @@ test("new UI writes remain readable by the original implementation", async ({
   );
   await legacyRead(page, true);
   await page.reload();
-  // 刷新后视图回默认「日程表」→ 切回卡片,好让下面那条「033 已不在行程」是真在卡片上断言的
-  await agendaCards(page);
-  await expect(
-    page.getByRole("button", { name: "排进行程 场次 033", exact: true }),
-  ).toHaveCount(0);
+  // 旧实现把 033 移出了行程 → 日程表上不该再有这一格
   await expect(
     page
       .getByRole("region", { name: "我的行程", exact: true })
-      .locator('[data-screening="033"]'),
+      .locator('[data-grid-code="033"]'),
   ).toHaveCount(0);
   await headerAction(page, "设置");
   await expect(
@@ -237,17 +229,21 @@ test("new tab changes synchronize without discarding the existing data contract"
       '[{"key":"cat:f001","picks":[{"code":"001"}],"note":"original"}]',
   });
   await ready(page, "/agenda");
-  await agendaCards(page);
   const other = await context.newPage();
   await ready(other, "/agenda");
-  await agendaCards(other);
+  // 在另一个标签页里移出这一场:日程表格子点一下 → 站内确认(2026-09-22 起不再是即时动作)
   await other
-    .getByRole("button", { name: "移出行程 场次 001", exact: true })
+    .getByRole("region", { name: "我的行程", exact: true })
+    .locator('[data-grid-code="001"]')
+    .click();
+  await other
+    .getByRole("dialog")
+    .getByRole("button", { name: "移出行程", exact: true })
     .click();
   await expect(
     page
       .getByRole("region", { name: "我的行程", exact: true })
-      .locator('[data-screening="001"]'),
+      .locator('[data-grid-code="001"]'),
   ).toHaveCount(0);
   expect((await legacyRead(page)).picks[0].note).toBe("original");
   await other.close();

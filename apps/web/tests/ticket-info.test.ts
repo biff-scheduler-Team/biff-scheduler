@@ -7,6 +7,7 @@ import {
   normalizeSeats,
   normalizeTicketAccount,
   normalizeTicketInfo,
+  staleTicketInfoCodes,
   ticketBadgeText,
   ticketCountOf,
   ticketInfoTitle,
@@ -179,22 +180,36 @@ describe("ticketCountOf / ticketBadgeText(票数 = 行数)", () => {
 });
 
 describe("totalTicketCount(「共 N 张票」的唯一口径)", () => {
-  it("已抢到的场次 ∪ 有明细的场次;没明细的按 1 张", () => {
-    const got = new Set(["001", "002"]);
+  // ⚠ 2026-09-30 起**只数票据明细**:票务三态整体下线后,原先「只标了已抢到、没填明细
+  // 的场次也按 1 张算」那一路没有数据来源了(见 `PLAN-20260930213528`)。
+  it("按票据明细的行数合计", () => {
     const info = new Map<string, TicketInfo>([
       ["002", { seats: ["", "", ""] }],
       ["003", { seats: ["F12", ""] }],
     ]);
-    // 001 → 1(已抢到,没明细);002 → 3(三行);003 → 2(没标已抢到,但加过行)
-    expect(totalTicketCount(got, info)).toBe(6);
+    expect(totalTicketCount(info)).toBe(5);
   });
 
-  it("只标三态的老用户 → 数字与「实际 N 场」一致", () => {
-    expect(totalTicketCount(new Set(["001", "002", "003"]), new Map())).toBe(3);
+  it("一条明细都没有 → 0", () => {
+    expect(totalTicketCount(new Map())).toBe(0);
+  });
+});
+
+describe("staleTicketInfoCodes(明细的 prune 判据)", () => {
+  // 这套 prune 原先住在 `tickets.ts`(与三态共用),三态下线后搬来本模块 ——
+  // 明细现在是**唯一**还需要 prune 的场次级数据,判据仍是「这一场还在不在行程里」。
+  it("已移出行程的场次被点名删除", () => {
+    const info = new Map<string, TicketInfo>([
+      ["001", { seats: ["F12"] }],
+      ["002", { seats: ["", ""] }],
+    ]);
+    const alive = new Set(["001"]);
+    expect(staleTicketInfoCodes(info, (code) => alive.has(code))).toEqual(["002"]);
   });
 
-  it("什么都没有 → 0", () => {
-    expect(totalTicketCount(new Set(), new Map())).toBe(0);
+  it("全部仍在行程里 → 一个都不删", () => {
+    const info = new Map<string, TicketInfo>([["001", { seats: ["F12"] }]]);
+    expect(staleTicketInfoCodes(info, () => true)).toEqual([]);
   });
 });
 

@@ -65,8 +65,10 @@ export const legacyData: Record<string, string> = {
   }),
   "biff.gvtalk.v1": JSON.stringify({ "001": false, "008": true, "037": false }),
   "biff.gvtalkmin.v1": JSON.stringify({ "001": 40, "008": 30 }),
-  "biff.ranks.v1": JSON.stringify({ "008": 2, "033": 1, "037": 3 }),
-  "biff.agendafold.v1": JSON.stringify(["2026-10-07"]),
+  // ⚠ `biff.ranks.v1` / `biff.agendafold.v1` / `biff.tickets.v1` 三只键**刻意不在基线里**
+  //   (2026-09-30,`PLAN-20260930213528`):三套机制的代码已整体删除,载入时会被
+  //   `state.ts::purgeRetiredKeys()` 清掉 —— 写进基线就会让「storage 与基线逐字节相等」
+  //   那类断言必然失败。
   "biff.savedplans.v1": JSON.stringify([
     {
       id: "legacy-plan",
@@ -122,13 +124,8 @@ export async function ready(page: Page, path = "/schedule") {
 export function scheduleHeading(page: Page) {
   return page.getByRole("heading", { name: /^排片表/ });
 }
-/** 把「我的行程」切到**卡片**视图。
- *  ⚠ 2026-09-21 起默认是「日程表」视图（`PLAN-20260921223658`）——断言场次卡 / 顺位卡 /
- *  按日折叠的 spec 必须先显式切回卡片，否则那些元素根本不在 DOM 里（不是「找不到卡片」的 bug）。 */
-export async function agendaCards(page: Page) {
-  const cards = page.getByRole("button", { name: "卡片", exact: true });
-  if ((await cards.getAttribute("aria-pressed")) !== "true") await cards.click();
-}
+/* `agendaCards()` 已于 2026-09-30 删除(`PLAN-20260930213528`):「我的行程」只剩日程表一种形态,
+ * 卡片视图连同它的顺位卡 / 按日折叠 / 票务三态一起下线 —— 没有可切的视图了。 */
 /** 记录画布上**画过的文字** —— 海报是 canvas 手绘,没有 DOM 可断言,只能挂 `fillText`。
  *  装上后每次 `fillText` 都把文本追加进 `window.__paintedTexts`。
  *  ⚠ 必须在首次 `goto` 之前调用;数组**跨多次出图累加** —— 要断言「这一张图上有什么」,

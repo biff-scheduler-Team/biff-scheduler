@@ -1,63 +1,17 @@
-import { test, expect } from "@playwright/test";
-import { agendaCards, keyOf, ready, seed, storage } from "./helpers";
-const picks = (codes: string[]) =>
-  JSON.stringify(
-    codes.map((code) => ({ key: keyOf(code), picks: [{ code }], note: "" })),
-  );
+import { test } from "@playwright/test";
 
-test("hour selection highlights only same-day agenda cards using the official slot", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1512, height: 982 });
-  await seed(page, {
-    "biff.picks.v2": picks(["001", "008", "011"]),
-    "biff.gvtalk.v1": '{"008":false}',
-  });
-  await ready(page, "/agenda?date=2026-10-07&quick=1");
-  // 整点筛选的高亮落在**场次卡**上,所以这条必须在卡片视图断言(日程表是默认视图)
-  await agendaCards(page);
-  await page
-    .getByRole("button", { name: "筛选 11:00 时段", exact: true })
-    .click();
-  const agenda = page.getByRole("region", { name: "我的行程", exact: true });
-  // 008 film-only ends10:55, but official end11:20 still overlaps the selected hour, as in legacy.
-  await expect(agenda.locator('[data-screening="008"]')).toHaveAttribute(
-    "data-hour-match",
-    "true",
-  );
-  await expect(agenda.locator('[data-screening="008"]')).toHaveAttribute(
-    "title",
-    /11:00–12:00/,
-  );
-  await expect(agenda.locator('[data-screening="011"]')).toHaveAttribute(
-    "data-hour-match",
-    "false",
-  );
-  await expect(agenda.locator('[data-screening="001"]')).not.toHaveAttribute(
-    "data-hour-match",
-    /./,
-  );
-  await page.getByRole("button", { name: "清除时段筛选", exact: true }).click();
-  await expect(agenda.locator("[data-hour-match]")).toHaveCount(0);
-  expect(JSON.parse((await storage(page))["biff.gvtalk.v1"])).toEqual({
-    "008": false,
-  });
-});
+/* ★ 本文件的两条用例已于 2026-09-30 删除(`PLAN-20260930213528`),它们断言的元素只长在
+ * 「我的行程」的**卡片视图**上,而卡片视图整体下线:
+ *
+ * ① 「hour selection highlights only same-day agenda cards using the official slot」
+ *    —— 排片表的整点筛选通过 `slotFilter` 在**场次卡**上打 `data-hour-match` / `title`。
+ *    卡片视图是那条联动的唯一展示面;日程表画布不接 `slotFilter`(这一页没有整点筛选,
+ *    见 `agenda-gantt.spec.ts` 的同名断言)。
+ * ② 「a non-GV preceding screening is never labeled as skipping a talk」
+ *    —— 「间隔 N 分钟 / 上场弃映后」那行(`.gap-label`)只存在于卡片视图的按日列表里。
+ *
+ * ⚠ 留一个空文件而不是直接删:`scripts/test-map.json` 与 `docs/TEST-MAP.md` 里登记着
+ *   这个 spec 名,删文件要同时动那两处 —— 等哪天真有新的「跨视图联动手势」用例要落,
+ *   直接复用这个名字即可。 */
 
-test("a non-GV preceding screening is never labeled as skipping a talk", async ({
-  page,
-}) => {
-  await seed(page, {
-    "biff.picks.v2": picks(["033", "034"]),
-    "biff.settings.v1": '{"gvTalkOn":false}',
-  });
-  await ready(page, "/agenda");
-  // 「间隔 N 分钟」是场次卡之间的提示,只在卡片视图
-  await agendaCards(page);
-  const gaps = page
-    .getByRole("region", { name: "我的行程", exact: true })
-    .locator(".gap-label");
-  await expect(gaps).toHaveCount(1);
-  await expect(gaps).toContainText("间隔 67 分钟");
-  await expect(gaps).not.toContainText("上场弃映后");
-});
+test.skip("（占位）卡片视图下线后暂无跨视图联动用例", () => {});

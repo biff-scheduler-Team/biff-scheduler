@@ -1,77 +1,12 @@
-/* 同场观影 & 转票补入的样式(2026-09-14,PLAN-20260914164050)。
+/* 转票补入(「我的行程 → 添加转票场次」)与「同场 N 人」的样式(2026-09-14,PLAN-20260914164050)。
  *
  * ⚠ 刻意**独立成文件**而不是追加进 `style.css`:`style.css` 命中 TEST-MAP 的 allOn,
  *   改它会触发三浏览器全量 E2E(5–9 min)。这里只复用既有 token,不新增视觉语言。
- * ⚠ 场次讨论 / 讨论区的那批 `discussion*` 选择器已于 2026-09-22 随讨论区一并删除
- *   (`PLAN-20260922101227`,用户「去掉讨论区入口 相关组件也去掉」)。 */
-
-/* ---------- 票务三态(场次卡上) ---------- */
-.ticket-control {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-.ticket-control-label {
-  font-size: 12px;
-  color: var(--muted);
-}
-.ticket-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--raised);
-  color: var(--muted);
-  font-size: 12px;
-  cursor: pointer;
-}
-.ticket-chip:hover { border-color: var(--muted); color: var(--text); }
-/* 三档各自的选中态:已抢到=品牌红实底,没抢到=墨色实底,放弃=灰底(语义强弱递减) */
-.ticket-chip.active[data-ticket-state="got"] {
-  border-color: var(--brand);
-  background: var(--brand);
-  color: #fff;
-}
-.ticket-chip.active[data-ticket-state="missed"] {
-  border-color: var(--text);
-  background: var(--text);
-  color: var(--surface);
-}
-.ticket-chip.active[data-ticket-state="dropped"] {
-  border-color: var(--muted);
-  background: var(--line);
-  color: var(--text);
-}
-.ticket-transfer {
-  display: inline-flex;
-  align-items: center;
-  min-height: 22px;
-  padding: 0 7px;
-  border: 1px solid var(--brand);
-  border-radius: 999px;
-  color: var(--brand);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-/* ---------- 「同场 N 人」:与 .want-count 同形 ---------- */
-.same-count {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-.same-count strong {
-  color: var(--text);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
+ * ⚠ 这里原先还有另外两摊,均已下线:
+ *   · 场次讨论 / 讨论区的那批 `discussion*` 选择器(2026-09-22,`PLAN-20260922101227`);
+ *   · 场次卡上的**票务三态**(`.ticket-control` / `.ticket-chip` / `.ticket-transfer`)——
+ *     随卡片视图整体下线(2026-09-30,`PLAN-20260930213528`)。
+ *   ⚠ 「同场 N 人」(`.same-count`)**没下线**,只是宿主从场次卡搬进了日程表格子。 */
 
 /* ⚠ 行程页顶部工具栏的样式已搬去 `pages/agenda-parity.css`
    (2026-09-22,`PLAN-20260922103307`)—— 它属于那一页的布局,寄存在讨论区 / 同场观影的样式表里
@@ -80,6 +15,8 @@
 /* ---------- 转票补入弹层 ---------- */
 .transfer-dialog { display: grid; gap: 10px; max-height: 60vh; overflow: auto; }
 .transfer-hint { margin: 0; color: var(--muted); font-size: 12px; }
+/* 批量行:「加入这 N 场」按钮 + 它将要加入的编号清单(2026-09-30 改版) */
+.transfer-batch { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .transfer-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .transfer-row {
   display: flex;
@@ -95,11 +32,31 @@
 .transfer-row-main strong { font-size: 13px; }
 .transfer-row-main span { color: var(--muted); font-size: 12px; }
 
-/* 触控目标下限 44px(2026-09-23,`PLAN-20260923122500` T3):只在 `pointer: coarse` 下生效,
-   桌面(`pointer: fine`)的尺寸与观感**逐字节不变**。⚠ 用 `min-height` 而不是改 `height` ——
-   后者会把整个胶囊放大,而这里要的只是「手指够得着」。
-   ⚠ 同族的 `.ticket-transfer` **不加**:它是被动标签(`ScreeningTickets.tsx:46` 是 `<span>`),
-   不是指针目标,放大它只会白白撑高那一行。 */
-@media (pointer: coarse) {
-  .ticket-chip { min-height: 44px; }
+/* ---------- 「同场 N 人」(2026-09-30 从场次卡搬到日程表格子) ---------- */
+/* ⚠ 纯标签:挂 `pointer-events: none` —— 日程表格子点一下是「移出行程」(还会弹确认),
+   让它可点会把「看一眼人数」变成一次误操作。原样式是 inline 纯文字,进格子后必须自带实底:
+   它压在海报上,半透明会跟海报的花花绿绿糊在一起(与 `.gantt-ticket-badge` 同一处置)。 */
+.same-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.same-count strong {
+  color: var(--text);
+  font-weight: 700;
+}
+/* 格子里的落点:右下角 —— 让开左上角的张数徽章与右上角的 ⓘ / 票务按钮。 */
+.gantt-slot .same-count {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  z-index: 2;
+  pointer-events: none;
 }

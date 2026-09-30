@@ -1,6 +1,6 @@
-.agenda-page .agenda-date {
-  flex-wrap: wrap;
-}
+/* ⚠ 卡片视图(按天卡片列表)的结构样式已于 2026-09-30 整体删除(`PLAN-20260930213528`):
+   `.agenda-date` / `.agenda-day*` / `.day-screenings` / `.rank-group*` / `.gap-label` /
+   `.view-switch` 都没有宿主了 —— 行程页只剩日程表一种形态。 */
 
 /* ---------- 日程表视图(2026-09-21,`PLAN-20260921223658`) ----------
    画布本身与排片表共用 `components/ScheduleGantt.tsx`(连同 `.vertical-schedule` 那套样式),
@@ -97,11 +97,6 @@
 }
 /* `.agenda-save-hint` 随「保存当前方案」一起删除(2026-09-22,`PLAN-20260922105228`):
    那条提示只在按钮被禁用(第一顺位撞车)时出现,按钮没了它也没有触发点。 */
-.view-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
 
 /* ---------- 画布容器(2026-09-21 立;2026-09-22 两度改口径) ----------
    ⚠ 两栏(`.agenda-columns`)与右侧栏(`.agenda-side*`)的规则已整块删除
@@ -114,9 +109,6 @@
   gap: 16px;
   padding: 0 20px 4px;
 }
-.agenda-gantt-empty {
-  margin: 0;
-}
 @media (max-width: 768px) {
   .agenda-actions {
     padding: 12px 14px;
@@ -125,49 +117,11 @@
     padding: 0 14px 4px;
   }
 }
-.agenda-day-count,
-.agenda-day-summary {
-  color: var(--muted);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-.agenda-day-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  flex-basis: 100%;
-}
-.agenda-overlap-count {
-  color: var(--conflict-line);
-}
-.rank-group > ol > li {
-  position: relative;
-}
-.rank-group > ol[data-rank-dragging] > li {
-  transition: transform 170ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-.rank-group > ol[data-rank-dragging] > li[data-dragging] {
-  z-index: 2;
-  transition: none;
-  background: var(--surface);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
-  outline: 2px solid var(--selected-line);
-  border-radius: 8px;
-}
-.rank-group .drag-handle {
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-}
-.rank-group .drag-handle:active {
-  cursor: grabbing;
-}
-.rank-group:not([data-broken]) .conflict-label {
-  display: none;
-}
-.rank-group[data-broken] {
-  border-color: var(--conflict-line);
-}
+/* `.agenda-gantt-empty`(「这些场次都还没标已抢到」)随「仅看实际行程」筛选一起删除
+   (2026-09-30,`PLAN-20260930213528`)—— 那句话只在筛选把行程筛空时出现,筛选已经没有了。 */
+/* `.agenda-day-count` / `.agenda-day-summary` / `.agenda-overlap-count` 与全部 `.rank-group*`
+   拖拽样式(含 `[data-rank-dragging]` / `.drag-handle` / `[data-broken]`)同批删除:
+   卡片视图与抢票顺位都已整体下线。 */
 /* `.rank-clash-item`（「顺位撞车」提示里的每一层）随 `RankClashes` 一起删除
    (2026-09-22,`PLAN-20260922123138`)—— 那组提示整块下线，规则没有宿主了。 */
 /* 「已保存方案」的「查看场次」弹层 —— 与分享图片同一份信息(有效结束时间 / 片名 / 影院 / GV / 备注 / 海报)。
@@ -252,18 +206,6 @@
 .plan-shows-note {
   color: var(--tight-line);
 }
-@media (pointer: coarse) {
-  .rank-group .drag-handle {
-    width: 44px;
-    min-height: 44px;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .rank-group > ol[data-rank-dragging] > li {
-    transition: none;
-  }
-}
-
 /* 行程场次卡的影院块 —— 出门照着找地方用:官方代码 + 影院全名 / 分区楼层 / 中韩文地址 + 地图入口。 */
 .screening-venue {
   margin-top: 8px;

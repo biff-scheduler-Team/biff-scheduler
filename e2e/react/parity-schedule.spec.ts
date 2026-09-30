@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { agendaCards, keyOf, ready, seed, storage } from "./helpers";
+import { keyOf, ready, seed, storage } from "./helpers";
 
 const picks = (codes: string[]) =>
   JSON.stringify(
@@ -78,30 +78,12 @@ test.describe("schedule interaction parity", () => {
     );
   });
 
-  test("locating a day returns to the top and highlights every selected screening", async ({
-    page,
-  }) => {
-    await seed(page, { "biff.picks.v2": picks(["008", "009"]) });
-    await ready(page, "/agenda?date=2026-10-07");
-    await agendaCards(page);
-    // 同上:行程页自己也有 `.gantt-scroll`
-    const grid = page.locator(".schedule-column .gantt-scroll");
-    await grid.evaluate((el) => {
-      el.scrollTop = 600;
-    });
-    await page
-      .getByRole("button", { name: "定位当日 2026-10-07", exact: true })
-      .click();
-    await expect.poll(() => grid.evaluate((el) => el.scrollTop)).toBe(0);
-    await expect(page.locator('[data-grid-slot="008"]')).toHaveClass(
-      /schedule-located/,
-    );
-    await expect(page.locator('[data-grid-slot="009"]')).toHaveClass(
-      /schedule-located/,
-    );
-    await expect(page.locator(".side-panel")).toHaveCount(0);
-    expect(new URL(page.url()).searchParams.has("focus")).toBe(false);
-  });
+  /* 「locating a day returns to the top and highlights every selected screening」已删除
+   * (2026-09-30,`PLAN-20260930213528`):「定位当日」按钮只长在**卡片视图**的日期头上,
+   * 卡片视图整体下线后它没有宿主了。
+   * ⚠ 顺带记一笔:`navigation.ts::locateDate` 因此暂时**没有调用方**(单场定位
+   * `locateScreening` 仍在用 —— 影片库 / 选片页的场次卡)。要不要把它搬到日程表的日期条上,
+   * 等用户看过效果再定;机制本身保留未删。 */
 
   /** 定位闪烁只闪**描边**,不许动整格内容的透明度(2026-09-17,`PLAN-20260917095517`)。
    *

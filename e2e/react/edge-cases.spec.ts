@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { agendaCards, keyOf, ready, seed, storage } from "./helpers";
+import { keyOf, ready, seed, storage } from "./helpers";
 
 test("failed catalog requests show a recovery page and can be retried", async ({
   page,
@@ -27,42 +27,10 @@ test("unknown film URLs have a usable return action", async ({ page }) => {
   await expect(page).toHaveURL(/\/library$/);
 });
 
-// ⚠ 本条原先测的是「预览顺位修复」弹层（点「预览顺位修复」→ 弹层里预览 + 「应用修复」）。
-//   那一整块（冲突组顺位提示 + 逐组让路按钮 + `autoFixRanks` 的 UI 出口）已于 2026-09-22 删除
-//   （`PLAN-20260922123138`，用户口径「我的行程**不需要显示**冲突组顺位这个组件 直接铺满」），
-//   于是这条断言在 main 上一直卡在「按钮找不到 → click 超时」—— 报出来像功能坏了，其实是测试在点一个不存在的入口。
-//   顺位机制**本身没动**（`biff.ranks.v1` / `plans.ts` / `setRanks` 全部保留），入口只剩
-//   **卡片视图**里顺位卡的拖拽 / 上移 / 下移，故这里对齐现状：钉住「日程表没有这个入口」
-//   + 「卡片视图里顺位仍能就地改」。
-test("顺位修改入口只在卡片视图:日程表上没有已下线的「预览顺位修复」", async ({ page }) => {
-  await seed(page, {
-    "biff.picks.v2": JSON.stringify(
-      ["008", "033"].map((code) => ({
-        key: keyOf(code),
-        picks: [{ code }],
-        note: "",
-      })),
-    ),
-    "biff.ranks.v1": JSON.stringify({ "008": 1, "033": 2 }),
-  });
-  await ready(page, "/agenda");
-  // ① 日程表（默认视图）里不该再有这个入口
-  await expect(
-    page.getByRole("button", { name: "预览顺位修复", exact: true }),
-  ).toHaveCount(0);
-
-  // ② 卡片视图里顺位还在,且能就地改（提高 033 → 它成为第 1 顺位）
-  await agendaCards(page);
-  const group = page.locator(".rank-group").first();
-  await expect(group).toBeVisible();
-  await group
-    .getByRole("button", { name: "提高 033 顺位", exact: true })
-    .click();
-  expect(JSON.parse((await storage(page))["biff.ranks.v1"])).toEqual({
-    "033": 1,
-    "008": 2,
-  });
-});
+/* 「顺位修改入口只在卡片视图」整条已删除(2026-09-30,`PLAN-20260930213528`)。
+ * 它的两半现在都没有宿主:①「预览顺位修复」按钮早在 2026-09-22 随 `RankClashes` 下线;
+ * ② 顺位卡(拖拽 / 上移 / 下移 → `biff.ranks.v1`)随卡片视图一起整体删除 ——
+ * 抢票顺位这套机制已经不存在,不再是「只有卡片视图能改」的问题。 */
 
 test("screening location reveals the correct day and target", async ({
   page,

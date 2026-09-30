@@ -1,10 +1,8 @@
 import {writeWorkspaceItem, removeWorkspaceItem} from "./workspace-storage";
 import {scheduleWantPing} from "./want-counts";
 import {scheduleScreeningPing} from "./screening-counts";
-import {scheduleTicketPing} from "./ticket-stats";
-import {migrateTicketInfoV1, normalizeTicketAccount, normalizeTicketInfo} from "./ticket-info";
-import {normalizeTicketRecord, staleTicketCodes} from "./tickets";
-// 应用状态:选片记录 / 抢票顺位 / 豆瓣映射 / 设置。
+import {migrateTicketInfoV1, normalizeTicketAccount, normalizeTicketInfo, staleTicketInfoCodes} from "./ticket-info";
+// 应用状态:选片记录 / 豆瓣映射 / 设置。
 //
 // 单一数据源 = store.picks:「我的选片」(按片看)与「我的行程」(按场次看)是同一份数据的两个视图。
 //
@@ -15,11 +13,11 @@ import {normalizeTicketRecord, staleTicketCodes} from "./tickets";
 //   历史:片单曾双写 D1 `user_pick`、映射曾存 D1 `douban_map` —— 两次都因「部署换 origin、云端为准」
 //   造成数据复活 / 覆盖,现已全部退役(前端不再 fetch 任何后端)。
 //
-// ★ **档位(必看 / 备选 / 随缘)已于 2026-09-11 整体删除**(`PLAN-20260911223000`):
-//   冲突决策改由**场次级「抢票顺位」**承担(拖动冲突组内的场次排序,见 `plans.ts`),
-//   档位在非冲突场景里只剩排序噪声,两套排序机制并存只会互相打架。
+// ★ **档位(必看 / 备选 / 随缘)已于 2026-09-11 整体删除**(`PLAN-20260911223000`);
+//   当年接棒的**场次级「抢票顺位」**也于 2026-09-30 一并下线(`PLAN-20260930213528`):
+//   两套排序机制都已没有宿主(行程只保留日程表),这份数据回到「只记选了哪几场」。
 
-import type { Mapping, PickEntry, PickSlot, Settings, TicketInfo, TicketRecord, TicketState, TicketVia } from "./types";
+import type { Mapping, PickEntry, PickSlot, Settings, TicketInfo } from "./types";
 import type { TicketImportRow } from "./ticket-import";
 import { loadDoubanMappings } from "./data";
 
@@ -27,9 +25,19 @@ const LS_PICKS = "biff.picks.v2";
 const LS_SETTINGS = "biff.settings.v1";
 const LS_GV_TALK = "biff.gvtalk.v1"; // GV 映后谈单场覆写(code → 是否参加);缺省跟随 Settings.gvTalkOn
 const LS_GV_TALK_MIN = "biff.gvtalkmin.v1"; // GV 映后谈单场时长覆写(code → 分钟);缺省跟随 Settings.gvTalkMin
-const LS_AGENDA_FOLD = "biff.agendafold.v1"; // 「我的行程」按日收起:已收起的日期集合(纯视图偏好,独立键)
-const LS_RANKS = "biff.ranks.v1"; // 抢票顺位:场次 code → 组内序号(1-based);独立键,与 gvtalk 同口径
-const LS_TICKETS = "biff.tickets.v1"; // 票务结果:场次 code → {state, via};独立键,与 ranks 同口径
+/** 已下线的三只旧键(2026-09-30,`PLAN-20260930213528`)—— **只用于一次性清理**,不再读写:
+ *  · `biff.agendafold.v1` 行程按日收起(卡片视图的折叠头是它唯一入口);
+ *  · `biff.ranks.v1` 抢票顺位(同上,顺位卡是它唯一入口);
+ *  · `biff.tickets.v1` 票务三态(场次卡的 `social` 块是它唯一入口)。
+ *  ⚠ 与 `biff.savedplans.v1`「留着不删」的处置**相反**:那三套机制的代码已整体删除,
+ *    留键只会让下一次载入 / 备份恢复把它们当成活数据复活(与 `biff.plan.v1` 的教训同源)。 */
+const RETIRED_KEYS = ["biff.agendafold.v1", "biff.ranks.v1", "biff.tickets.v1"] as const;
+
+/** 清理已下线机制的残留键。由 `app/store.tsx::hydrateStorage()` 在每次换数据源后调一次。
+ *  ⚠ 只删**确知**已下线的这三只:别顺手扫 `biff.` 前缀,里面还有一大批活键在跑。 */
+export function purgeRetiredKeys(): void {
+  for (const key of RETIRED_KEYS) removeWorkspaceItem(key);
+}
 const LS_TICKET_INFO = "biff.ticketinfo.v3"; // 票据明细:场次 code → {seats, name?, bookingNo?, account?};**座位行数即票数**(见 ticket-info.ts)
 const LS_TICKET_INFO_V2 = "biff.ticketinfo.v2"; // 旧结构(只有 seats)—— **只作一次性迁移源,迁完即删**
 const LS_TICKET_INFO_V1 = "biff.ticketinfo.v1"; // 更旧结构(独立 count / accountId)—— 同为迁移源,迁完即删
@@ -73,144 +81,32 @@ export function allCodes(): string[] {
   return store.allIndex;
 }
 
-/* ---------- 抢票顺位(场次级,2026-09-11,PLAN-20260911223000) ----------
- * 场次 code → 组内序号(1-based)。**只在冲突组内有意义** —— 它回答的是
- * 「同一时间带互相重叠的几场,先保哪一场」,顺序即方案编号(见 `plans.ts`)。
- *
- * ⚠ 存的是**用户拖出来的次序**,不是绝对值:每次拖完都由 `setRanks()` 把该组整组归一成 1..n,
- *   所以「删掉组内一场」不会留下空洞(下一次拖拽 / 渲染即重新归一)。
- * ⚠ 独立 localStorage 键(`biff.ranks.v1`,与 `biff.gvtalk.v1` 同口径)—— 视图偏好不混进
- *   `biff.settings.v1`,「重置设置」不会顺手把顺位带走。
- * ⚠ 场次被移出行程后其顺位由 `rebuildIndex()` 就地 prune(否则换版 / 重排后残留脏数据)。 */
-export const rankOf = new Map<string, number>();
+/* ---------- 抢票顺位 —— 已整体下线(2026-09-30,`PLAN-20260930213528`) ----------
+ * 用户口径:「我的行程里面只用保留日程表这种形式」→ 顺位卡(`RankGroup`)所在的卡片视图整体删除。
+ * 顺位卡是这套机制**唯一的 UI 入口**(同日更早的侧栏顺位卡与「顺位撞车」提示早已撤掉),
+ * 故 `rankOf` / `loadRanks` / `saveRanks` / `setRanks` / `rankOfCode` 与 `biff.ranks.v1` 一并删除。
+ * ⚠ 残留键由 `purgeRetiredKeys()` 清一次;`plans.ts` 里那套「顺位排序 / 撞车检测 / 一键修复」
+ *   同样下线 —— 冲突组内的次序改回按开场时间排(见 `buildPlanSet` 的 `fallbackOrder`)。 */
 
-export function loadRanks(): void {
-  try {
-    const raw = localStorage.getItem(LS_RANKS);
-    if (!raw) return;
-    for (const [k, v] of Object.entries(JSON.parse(raw) as Record<string, unknown>)) {
-      if (typeof v === "number" && Number.isFinite(v) && v >= 1) rankOf.set(k, Math.round(v));
-    }
-  } catch {
-    /* 忽略 */
-  }
-}
-
-function saveRanks(): void {
-  try {
-    writeWorkspaceItem(LS_RANKS, JSON.stringify(Object.fromEntries(rankOf)));
-  } catch {
-    /* 忽略 */
-  }
-}
-
-/** 某场的顺位;未设 / 不在冲突组 → undefined */
-export function rankOfCode(code: string): number | undefined {
-  return rankOf.get(code);
-}
-
-/** 把一组场次按给定次序写成顺位 1..n(冲突组内拖动排序的唯一出口)。
- *  只动这一组的 code —— 别的组的顺位不受影响。广播 `"picks"`:行程 / 方案对比 / 冲突角标都随之刷新。 */
-export function setRanks(codes: string[]): void {
-  let changed = false;
-  codes.forEach((code, i) => {
-    if (rankOf.get(code) !== i + 1) {
-      rankOf.set(code, i + 1);
-      changed = true;
-    }
-  });
-  if (!changed) return;
-  saveRanks();
-  scheduleNotify("picks");
-}
-
-/* ---------- 票务结果(2026-09-14,PLAN-20260914164050) ----------
- * 场次 code → {state, via}。**独立 localStorage 键**(`biff.tickets.v1`,与 ranks / gvtalk 同口径)。
- *
- * ⚠ 原「抢票结果」三态已于 2026-09-11 删除,理由是「抢票在票务系统里完成,本地追踪是多余的中间态」。
- *   2026-09-14 **正面推翻**该决策:它不再是本地孤岛 —— 「同场观影人数」与「场次讨论」都建立在这份
- *   状态之上,需求也要求区分「计划行程」与「实际行程」。仍然**不复活「售罄」**这类票务系统内部状态:
- *   三态全是用户自述结果。
- * ⚠ 场次被移出行程后其状态已无意义 → 由 `rebuildIndex()` 就地 prune。 */
-export const tickets = new Map<string, TicketRecord>();
-
-export function loadTickets(): void {
-  const raw = readJson<Record<string, unknown>>(LS_TICKETS);
-  if (!raw || typeof raw !== "object") return;
-  for (const [code, value] of Object.entries(raw)) {
-    if (!code) continue;
-    const record = normalizeTicketRecord(value);
-    if (record) tickets.set(code, record);
-  }
-}
-
-function saveTickets(): void {
-  try {
-    writeWorkspaceItem(LS_TICKETS, JSON.stringify(Object.fromEntries(tickets)));
-  } catch {
-    /* 忽略 */
-  }
-}
-
-/** 某场的票务状态;未标记 → undefined。 */
-export function ticketOf(code: string): TicketRecord | undefined {
-  return tickets.get(code);
-}
-
-/* ---------- 抢票结果上云(2026-09-20,PLAN-20260920161837) ----------
- * 全站「抢到率 / 落榜率」需要每个人自述的结果,但**只有用户真的动过手之后**才允许上报。
- *
- * ⚠ 启动期守卫(与 `RedBlackPage.tsx::actedRef` 同一个教训):`loadTickets()` 之后若顺手把本地
- *   整份状态报上去,换设备 / 刚清过缓存时本地本来就是**空**的 —— 那不是「我撤销了全部结果」,
- *   只是「这台机器还没数据」,直接上报会把服务端上属于我的记录整个误清掉。
- *   故 `loadTickets()` 的启动路径**不上报**。
- * ⚠ 上报本身**不落盘**(没有任何新的 localStorage 键),只发场次 code + 结果。 */
-let ticketsTouched = false;
-
-function pingTickets(): void {
-  scheduleTicketPing(
-    [...tickets].map(([code, record]) => ({ code, state: record.state, via: record.via })),
-  );
-}
-
-/** 设置票务状态;`state` 传 null 等价于「清回未标记」。
- *  `via` 省略时**保留原来源** —— 把「已抢到」改成「放弃」不该顺手弄丢「转票」标记。
- *  ⚠ 服务端据此判定 outcome(见 api 侧 `ticket-stats.ts::outcomeOf`):只有 `got + transfer`
- *    算转票获得;`dropped + transfer` 仍是一条放弃。 */
-export function setTicket(code: string, state: TicketState | null, via?: TicketVia): void {
-  if (!state) {
-    clearTicket(code);
-    return;
-  }
-  const prev = tickets.get(code);
-  const resolvedVia = via ?? prev?.via;
-  const next: TicketRecord = resolvedVia === "transfer" ? { state, via: "transfer" } : { state };
-  if (prev && prev.state === next.state && prev.via === next.via) return;
-  tickets.set(code, next);
-  saveTickets();
-  ticketsTouched = true;
-  pingTickets();
-  scheduleNotify("picks");
-}
-
-export function clearTicket(code: string): void {
-  if (!tickets.delete(code)) return;
-  saveTickets();
-  ticketsTouched = true;
-  pingTickets();
-  scheduleNotify("picks");
-}
+/* ---------- 票务三态 —— 已整体下线(2026-09-30,`PLAN-20260930213528`) ----------
+ * `tickets` / `loadTickets` / `saveTickets` / `ticketOf` / `setTicket` / `clearTicket` 与
+ * `biff.tickets.v1` 一并删除。用户口径是「三态机制 + 转票徽章 + 仅看实际行程筛选全部下线,
+ * 只保留添加转票场次直接记入行程」—— 三者原本都挂在卡片视图场次卡的 `social` 块上。
+ * ⚠ 连带影响只有一个:**抢到率那条上报链**。服务端 `/api/stats/ticket-results-ping` 保留,
+ *   但前端不再调用 ⇒ 存量计数不动、不再更新(读取端 `ticket-stats.ts` 原样保留给抢票分析链路)。
+ * ⚠ **票据明细(`biff.ticketinfo.v3`)不受影响** —— 它是另一份并列数据,见下一段。 */
 
 /* ---------- 票据明细(2026-09-24,PLAN-20260924141442) ----------
  * 场次 code → {seats, name?, bookingNo?}:**座位行数就是票数**,用户手填
  * (「加一张座位 = 多一张票」);后两个是修订 5 为导入加的并列文本字段(姓名 / 预约号)。
  *
- * ⚠ 与上面的三态是**两份并列的场次级数据**,不是一个概念的两个半边 —— 为什么另起一只键而不是
- *   塞进 `biff.tickets.v1` 的值里,见 `types.ts::TicketInfo` 的注释(一句话:key 只增不改,
- *   且旧版本的 `normalizeTicketRecord` 会把多出来的字段静默丢掉)。
- * ⚠ **随账号云同步**:它落在 `biff.` 前缀下,会跟片单一起被同步上去(座位号与票务三态同性质)。
+ * ⚠ 它与上面的票务三态**曾经是两份并列的场次级数据**(三态已于 2026-09-30 下线):
+ *   三态回答「抢到了没有」,这里回答「手上有几张、坐哪」—— 后者是用户自己输入的实物信息,
+ *   与前者没有推导关系,所以当初就没塞进同一只键(理由见 `types.ts::TicketInfo` 的注释)。
+ * ⚠ **随账号云同步**:它落在 `biff.` 前缀下,会跟片单一起被同步上去。
  *   ⇒ 因此**账号名不在这个结构里**(修订 7),它在下面那只本地专属键里。
- * ⚠ 场次被移出行程后明细同样失去意义 → 由 `rebuildIndex()` 与三态一起 prune。 */
+ * ⚠ 场次被移出行程后明细失去意义 → 由 `rebuildIndex()` 就地 prune(三态下线后它是唯一
+ *  还需要 prune 的场次级数据)。 */
 export const ticketInfo = new Map<string, TicketInfo>();
 
 /** **账号名**表:场次 code → 账号名(修订 7)。与本文件其它 Map 不同,它**只存本机**:
@@ -376,18 +272,17 @@ export function clearTicketInfo(code: string): void {
   scheduleNotify("picks");
 }
 
-/** 批量导入票务(2026-09-24,修订 5):一次写 N 场明细(按需同时标「已抢到」),
+/** 批量导入票务(2026-09-24,修订 5):一次写 N 场明细,
  *  落盘与通知**各只做一次**(逐条走 `setTicketInfo` 会写 17 次硬盘、发 17 次通知)。
  *
  *  ⚠ 调用方**必须先**把这些场次并进行程(`mergeScreenings`):`rebuildIndex()` 会把不在行程里的
  *    明细当脏数据 prune 掉 —— 顺序反了,明细会在下一次 rebuild 时凭空消失。
  *  ⚠ 不做「已存在就不动」的判重:导入的语义是**以文件为准覆盖这一场的票务信息**。
- *  ⚠ 标三态只在**当前不是 `got`** 时写,且保留既有 `via` —— 标状态不该顺手清掉「转票」标记
- *    (与 `setTicket` 同一口径)。
+ *  ⚠ 原先还有第二个参数 `markGot`(顺手把这三态标成「已抢到」)—— 三态下线后一并删除
+ *    (`PLAN-20260930213528`),导入现在只写明细。
  *  ⚠ 返回实际写入的场次数,供调用方给提示(调用方已按片单过滤过 code,这里只认结构)。 */
-export function applyTicketImport(rows: readonly TicketImportRow[], markGot: boolean): number {
+export function applyTicketImport(rows: readonly TicketImportRow[]): number {
   let written = 0;
-  let marked = false;
   let accountsChanged = false;
   for (const row of rows) {
     const record = normalizeTicketInfo(row);
@@ -401,23 +296,10 @@ export function applyTicketImport(rows: readonly TicketImportRow[], markGot: boo
       ticketAccount.set(row.code, account);
       accountsChanged = true;
     }
-    if (!markGot) continue;
-    const prev = tickets.get(row.code);
-    if (prev?.state === "got") continue;
-    tickets.set(
-      row.code,
-      prev?.via === "transfer" ? { state: "got", via: "transfer" } : { state: "got" },
-    );
-    marked = true;
   }
   if (!written) return 0;
   saveTicketInfo();
   if (accountsChanged) saveTicketAccount();
-  if (marked) {
-    saveTickets();
-    ticketsTouched = true;
-    pingTickets();
-  }
   scheduleNotify("picks");
   return written;
 }
@@ -485,47 +367,10 @@ export function setGvTalkMin(code: string, min: number | null): void {
   scheduleNotify("settings"); // 映后时长改的是几何(轴末 / 谈块宽度)→ 归 settings,网格必须重建
 }
 
-/* ---------- 「我的行程」按日收起(2026-09-11) ----------
- * 纯视图偏好:只回答「这一天在行程里折不折」,不碰选片 / 排片数据 —— 收起 ≠ 取消选片。
- * 独立 localStorage 键(与 `biff.gvtalk.v1` / 抽屉宽度同口径):不进 Settings,
- * 「清空 / 重置设置」不会顺手把折叠状态带走。 */
-
-/** 已收起的日期集合(ISO 日期字符串,如 "2026-09-17") */
-export const agendaFolded = new Set<string>();
-
-export function loadAgendaFold(): void {
-  try {
-    const raw = localStorage.getItem(LS_AGENDA_FOLD);
-    if (!raw) return;
-    const rows = JSON.parse(raw) as unknown;
-    if (!Array.isArray(rows)) return;
-    for (const d of rows) if (typeof d === "string" && d) agendaFolded.add(d);
-  } catch {
-    /* 忽略 */
-  }
-}
-
-function saveAgendaFold(): void {
-  try {
-    writeWorkspaceItem(LS_AGENDA_FOLD, JSON.stringify([...agendaFolded]));
-  } catch {
-    /* 忽略 */
-  }
-}
-
-/** 该日期在行程里是否已收起 */
-export function isAgendaFolded(date: string): boolean {
-  return agendaFolded.has(date);
-}
-
-/** 收起 / 展开行程中的某一天(点日期头左侧的折叠箭头)。
- *  广播 `"agenda"` 域 —— 只有抽屉会重绘,网格 / 顶栏 / 角标全部跳过(纯抽屉内视图折叠)。 */
-export function toggleAgendaFold(date: string): void {
-  if (agendaFolded.has(date)) agendaFolded.delete(date);
-  else agendaFolded.add(date);
-  saveAgendaFold();
-  scheduleNotify("agenda");
-}
+/* ---------- 「我的行程」按日收起 —— 已整体下线(2026-09-30,`PLAN-20260930213528`) ----------
+ * `agendaFolded` / `loadAgendaFold` / `saveAgendaFold` / `isAgendaFolded` / `toggleAgendaFold`
+ * 与 `biff.agendafold.v1` 一并删除:折叠头只长在卡片视图的按日列表上,而卡片视图整体下线。
+ * ⚠ 连带的 `"agenda"` 变更域也一起撤了(它的唯一生产者就是这里的 toggle)。 */
 
 /** 变更域 —— 让订阅方**按域过滤**重绘,避免「切个主题也重建整张网格 / 整个抽屉」。
  *
@@ -540,8 +385,6 @@ export type ChangeDomain =
   | "theme"
   /** 豆瓣映射载入完成(影响卡片标题里的中文名) */
   | "mappings"
-  /** **仅「我的行程」视图**(按日收起 / 展开)—— 抽屉重绘即可,网格 / 顶栏 / 角标不受影响 */
-  | "agenda"
   /** 未分类 / 多域合并 —— 订阅方按「全刷」处理 */
   | "all";
 
@@ -593,8 +436,8 @@ function saveLocal(): void {
 
 /** 由 picks 重建派生索引(**原地**更新 slotIndex,见 store.slotIndex 注释)。
  *  唯一写点:所有变更都经 `commit()` / `mutate()`。
- *  ★ 顺带 prune `rankOf`:场次被移出行程后它的顺位已无意义,留着会在换版 / 重排后
- *    把「上一轮的次序」当成用户意图(且 localStorage 只增不减)。 */
+ *  ★ 顺带 prune 票据明细:场次被移出行程后它的明细已无意义(且 localStorage 只增不减)。
+ *    ⚠ 三态与顺位原先也在这里 prune —— 两者已于 2026-09-30 整体下线(`PLAN-20260930213528`)。 */
 function rebuildIndex(): void {
   store.slotIndex.clear();
   const codes: string[] = [];
@@ -605,30 +448,14 @@ function rebuildIndex(): void {
     }
   }
   store.allIndex = codes;
-  let pruned = false;
-  for (const code of [...rankOf.keys()]) {
-    if (store.slotIndex.has(code)) continue;
-    rankOf.delete(code);
-    pruned = true;
-  }
-  if (pruned) saveRanks();
 
-  // 票务状态同理:场次已移出行程,留着就是脏数据(localStorage 只增不减)
-  const staleTickets = staleTicketCodes(tickets, (code) => store.slotIndex.has(code));
-  for (const code of staleTickets) tickets.delete(code);
-  if (staleTickets.length) saveTickets();
-  // 被 prune 掉的结果同样要回传服务端(否则那边留着「我的」脏状态)—— 但仍要过启动期守卫:
-  // 载入时的那次 prune 不是用户动作(见 `ticketsTouched` 的说明),不能把服务端记录误清。
-  if (staleTickets.length && ticketsTouched) pingTickets();
-
-  // 票据明细与三态同判据(「这一场还在不在行程里」),故共用 `staleTicketCodes` 这一个实现。
-  // ⚠ 明细**不上报服务端**,所以没有上面那一步「prune 后回传」。
-  const staleInfo = staleTicketCodes(ticketInfo, (code) => store.slotIndex.has(code));
+  // 票据明细:场次已移出行程,留着就是脏数据(localStorage 只增不减)。
+  const staleInfo = staleTicketInfoCodes(ticketInfo, (code) => store.slotIndex.has(code));
   for (const code of staleInfo) ticketInfo.delete(code);
   if (staleInfo.length) saveTicketInfo();
 
   // 账号名同判据、同命运(修订 7:它只是换了只键,「移出行程一起删」的口径不变)。
-  const staleAccount = staleTicketCodes(ticketAccount, (code) => store.slotIndex.has(code));
+  const staleAccount = staleTicketInfoCodes(ticketAccount, (code) => store.slotIndex.has(code));
   for (const code of staleAccount) ticketAccount.delete(code);
   if (staleAccount.length) saveTicketAccount();
 

@@ -38,7 +38,6 @@ import {
 } from "../state";
 import { RATING_DEFS, SUBS_DEFS, mapsUrl, subsKeys, venuePlace, venueShort, venueTip } from "../legend";
 import { BADGE_DEFS, screeningBadgeKeys, codeTip } from "../badges";
-import { SameScreeningCount, ScreeningTicketControl } from "./ScreeningTickets";
 import { SCHEDULE_LABEL, UNSCHEDULE_LABEL, scheduleAria } from "../actions-copy";
 import { useScreeningPicker } from "./screening-actions";
 import type { Screening } from "../types";
@@ -199,7 +198,6 @@ export function ScreeningCard({
   wholeCard = false,
   venueInfo = false,
   slotFilter,
-  social = false,
 }: {
   screening: Screening;
   showTitle?: boolean;
@@ -211,12 +209,6 @@ export function ScreeningCard({
    *  「我的行程」出门时要照着找地方,故只在那里开;影片库里的场次行保持紧凑。 */
   venueInfo?: boolean;
   slotFilter?: ScheduleSelection;
-  /** 行程页专用:票务三态 / 转票来源 / 同场人数(2026-09-14,PLAN-20260914164050)。
-   *  刻意**不在影片库 / 排片网格上开** —— 那是「挑片」视图;票务结果只对已排进行程的场次有意义。
-   *  ⚠ 原先这里还挂「讨论 N」:2026-09-21 先摘掉入口(`PLAN-20260921223658` 修订 1),
-   *    2026-09-22 讨论区连同弹层整体下线(`PLAN-20260922101227`)。
-   *    场次卡现在没有任何讨论相关的出口。 */
-  social?: boolean;
 }) {
   const { cat, conflicts } = useCatalog();
   // 点选 / 取消走共享出口:取消「只有一场」的影片要先提示会连选片一起移除(2026-09-16)
@@ -332,7 +324,6 @@ export function ScreeningCard({
             <span className="score">豆瓣 {score.rating.toFixed(1)}</span>
           )}
           <Badges screening={s} />
-          {social && <SameScreeningCount code={s.code} />}
         </div>
         {venueInfo && (venue || s.venue_display) && (
           <div className="screening-venue" title={venue ? venueTip(venue) : undefined}>
@@ -372,7 +363,6 @@ export function ScreeningCard({
             {conflictDescription ? `：${conflictDescription}` : ""}
           </p>
         )}
-        {social && <ScreeningTicketControl code={s.code} />}
         <div className="inline-actions card-actions">
           {pickable && (
             <ActionButton

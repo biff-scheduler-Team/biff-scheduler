@@ -1,9 +1,7 @@
 import { test, expect } from "@playwright/test";
-import { agendaCards, hourTickPx, keyOf, ready, seed, storage } from "./helpers";
+import { hourTickPx, keyOf, ready, seed, storage } from "./helpers";
 
-test("hover links a conflict group across the agenda and grid; dragging persists its order", async ({
-  page,
-}) => {
+test("hover links a conflict group across the agenda and grid", async ({ page }) => {
   await seed(page, {
     "biff.picks.v2": JSON.stringify(
       ["008", "033"].map((code) => ({
@@ -14,12 +12,13 @@ test("hover links a conflict group across the agenda and grid; dragging persists
     ),
   });
   await ready(page, "/agenda?date=2026-10-07&quick=1");
-  // 场次卡只在卡片视图(2026-09-21 起「我的行程」默认日程表,见 PLAN-20260921223658)
-  await agendaCards(page);
-  const first = page
+  // 行程画布上 hover 我的场次 → 排片表那一列里同组的两场一起高亮。
+  // ⚠ 原用例还兼职验「顺位拖拽落盘」(`dragTo` + `biff.ranks.v1`),那半段已随顺位机制
+  //   一并删除(2026-09-30,`PLAN-20260930213528`)—— 顺位卡与 `setRanks` 都不存在了。
+  await page
     .getByRole("region", { name: "我的行程", exact: true })
-    .locator('[data-screening="008"]');
-  await first.hover();
+    .locator('[data-grid-code="008"]')
+    .hover();
   // ⚠ 花括号必须收在「排片表那一列」:面板模式下它和行程页同屏,而行程页现在也有 `.gantt-slot`
   await expect(
     page
@@ -31,21 +30,6 @@ test("hover links a conflict group across the agenda and grid; dragging persists
       .locator(".schedule-column .gantt-slot")
       .filter({ has: page.locator('[data-grid-code="033"]') }),
   ).toHaveAttribute("data-highlighted", "true");
-  // ⚠ 这里刻意用 `dragTo` 而不是手动鼠标手势：它在拖拽中途会把目标行滚进视口，
-  // 恰好覆盖「拖拽期间页面滚动」这条路径 —— 顺位判定若沿用 pointerdown 时刻捕获的
-  // 视口 rect，滚动后它与后续 `clientY` 就不再同源，阈值整体偏移、排序静默失效
-  // （2026-09-14 CI run 34842131579 红在此；`AgendaPage.startDrag` 改用「相对容器」
-  // 坐标后转绿）。手动手势要自己造滚动，而行程页有 window + 内部列表两层滚动容器，
-  // 滚动量没法稳定控制，反而更脆。
-  await page
-    .getByRole("button", { name: "拖动场次 033 排序", exact: true })
-    .dragTo(page.locator('[data-rank-code="008"]'), {
-      targetPosition: { x: 20, y: 4 },
-    });
-  expect(JSON.parse((await storage(page))["biff.ranks.v1"])).toEqual({
-    "033": 1,
-    "008": 2,
-  });
 });
 
 test("time grows downward and screenings at the same time align across venues", async ({ page }) => {

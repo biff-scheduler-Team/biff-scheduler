@@ -12,27 +12,22 @@ import { loadIntros } from "../intros";
 import { loadRelated } from "../related";
 import {
   allCodes,
-  agendaFolded,
   fillSoleShowPicks,
   gvTalk,
   gvTalkMinOv,
-  loadAgendaFold,
   loadGvTalk,
   loadGvTalkMin,
   loadMappings,
   loadPicks,
-  loadRanks,
   loadSettings,
   loadTicketInfo,
-  loadTickets,
   notify,
-  rankOf,
+  purgeRetiredKeys,
   registerSoleShows,
   store,
   subscribe,
   ticketAccount,
   ticketInfo,
-  tickets,
 } from "../state";
 import { loadScreeningCounts } from "../screening-counts";
 import { computeConflicts } from "../conflict";
@@ -54,15 +49,15 @@ export function useStore() {
 
 export function hydrateStorage(cat: Catalog) {
   store.picks.clear();
-  rankOf.clear();
-  tickets.clear();
   ticketInfo.clear();
   // 账号表是**另一只键**(本地专属),但同属「票务」这一摊 —— 换数据源时必须一起清,
   // 否则上一份数据里的账号名会挂到新行程的同名场次上。
   ticketAccount.clear();
   gvTalk.clear();
   gvTalkMinOv.clear();
-  agendaFolded.clear();
+  // 已下线机制(抢票顺位 / 行程按日收起 / 票务三态)的残留键清一次:换数据源时
+  // 旧备份 / 上一份数据可能把它们带回来,而这三套机制的代码已经没有了(见 `state.ts::purgeRetiredKeys`)。
+  purgeRetiredKeys();
   store.settings = {
     alarmMin: 45,
     transitMin: 0,
@@ -73,14 +68,9 @@ export function hydrateStorage(cat: Catalog) {
   loadSettings();
   loadGvTalk();
   loadGvTalkMin();
-  // 旧版启动先载 ranks 再载 picks：这样重建索引时会顺手剔掉已失效的名次。
-  loadRanks();
-  // 票务状态同理:必须在 loadPicks 之前载入,否则 rebuildIndex() 会把整张表当成脏数据 prune 掉
-  loadTickets();
-  // 票据明细(座位表 = 票数)与三态同判据、同一个 prune 点,故同一条纪律。
-  // ⚠ 它内部还负责 v1 → v2 的一次性迁移(`state.ts::migrateTicketInfoFromV1`)
+  // 票据明细(座位表 = 票数)必须在 loadPicks 之前载入,否则 rebuildIndex() 会把整张表当脏数据 prune 掉。
+  // ⚠ 它内部还负责 v2 / v1 → v3 的一次性迁移(`state.ts::loadTicketInfo`)
   loadTicketInfo();
-  loadAgendaFold();
   loadPicks((code) => {
     const s = cat.byCode.get(code);
     return s ? filmNodeKey(cat, s) : null;
@@ -145,7 +135,6 @@ function derive(base: Catalog) {
   const plans = buildPlanSet(
     codes,
     conflicts,
-    rankOf,
     (c) => hmsToMin(cat.byCode.get(c)!.start_time),
     keyOf,
   );

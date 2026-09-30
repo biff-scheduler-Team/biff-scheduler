@@ -1,104 +1,109 @@
 import { test, expect, type Page } from "@playwright/test";
-import { agendaCards, catalog, keyOf, ready, seed, storage } from "./helpers";
+import { catalog, keyOf, ready, seed, storage } from "./helpers";
 
-// 同场观影 & 场次讨论(2026-09-14,PLAN-20260914164050)。
-// API 一律用 page.route 打桩(feedback.spec.ts 同一手法),不打真实后端。
-// ⚠ 举报 / 管理员后台的用例已于 2026-09-14 随功能整体移除(见该 PLAN 修订 2)。
-// ⚠ 讨论区(方格墙 / 定位条 / 页头常驻发帖口)的三个用例已于 2026-09-22 随功能下线删除
-//   (`PLAN-20260922101227`,用户「去掉讨论区入口 相关组件也去掉」)——
-//   本 spec 现在只覆盖「同场人数 / 票务三态 / 仅看实际行程 / 转票补入」这条链路。
+// 「添加转票场次」这一条链路的 E2E(2026-09-14 起,`PLAN-20260914164050`;2026-09-30 改版,`PLAN-20260930213528`)。
+//
+// ⚠ 本文件原先覆盖「同场人数 / 票务三态 / 仅看实际行程 / 转票补入」四件事,前三件**随卡片视图
+//    一起下线**(它们的控件只长在行程的场次卡上)。现在只剩下**转票补入**,而且形态变了:
+//    「编号为主、搜索兜底、支持一次加多枚」,且**不再写任何票务状态**。
+// ⚠ 举报 / 管理员后台 / 讨论区的用例分别于 2026-09-14 与 2026-09-22 随各自功能下线。
 
-/** 行程:001 单独一场 + 008/033/037 构成一个冲突组(与 helpers 的 ranks 种子一致)。 */
-const picks = JSON.stringify([
-  { key: keyOf("001"), picks: [{ code: "001" }], note: "" },
-  ...["008", "033", "037"].map((code) => ({
-    key: keyOf(code),
-    picks: [{ code }],
-    note: "",
-  })),
-]);
+/** 行程:001 单独一场;其余场次留给「转票补入」当目标。 */
+const picks = JSON.stringify([{ key: keyOf("001"), picks: [{ code: "001" }], note: "" }]);
 
-/** 从真实排期里挑一场没被种进行程的场次,当作「转票补入」的目标。 */
-const transferTarget = catalog.schedule.screenings.find(
-  (s) => !["001", "008", "033", "037"].includes(s.code),
-)!;
+const targets = catalog.schedule.screenings.filter((s) => s.code !== "001");
+const first = targets[0];
+const second = targets[1];
 
-/** 只打桩 `attendance` —— 接口仍会回 `discussions`,但前端自 2026-09-22 起不再消费它。 */
+/** 读回行程里的全部场次 code */
+async function plannedCodes(page: import("@playwright/test").Page): Promise<string[]> {
+  const rows = JSON.parse((await storage(page))["biff.picks.v2"]) as {
+    picks: { code: string }[];
+  }[];
+  return rows.flatMap((entry) => entry.picks.map((pick) => pick.code));
+}
+
+test("转票补入:输入场次编号 → 一步记入行程,且不再写任何票务状态", async ({ page }) => {
+  await seed(page, { "biff.picks.v2": picks });
+  await ready(page, "/agenda");
+  await page.getByRole("button", { name: "添加转票场次", exact: true }).click();
+  await page.getByLabel("场次编号或片名", { exact: true }).fill(first.code);
+
+  // 纯编号且命中 → 顶部直接给按钮(候选列表刻意不铺:同一场不该出现两个入口)
+  const batch = page.locator(".transfer-batch");
+  await expect(batch).toContainText(first.code);
+  await expect(page.locator(".transfer-row")).toHaveCount(0);
+  await batch.getByRole("button", { name: "排进行程", exact: true }).click();
+  await page.getByRole("button", { name: "完成", exact: true }).click();
+
+  expect((await plannedCodes(page)).sort()).toEqual([first.code, "001"].sort());
+  // ⚠ 回归:票务三态(`biff.tickets.v1`)已整体下线 —— 这个入口不许再写它
+  //   (改版前它写的是 `{state:"got", via:"transfer"}`)。
+  expect((await storage(page))["biff.tickets.v1"]).toBeUndefined();
+});
+
+test("转票补入:多枚编号(逗号 / 空格分隔)一次全部加入", async ({ page }) => {
+  await seed(page, { "biff.picks.v2": picks });
+  await ready(page, "/agenda");
+  await page.getByRole("button", { name: "添加转票场次", exact: true }).click();
+  await page
+    .getByLabel("场次编号或片名", { exact: true })
+    .fill(`${first.code}, ${second.code}`);
+
+  await page.getByRole("button", { name: "排进这 2 场", exact: true }).click();
+  const codes = await plannedCodes(page);
+  expect(codes).toContain(first.code);
+  expect(codes).toContain(second.code);
+});
+
+test("转票补入:编号没命中时给提示,片名仍走候选列表", async ({ page }) => {
+  await seed(page, { "biff.picks.v2": picks });
+  await ready(page, "/agenda");
+  await page.getByRole("button", { name: "添加转票场次", exact: true }).click();
+  const field = page.getByLabel("场次编号或片名", { exact: true });
+
+  // ① 不存在的编号 → 明确提示,且不铺候选列表
+  await field.fill("9999");
+  await expect(page.locator(".transfer-dialog")).toContainText("没找到编号 9999");
+  await expect(page.locator(".transfer-row")).toHaveCount(0);
+
+  // ② 片名 → 模糊检索兜底:命中那一场可逐行排进行程
+  await field.fill(first.title_en);
+  const row = page.locator(`.transfer-row[data-transfer-code="${first.code}"]`).first();
+  await expect(row).toBeVisible();
+  await row.getByRole("button", { name: "排进行程" }).click();
+  expect(await plannedCodes(page)).toContain(first.code);
+});
+
+/** 只打桩 `screening-counts`(同场人数的整站一次拉取);接口没部署时前端静默降级为空表。 */
 async function mockCounts(page: Page, attendance: Record<string, number>) {
   await page.route("**/api/stats/screening-counts**", (route) =>
     route.fulfill({ json: { edition: "biff-2026", attendance } }),
   );
-  // 上报是「纯副作用」,打桩成 200 免得回落到预览服务器
-  await page.route("**/api/stats/screening-attendance-ping**", (route) =>
-    route.fulfill({ json: { ok: true, weight: 0.75, count: 0 } }),
-  );
 }
 
-async function guest(page: Page) {
-  await page.route("**/api/account/me", (route) =>
-    route.fulfill({ status: 401, json: { error: "UNAUTHENTICATED" } }),
-  );
-}
-
-test("票务三态 / 同场人数 / 仅看实际行程 / 转票补入", async ({ page }) => {
-  await guest(page);
-  await mockCounts(page, { "001": 3 });
-  await seed(page, { "biff.picks.v2": picks });
-
+// 「同场 N 人」原先长在行程的**场次卡**上,卡片视图下线后一度没有展示面;
+// 用户 2026-09-30 明确要求「日程表还是可以加上同场 N 人」→ 搬进日程表格子(`.gantt-slot`)。
+// ⚠ 这一条钉的是「宿主换了、口径没换」:同一个 `screening-counts` 缓存,0 计数整块不渲染。
+test("同场 N 人:日程表格子上只在有计数的场次出现,0 计数整块不渲染", async ({ page }) => {
+  await mockCounts(page, { "008": 3 });
+  await seed(page, {
+    // 008 与 033 同在 2026-10-07 —— 日程表是**单日**视图,不在同一天的场次不会同屏
+    "biff.picks.v2": JSON.stringify(
+      ["008", "033"].map((code) => ({ key: keyOf(code), picks: [{ code }], note: "" })),
+    ),
+  });
   await ready(page, "/agenda");
-  // 场次卡只在「卡片」视图(2026-09-21 起「我的行程」默认是日程表,见 PLAN-20260921223658)
-  await agendaCards(page);
-  await expect(page.locator(".screening-card")).toHaveCount(4);
-  // 008/033/037 时间重叠 → 行程里出现冲突组顺位卡
-  await expect(page.locator(".rank-group")).toHaveCount(1);
-
-  // 「同场 N 人」只在该场有计数时出现(008 是 0 → 整块不渲染)
-  const card001 = page.locator('.screening-card[data-screening="001"]');
-  await expect(card001.locator(".same-count")).toHaveText(/同场\s*3\s*人/);
-  await expect(page.locator('.screening-card[data-screening="008"] .same-count')).toHaveCount(0);
-
-  // 行程场次卡上不再有任何讨论入口(2026-09-21 摘入口 / 2026-09-22 功能整体下线)
-  await expect(
-    page.locator('.screening-card[data-screening="001"] .card-actions button', {
-      hasText: "讨论",
-    }),
-  ).toHaveCount(0);
-
-  // 标记「已抢到」→ 落进 biff.tickets.v1
-  await card001.locator('.ticket-chip[data-ticket-state="got"]').click();
-  await expect(card001.locator('.ticket-chip[data-ticket-state="got"]')).toHaveAttribute(
-    "aria-pressed",
-    "true",
+  const agenda = page.getByRole("region", { name: "我的行程", exact: true });
+  // ⚠ 选择器收在 `[data-grid-slot]` 上而不是 `[data-grid-code]`:后者是格子内那枚 `.gantt-film`
+  //   按钮上的属性,而「同场 N 人」与它**平级**(挂在格子容器上,见 `ScheduleGantt.tsx`)。
+  await expect(agenda.locator('[data-grid-slot="008"] .same-count')).toHaveText(/同场\s*3\s*人/);
+  await expect(agenda.locator('[data-grid-slot="008"] .same-count')).toHaveAttribute(
+    "data-same-count",
+    "3",
   );
-  expect((await storage(page))["biff.tickets.v1"]).toContain('"001":{"state":"got"}');
-
-  // 「仅看实际行程」:只剩已抢到的那一场,且不再摆顺位卡
-  await page.locator('button:has-text("仅看实际行程")').click();
-  await expect(page.locator(".screening-card")).toHaveCount(1);
-  await expect(page.locator('.screening-card[data-screening="001"]')).toBeVisible();
-  await expect(page.locator(".rank-group")).toHaveCount(0);
-  // 「顺位撞车」提示(`.rank-clashes`)已于 2026-09-22 整块下线(`PLAN-20260922123138`)——
-  // 这条**留着当反向守卫**:撞车提示不该再回到这一页。
-  await expect(page.locator(".rank-clashes")).toHaveCount(0);
-
-  // 退出筛选,走「添加转票场次」
-  await page.locator('button:has-text("仅看实际行程")').click();
-  await page.getByRole("button", { name: "添加转票场次", exact: true }).click();
-  await page.getByLabel("场次编号或片名", { exact: true }).fill(transferTarget.code);
-  const row = page.locator(`.transfer-row[data-transfer-code="${transferTarget.code}"]`);
-  await expect(row).toBeVisible();
-  await row.getByRole("button", { name: /加入并标记转票|标记为转票/ }).click();
-
-  const stored = JSON.parse((await storage(page))["biff.tickets.v1"]) as Record<
-    string,
-    { state: string; via?: string }
-  >;
-  expect(stored[transferTarget.code]).toEqual({ state: "got", via: "transfer" });
-
-  // 卡片上出现只读的「转票」徽章
-  await page.locator('button:has-text("完成")').click();
-  const targetCard = page.locator(`.screening-card[data-screening="${transferTarget.code}"]`);
-  await expect(targetCard.locator(".ticket-transfer")).toHaveText("转票");
+  // 033 计数是 0 → 整块不渲染(不留空位)
+  await expect(agenda.locator('[data-grid-slot="033"] .same-count')).toHaveCount(0);
 });
 
 /** 讨论区整体下线的守门人(2026-09-22,`PLAN-20260922101227`)。

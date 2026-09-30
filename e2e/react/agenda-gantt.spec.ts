@@ -80,7 +80,7 @@ test("时间重叠在我的两场之间画成连线，并给格子冲突配色",
   await expect(agenda.locator(".rank-group")).toHaveCount(0);
 });
 
-test("日期条切单日，卡片 / 日程表两档可来回切且互不残留", async ({ page }) => {
+test("日期条切单日，画布单列铺满（视图只剩日程表一档）", async ({ page }) => {
   await seed(page, { "biff.picks.v2": picks(["001", ...mine]) });
   await ready(page, "/agenda");
   const agenda = page.getByRole("region", { name: "我的行程", exact: true });
@@ -95,14 +95,8 @@ test("日期条切单日，卡片 / 日程表两档可来回切且互不残留",
   await expect(agenda.locator("[data-grid-slot]")).toHaveCount(2);
   await expect(agenda.locator(".vertical-venue")).toHaveCount(2);
 
-  // 卡片视图:按天列表回来,画布整块卸载
-  await agenda.getByRole("button", { name: "卡片", exact: true }).click();
-  await expect(agenda.locator(".agenda-day")).toHaveCount(2);
-  await expect(agenda.locator("[data-grid-slot]")).toHaveCount(0);
-  await expect(agenda.locator('[data-screening="008"]')).toBeVisible();
-  await agenda.getByRole("button", { name: "日程表", exact: true }).click();
-  await expect(agenda.locator(".agenda-day")).toHaveCount(0);
-  await expect(agenda.locator(".vertical-venue")).toHaveCount(2);
+  // ⚠ 「卡片 / 日程表两档来回切」那一段随卡片视图整体删除(2026-09-30,`PLAN-20260930213528`)——
+  //   这一页只剩日程表一档,没有可切的视图。
 
   // 画布铺满(2026-09-22,`PLAN-20260922123138`):右侧栏(冲突组顺位 + 场次详情)整块下线后,
   // 这一列不再被第二列分走宽度 —— 画布左右各只剩 `.agenda-gantt` 自己的内距(宽屏 20 / 窄屏 14)。
@@ -118,11 +112,7 @@ test("日期条切单日，卡片 / 日程表两档可来回切且互不残留",
     pageBox.x + pageBox.width - (canvasBox.x + canvasBox.width),
   ).toBeLessThanOrEqual(21);
 
-  // 「仅看实际行程」联动:一场都没标「已抢到」时画布与日期条一起空掉,并给出说明
-  await agenda.getByRole("button", { name: /仅看实际行程/ }).click();
-  await expect(agenda.locator("[data-grid-slot]")).toHaveCount(0);
-  await expect(agenda.locator(".date-strip.calendar-strip")).toHaveCount(0);
-  await expect(agenda.locator(".agenda-gantt-empty")).toBeVisible();
+  // ⚠ 「仅看实际行程」联动那一段随筛选一起删除(2026-09-30):它筛的是票务三态,而三态已下线。
 });
 
 // 「我的行程」信息架构收拾(三轮合并,现在是 `PLAN-20260922123138` 定稿的形态):
@@ -159,13 +149,11 @@ test("首屏只有一条工具栏（含日期卡），概览收进页头，画�
   // 画布容器里不再有第二行图例(否则就是「两行控件」又回来了)
   await expect(agenda.locator(".agenda-gantt .schedule-legend")).toHaveCount(0);
 
-  // ② 左组 = 日期卡 + 图例 + 添加转票场次 + 仅看实际行程;右组 = 日程表 / 卡片 + 缩放
+  // ② 左组 = 日期卡 + 图例 + 添加转票场次;右组 = 缩放
+  //    ⚠ 视图切换(日程表 / 卡片)与「仅看实际行程」已随卡片视图 / 票务三态一起删除(2026-09-30)。
   const left = toolbar.locator(".agenda-actions-left");
   const right = toolbar.locator(".agenda-actions-right");
   expect(await left.innerText()).toContain("添加转票场次");
-  expect(await left.innerText()).toContain("仅看实际行程");
-  expect(await right.innerText()).toContain("日程表");
-  expect(await right.innerText()).toContain("卡片");
   const leftBox = (await left.boundingBox())!;
   const rightBox = (await right.boundingBox())!;
   expect(rightBox.x).toBeGreaterThanOrEqual(leftBox.x + leftBox.width);
@@ -214,14 +202,8 @@ test("首屏只有一条工具栏（含日期卡），概览收进页头，画�
     pageBox.x + pageBox.width - (canvasRight.x + canvasRight.width),
   ).toBeLessThanOrEqual(21);
 
-  // ⑥ 卡片视图没有画布:图例 / 缩放 / 日期条一起退场;顺位卡回到按日就地展开
-  //    (改抢票顺位现在只剩这一个入口 —— 侧栏与撞车提示都撤了)
-  await right.getByRole("button", { name: "卡片", exact: true }).click();
-  await expect(agenda.locator(".schedule-legend")).toHaveCount(0);
-  await expect(agenda.locator(".zoom-controls")).toHaveCount(0);
-  await expect(strip).toHaveCount(0);
-  await expect(agenda.locator(".agenda-side")).toHaveCount(0);
-  await expect(agenda.locator(".rank-group").first()).toBeVisible();
+  // ⑥ 「卡片视图没有画布」那一段随卡片视图删除(2026-09-30)——
+  //    图例 / 缩放 / 日期条现在恒有画布可服务,不存在「它们点了没效果」的那一档。
 });
 
 // 行程画布上点掉一场要走二次确认(2026-09-22,`PLAN-20260922123138`)。

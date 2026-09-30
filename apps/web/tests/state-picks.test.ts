@@ -15,7 +15,6 @@ import {
   clearScreeningSlots,
   fillSoleShowPicks,
   loadPicks,
-  rankOf,
   registerSoleShows,
   removePick,
   removeScreening,
@@ -45,9 +44,8 @@ const mem = new Map<string, string>();
 };
 
 const LS_PICKS = "biff.picks.v2";
-const LS_RANKS = "biff.ranks.v1";
 
-/** 以给定记录为初始态(经 `loadPicks()` 建 picks / slotIndex / allIndex,并 prune 顺位) */
+/** 以给定记录为初始态(经 `loadPicks()` 建 picks / slotIndex / allIndex) */
 function seed(entries: PickEntry[]): void {
   store.picks.clear();
   mem.set(LS_PICKS, JSON.stringify(entries));
@@ -61,7 +59,6 @@ function persisted(): PickEntry[] {
 
 beforeEach(() => {
   store.picks.clear();
-  rankOf.clear();
   mem.clear();
   // 「只有一场」的判据是**注入**的(真机由 `store.tsx::hydrateStorage` 注入)——
   // 默认置空 = 未启动的旧行为,免得影响下面这些多场片口径的用例。
@@ -120,15 +117,6 @@ describe("removeScreening:与 toggleScreening 同口径", () => {
     removeScreening("001");
     expect(store.picks.get("film:a")).toEqual({ key: "film:a", picks: [], note: "" });
     expect(persisted()).toEqual([{ key: "film:a", picks: [], note: "" }]);
-  });
-
-  it("该场的抢票顺位被 prune(场次没了,顺位就是脏数据)", () => {
-    seed([{ key: "film:a", picks: [{ code: "001" }], note: "" }]);
-    rankOf.set("001", 1);
-    mem.set(LS_RANKS, JSON.stringify({ "001": 1 }));
-    removeScreening("001");
-    expect(rankOf.has("001")).toBe(false);
-    expect(JSON.parse(mem.get(LS_RANKS)!)).toEqual({});
   });
 
   it("不在行程里的 code → 无副作用", () => {

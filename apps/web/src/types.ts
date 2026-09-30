@@ -182,8 +182,9 @@ export interface PickSlot {
  *  键 = filmNodeKey(`cat:<目录 id>` | `sched:<片名小写>`),一部片一条记录:
  *  ① 已选场次挂在 picks 里(可空 = 已选中但未排场);
  *  ② 从行程里移除某一场只动 picks,记录保留(选片意向不丢)。
- *  ⚠ **档位(必看 / 备选 / 随缘)已于 2026-09-11 整体删除**(`PLAN-20260911223000`):
- *    它在冲突场景里的作用被「拖动顺位」完全取代(见 `plans.ts`),在非冲突场景里只是排序噪声。
+ *  ⚠ **档位(必看 / 备选 / 随缘)已于 2026-09-11 整体删除**(`PLAN-20260911223000`);
+ *    当年接手它那层「冲突组内偏好次序」的**抢票顺位**也于 2026-09-30 一并下线
+ *    (`PLAN-20260930213528`)—— 非冲突场景里两套排序机制都只剩噪声。
  *    旧数据里的 `priority` 字段读取时被忽略 —— 零迁移。 */
 export interface PickEntry {
   key: string;
@@ -191,33 +192,19 @@ export interface PickEntry {
   note: string;
 }
 
-/** 票务结果 —— 「我的行程」每场一条**用户自述**的状态。
- *  ⚠ 刻意**不含**「售罄」这类票务系统内部状态:2026-09-11 曾以「本地追踪是多余的中间态」
- *    为由整体删除过抢票三态,2026-09-14 重新引入(PLAN-20260914164050)—— 它不再是本地孤岛,
- *    而是「同场观影人数」的共享数据底座(原先还支撑「场次讨论」,讨论区已于 2026-09-22 下线,
- *    见 `PLAN-20260922101227`)。 */
-export type TicketState = "got" | "missed" | "dropped";
-
-/** 票的来源:自己抢到 / 他人转票。缺省视为 `self`(读取时归一,**不写回**)。 */
-export type TicketVia = "self" | "transfer";
-
-/** 存储形状 = `Record<场次 code, TicketRecord>`(localStorage `biff.tickets.v1`)。 */
-export interface TicketRecord {
-  state: TicketState;
-  via?: TicketVia;
-}
+/* `TicketState` / `TicketVia` / `TicketRecord`(票务三态,localStorage `biff.tickets.v1`)已于
+ * 2026-09-30 整体删除(`PLAN-20260930213528`):行程只保留日程表,三态控件的唯一宿主
+ * (`ScreeningCard` 的 `social` 块)随卡片视图下线。
+ * 服务端 `/api/stats/ticket-results-ping` 保留但不再被调用 —— 存量计数不动,只是不再更新。 */
 
 /** **票据明细** —— 手填的「这一场有几张、分别坐哪」(2026-09-24,`PLAN-20260924141442`)。
  *
  *  ★ **座位行数就是票数**(用户 2026-09-24 拍板:「用添加的座位数作为票数」)——
  *    所以这里**没有**独立的 `count` 字段:两个来源必然会打架,而「加一张座位 = 多一张票」
  *    比「先填数字、再填座位」少一次思考。票数一律由 `ticket-info.ts::ticketCountOf` 派生。
- *  ⚠ 它与 `TicketRecord`(`biff.tickets.v1`)是**两份并列的数据**:
- *    `TicketRecord` 回答「这一场抢到了没有」(自述三态,驱动「实际行程」筛选与同场人数口径);
- *    这里回答「手上有几张、坐哪」(用户自己输入的实物信息)。
- *  ⚠ 因此**不**塞进 `biff.tickets.v1` 的值里 —— 那既违反「`biff.*` key 只增不改」,
- *    也会被旧版本的 `normalizeTicketRecord` 静默丢掉(它只挑 `state` / `via`)。
- *  ⚠ 与 `biff.tickets.v1` 同以场次 code 为键、同处 `rebuildIndex()` 的 prune。
+ *  ⚠ 它回答的是「手上有几张、坐哪」(用户自己输入的实物信息),与已下线的票务三态
+ *    (localStorage `biff.tickets.v1`,2026-09-30 删)不是一回事 —— 后者只回答「抢到了没有」。
+ *  ⚠ 与已下线的那份同以场次 code 为键、同处 `rebuildIndex()` 的 prune。
  *  ⚠ **这里不许放任何凭据**:本结构落在 `biff.` 前缀下,会随片单一起同步到账号云端
  *    (见 `PLAN-20260924141442` 修订 3:账号 / 密码方案已整体撤销,理由见 `docs/CONVENTIONS.md`)。 */
 export interface TicketInfo {

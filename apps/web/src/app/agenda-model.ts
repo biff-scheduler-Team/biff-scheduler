@@ -1,51 +1,13 @@
-import type { PlanSet, RankClashSpot } from "../plans";
-import type { Screening } from "../types";
+import type { PlanSet } from "../plans";
 
-/** 「当前行程」的**真值**:共同场次 + 每个冲突组的第一顺位。
+/** 「当前行程」的**真值**:共同场次 + 每个冲突组的第一场(组内按开场时间排好,故第 1 场即最早)。
  *  ⚠ 名字里的 plan 是历史包袱(2026-09-22 之前它同时是「保存方案」的取值口径,`PLAN-20260922105228`)——
  *  方案整体下线后它**只剩一个调用方**:`ExportDialog` 的「导出范围 = 当前行程」。别再往它身上挂新语义。 */
 export function topPlanCodes(plans: Pick<PlanSet, "common" | "groups">): string[] {
   return [...plans.common, ...plans.groups.map((group) => group[0])];
 }
 
-/** 让这一组避让时，只交换冲突提示里点名的那两场。 */
-export function rankSpotOrder(groups: string[][], spot: RankClashSpot): string[] | null {
-  const group = groups[spot.group];
-  if (!group || spot.alt === null) return null;
-  const from = group.indexOf(spot.code);
-  const to = group.indexOf(spot.alt);
-  if (from < 0 || to < 0) return null;
-  const next = [...group];
-  [next[from], next[to]] = [next[to], next[from]];
-  return next;
-}
-
-export type AgendaItem =
-  | { kind: "group"; codes: string[] }
-  | { kind: "screening"; screening: Screening; before: Screening | null };
-
-/** 冲突组里没有「唯一的前一场」可用来算下一段转场。 */
-export function agendaItems(rows: Screening[], groups: string[][]): AgendaItem[] {
-  const groupOf = new Map(groups.flatMap((group) => group.map((code) => [code, group] as const)));
-  const rendered = new Set<string[]>();
-  const items: AgendaItem[] = [];
-  let before: Screening | null = null;
-  for (const screening of rows) {
-    const group = groupOf.get(screening.code);
-    if (group) {
-      if (rendered.has(group)) continue;
-      rendered.add(group);
-      items.push({ kind: "group", codes: group });
-      before = null;
-    } else {
-      items.push({ kind: "screening", screening, before });
-      before = screening;
-    }
-  }
-  return items;
-}
-
-/* `describeSavedPlan()` 随「已保存方案」一起下线(2026-09-22,`PLAN-20260922105228`)。
- * 它的职责是「按目录核验一份**快照**还剩几场有效」,而快照这个形态已经没有了 ——
- * 现在唯一要出的概要(`ExportDialog` 的导出范围标签)走 `ExportDialog.tsx::codesOutline`,
- * 那份永远对着**当前行程**算,不存在「已不在排期」以外的失效形态。 */
+/* `rankSpotOrder()` / `AgendaItem` / `agendaItems()` 已于 2026-09-30 删除
+ * (`PLAN-20260930213528`):前者是「顺位撞车的逐组让路」,后两者是**卡片视图**的按日条目拼装
+ * (顺位卡 / 间隔提示 / 按日折叠)—— 顺位机制与卡片视图都已整体下线,本文件只剩上面那一支。
+ * ⚠ 冲突组本身没有消失:`plans.ts::groups` 仍按 `topPlanCodes` 供导出范围取值。 */

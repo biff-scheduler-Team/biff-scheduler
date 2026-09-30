@@ -13,8 +13,9 @@
 //   实测「导出与分享」被压成 12px 宽 × 105px 高，逐字一行。这条断言钉住那个回归。
 //
 // ⚠ 用真实排期数据里的**真实重叠对**：070(10/8 20:00–22:25 @bt 露天) 与 126(10/8 18:00–20:05 @l3)
-//   同一天、时间重叠，构成一个冲突组；`biff.ranks.v1` 给它排顺位 —— 顺位本身仍存在
-//   （行程页冲突组在用），只是**不再进分享内容**。
+//   同一天、时间重叠，构成一个冲突组。导出的「当前行程」在每个冲突组里只取**开场最早**的那一场
+//   （组内次序 = 开场时间；用户可拖的抢票顺位已于 2026-09-30 整体下线，`PLAN-20260930213528`），
+//   所以 126 进内容、070 不进 —— 后两条用例的 `not.toContain("070")` 守的正是这一点。
 
 import { test, expect } from "@playwright/test";
 import { headerAction, keyOf, paintedTexts, ready, seed, trackPaintedTexts } from "./helpers";
@@ -101,7 +102,6 @@ test("「导出与分享」从菜单打开时仍记一次 click=export（锚点�
 test("分享文案按「当前行程」导出，且不含顺位 / 备选 / 开票批次", async ({ page }) => {
   await seed(page, {
     "biff.picks.v2": picks("070", "126"),
-    "biff.ranks.v1": JSON.stringify({ "126": 1, "070": 2 }),
     // ⚠ `biff.savedplans.v1` 是**废键**(「已保存方案」2026-09-22 整体下线,`PLAN-20260922105228`)。
     //   这里仍塞一个**与行程无关**的 code:它必须彻底失效 —— 既不能进导出范围,也不能进分享文案。
     "biff.savedplans.v1": plan("033"),
@@ -134,7 +134,6 @@ test("分享图片同样不含顺位 / 备选 / 批次节头，但内容照画",
   await trackPaintedTexts(page); // 海报是 canvas 手绘：断言只能读画上去的文字
   await seed(page, {
     "biff.picks.v2": picks("070", "126"),
-    "biff.ranks.v1": JSON.stringify({ "126": 1, "070": 2 }),
     "biff.savedplans.v1": plan("070", "126"),
   });
   await ready(page, "/agenda");

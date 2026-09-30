@@ -15,7 +15,7 @@
  *   (`state.ts::ticketAccount`,不上云、不进备份)。唯一保留的入口是 `normalizeTicketAccount`
  *   (归一口径与票务家族共用),以及 `ticketInfoTitle` 的**第二个参数**。
  * ⚠ 只做「数据 → 数字 / 字符串」的换算,**不碰 DOM、不 import `state.ts`** ——
- *   node 直接可测(与 `tickets.ts` 同口径)。
+ *   node 直接可测。
  * ⚠ **本模块不认得任何凭据**:账号名只是一个标签,不是密码。账号 / 密码方案已在修订 3
  *   整体撤销(理由:落在 `biff.` 前缀下会随片单上云)。详情见 `docs/CONVENTIONS.md`。
  */
@@ -139,21 +139,32 @@ export function allSeatsBlank(info: TicketInfo | undefined): boolean {
   return seats.length > 0 && seats.every((seat) => !seat);
 }
 
-/** 行程票数合计 —— 「共 N 张票」的**唯一口径**。
+/** 行程票数合计 —— 「共 N 张票」的**唯一口径**:按**票据明细**的行数合计。
  *
- *  计哪些场次 =「标了已抢到」∪「有票据明细」的并集:
- *   · 只标三态、没加座位行的老用户 → 每场算 1 张,数字与原「实际 N 场」一致,不会有落差;
- *   · 加过座位行的 → 按行数;
- *   · 既没标已抢到、也没有明细的场次 → 不计。 */
-export function totalTicketCount(
-  gotCodes: ReadonlySet<string>,
-  info: ReadonlyMap<string, TicketInfo>,
-): number {
+ *  ⚠ 2026-09-30(`PLAN-20260930213528`)起只数明细:票务三态整体下线后,
+ *    原先「只标了已抢到、没填明细的场次也按 1 张算」那一路就没有数据来源了。 */
+export function totalTicketCount(info: ReadonlyMap<string, TicketInfo>): number {
   let total = 0;
-  for (const code of new Set([...gotCodes, ...info.keys()])) {
-    total += ticketCountOf(info.get(code)) ?? 1;
+  for (const value of info.values()) {
+    total += ticketCountOf(value) ?? 0;
   }
   return total;
+}
+
+/** 已移出行程的场次,其明细已无意义 → 返回应删掉的 code(不直接改 Map,便于单测)。
+ *
+ *  ⚠ 本函数原先住在 `tickets.ts`(票务三态),2026-09-30 三态整体下线后搬到这里:
+ *    明细是**唯一**还需要 prune 的场次级数据,`rebuildIndex()` 仍按同一个判据
+ *    (「这一场还在不在行程里」)清理它。 */
+export function staleTicketInfoCodes<T>(
+  records: ReadonlyMap<string, T>,
+  alive: (code: string) => boolean,
+): string[] {
+  const stale: string[] = [];
+  for (const code of records.keys()) {
+    if (!alive(code)) stale.push(code);
+  }
+  return stale;
 }
 
 /** 日程表格子上的张数徽章文案;**没有明细 → `null`**(调用方不渲染,保证零噪声)。 */

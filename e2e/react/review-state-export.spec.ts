@@ -1,38 +1,40 @@
-import { test, expect, type Page } from "@playwright/test";
-import { agendaCards, keyOf, legacyRead, openExport, ready, seed, storage } from "./helpers";
+import { test, expect } from "@playwright/test";
+import { keyOf, openExport, ready, seed, storage } from "./helpers";
 
-test("restored stale ranks do not become the first choice of a later ICS import", async ({ page }) => {
-  const staleRanks = '{"008":2,"033":1}';
+test("retired keys are purged on load, unknown keys survive, and ICS import still works", async ({
+  page,
+}) => {
   await seed(page, {
     "biff.picks.v2": "[]",
-    "biff.ranks.v1": staleRanks,
+    "biff.ranks.v1": '{"008":2,"033":1}',
+    "biff.agendafold.v1": '["2026-10-07"]',
+    "biff.tickets.v1": '{"001":{"state":"got"}}',
     "biff.future.v9": '{ "preserved": true }',
   });
   await ready(page, "/agenda");
-  expect(JSON.parse((await storage(page))["biff.ranks.v1"])).toEqual({});
+  // ★ 回归(2026-09-30,`PLAN-20260930213528`):抢票顺位 / 行程按日收起 / 票务三态这三套机制的
+  //   代码已整体删除,残留键必须在载入时**清掉**。
+  //   ⚠ 改版前这里的行为是「把陈旧顺位**剪成空对象**留在盘上」—— 那套「剪枝」随 `rebuildIndex`
+  //   里那段 rankOf prune 一起没了,现在走的是 `state.ts::purgeRetiredKeys()`。
+  const data = await storage(page);
+  expect(data["biff.ranks.v1"]).toBeUndefined();
+  expect(data["biff.agendafold.v1"]).toBeUndefined();
+  expect(data["biff.tickets.v1"]).toBeUndefined();
+  // ⚠ 清理是**白名单**式的:未知键原样保留(与旧版共存的数据契约)
+  expect(data["biff.future.v9"]).toBe('{ "preserved": true }');
+
+  // ICS 合并那条链没被牵连:导入后两场都画进行程
   const dialog = await openExport(page);
-  await dialog.getByRole("textbox", { name: "或粘贴备份 / 日历 / 票务内容", exact: true }).fill([
-    "BEGIN:VCALENDAR", "UID:033@biff-2026", "UID:008@biff-2026", "END:VCALENDAR",
-  ].join("\n"));
+  await dialog
+    .getByRole("textbox", { name: "或粘贴备份 / 日历 / 票务内容", exact: true })
+    .fill(
+      ["BEGIN:VCALENDAR", "UID:033@biff-2026", "UID:008@biff-2026", "END:VCALENDAR"].join("\n"),
+    );
   await dialog.getByRole("button", { name: "合并到当前行程", exact: true }).click();
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();
-  // ⚠ 必须先切到**卡片**视图:行程页自 2026-09-21 起默认是「日程表」(`PLAN-20260921223658`),
-  //   而顺位卡(`data-rank-code`)只存在于卡片视图 —— 不切的话这条断言找不到元素,
-  //   报出来的是「超时」而不是「顺位不对」,看上去像功能坏了。
-  //   (`workflows` / `parity-agenda` / `desktop` 三处早就带着这一步,只有这里漏了。)
-  await agendaCards(page);
-  await expect(page.locator("[data-rank-code]").first()).toHaveAttribute("data-rank-code", "008");
-  // ⚠ 这里原先还有一步「保存当前方案 → 断言落盘的方案就是 008」。方案已于 2026-09-22 整体下线
-  //   (`PLAN-20260922105228`),而**本用例要守的东西没变**:陈旧顺位在重新水合时被剪掉、
-  //   导入后顺位真的按新行程生效、未知键原样保留 —— 下一行就是这三条的收口。
-  expect((await storage(page))["biff.future.v9"]).toBe('{ "preserved": true }');
-
-  // Exercise the old implementation against the original input, not already-pruned new data.
-  await page.evaluate((ranks) => {
-    localStorage.setItem("biff.picks.v2", "[]");
-    localStorage.setItem("biff.ranks.v1", ranks);
-  }, staleRanks);
-  expect((await legacyRead(page)).ranks).toEqual({});
+  const agenda = page.getByRole("region", { name: "我的行程", exact: true });
+  await expect(agenda.locator('[data-grid-code="008"]')).toBeVisible();
+  await expect(agenda.locator('[data-grid-code="033"]')).toBeVisible();
 });
 
 test("reopening ticket information after the opening time refreshes its status", async ({ page }) => {

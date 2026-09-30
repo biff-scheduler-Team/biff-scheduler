@@ -10,8 +10,7 @@
 | `biff.settings.v1` | `alarmMin`、`transitMin`、`gvTalkOn`、`gvTalkMin`、`theme`、`zoom`。更新设置时保留未知字段。 |
 | `biff.gvtalk.v1` | 场次编号到布尔值的对象，缺省使用全局配置。 |
 | `biff.gvtalkmin.v1` | 场次编号到映后分钟数的对象。 |
-| `biff.ranks.v1` | 场次编号到顺位的对象，调整时归一为组内 `1..n`。 |
-| `biff.agendafold.v1` | 已折叠日期的字符串数组。 |
+| `biff.ranks.v1`、`biff.agendafold.v1`、`biff.tickets.v1` | **已下线**（2026-09-30，`PLAN-20260930213528`）：抢票顺位 / 行程按日折叠 / 票务三态三套机制的代码已删，这三只键不再读写，载入时由 `state.ts::purgeRetiredKeys()` 清除。 |
 | `biff.savedplans.v1` | `[{id,name,codes,createdAt}]`，保持原快照和去重规则。 |
 | `biff.filters.v1` | 排片表筛选：`{subs,venues,venueMode,gv}`。 |
 | `biff.libfilters.v1` | 影片库独立筛选，格式同上。 |
