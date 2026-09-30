@@ -28,18 +28,22 @@ import {
   posterScale,
   roundRectPath,
 } from "./poster-brush";
-import { glyphOf, glyphPath, glyphPlacement, type StickerGlyph } from "./sticker-glyph";
-import { shapeOf, shapePath, type StickerShape } from "./sticker-shape";
+import { glyphPath, glyphPlacement, type StickerGlyph } from "./sticker-glyph";
+import { paintMaterial } from "./sticker-material";
+import { shapePath, type StickerShape } from "./sticker-shape";
+import { resolveSkin, skinSpec, type StickerSkin } from "./sticker-skin";
 import { dateInfo } from "./util";
 import {
   boardFilms,
   countsOf,
   crowdStickers,
   othersOf,
+  othersSkins,
   sortByCounts,
   sortMetric,
   tiltOf,
   type CrowdCounts,
+  type FilmSkinCounts,
   type SortMode,
   type Sticker,
   type StickerBoard,
@@ -68,6 +72,9 @@ export interface RbPosterSticker {
   posY: number;
   /** 角度(度),±15 */
   tilt: number;
+  /** 这一枚的**皮肤**（2026-09-29）。⚠ 在模型里就**解析成确定值**（而不是留 `skin?`）：
+   *  分享图是**死像素**，没有 hover 也没有回落余地 —— 画的时候再解析一次就是第二处口径。 */
+  skin: StickerSkin;
 }
 
 export interface RbPosterRow {
@@ -120,6 +127,10 @@ export interface RbPosterModel {
 export interface RbPosterInput {
   films: readonly FilmNode[];
   crowd: CrowdCounts;
+  /** 影片 key → 该片**按款**票数（2026-09-29）。**含我自己那一枚**，用前 `othersSkins` 扣。
+   *  ⚠ 缺席是**合法状态**（老接口 / 最小模型）：群点退回「按 id 兜底」，
+   *    观感与加皮肤前一致 —— 不知道就别装作知道。 */
+  skins?: FilmSkinCounts;
   board: StickerBoard;
   /** 页面 hero 那份「全站」统计 —— **传进来而不是重算**,分享图与页面才会是同一些数字 */
   site: { total: number; red: number; black: number };
@@ -161,16 +172,36 @@ function isoDate(d: Date): string {
 }
 
 function toSticker(s: Sticker): RbPosterSticker {
-  return { id: s.id, type: s.type, posX: s.posX, posY: s.posY, tilt: tiltOf(s.id) };
+  return {
+    id: s.id,
+    type: s.type,
+    posX: s.posX,
+    posY: s.posY,
+    tilt: tiltOf(s.id),
+    // 与页面**同一套解析**（存了用存的、没存按 id 兜底），所以分享图和卡片上长得一样
+    skin: resolveSkin(s.id, s.skin),
+  };
 }
 
-function toRow(film: FilmNode, crowd: CrowdCounts, board: StickerBoard): RbPosterRow {
+function toRow(
+  film: FilmNode,
+  crowd: CrowdCounts,
+  board: StickerBoard,
+  skins: FilmSkinCounts,
+): RbPosterRow {
   const counts: StickerCounts = crowd.get(film.key) ?? { total: 0, red: 0, black: 0 };
   const placed = board.get(film.key) ?? [];
   const mine = countsOf(placed);
   // 群点 = 「别人的」(全体 − 我),与卡片画布同一条口径;我那一枚**追加在末尾** ——
   // 绘制顺序决定压叠次序,卡片上也是它压在群点之上(用户 2026-09-22 的口径)。
-  const stickers = crowdStickers(film.key, othersOf(counts, mine)).map(toSticker);
+  // ⚠ 按款分布同样要**扣掉我自己那一枚**（与卡片里 `crowdSkins` 同一条口径、同一支函数）。
+  //   不扣的话分享图会比卡片多画一枚 —— 而它恰好是我的款与色，看起来还挺合理，
+  //   所以只能靠这条口径挡住：**两条路径的扣减必须来自同一个函数**。
+  const stickers = crowdStickers(
+    film.key,
+    othersOf(counts, mine),
+    othersSkins(skins[film.key], board.get(film.key) ?? []),
+  ).map(toSticker);
   // 一部只有一枚贴纸(`MAX_PER_FILM = 1`),取第一枚就是「我贴的那一色」
   const mySticker = placed[0];
   const mineIndex = mySticker ? stickers.push(toSticker(mySticker)) - 1 : -1;
@@ -198,7 +229,7 @@ function toRow(film: FilmNode, crowd: CrowdCounts, board: StickerBoard): RbPoste
  *  ② 三榜都取**前 `TOP_N`**;「我贴过的」那一节**不截断**。
  */
 export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
-  const { films, crowd, board, site, mine, today } = input;
+  const { films, crowd, board, skins = {}, site, mine, today } = input;
   const picked = input.sections ?? allSections();
   const candidates = boardFilms(films);
 
@@ -211,7 +242,7 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
         entry.mode,
       )
         .slice(0, TOP_N)
-        .map((film) => toRow(film, crowd, board));
+        .map((film) => toRow(film, crowd, board, skins));
       return { ...entry, rows };
     })
     .filter((entry) => entry.rows.length > 0);
@@ -222,7 +253,7 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
     crowd,
     "total",
   );
-  const myRows = picked.has("mine") ? placedFilms.map((film) => toRow(film, crowd, board)) : [];
+  const myRows = picked.has("mine") ? placedFilms.map((film) => toRow(film, crowd, board, skins)) : [];
 
   return {
     eyebrow: `${EDITION.replace("-", " ").toUpperCase()} · 观影红黑榜`,
@@ -368,7 +399,7 @@ function drawField(ctx: CanvasRenderingContext2D, row: RbPosterRow, x: number, t
   row.stickers.forEach((s, i) => {
     // 形状与微图标**由 id 确定性推导** —— 与卡片画布 / 弹层 / 页面那枚共用同一套函数,
     // 所以同一部片在分享图与页面上摊出来的是**同一堆贴纸**(连轮廓都一致)。
-    const body = stickerBody(shapeOf(s.id, s.type), FIELD_STICKER);
+    const body = stickerBody(skinSpec(s.skin).shape, FIELD_STICKER);
     ctx.save();
     // ⚠ 相对坐标映射到**去掉一枚贴纸之后**的范围:这块区只有 88px,照搬「中心 = posY × 高」
     //   会让上下沿的贴纸被切平(一排平顶);收进区内之后,`clip()` 只剩兜底。
@@ -377,6 +408,8 @@ function drawField(ctx: CanvasRenderingContext2D, row: RbPosterRow, x: number, t
     ctx.translate(-half, -half);
     ctx.fillStyle = s.type === "red" ? C.red : C.stickerBlack;
     ctx.fill(body);
+    // 材质与页面同源（同一份配方）；⚠ 分享图恒为深底，所以材质的白/黑颗粒在这里仍然成立
+    paintMaterial(ctx, skinSpec(s.skin).material, body, FIELD_STICKER);
     if (s.type === "black") {
       // 深底上的黑贴纸要靠一圈亮边才认得出(理由同 `poster-brush.ts::COLORS.stickerBlack`)
       ctx.strokeStyle = C.muted;
@@ -389,8 +422,8 @@ function drawField(ctx: CanvasRenderingContext2D, row: RbPosterRow, x: number, t
       ctx.lineWidth = 1.6;
       ctx.stroke(body);
     }
-    // 中心微图标:与页面上是同一族图形(同样由 id 推导),墨色用深底海报专属的那一档
-    drawStickerIcon(ctx, glyphOf(s.id, s.type), FIELD_STICKER, C.stickerInk);
+    // 中心微图标:与页面上是同一族图形(同样由款决定),墨色用深底海报专属的那一档
+    drawStickerIcon(ctx, skinSpec(s.skin).glyph, FIELD_STICKER, C.stickerInk);
     ctx.restore();
   });
   ctx.restore();
@@ -416,7 +449,10 @@ function drawRow(
     // 这一枚就是「我贴的那一张」的缩略:直接拿它在贴纸区里的那一枚来推形状与图标,
     // 而不是另起一个 id —— 否则同一个意思会在这张图上出现两种轮廓。
     const mineSticker = row.mineIndex >= 0 ? row.stickers[row.mineIndex] : null;
-    const body = stickerBody(mineSticker ? shapeOf(mineSticker.id, mineSticker.type) : "torn", size);
+    // 没有那一枚时用契约层的兜底款（`torn`）—— 与 `resolveSkin` 的兜底不是同一条路径，
+    // 但这里只是「连票都没有时的占位形状」，不会出现在有票的行上。
+    const mineSkin: StickerSkin = mineSticker?.skin ?? "torn";
+    const body = stickerBody(skinSpec(mineSkin).shape, size);
     ctx.save();
     // 与片名那一行**视觉居中对齐**(基线往上约 9px 是字身中心,而不是整行居中)
     ctx.translate(PAD, textBase - 9 - size / 2);
@@ -429,7 +465,7 @@ function drawRow(
       ctx.stroke(body);
     }
     if (mineSticker) {
-      drawStickerIcon(ctx, glyphOf(mineSticker.id, mineSticker.type), size, C.stickerInk);
+      drawStickerIcon(ctx, skinSpec(mineSkin).glyph, size, C.stickerInk);
     }
     ctx.restore();
   } else {

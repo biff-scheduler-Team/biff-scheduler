@@ -9,10 +9,13 @@
 //
 // ⚠ 本模块是纯逻辑 + localStorage 读写,**import 期不碰 DOM**(单测挂内存 localStorage 替身即可)。
 
+import { STICKER_SKIN_KEYS, type StickerSkin } from "@biff/contracts/sticker";
 import type { FilmNode } from "./app/model";
 import { removeWorkspaceItem, writeWorkspaceItem } from "./workspace-storage";
 
 export type StickerType = "red" | "black";
+
+export type { StickerSkin };
 
 /** 一枚已贴的贴纸。`posX` / `posY` 是**画布内的相对坐标(0..1)** —— 存像素会在换屏 /
  *  换列数之后跑到画布外面去(卡片宽度本来就不是定值)。
@@ -30,6 +33,11 @@ export interface Sticker {
   posX: number;
   posY: number;
   comment?: string;
+  /** 这一枚选的**皮肤**（2026-09-29）。与 `comment` 同理：加可空字段向后兼容，
+   *  不触发「新 key + 一次性迁移 + 删旧 key」那条（那条管不兼容变更）。
+   *  ⚠ 也**可以缺席**：老数据（用户说了会自己删）、以及 id 推导出来的群点在没有分布数据时。
+   *    取款一律走 `resolveSkin(id, sticker.skin)`，别直接读它。 */
+  skin?: StickerSkin;
 }
 
 /** 影片 key → 已贴贴纸(每种颜色最多 `MAX_PER_COLOR` 枚) */
@@ -67,8 +75,13 @@ const SPOT_MARGIN = 0.08;
  *  · `1` → 三角形分布(中点最密,向两端线性递减);
  *  · 取 `0.5`:看得出中间更密,而**边缘依然有点** —— 不会留下成片的空白。
  *
+ *  ⚠ 2026-09-30 三次修订:用户反馈某片(红 165 · 黑 74)画布「空白的地方太多了」——
+ *    票数不算少时,`0.5` 仍会把大部分点拉进中间一条带,四周(尤其上下)看着空得多。
+ *    降到 `0.22`(比纯均匀 `0` 略偏一点密度渐变,但明显弱于 `0.5`)来填满空白;
+ *    没有归零,是不想矫枉过正退回 2026-09-29 之前「铺满四角」被吐槽的版本。
+ *
  *  ⚠ 只作用在落点推导(`spotOf` 群点 / `makeSticker` 我自己那枚)**共用** `softSpot`。 */
-const SPOT_CENTER_BIAS = 0.5;
+const SPOT_CENTER_BIAS = 0.22;
 
 /** 一部片的**全体**红黑计数 —— 红黑榜是「全部用户都可以贴」的,这份计数**只来自服务端聚合**
  *  (`film-votes.ts::loadFilmVotes` + api 的 `/api/stats/film-votes`),本地绝不造:
@@ -112,6 +125,32 @@ export function tiltOf(id: string): number {
   return ((hash % 301) / 10) - 15; // -15.0 ~ +15.0
 }
 
+/** 由贴纸 id 推导的**确定性**皮肤 —— **只作兜底**（与 `tiltOf` / `spotOf` 同一模式）。
+ *
+ *  什么时候会走到：① 没带款的老票（迁移前写下的 / 旧客户端上报的）—— 服务端按款聚合
+ *  覆盖不到它们，但它们在总数那本账里，不能丢；② 本地盘上还没选过款的老贴纸。
+ *  用 id 推导而不是「一律默认款」，是为了让那部分票看起来仍然是一堆不一样的贴纸
+ *  （与改动前的观感连续）。
+ *
+ *  ⚠ **为什么它住在这里而不是 `sticker-skin.ts`**：`crowdStickers`（本文件）要按 id 兜底，
+ *    而 `sticker-skin.ts` 要用到本模块的 `hashOf` —— 推导放那边就是循环 import。
+ *    「由 id 推导的装饰」本来就归本模块（`tiltOf` / `spotOf` 都在这儿）。
+ *  ⚠ 款的白名单与中文名在 `@biff/contracts/sticker`，这里只读它的**顺序**。 */
+export function derivedSkin(id: string): StickerSkin {
+  return STICKER_SKIN_KEYS[hashOf(id) % STICKER_SKIN_KEYS.length];
+}
+
+/** 一部片的**按款票数**（服务端聚合回的那一份，稀疏：只含带款的票）。
+ *  ⚠ 值里**刻意没有 `total`**，所以不复用 `StickerCounts`：服务端只回两色计数
+ *    （总数另有权威那本账，见 `crowdStickers` 的说明），复用会让它变成类型错误。
+ *    这不是省事与否的问题 —— 它把「总数」与「按款的细分」这两本账在**类型上**分开了。 */
+export type SkinCrowdCounts = Partial<Record<StickerSkin, { red: number; black: number }>>;
+
+/** 影片 key → 该片按款票数。**稀疏**：没有款数据的片不进这张表。
+ *  ⚠ 别名放在这里（而不是 `film-votes.ts` 或海报那边各写一份）：它是三个消费端
+ *    （页面状态 / 分享弹层 / 海报模型）共用的同一个形状，写两份迟早其中一处多一个可选字段。 */
+export type FilmSkinCounts = Record<string, SkinCrowdCounts>;
+
 /** 哈希的**雪崩**收尾(murmur3 的 fmix32)。
  *  ⚠ 不能直接拿 FNV 的高位当坐标:同一部片的贴纸 id 共享前缀(`cat:f001#crowd-`),
  *    而 FNV 的高位对**末尾那几个字符**几乎不敏感 —— 实测 `(hash >>> 20) % 1000`
@@ -150,7 +189,7 @@ function softSpot(ax: number, bx: number, ay: number, by: number): { posX: numbe
  *
  *  ⚠ 分布口径见 `softSpot`:中间密、边缘疏,但形状仍是**矩形**、没有硬边界。
  *  ⚠ 仍然是**纯确定性**的:同一个 id 每次算出来还是同一个点,刷新不会换位置 ——
- *    `crowdStickers` 的叠放顺序 / 分享图 / 「看全部」弹层全依赖这条性质。 */
+ *    `crowdStickers` 的叠放顺序 / 分享图 / 群点全依赖这条性质。 */
 export function spotOf(id: string): { posX: number; posY: number } {
   const h1 = mix32(hashOf(id));
   // ⚠ 四路输入要用**两次** mix32:一次 32 位只够切两段干净的整数
@@ -172,18 +211,42 @@ export function spotOf(id: string): { posX: number; posY: number } {
  *    采样除了让画布上的密度失真,还会**把少数派颜色四舍五入抹掉**(1 红 / 100 黑 → 一枚红点都没有,
  *    而卡片 chip 明明写着「红 1」)。点数变多的代价交给**渲染层**承担:
  *    视口外的卡不画、视口内的卡用 canvas 画(见 `components/StickerCanvas.tsx`)。 */
-export function crowdStickers(filmKey: string, counts: StickerCounts | undefined): Sticker[] {
+export function crowdStickers(
+  filmKey: string,
+  counts: StickerCounts | undefined,
+  skins?: SkinCrowdCounts,
+): Sticker[] {
   if (!counts || counts.total <= 0) return [];
   const reds = Math.min(Math.max(0, counts.red), counts.total);
+  /** 把某一色的票摊成有序的「款」序列：先按契约层的款序铺**带款**的票，再补**没带款**的。
+   *
+   *  ⚠ `total` 是**总数那本账**（权威），按款聚合只覆盖带款的那部分 —— 两者对不上是正常的
+   *    （迁移前的旧票就是没款的）。所以这里先铺款、再把差额用 `null` 补满，
+   *    让调用方按 id 兜底 —— **绝不能丢掉差额**，丢了群点就比卡片上的数字少。
+   *  ⚠ 反向也要挡住：聚合比总数还多（两次独立查询的快照差一拍）时按 `total` 截断，
+   *    否则会画出比数字多的贴纸。 */
+  const plan = (vote: StickerType, total: number): Array<StickerSkin | null> => {
+    const out: Array<StickerSkin | null> = [];
+    for (const skin of STICKER_SKIN_KEYS) {
+      const n = Math.max(0, Math.trunc(skins?.[skin]?.[vote] ?? 0));
+      for (let i = 0; i < n && out.length < total; i += 1) out.push(skin);
+    }
+    while (out.length < total) out.push(null);
+    return out;
+  };
+  const redPlan = plan("red", reds);
+  const blackPlan = plan("black", counts.total - reds);
   const out: Sticker[] = [];
   for (let i = 0; i < counts.total; i++) {
     const id = `${filmKey}#crowd-${i}`;
-    out.push({ id, type: i < reds ? "red" : "black", ...spotOf(id) });
+    const type: StickerType = i < reds ? "red" : "black";
+    const picked = i < reds ? redPlan[i] : blackPlan[i - reds];
+    out.push({ id, type, skin: picked ?? derivedSkin(id), ...spotOf(id) });
   }
   // 叠放顺序:**按落点纵坐标升序**(2026-09-28,PLAN-20260928003736)。
   // 上面那个循环把红票**整段**排在黑票之前,而 canvas / 分享图都是画家算法(后画的盖住先画的)
   // → 黑票永远压住红票(用户 2026-09-28 报的「黑色总是压住红色」)。三处消费的都是这一份数组
-  // (卡片画布 / 「看全部」弹层 / 分享图),改这里三处一起修好。
+  // (卡片画布 / 分享图),改这里两处一起修好。
   // ⚠ 按 y 升序 = 上面(远)的先画、下面(近)的后画,于是近的压住远的 —— 读起来像「撒在倾斜桌面上
   //   的一堆纸片」。红黑在位置上本就哈希均匀分布,排序后两色自然交错,不再有谁被系统性压制。
   // ⚠ 二级键 `hashOf(id)` 只为打破「恰好同一 posY」的并列,保证**完全确定性**:
@@ -207,7 +270,9 @@ export function makeSticker(
   // ⚠ 四次 `rand()` 的**次序**就是「x 的主 / 副、y 的主 / 副」(见 `softSpot`)——
   //   单测喂固定种子时靠它复现
   const at = spot ?? softSpot(rand(), rand(), rand(), rand());
-  return { id, type, ...clampSpot(at.posX, at.posY) };
+  // 新贴的这枚先给一个**按 id 推导**的款（与 `derivedSkin` 同一套），用户想换就用贴纸上的
+  // 环形滚轮换。为什么不是「一律默认款」：这样即使他从没打开过滚轮，展板也仍然是一片不一样的贴纸。
+  return { id, type, skin: derivedSkin(id), ...clampSpot(at.posX, at.posY) };
 }
 
 /* ---------------- 统计 ---------------- */
@@ -254,6 +319,29 @@ export function reconcile(
  *    (前者少画、后者多画 —— 后者正是用户报的那个 bug)。
  *  ⚠ 卡片画布(`StickerCanvas`)与分享图(`redblack-poster.ts`)必须共用这一条 ——
  *    两处各写一份,分享图上摊出来的贴纸数就会与卡片对不上。 */
+/** 群点画的是**别人的贴纸**，所以「按款分布」也要扣掉我自己那一枚（2026-09-29）。
+ *
+ *  ⚠ 与 `othersOf` 是同一件事的「按款版」，但**简单得多**：一人一片一票（`MAX_PER_FILM = 1`），
+ *    所以最多只扣一枚，而且款与颜色都是**本地确定**的（服务端聚合里那个桶就是刚上报的那一枚）。
+ *  ⚠ 上报还没落地的那一拍：服务端分布里还没有我这一桶 → 扣不掉（原样返回），
+ *    于是群点会**多**一枚不该出现的款。这与 `othersOf` 靠 `serverMine` 扣减是同一个窗口、
+ *    同一类偏差 —— 两者要一起理解，改一处必须看另一处。
+ *  ⚠ 没有分布数据（老接口 / 还没拉到）时原样返回：那是 `crowdStickers` 里「按 id 兜底」
+ *    那条正常分支，不是错误。 */
+export function othersSkins(
+  counts: SkinCrowdCounts | undefined,
+  mine: readonly Sticker[],
+): SkinCrowdCounts | undefined {
+  const self = mine[0];
+  if (!counts || !self) return counts;
+  const skin = self.skin ?? derivedSkin(self.id);
+  const bucket = counts[skin];
+  if (!bucket) return counts;
+  const left = bucket[self.type] - 1;
+  if (left < 0) return counts;
+  return { ...counts, [skin]: { ...bucket, [self.type]: left } };
+}
+
 export function othersOf(counts: StickerCounts, mine: StickerCounts): StickerCounts {
   return {
     total: Math.max(0, counts.total - mine.total),
@@ -339,6 +427,21 @@ export function countsSignature(counts: StickerCounts): string {
  *   数字一模一样也会被当成「有新贴纸」,提示白亮一次
  *   (用户 2026-09-22:只在**数量变化**时才需要提示「有新贴纸 · 重新排序」)。
  *  只串排序真正看的那三个数,并按 key 排一次 —— 服务端返回顺序变了也不算变。 */
+/** 一部的**按款**票数签名 —— 与 `countsSignature` 同一套手法（只串真正参与绘制的数）。
+ *
+ *  ⚠ 为什么它必须单独存在:画布的重绘守护比的是**值**。群点的外观现在由「按款分布」决定,
+ *    而「有人把红票从撕裂圆片换成票根」这件事**不改变两色总数** —— 只看 `countsSignature`
+ *    会把这次变化判成「不用重画」,画面停在旧分布上。 */
+export function skinsSignature(counts: SkinCrowdCounts | undefined): string {
+  if (!counts) return "";
+  // ⚠ 缺的那几款要串成占位符，而不是跳过 —— 跳过的话「某一款从 2 变成 0」会留下同一个签名，
+  //   于是那一次变化被判成「不用重画」，画面停在旧分布上。
+  return STICKER_SKIN_KEYS.map((skin) => {
+    const bucket = counts[skin];
+    return `${skin}:${bucket ? `${bucket.red}.${bucket.black}` : "-"}`;
+  }).join(",");
+}
+
 export function crowdSignature(counts: CrowdCounts): string {
   return [...counts]
     .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
@@ -354,11 +457,15 @@ export function crowdSignature(counts: CrowdCounts): string {
  *    而不是省略字段。 */
 export function votesOf(
   board: StickerBoard,
-): Array<{ key: string; vote: StickerType; comment: string | null }> {
-  const out: Array<{ key: string; vote: StickerType; comment: string | null }> = [];
+): Array<{ key: string; vote: StickerType; comment: string | null; skin: StickerSkin | null }> {
+  const out: Array<{ key: string; vote: StickerType; comment: string | null; skin: StickerSkin | null }> = [];
   for (const [key, list] of board) {
     const sticker = list[0];
-    if (sticker) out.push({ key, vote: sticker.type, comment: sticker.comment ?? null });
+    // ⚠ `skin` **一条都不能省**，理由与 `comment` 逐字相同：服务端靠「这一份里有没有这个字段」
+    //   分辨新旧前端，缺字段时它一个字都不碰那一列（否则老客户端一次普通上报会静默清空用户选的款）。
+    if (sticker) {
+      out.push({ key, vote: sticker.type, comment: sticker.comment ?? null, skin: sticker.skin ?? null });
+    }
   }
   return out;
 }
@@ -379,7 +486,9 @@ export function votesSignature(board: StickerBoard): string {
   const parts: string[] = [];
   for (const [key, list] of board) {
     const sticker = list[0];
-    if (sticker) parts.push(`${key}:${sticker.type}:${sticker.comment ?? ""}`);
+    // ⚠ `skin` 必须并进来（2026-09-29）：不然「只换了一款皮肤」时这个签名**没变**，
+    //   而页面那条上报 effect 依赖的正是它 —— 用户换了款却永远同步不上去。
+    if (sticker) parts.push(`${key}:${sticker.type}:${sticker.skin ?? ""}:${sticker.comment ?? ""}`);
   }
   return parts.sort().join("|");
 }
@@ -452,6 +561,29 @@ export function retintSticker(
   const target = next.get(key);
   if (!target) return board;
   target[index] = { ...target[index], type };
+  return next;
+}
+
+/** 把**已经贴着的那一枚**换一款皮肤（2026-09-29）。与 `retintSticker` 逐字同一套：
+ *  位置与 id 都保留（那是「同一个名额换了个外观」，不是「再贴一枚」），
+ *  所以它**绕开 `placeSticker` 的 `MAX_PER_FILM` 闸门**，直接改那一枚。
+ *
+ *  ⚠ 同款时原样返回**同一个引用**：调用方靠 `next === board` 就知道「这次什么也没做」，
+ *    不必自己再比一次（也让票签名那条上报链路能短路）。
+ *  ⚠ 与颜色**互不影响**：换款不动 `type`，换色也不动 `skin`（`retintSticker` 只 spread `type`）。 */
+export function reskinSticker(
+  board: StickerBoard,
+  key: string,
+  id: string,
+  skin: StickerSkin,
+): StickerBoard {
+  const list = board.get(key);
+  const index = list?.findIndex((sticker) => sticker.id === id) ?? -1;
+  if (!list || index < 0 || list[index].skin === skin) return board;
+  const next = cloneBoard(board);
+  const target = next.get(key);
+  if (!target) return board;
+  target[index] = { ...target[index], skin };
   return next;
 }
 

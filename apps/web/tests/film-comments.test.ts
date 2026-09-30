@@ -1,13 +1,17 @@
-// 红黑榜「大家说」评语客户端(2026-09-29,PLAN-20260929181900)。
+// 红黑榜「讨论区」评语客户端（2026-09-29）。
 //
-// 为什么单测它:三条判据错了都不会报错,只会「看起来少了几行」——
-//   ① 白名单太松 → 半截响应里的坏行渲染成空白的一行;
-//   ② 游标 / 去重错 → 「加载更多」把同一页追加两遍(或一次失败之后再也翻不动);
-//   ③ 失败没有降级 → 接口没上线时整页崩,而评语只是附加内容。
+// 为什么单测它：下面这几条判据错了**都不会报错**，只会「看起来少了几行」——
+//   ① 白名单太松 → 半截响应里的坏行渲染成空白的一行；
+//   ② 按片过滤没带上 → 弹层里列出**别的片**的评语（最像「功能正常」的那种错）；
+//   ③ 合并一页的规则错 → 「加载更多」把同一页追加两遍，或一次失败之后再也翻不动；
+//   ④ 失败没有降级 → 接口没上线时整个弹层崩，而评语只是附加内容。
 //
-// 模块状态是模块级的,所以每条用例走 `vi.resetModules()` + 动态 import(与 `film-votes.test.ts` 同一手法)。
+// ⚠ 模块本身**不再持有状态**（那是弹层实例的事，见上一轮改造），所以这里只测纯函数与一次请求；
+//   「列表 + 游标」的状态机在 `mergeCommentPage` 里，单独一组用例钉住它。
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { EMPTY_COMMENT_LIST, mergeCommentPage } from "../src/film-comments";
 
 const okJson = (body: unknown) =>
   Promise.resolve({ ok: true, json: async () => body } as unknown as Response);
@@ -85,6 +89,23 @@ describe("loadFilmComments:一页的请求形状", () => {
     expect(result.nextCursor).toBe("OPAQUE-1");
   });
 
+  // 讨论区问的是「**这一部**的评语」。不带过滤的话服务端回的是全场评语 ——
+  // 而弹层照样能渲染，只是列出来的是别的片，**看起来完全正常**。
+  it("★ 按片读：带上 `filmKey`（不带就是全场，两个入口会同一条数据错位）", async () => {
+    const fetchMock = vi.fn((_url: string) => okJson(page([])));
+    vi.stubGlobal("fetch", fetchMock);
+    const { loadFilmComments } = await import("../src/film-comments");
+
+    await loadFilmComments({ filmKey: "cat:f008", cursor: null });
+    const url = String(fetchMock.mock.calls[0]![0]);
+    expect(url).toContain("filmKey=cat%3Af008");
+
+    // 没给片子时**不能**凭空多一个空参数（空串会被服务端当成「非法 → 不过滤」）
+    await loadFilmComments();
+    const bare = String(fetchMock.mock.calls[1]![0]);
+    expect(bare).not.toContain("filmKey=");
+  });
+
   it("失败(404 / 500 / 断网)→ 空页,不抛(接口没上线时页面照常可用)", async () => {
     vi.stubGlobal("fetch", vi.fn(() => fail()));
     const { loadFilmComments } = await import("../src/film-comments");
@@ -98,109 +119,50 @@ describe("loadFilmComments:一页的请求形状", () => {
   });
 });
 
-describe("分页:第一页幂等 + 加载更多按游标追加", () => {
-  it("第一页只取一次;force 时重头来过", async () => {
-    const fetchMock = vi.fn(() => okJson(page([line("a", "第一条")])));
-    vi.stubGlobal("fetch", fetchMock);
-    const { loadComments, peekFilmComments } = await import("../src/film-comments");
-
-    await loadComments();
-    await loadComments();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-
-    await loadComments(true);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(peekFilmComments().items.map((i) => i.comment)).toEqual(["第一条"]);
-    expect(peekFilmComments().loaded).toBe(true);
-  });
-
-  it("追加一页;失败时**留着游标**(还能再点一次),成功后才接到尾巴上", async () => {
-    let secondPageOK = false;
-    const calls: string[] = [];
-    const fetchMock = vi.fn((url: string) => {
-      calls.push(String(url));
-      if (String(url).includes("cursor=C1")) {
-        return secondPageOK ? okJson(page([line("b", "第二条")])) : fail(500);
-      }
-      return okJson(page([line("a", "第一条")], "C1"));
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const { loadComments, loadMoreComments, peekFilmComments } = await import(
-      "../src/film-comments"
+// 「列表 + 游标」的状态机（原来住在模块级单例里，现在住在弹层实例里 —— 但规则一字未改）。
+describe("mergeCommentPage：一页怎么并进列表", () => {
+  const loaded = (comment: string, nextCursor: string | null = null) =>
+    mergeCommentPage(
+      EMPTY_COMMENT_LIST,
+      { items: [line("a", comment)], nextCursor },
+      null,
     );
 
-    await loadComments();
-    expect(peekFilmComments().items.map((i) => i.comment)).toEqual(["第一条"]);
-    expect(peekFilmComments().nextCursor).toBe("C1");
+  it("第一页**换掉**整份列表（不是接在旧的后面）", () => {
+    const first = loaded("第一条", "C1");
+    expect(first.items.map((i) => i.comment)).toEqual(["第一条"]);
+    expect(first.nextCursor).toBe("C1");
+    expect(first.loaded).toBe(true);
+    expect(first.loading).toBe(false);
 
-    // 失败:列表一动不动,游标留着 —— 把它清掉等于告诉用户「后面没有了」
-    await loadMoreComments();
-    expect(peekFilmComments().items.map((i) => i.comment)).toEqual(["第一条"]);
-    expect(peekFilmComments().nextCursor).toBe("C1");
-
-    secondPageOK = true;
-    await loadMoreComments();
-    expect(peekFilmComments().items.map((i) => i.comment)).toEqual(["第一条", "第二条"]);
-    expect(peekFilmComments().nextCursor).toBeNull();
-
-    // 没有下一页了 → 不再发请求
-    const settled = calls.length;
-    await loadMoreComments();
-    expect(calls.length).toBe(settled);
+    // 再取一次第一页（写了评语之后重拉）→ 列表被替换，不会出现重复的第一条
+    const again = mergeCommentPage(first, { items: [line("a", "改过的")], nextCursor: null }, null);
+    expect(again.items.map((i) => i.comment)).toEqual(["改过的"]);
+    expect(again.nextCursor).toBeNull();
   });
 
-  it("连点两次「加载更多」:同一时刻只有一页在飞(不重复追加)", async () => {
-    const calls: string[] = [];
-    let resolveSecond: ((value: unknown) => void) | undefined;
-    const fetchMock = vi.fn((url: string) => {
-      calls.push(String(url));
-      if (String(url).includes("cursor=C1")) {
-        return new Promise((resolve) => {
-          resolveSecond = () => resolve(okJson(page([line("b", "第二条")])));
-        });
-      }
-      return okJson(page([line("a", "第一条")], "C1"));
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const { loadComments, loadMoreComments, peekFilmComments } = await import(
-      "../src/film-comments"
-    );
-
-    await loadComments();
-    const both = Promise.all([loadMoreComments(), loadMoreComments()]);
-    expect(calls.length).toBe(2); // 第一页 + 一次「加载更多」
-    resolveSecond!(undefined);
-    await both;
-    expect(calls.length).toBe(2);
-    expect(peekFilmComments().items.map((i) => i.comment)).toEqual(["第一条", "第二条"]);
+  it("★ 加载更多：接到尾巴上，并推进游标", () => {
+    const first = loaded("第一条", "C1");
+    const second = mergeCommentPage(first, { items: [line("b", "第二条")], nextCursor: "C2" }, "C1");
+    expect(second.items.map((i) => i.comment)).toEqual(["第一条", "第二条"]);
+    expect(second.nextCursor).toBe("C2");
   });
 
-  it("降级(第一页就失败)也算「取过了」:进页面不会无限重试,空态照样出得来", async () => {
-    const fetchMock = vi.fn(() => fail(503));
-    vi.stubGlobal("fetch", fetchMock);
-    const { loadComments, peekFilmComments } = await import("../src/film-comments");
-
-    await loadComments();
-    await loadComments();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(peekFilmComments()).toMatchObject({ items: [], nextCursor: null, loaded: true });
+  it("★ 追加拿到空页 → **游标留着**（那多半是这次失败了，再点一次还能重试）", () => {
+    const first = loaded("第一条", "C1");
+    const afterFail = mergeCommentPage(first, { items: [], nextCursor: null }, "C1");
+    expect(afterFail.items.map((i) => i.comment)).toEqual(["第一条"]);
+    // 把它清掉等于告诉用户「后面没有了」—— 而那是假的
+    expect(afterFail.nextCursor).toBe("C1");
   });
-});
 
-describe("订阅:每次状态变化广播一次", () => {
-  it("加载完成后通知订阅者(视图层据此重渲染)", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => okJson(page([line("a", "好看")]))));
-    const { loadComments, onFilmCommentsChange } = await import("../src/film-comments");
+  it("★ 降级（第一页就失败）也算「取过了」：进弹层不会无限重试，空态照样出得来", () => {
+    const degraded = mergeCommentPage(EMPTY_COMMENT_LIST, { items: [], nextCursor: null }, null);
+    expect(degraded).toMatchObject({ items: [], nextCursor: null, loaded: true, loading: false });
+  });
 
-    let hits = 0;
-    const off = onFilmCommentsChange(() => {
-      hits += 1;
-    });
-    await loadComments();
-    expect(hits).toBeGreaterThan(0);
-    off();
-    const before = hits;
-    await loadComments();
-    expect(hits).toBe(before);
+  it("loading 与 items 一起换：合并的那一刻一定不再在加载中", () => {
+    const loading = { ...EMPTY_COMMENT_LIST, loading: true };
+    expect(mergeCommentPage(loading, { items: [], nextCursor: null }, null).loading).toBe(false);
   });
 });

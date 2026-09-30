@@ -11,6 +11,10 @@
  */
 
 import { EDITION } from "./edition";
+import { isStickerSkin, type StickerSkin } from "@biff/contracts/sticker";
+// ⚠ 只作**类型**引入（`import type`）：`redblack.ts` 是这一层的大户，运行期不值得为两个类型
+//    多一次模块加载，也避免任何潜在的首屏顺序纠缠。
+import type { FilmSkinCounts, SkinCrowdCounts } from "./redblack";
 import { wholeCount } from "./util";
 
 /** 影片 key → 红 / 黑票数 */
@@ -29,16 +33,28 @@ export interface FilmVotePayload {
   key: string;
   vote: "red" | "black";
   comment: string | null;
+  skin: StickerSkin | null;
 }
 
-/** 调用方**交进来**的一票 —— `comment` 可省（`dedupeVotes` 会补成 `null`）。
+/** 调用方**交进来**的一票 —— `comment` / `skin` 可省（`dedupeVotes` 会补成 `null`）。
  *  与 `FilmVotePayload` 分开写，是为了让「省略字段」只出现在**入口**，
  *  进了这条链路之后一定是「字段齐全」的那个形状。 */
 export interface FilmVoteInput {
   key: string;
   vote: "red" | "black";
   comment?: string | null;
+  skin?: StickerSkin | null;
 }
+
+/** 影片 key → **按款**票数（2026-09-29）。
+ *
+ *  ⚠ 与 `FilmVoteCounts` 是**两本账**：那本是「两色总数」（权威，旧票也在内），
+ *    这本只覆盖**带款**的那些票（迁移前的旧票没有款）。两者对不上是**正常的**，
+ *    谁也不能假定它们相等 —— 差额就是「没带款的票」，`crowdStickers` 会按 id 给它们兜底。
+ *  ⚠ 它纯粹是**展示**用的（群点长什么样），不参与任何计数逻辑：不要拿它去算分数或总数。
+ *  ⚠ 类型定义在 `redblack.ts`（三个消费端共用的同一个形状），这里只是**转出去**，
+ *    好让「从 film-votes 拿按款分布」这件事仍然只需要认识一个模块。 */
+export type { FilmSkinCounts };
 
 let cache: FilmVoteCounts | null = null;
 let loading: Promise<FilmVoteCounts> | null = null;
@@ -51,6 +67,10 @@ function emptyCounts(): FilmVoteCounts {
   return Object.create(null);
 }
 
+function emptySkins(): FilmSkinCounts {
+  return Object.create(null);
+}
+
 /** 服务端**已经收下**的那份我的票（影片 key → 红 / 黑；一人一部一票，故每片恒 1 枚）。
  *
  * ⚠ 它与本地 board **不是一回事**，两者在「本地已改、服务端还没更新」的窗口里会不一致 ——
@@ -59,6 +79,14 @@ function emptyCounts(): FilmVoteCounts {
  *    卡片 / hero / 分享图共用。
  * ⚠ 只在**上报成功**那一刻切换（见 `scheduleFilmVotesPing`），乱切会造出「贴纸先涨回来再降下去」。 */
 let synced: FilmVoteCounts = emptyCounts();
+
+/** 服务端回的**按款**分布（影片 key → 款 → 两色计数）。与 `cache` 同一次响应里到达。
+ *
+ *  ⚠ 它**含我自己那一枚**（服务端不知道谁是「我」）—— 画群点前要用
+ *    `redblack.ts::othersSkins` 扣掉，与 `counts` 用 `reconcile` / `othersOf` 是同一条规矩。
+ *  ⚠ 不单独发请求：它与两色总数在**同一个响应体**里（`GET /api/stats/film-votes` 与
+ *    上报成功时那一次响应都带 `skins`），分两个接口只会多一次 RTT、还可能读到相差一拍的快照。 */
+let skinCache: FilmSkinCounts = emptySkins();
 
 export function onFilmVotesChange(listener: () => void): () => void {
   listeners.add(listener);
@@ -102,6 +130,11 @@ export function peekSyncedVotes(): FilmVoteCounts {
   return synced;
 }
 
+/** 服务端回的**按款**分布（同步读，未加载过则为空表）。调用方记得先扣掉自己那一枚。 */
+export function peekFilmSkins(): FilmSkinCounts {
+  return skinCache;
+}
+
 /** 采纳一份「服务端已确认含我」的票。
  *
  * ⚠ **不广播** —— 调用方负责在同一拍里把新的 `counts` 也刷出来（见 `scheduleFilmVotesPing`：
@@ -134,11 +167,40 @@ export function parseVotes(raw: unknown): FilmVoteCounts {
   return out;
 }
 
+/** 读取端白名单（按款那一本，2026-09-29）：款必须在契约层的白名单里、计数必须是非负整数。
+ *
+ *  ⚠ 款**不认识就整条丢掉**，而不是回退成某一款 —— 回退等于「猜用户选了什么」，
+ *    画出来的群点会理直气壮地错。丢掉顶多这一款少画几枚（总数那本账仍在，`crowdStickers`
+ *    会把它们按 id 兜底），与 `parseVotes` 丢掉非法条目是同一条原则。 */
+export function parseFilmSkins(raw: unknown): FilmSkinCounts {
+  const out = emptySkins();
+  if (!raw || typeof raw !== "object") return out;
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!key || !value || typeof value !== "object") continue;
+    const buckets: SkinCrowdCounts = {};
+    for (const [skin, bucket] of Object.entries(value as Record<string, unknown>)) {
+      if (!isStickerSkin(skin) || !bucket || typeof bucket !== "object") continue;
+      const pair = bucket as { red?: unknown; black?: unknown };
+      const red = wholeCount(pair.red);
+      const black = wholeCount(pair.black);
+      if (red <= 0 && black <= 0) continue;
+      buckets[skin] = { red, black };
+    }
+    if (Object.keys(buckets).length) out[key] = buckets;
+  }
+  return out;
+}
+
 /** 用一份**刚从服务端回来的**票替换缓存并广播。
  *  ⚠ 与 `loadFilmVotes` 的分工:它**不发起请求** —— 上报成功时服务端顺手回了全量,
- *    再 GET 一次纯粹是白跑一个 RTT(2026-09-28,见 `scheduleFilmVotesPing`)。 */
-function applyVotes(raw: unknown): FilmVoteCounts {
+ *    再 GET 一次纯粹是白跑一个 RTT(2026-09-28,见 `scheduleFilmVotesPing`)。
+ *  ⚠ 两本账**一起换**:它们来自同一个响应体。只换一本会让群点与数字出现在两个快照上
+ *    （老的 `skins` 配新的 `counts`）—— 那正是「群点比数字多一枚」最容易发生的地方。
+ *  ⚠ `rawSkins` 是 `undefined` 时（老接口）**清空**而不是保留旧值:那份旧分布对应的是上一拍的
+ *    票数,留着比清掉更错。 */
+function applyVotes(raw: unknown, rawSkins: unknown): FilmVoteCounts {
   cache = parseVotes(raw);
+  skinCache = parseFilmSkins(rawSkins);
   emit();
   return cache;
 }
@@ -154,8 +216,8 @@ export async function loadFilmVotes(force = false): Promise<FilmVoteCounts> {
         signal: AbortSignal.timeout(12_000),
       });
       if (!response.ok) return cache ?? emptyCounts();
-      const body = (await response.json()) as { votes?: unknown };
-      return applyVotes(body.votes);
+      const body = (await response.json()) as { votes?: unknown; skins?: unknown };
+      return applyVotes(body.votes, body.skins);
     } catch {
       // 接口还没部署 / 断网：留一份空表，页面照常能贴（只是看不到大家的票）
       return cache ?? emptyCounts();
@@ -175,9 +237,18 @@ function dedupeVotes(votes: Iterable<FilmVoteInput>): FilmVotePayload[] {
   const out = new Map<string, FilmVotePayload>();
   for (const entry of votes) {
     const comment = typeof entry.comment === "string" && entry.comment.trim() ? entry.comment : null;
-    out.set(entry.key, { key: entry.key, vote: entry.vote, comment });
+    // ⚠ 与 `comment` 逐字同一条规矩：**每一条都要带 `skin` 键**（不认识时给 `null`）。
+    //   服务端靠「这一份里有没有 `skin` 字段」分辨新旧前端 —— 少带会被读成旧版，
+    //   那次上报**根本不会**把款写进去（用户选了款却跟没选一样，而且不报错）。
+    out.set(entry.key, { key: entry.key, vote: entry.vote, comment, skin: normalizeSkin(entry.skin) });
   }
   return [...out.values()];
+}
+
+/** 上报侧的款归一：不在白名单里（含 `undefined`）一律当「没带款」。
+ *  ⚠ 与读取侧 `parseFilmSkins` 同一道收口 —— 两边都只认契约层那一份白名单。 */
+function normalizeSkin(value: unknown): StickerSkin | null {
+  return isStickerSkin(value) ? value : null;
 }
 
 /** 把一份票发给服务端，返回它顺手回的全量（老服务端没这个字段 → `null`）。
@@ -190,7 +261,9 @@ function dedupeVotes(votes: Iterable<FilmVoteInput>): FilmVotePayload[] {
  *   300 部），这条路径平时走不到；它存在的意义是「万一走到，也不静默丢票」。
  * ⚠ 串行发送：并发写同一个 contributor 的行会互相覆盖，落库顺序无法保证。
  * ⚠ 空表也是合法输入（我撤回了全部票）—— 它发一条空数组，服务端据此清掉我的所有票。 */
-async function sendVotes(list: readonly FilmVotePayload[]): Promise<unknown | null> {
+async function sendVotes(
+  list: readonly FilmVotePayload[],
+): Promise<{ votes: unknown; skins: unknown } | null> {
   const total = list.length;
   for (
     let end = Math.min(MAX_VOTES_PER_PING, total);
@@ -205,8 +278,18 @@ async function sendVotes(list: readonly FilmVotePayload[]): Promise<unknown | nu
       signal: AbortSignal.timeout(12_000),
     });
     if (!response.ok) throw new Error(`film-votes-ping ${response.status}`);
-    const body = (await response.json()) as { votes?: unknown };
-    if (end >= total) return body.votes ?? null;
+    const body = (await response.json()) as { votes?: unknown; skins?: unknown };
+    if (end >= total) {
+      // ⚠ 响应里**没有 `votes`** 才是「老服务端」的信号（它压根不回全量）→ 必须回 `null`，
+      //   让调用方退回去 `loadFilmVotes(true)` 重拉一次。
+      //   加了 `skins` 之后不能图省事一律回对象 —— 那会把这一档悄悄吞掉，表现为
+      //   「上报成功了但数字停在旧值」，而且没有任何报错（这条由单测守着）。
+      if (!body.votes) return null;
+      // ⚠ 新服务端但还没上按款聚合那半边时 `skins` 缺席 → `undefined` →
+      //   `applyVotes` 把按款分布**清空**，群点退回「按 id 兜底」。那是**正确**的降级
+      //   （不知道就别装作知道），不是错误。
+      return { votes: body.votes, skins: body.skins };
+    }
   }
 }
 
@@ -221,16 +304,18 @@ export function scheduleFilmVotesPing(votes: Iterable<FilmVoteInput>): void {
   clearTimeout(pingTimer);
   pingTimer = setTimeout(() => {
     void sendVotes(list)
-      .then((rawVotes) => {
+      .then((raw) => {
         // 服务端已收下这份票 → 它现在**含我**，扣减基准跟着切过去。
         // ⚠ 顺序不能倒：先采纳（不广播）、再更新 counts（它内部那次 `emit` 会把新的 counts 与
         //   新的 synced 一起送到页面），中间不留「服务端仍算我旧票」的那一帧。
+        // ⚠ `skins` 也必须在**同一拍**换成新的：两本账来自同一个响应体，分批换会让群点
+        //   短暂画在「新数字 + 旧分布」上 —— 那正是「群点比数字多/少一枚」的成因。
         adoptSyncedVotes(list);
         reportPingFailure(0);
         // ⚠ 新服务端在响应里顺手回了全量 → 直接用，省掉「上报成功再 GET 一次」的那个 RTT；
         //   老服务端（没这个字段）才退回去重拉。
-        if (rawVotes === null) return loadFilmVotes(true);
-        return applyVotes(rawVotes);
+        if (raw === null) return loadFilmVotes(true);
+        return applyVotes(raw.votes, raw.skins);
       })
       .catch(() => {
         reportPingFailure(pingFailureStreak + 1);

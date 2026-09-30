@@ -13,10 +13,11 @@
  * ⚠ 纯常量 + 纯函数,**import 期不碰 DOM**。
  */
 
-import { hashOf, type StickerType } from "./redblack";
-
-/** 中心微图标的图形族。 */
-export type StickerGlyph = "star" | "heart" | "hole" | "cross" | "bolt" | "exit";
+/** 中心微图标的图形族。
+ *  ⚠ **必须颜色中立**（用户口径:红黑共用同一套皮肤,「只是红色跟黑色的区别」）——
+ *    所以这里**没有** `cross`(叉号 / 避雷那类负面图形)、也没有任何「只在黑贴上才成立」的寓意:
+ *    同一款皮肤两个颜色都会用到,图案的褒贬会让另一色读起来自相矛盾。 */
+export type StickerGlyph = "star" | "heart" | "hole" | "bolt" | "exit";
 
 /** 图形的设计盒边长(见文件头说明)。 */
 export const GLYPH_BOX = 24;
@@ -36,21 +37,15 @@ const GLYPHS: Record<StickerGlyph, string> = {
     "C12.5 4.3 13.5 3.4 15.2 3.4 C18.2 3.4 21 5.9 21 9.4 C21 15.2 12 21 12 21 Z",
   // 胶片圆孔:一个实心圆(最小、最抽象的那一档,专门给「不想读出具体图案」的场合)
   hole: "M5 12 A7 7 0 1 0 19 12 A7 7 0 1 0 5 12 Z",
-  // 叉号:两条**斜置**的粗条,一个 path 里两个子路径(nonzero 填充下并成 X)
-  cross:
-    "M8.82 5.99 L5.99 8.82 L15.18 18.01 L18.01 15.18 Z " +
-    "M8.82 18.01 L5.99 15.18 L15.18 5.99 L18.01 8.82 Z",
   // 闪电:自上而下折三道
   bolt: "M13.6 2 L5.4 13.4 L10.4 13.4 L9.2 22 L18.6 9.8 L13.2 9.8 Z",
   // 散场箭头:一根粗横杆 + 一个指向右的实心三角
   exit: "M4 10 L13 10 L13 6 L21 12 L13 18 L13 14 L4 14 Z",
 };
 
-/** 红黑各自的图形子集。**顺序即推导权重**(见 `glyphOf`),不要为好看的顺序调整它。 */
-const FAMILIES: Record<StickerType, readonly StickerGlyph[]> = {
-  red: ["star", "heart", "hole"],
-  black: ["cross", "bolt", "exit"],
-};
+/** 全部图形。⚠ 与形状同理：2026-09-29 起**不再按颜色分子集** ——
+ *  「哪款皮肤配哪个图形」在 `sticker-skin.ts`（那里是皮肤体系的唯一入口）。 */
+export const ALL_GLYPHS: readonly StickerGlyph[] = ["star", "heart", "hole", "bolt", "exit"];
 
 /** 图形 → path `d`。 ⚠ 图形**不做尺寸换算** —— 它的盒是固定的 24,缩放由消费端做
  *  (DOM 走 `<svg viewBox>`,canvas 走 `ctx.scale`)。这样图形本身没有第二个尺寸口径。 */
@@ -72,16 +67,4 @@ export function glyphPlacement(size: number): { x: number; y: number; scale: num
   return { x: offset, y: offset, scale };
 }
 
-/** 某一色可用的全部图形。 */
-export function glyphsOf(type: StickerType): readonly StickerGlyph[] {
-  return FAMILIES[type];
-}
 
-/** 由贴纸 id 推导的**确定性**图形 —— 与 `shapeOf` / `tiltOf` 同一模式。
- *
- *  ⚠ 拼 `#g` 再哈希,而不是复用 `shapeOf` 那次的低位:两处若读同一位,
- *    「票根」就会永远配「某个固定图形」,3×3 的组合实际只出 3 种 —— 并排看会像复制粘贴。 */
-export function glyphOf(id: string, type: StickerType): StickerGlyph {
-  const family = FAMILIES[type];
-  return family[hashOf(`${id}#g`) % family.length];
-}

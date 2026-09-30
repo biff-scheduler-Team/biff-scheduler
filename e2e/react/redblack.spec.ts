@@ -51,7 +51,7 @@ async function paintedCanvas(card: Locator): Promise<Locator> {
  *  ⚠ 移动端模拟下这两套**不是同一个空间**:实测 Pixel 7 + `mobile-chromium`,把卡片滚进视口之后
  *    `window.visualViewport.offsetTop` 是 **98**(不是 0),而
  *    `getBoundingClientRect()` = `boundingBox()` + 这个偏移 —— 于是拿 `boundingBox()` 的坐标去问
- *    `elementFromPoint()` 会落到**元素上方 98px** 的地方(实测拿到 `.rb-card-info` / `.rb-zoom`,
+ *    `elementFromPoint()` 会落到**元素上方 98px** 的地方(实测拿到 `.rb-card-info` / `.rb-talk`,
  *    也就是画布上方那一块,而且**稳定复现**,不是「还没落定」)。桌面端两个偏移恒为 0,
  *    所以这条只在手机上现形。
  *  ⚠ **指针那一侧不需要换算**:`page.mouse.move()` 用的是与 `boundingBox()` 同一套坐标,
@@ -78,10 +78,13 @@ test("首次进入是空榜:一枚贴纸都没有,只留一句怎么开始", asy
   await expect(page.locator(".rb-hint")).toBeVisible();
   await expect(page.locator(".rb-dot")).toHaveCount(0);
   await expect(page.locator(".rb-card").first()).toBeVisible();
-  // 一枚贴纸都没有时不给「看全部」入口 —— 点开只会是一块空画布
-  await expect(page.getByRole("button", { name: /放大查看/ })).toHaveCount(0);
+  // 讨论区入口**恒显**，0 票的片也有（2026-09-29）：它取代了原来那个「一枚都没有时不给入口」的
+  // 「看全部」——「还没人评过」本身就是信息，而且第一句评语要有个入口。
+  await expect(page.locator(".rb-card").first().getByRole("button", { name: /讨论区/ })).toHaveCount(1);
   // 没有人贴过 → 单部评分显示「—」,而不是 0 分(0 分会被读成「大家都觉得烂」)
-  await expect(page.locator(".rb-card").first().locator(".rb-chip--score")).toHaveText("评分 —");
+  // ⚠ 2026-09-30 起评分是**海报右上角的角标**(用户要求「能收起就收起」),
+  //   所以它只写数字、类名从 `.rb-chip--score` 换成了 `.rb-poster-score`。
+  await expect(page.locator(".rb-card").first().locator(".rb-poster-score")).toHaveText("—");
 });
 
 // 空榜那句引导**不能**随「标记看过 / 取消标记」出现消失(2026-09-23 用户:
@@ -113,6 +116,33 @@ test("点「标记看过」不会把整页顶上去", async ({ page }) => {
         grid.getBoundingClientRect().top - hero.getBoundingClientRect().bottom,
       );
     });
+
+  // ⚠ 2026-09-30 重排守卫:两个**状态角标**都挂在海报上,讨论区入口挂在**卡片右上角**,
+  //   三者都不在信息列那排胶囊里。移回去就会把那一行撑断 —— 而那一行的宽**决定信息列要多宽,
+  //   信息列的宽又决定画布有多宽**(用户三次提这块太乱 / 要求「贴贴纸的区域大一点」,
+  //   所以钉住它,而不是靠注释提醒)。
+  await expect(card.locator(".rb-poster-box .rb-poster-score")).toHaveCount(1);
+  await expect(card.locator(".rb-poster-box .rb-mark")).toHaveCount(1);
+  await expect(card.locator(".rb-chips .rb-poster-score")).toHaveCount(0);
+  await expect(card.locator(".rb-chips .rb-mark")).toHaveCount(0);
+  await expect(card.locator(".rb-chips .rb-talk")).toHaveCount(0);
+  // 位置本身也量一下:入口必须在卡片的**右上区**(两种断点都成立,量的是相对卡片的比例,
+  // 所以单列布局那条也一起守住了)
+  const place = await card.evaluate((node) => {
+    const talk = node.querySelector<HTMLElement>(".rb-talk");
+    if (!talk) return null;
+    const cardBox = node.getBoundingClientRect();
+    const box = talk.getBoundingClientRect();
+    return {
+      rightHalf: box.left > cardBox.left + cardBox.width / 2,
+      topQuarter: box.top < cardBox.top + cardBox.height / 4,
+      inside: cardBox.left <= box.left && box.right <= cardBox.right,
+    };
+  });
+  expect(place).not.toBeNull();
+  expect(place?.rightHalf).toBe(true);
+  expect(place?.topQuarter).toBe(true);
+  expect(place?.inside).toBe(true);
 
   const before = await aboveGrid();
   await card.getByRole("button", { name: /^标记《/ }).click();
@@ -205,12 +235,16 @@ test("标记「看过」→ 贴一枚红:画布上立刻出现,并上报给服�
   await expect(card.locator(".rb-canvas-hint")).toHaveCount(0);
 
   // 上报是整份替换,载荷里就是「我贴出来的那几枚」
-  // ⚠ `comment: null` 必须**在**载荷里(2026-09-29,PLAN-20260929181900):服务端靠
-  //   「这一份里有没有 `comment` 字段」分辨新版 / 旧版前端 —— 一条都没带时它一个字都不碰评语列
-  //   (老客户端一次普通上报不能静默清空用户写过的评语)。所以省略字段是**错**的,`null` 是对的。
-  await expect
-    .poll(() => pings.at(-1)?.votes ?? null, { timeout: 8000 })
-    .toEqual([{ key, vote: "red", comment: null }]);
+  // ⚠ `comment` / `skin` 两个字段都必须**在**载荷里(2026-09-29):服务端靠
+  //   「这一份里有没有这个字段」分辨新版 / 旧版前端 —— 一条都没带时它一个字都不碰对应那一列
+  //   (老客户端一次普通上报不能静默清空用户写过的评语 / 选过的款)。所以省略字段是**错**的,`null` 是对的。
+  await expect.poll(() => pings.at(-1)?.votes ?? null, { timeout: 8000 }).toHaveLength(1);
+  const sent = (pings.at(-1)?.votes ?? []) as Array<Record<string, unknown>>;
+  expect(sent[0]).toMatchObject({ key, vote: "red", comment: null });
+  // ⚠ **不能写死是哪一款**:刚贴下那枚的款由 id 推导(而 id 带随机后缀),
+  //   这里只断言「字段在,且是契约层白名单里的一款」—— 写死会变成一条看运气的断言。
+  expect("skin" in sent[0]).toBe(true);
+  expect(String(sent[0].skin)).toMatch(/^(torn|stub|sprocket|scrap|reel)$/);
 });
 
 test("服务端的全体票数渲染成卡片上的红黑数字与只读小点", async ({ page }) => {
@@ -223,11 +257,12 @@ test("服务端的全体票数渲染成卡片上的红黑数字与只读小点",
   await ready(page, "/redblack");
 
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
-  await expect(card.locator(".rb-chip--red")).toHaveText("红 3");
-  await expect(card.locator(".rb-chip--black")).toHaveText("黑 2");
+  // ⚠ 2026-09-30:红黑合成**一颗**(「红 166 · 黑 73」) —— 判据从两颗各自比对
+  //   换成「这一颗的逐字文本」;0 的那一侧不出现,所以两端都非 0 时格式是「红 N · 黑 N」。
+  await expect(card.locator(".rb-chip--tally")).toHaveText("红 3 · 黑 2");
   // 评分是**每部各自的**:3 红 2 黑 → 3/5 × 10 = 6.0;
   // 顶部那个「全站评分」已经不需要了(用户 2026-09-16)
-  await expect(card.locator(".rb-chip--score")).toHaveText("评分 6.0");
+  await expect(card.locator(".rb-poster-score")).toHaveText("6.0");
   await expect(page.locator(".rb-score")).toHaveCount(0);
   // 别人的 5 枚画在画布上。⚠ 2026-09-22 起只读贴纸由 canvas 绘制(PLAN-20260922145815),
   //   数不出 DOM 点,改成读画布上的**机读契约**:`data-rb-crowd*` = 真的画出来的红黑构成
@@ -265,8 +300,7 @@ test("票数几枚就画几枚:100 枚全部画出来,没有「+N」角标", asy
   await ready(page, "/redblack");
 
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
-  await expect(card.locator(".rb-chip--red")).toHaveText("红 60");
-  await expect(card.locator(".rb-chip--black")).toHaveText("黑 40");
+  await expect(card.locator(".rb-chip--tally")).toHaveText("红 60 · 黑 40");
   const canvas = await paintedCanvas(card);
   await expect(canvas).toHaveAttribute("data-rb-crowd", "100");
   await expect(canvas).toHaveAttribute("data-rb-crowd-red", "60");
@@ -281,7 +315,7 @@ test("少数派颜色不会被抹掉:1 红 / 100 黑 也画得出那枚红", asy
   await ready(page, "/redblack");
 
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
-  await expect(card.locator(".rb-chip--red")).toHaveText("红 1");
+  await expect(card.locator(".rb-chip--tally")).toHaveText("红 1");
   // 画布真的画了 101 枚、其中 1 枚红 —— 曾经的「按比例取整」会把这枚红抹掉
   const canvas = await paintedCanvas(card);
   await expect(canvas).toHaveAttribute("data-rb-crowd", "101");
@@ -361,9 +395,8 @@ test("「别人的贴纸」与我贴的那枚同尺寸,只差常驻纸白边与�
   const mine = card.locator(".rb-dot");
   await expect(mine).toHaveCount(1);
   // 尺寸口径同源两处:CSS 的 `.rb-dot` 与 canvas sprite 的 `sticker-sprite.ts::STICKER_SIZE`
-  // (2026-09-28 由 26 缩到 20,PLAN-20260928003736;2026-09-29 又放回 32,PLAN-20260929195500
-  //  —— 异形轮廓与中心微图标在 20px 下糊成一粒点。单测守着 sprite 那一侧,这里守 DOM 这一侧)
-  await expect(mine.first()).toHaveCSS("width", "32px");
+  // (26 → 20 → 32 → 20,用户四轮改过;单测守着 sprite 那一侧,这里守 DOM 这一侧)
+  await expect(mine.first()).toHaveCSS("width", "20px");
   await expect(mine.first()).toHaveCSS("cursor", "grab");
 
   // 贴纸本体(2026-09-29):外形**不是** `border-radius`,而是内联 `--rb-shape` 交给 `clip-path`;
@@ -373,12 +406,36 @@ test("「别人的贴纸」与我贴的那枚同尺寸,只差常驻纸白边与�
   await expect(mine.first().locator(".rb-dot__face")).toHaveCSS("clip-path", /path\(/);
   await expect(mine.first().locator(".rb-dot__edge path")).toHaveCount(1);
   await expect(mine.first().locator(".rb-dot__icon path")).toHaveCount(1);
-  // 「形状只有一处实现」的端到端守卫:内联变量里的那条路径必须**就是**描边 SVG 用的那条,
-  // 否则就是「CSS 一套、SVG 另一套」——那正是这次改造要消灭的老毛病。
-  const shapeVar = await mine.first().evaluate((node) => node.style.getPropertyValue("--rb-shape"));
-  const edgePath = await mine.first().locator(".rb-dot__edge path").getAttribute("d");
-  expect(edgePath).toBeTruthy();
-  expect(shapeVar).toContain(edgePath as string);
+  // 内联变量里的那条路径必须**真的按贴纸尺寸**生成 —— 这是 `clip-path: path()` 的经典坑:
+  // 它是**绝对 px**、不像 SVG 的 `viewBox` 那样随元素缩放。生成时用了别的尺寸(比如设计盒的 32)
+  // 不会报错,只会把贴纸**静默地**裁掉右下角 —— 只有人眼看得出来。
+  // 量法:把那段路径塞进一个临时 SVG 量 `getBBox()`;真按 20 生成 → 包围盒就是 20×20 上下,
+  // 用错尺寸则会是 32。
+  // ⚠ 2026-09-29 起 `--rb-shape` 写在**本体那一层**(`.rb-dot__face`,它就是被 `clip-path` 裁的那层),
+  //   不再挂在 `.rb-dot` 按钮上 —— 形状与图标一起归 `StickerFace` 管。
+  const faceNode = mine.first().locator(".rb-dot__face");
+  const box = await faceNode.evaluate((node) => {
+    const raw = (node as HTMLElement).style.getPropertyValue("--rb-shape");
+    const d = /path\("([^"]+)"\)/.exec(raw)?.[1] ?? "";
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+    document.body.append(svg);
+    const measured = path.getBBox();
+    svg.remove();
+    return { width: measured.width, height: measured.height, d };
+  });
+  expect(box.d.length).toBeGreaterThan(10);
+  // ⚠ 判据相对**贴纸自己的尺寸**(20px),不要写死一个区间:5 款轮廓的包围盒差得很远 ——
+  //   撕裂圆片/胶卷盘几乎占满设计盒,而胶片残片是一条**斜置的窄条**(宽 ~77%、高只 ~56%)。
+  // 两个上界抓的是同一件事:按**别的尺寸**生成(比如设计盒的 32)时,每一款的宽都会到 23~31
+  //   —— 所以宽的上界是那条真正可靠的判据。
+  // 两个下界只抓「退化 / 真被裁掉一角」,所以取得松(高那一侧最窄的款只有 56%)。
+  expect(box.width).toBeLessThanOrEqual(20.5);
+  expect(box.width).toBeGreaterThan(20 * 0.65);
+  expect(box.height).toBeLessThanOrEqual(20.5);
+  expect(box.height).toBeGreaterThan(20 * 0.5);
 
   // **常驻纸白边**(2026-09-23):我贴的那一枚独有,群点那边(canvas / sprite)不许有这一层 ——
   // 票数一多,同色同尺寸的点里根本认不出自己那枚,「自己贴的贴纸始终能被自己拖动」就先卡在“找不到”。
@@ -416,41 +473,54 @@ test("「别人的贴纸」与我贴的那枚同尺寸,只差常驻纸白边与�
   );
 });
 
-// 「放大看全部」弹层(2026-09-22,PLAN-20260922145815)。
-// 卡片那块画布只有一百多像素高,票一多就叠成一片 —— 弹层给一块大画布。
+// 卡片级「讨论区」弹层(2026-09-29,PLAN-20260929195500)。
+// 它取代了两样东西:「放大看全部」大画布弹层 + 页面底部的「大家说」模块 ——
+// 于是评语从「一个与片子无关的长列表」变成**贴着这一部**的讨论区。
 // a11y 全部走 S2 `Dialog`(role=dialog / focus trap / Esc),焦点归还由卡片那个按钮自己做,
 // 这两条都是 §5 的硬约束,必须有机读断言守着。
-test("放大看全部:弹层给大画布、画全部贴纸,Esc 关闭并把焦点还回按钮", async ({ page }) => {
+test("讨论区:数字与卡片一致、按片读、只列写了评语的人、Esc 关闭并把焦点还回按钮", async ({ page }) => {
   const key = keyOf("008");
   await stubVotes(page, { [key]: { red: 3, black: 2 } });
+  const queries: string[] = [];
+  await page.route("**/api/stats/film-comments**", (route) => {
+    queries.push(route.request().url());
+    return route.fulfill({
+      json: {
+        edition: "biff-2026",
+        // 只列**写了评语**的人 —— 这是服务端口径(`isNotNull(comment)`),这里照着喂
+        items: [
+          { filmKey: key, vote: "red", comment: "拉片细节绝了", displayName: "阿柴" },
+          { filmKey: key, vote: "black", comment: "太闷", displayName: null },
+        ],
+        nextCursor: null,
+      },
+    });
+  });
   await ready(page, "/redblack");
 
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
   await card.getByRole("button", { name: /^标记《/ }).click();
   await card.getByRole("button", { name: /贴红贴纸/ }).click();
 
-  const opener = card.getByRole("button", { name: /放大查看/ });
+  const opener = card.getByRole("button", { name: /讨论区/ });
   await opener.click();
 
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText("全部贴纸");
-  // ⚠ 「全部」不是「别人的 + 我的」相加后的重复计数:服务端那份**已含我**,
-  //   所以弹层里的数字应当与卡片上的红黑数字**逐字一致**(3 红 2 黑 → 共 5 枚)
-  await expect(dialog).toContainText("共 5 枚（红 3 · 黑 2）");
+  await expect(dialog).toContainText("讨论区");
+  // ⚠ 「红 N · 黑 N」必须与卡片上那两个数字**逐字一致**(同一份修正过的 counts):
+  //   服务端那份**已含我**,所以这里不是「别人的 + 我的」相加 —— 加一次就重复了
+  await expect(dialog).toContainText("红 3 · 黑 2");
+  // ⚠ **按片**读:`filmKey` 没带上时服务端回的是**全场**评语,而弹层照样渲染 ——
+  //   看起来完全正常,只是列出来的是别的片。这条断言是唯一能挡住它的东西。
+  expect(queries.some((url) => url.includes(`filmKey=${encodeURIComponent(key)}`))).toBe(true);
 
-  const cardBox = await card.locator("canvas.rb-ink").boundingBox();
-  const stage = dialog.locator(".rb-zoom-stage canvas.rb-ink");
-  await expect(stage).toHaveCount(1);
-  const stageBox = await stage.boundingBox();
-  // 「放大」要真的更大 —— 贴纸是相对坐标,画布一大原来叠着的点就散开了
-  expect(stageBox!.height).toBeGreaterThan(cardBox!.height);
-  // 大画布同样要按 dpr 放大 backing store,否则高分屏上一样糊
-  const backing = await stage.evaluate((node: HTMLCanvasElement) => ({
-    width: node.width,
-    expected: Math.round(node.getBoundingClientRect().width * window.devicePixelRatio),
-  }));
-  expect(backing.width).toBe(backing.expected);
+  // 列表:只列写了评语的人,匿名显示「匿名观众」
+  await expect(dialog.locator(".rb-talk-item")).toHaveCount(2);
+  await expect(dialog.locator(".rb-talk-item").first()).toContainText("拉片细节绝了");
+  await expect(dialog.locator(".rb-talk-item").nth(1)).toContainText("匿名观众");
+  // ⚠ 弹层里**一枚贴纸都不画**(大画布已随本轮删除):想看自己那枚,卡片上就是它
+  await expect(dialog.locator(".rb-dot")).toHaveCount(0);
 
   // Esc 关闭 + 焦点归还原按钮
   await page.keyboard.press("Escape");
@@ -458,52 +528,13 @@ test("放大看全部:弹层给大画布、画全部贴纸,Esc 关闭并把焦�
   await expect(opener).toBeFocused();
 });
 
-// 弹层里也要认得出自己那枚(2026-09-23,PLAN-20260923104622)。改之前这里把 `all` 交给画布:
-// 我那一枚被画成 `crowdStickers(filmKey, all)` 的**最后一枚** —— 那是由 id 推导出来的点,
-// 既不是它在卡片上的真实落点,也没有卡片上那圈常驻纸白边;而 lede 还写着「位置与卡片上一致」。
-test("放大弹层里也认得出自己那枚:同位置、同白边", async ({ page }) => {
-  const key = keyOf("008");
-  await stubVotes(page, { [key]: { red: 3, black: 2 } });
-  await ready(page, "/redblack");
-
-  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
-  await card.getByRole("button", { name: /^标记《/ }).click();
-  await card.getByRole("button", { name: /贴红贴纸/ }).click();
-  const cardDot = card.locator(".rb-canvas .rb-dot");
-  await expect(cardDot).toHaveCount(1);
-
-  await card.getByRole("button", { name: /放大查看/ }).click();
-  const stage = page.getByRole("dialog").locator(".rb-zoom-stage");
-  await expect(stage).toBeVisible();
-
-  // ① 弹层里那一枚就是卡片上那一枚:独立的 DOM 元素(不是画布上的群点),白边还在
-  const zoomDot = stage.locator(".rb-dot");
-  await expect(zoomDot).toHaveCount(1);
-  await expect(zoomDot).toHaveCSS("box-shadow", /1\.5px/);
-  // 只读:光标不能还是 `grab` —— 弹层里拖不动,留着那是在承诺一个不存在的交互
-  await expect(zoomDot).toHaveCSS("cursor", "default");
-
-  // ② 相对位置一致(两边都是 `posX / posY` 的百分比,所以量**归一化**后的坐标 —— 画布尺寸不同)
-  const rel = async (dot: Locator, box: Locator) => {
-    const d = (await dot.boundingBox())!;
-    const b = (await box.boundingBox())!;
-    return {
-      x: (d.x + d.width / 2 - b.x) / b.width,
-      y: (d.y + d.height / 2 - b.y) / b.height,
-    };
-  };
-  const onCard = await rel(cardDot, card.locator(".rb-canvas"));
-  const inZoom = await rel(zoomDot, stage);
-  expect(Math.abs(onCard.x - inZoom.x)).toBeLessThan(0.02);
-  expect(Math.abs(onCard.y - inZoom.y)).toBeLessThan(0.02);
-});
-
-// 我贴的那一枚的两条交互(2026-09-22,PLAN-20260922160432):
-//  ① **单击收回** —— 文件头早就写着「单击就取下」,但实现里只挂了 pointerdown,
-//     从来没有这个能力;唯一能收回的路径是「拖出画布」这个相当隐蔽的手势。
+// 我贴的那一枚的交互(2026-09-22 建 · 2026-09-30 改口径):
+//  ① **双击收回** —— 原先是单击。用户 2026-09-30 要求改成双击:单击太容易误触
+//     (尤其「拖完松手」浏览器补发的那一次 click,得靠 `movedRef` 之类的旁证去挡)。
+//     于是单击必须有个**真**含义,不能变成「点了没反应」—— 它现在是**打开换款轮盘**。
 //  ② **拖一下不能顺手收走** —— `pointerup` 之后浏览器还会补一次 `click`,
 //     不做区分的话「微调位置」会变成「撤销」。
-test("单击自己贴的那一枚就收回暂存区,按钮重新可贴", async ({ page }) => {
+test("双击自己贴的那一枚才收回;单击什么都不做", async ({ page }) => {
   const pings: Array<{ votes?: unknown }> = [];
   await page.route("**/api/stats/film-votes**", async (route) => {
     if (route.request().method() === "POST") {
@@ -525,11 +556,21 @@ test("单击自己贴的那一枚就收回暂存区,按钮重新可贴", async (
   // 贴过了 → 暂存区那两枚淡下去(`data-rb-spent` 是**存在即真**,值是 "true")
   await expect(trayRed).toHaveAttribute("data-rb-spent", "true");
 
+  // ① 单击:**什么都不做**(用户 2026-09-30 口径)。这枚贴纸本质是一根拖拽手柄,
+  //   「换款」另有悬停 / 触屏长按 / 键盘聚焦三条入口,不必再借用单击。
+  //   ⚠ 所以这里要断言**两件事都没发生**:既不收回、也不弹环 ——
+  //   只断言「没收回」的话,把单击接回「开环」也照样绿。
   await mine.click();
+  await expect(mine).toHaveCount(1);
+  await expect(page.locator(".rb-wheel")).toHaveCount(0);
 
-  // 收回到暂存区:画布空了、提示回来了、按钮重新亮起
+  // ② 双击:**立即**收回(不再有「等一等看会不会来第二下」那套延迟,那一套随「单击开环」一起删了)
+  await mine.dblclick();
+
+  // 收回到暂存区:画布空了、提示回来了、按钮重新亮起、环也随贴纸一起消失
   await expect(card.locator(".rb-dot")).toHaveCount(0);
   await expect(card.locator(".rb-canvas-hint")).toHaveCount(1);
+  await expect(page.locator(".rb-wheel")).toHaveCount(0);
   await expect(trayRed).not.toHaveAttribute("data-rb-spent");
   // 上报是**整份替换**:收回之后服务端那份应当变成空表(否则服务端还替我留着那一票)
   await expect.poll(() => pings.at(-1)?.votes ?? null, { timeout: 8000 }).toEqual([]);
@@ -567,19 +608,20 @@ test("收回自己那一枚:画布与数字**当场**少一枚,不等上报", as
   await expect.poll(() => reads).toBeGreaterThan(1);
   const canvas = await paintedCanvas(card);
   await expect(canvas).toHaveAttribute("data-rb-crowd", "0");
-  await card.locator(".rb-dot").click();
+  // ⚠ 收回是**双击**(2026-09-30 起,原为单击;单击现在是打开换款环)
+  await card.locator(".rb-dot").dblclick();
 
   // ① 我那一枚当场消失
   await expect(card.locator(".rb-dot")).toHaveCount(0);
   // ② 画布上**没有**把它补成「别人的票」——这一条才是那个 bug 的判据(改前会变成 1)
   await expect(canvas).toHaveAttribute("data-rb-crowd", "0");
   // ③ 数字也跟着回去(改前要等重拉)
-  await expect(card.locator(".rb-chip--red")).toHaveCount(0);
+  await expect(card.locator(".rb-chip--tally")).toHaveCount(0);
   // ④ 上面三条都是**本地**生效的:期间没有任何新的读请求(收回那次上报还被扣着,没触发重拉)
   expect(reads).toBe(2);
 });
 
-test("拖一下微调位置不算单击:贴纸不会被顺手收走", async ({ page }) => {
+test("拖一下微调位置不算点击:贴纸不会被顺手收走,也不会弹出换款环", async ({ page }) => {
   await stubEmpty(page);
   await ready(page, "/redblack");
 
@@ -609,6 +651,10 @@ test("拖一下微调位置不算单击:贴纸不会被顺手收走", async ({ p
   // 而且是**挪了位置**(说明确实走了拖拽分支),不是原地没动
   const after = (await mine.boundingBox())!;
   expect(Math.abs(after.x - before.x) + Math.abs(after.y - before.y)).toBeGreaterThan(4);
+  // ⚠ 2026-09-30 追加:拖完松手补发的那一次 click **更不该弹出换款环** ——
+  //   单击在这枚贴纸上**什么都不做**(用户口径),环形只由悬停 / 长按 / 键盘聚焦打开。
+  //   所以此刻轮盘一枚都不该有,无论 `pressMoved` 是什么。
+  await expect(page.locator(".rb-wheel")).toHaveCount(0);
 });
 
 // 张贴区**按片独立**(2026-09-23 用户:「从 A 电影张贴区的贴纸 移到 B 电影的 会直接被贴上
@@ -637,6 +683,15 @@ test("跨片拖拽:别片的张贴区一枚都不会多", async ({ page }) => {
   //   ⚠ 只对齐顶部还不够:`mobile-webkit` 的视口只有 664px,单列卡片一屏仍放不下两张 ——
   //     所以《B》的落点也一并改成了「画布上缘内一点」(见下面的 `bSpot`)。
   await a.evaluate((node) => node.scrollIntoView({ block: "start" }));
+  // ⚠ 2026-09-29 追加:把「《B》的落点也在视口里」从**假设**改成**显式保证**。
+  //   上面那两个历史修正都是在「碰巧还放得下」的边界上打补丁,而卡片高度一动
+  //   (这次是 `contain-intrinsic-size` 按实测值校正)整条前提就悄悄失效 ——
+  //   失败信息是 `Expected: < 664 / Received: 677`,看起来像判据坏了,其实是**前提没了**。
+  //   所以先量、再按需要补滚一段,让 B 的上缘稳稳进视口。
+  const viewport = page.viewportSize()!.height;
+  const bTop = (await b.locator(".rb-canvas").boundingBox())!.y;
+  const shift = Math.round(bTop + 8 - (viewport - 8));
+  if (shift > 0) await page.evaluate((dy) => window.scrollBy(0, dy), shift);
   const from = (await mine.boundingBox())!;
   const aBox = (await a.locator(".rb-canvas").boundingBox())!;
   const bBox = (await b.locator(".rb-canvas").boundingBox())!;
@@ -749,7 +804,7 @@ test("拖出张贴区:先给「会被收回」的提示,拖回来立刻消失,�
   // ⚠ 另一条独立的成因(2026-09-29,这条用例在 `mobile-chromium` 上**每次**都红):
   //   上面那次 `boundingBox()` 量出来的坐标**不是** `elementFromPoint()` 那一套(移动端模拟下
   //   差一个 `visualViewport.offsetTop`,实测 98)—— 于是命中测试稳定落在画布**上方**那一块
-  //   (拿到 `.rb-card-info` / `.rb-zoom`),而指针其实是落在贴纸上的(见 `toPagePoint` 的说明)。
+  //   (拿到 `.rb-card-info` / `.rb-talk`),而指针其实是落在贴纸上的(见 `toPagePoint` 的说明)。
   //   所以这里:① 把「量位置 + 挪指针」放进 poll 里重试(版面万一还在落定也不怕);
   //   ② 命中测试把坐标**换算到页面空间**再问。
   await expect
@@ -1096,9 +1151,12 @@ test("窗口外松手丢了 pointerup:手势不卡死,贴纸也原样留着", as
   const placedB = b.locator(".rb-dot");
   await expect(placedB).toHaveCount(1);
   // 落在松手那一点(证明走的是完整手势,而不是「本来就有一枚」)。
-  // ⚠ 判据用**画布内的相对位置**,不是视口坐标:这一枚落下去会让卡片多出一个「看全部」按钮,
-  //   那一行折行顺手把卡片(连同画布)撑高 30px —— 拿布局变化前的视口坐标去比会差 15px(实测),
-  //   而贴纸是相对坐标,它一直在那块画布的正中(`posY = 0.5`)。
+  // ⚠ 判据用**画布内的相对位置**,不是视口坐标:这一枚落下去会让卡片多出一个「红 N」票数胶囊
+  //   (`counts.red > 0 && …`),那一行折行顺手把卡片(连同画布)撑高 30px ——
+  //   拿布局变化前的视口坐标去比会差 15px(实测),而贴纸是相对坐标,它一直在那块画布的正中
+  //   (`posY = 0.5`)。
+  //   （2026-09-29 修订:原来这里的成因是「多出一个『看全部』按钮」,那个入口已被讨论区取代、
+  //     而且讨论区入口是**恒显**的 —— 撑高卡片的换成了票数胶囊，判据本身一个字没变。）
   const bNow = (await b.locator(".rb-canvas").boundingBox())!;
   const put = (await placedB.boundingBox())!;
   const relNow = {
@@ -1426,14 +1484,18 @@ async function stubComments(
   );
 }
 
-test("「大家说」:列出评语、匿名显示「匿名观众」、按游标翻页", async ({ page }) => {
+// 讨论区里也能翻页（观感与措辞沿用被它取代的那个模块：翻页走游标、服务端说没有了按钮就消失）。
+test("讨论区:按游标翻页,翻完按钮消失", async ({ page }) => {
   await stubEmpty(page);
   const key = keyOf("008");
   // 第一页给 nextCursor,第二页给最后一条 —— 「加载更多」是**唯一**的翻页方式
   let first = true;
   const cursors: string[] = [];
+  const filmKeys: Array<string | null> = [];
   await page.route("**/api/stats/film-comments**", (route) => {
-    cursors.push(new URL(route.request().url()).searchParams.get("cursor") ?? "");
+    const url = new URL(route.request().url());
+    cursors.push(url.searchParams.get("cursor") ?? "");
+    filmKeys.push(url.searchParams.get("filmKey"));
     if (first) {
       first = false;
       return route.fulfill({
@@ -1450,31 +1512,31 @@ test("「大家说」:列出评语、匿名显示「匿名观众」、按游标�
     return route.fulfill({
       json: {
         edition: "biff-2026",
-        items: [{ filmKey: keyOf("033"), vote: "black", comment: "音效炸裂", displayName: "小满" }],
+        items: [{ filmKey: key, vote: "black", comment: "音效炸裂", displayName: "小满" }],
         nextCursor: null,
       },
     });
   });
   await ready(page, "/redblack");
 
-  const say = page.locator(".rb-say");
-  await expect(say.getByRole("heading", { name: "大家说" })).toBeVisible();
-  await expect(say.locator(".rb-say-item")).toHaveCount(2);
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await card.getByRole("button", { name: /讨论区/ }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator(".rb-talk-item")).toHaveCount(2);
   // 匿名(displayName 为 null)→「匿名观众」,而不是一行空白
-  await expect(say.locator(".rb-say-item").first()).toContainText("拉片细节绝了");
-  await expect(say.locator(".rb-say-item").first()).toContainText("匿名观众");
-  await expect(say.locator(".rb-say-item").nth(1)).toContainText("阿柴");
-  // 片名由 `filmKey` 走本地目录反查(服务端**不 join 影片库**)
-  await expect(say.locator(".rb-say-item").first()).toContainText("《");
+  await expect(dialog.locator(".rb-talk-item").first()).toContainText("匿名观众");
+  await expect(dialog.locator(".rb-talk-item").nth(1)).toContainText("阿柴");
 
-  await say.getByRole("button", { name: "加载更多" }).click();
-  await expect(say.locator(".rb-say-item")).toHaveCount(3);
+  await dialog.getByRole("button", { name: "加载更多" }).click();
+  await expect(dialog.locator(".rb-talk-item")).toHaveCount(3);
   expect(cursors.at(-1)).toBe("C1");
+  // ⚠ **两页都要按片读**：翻页时把 `filmKey` 丢掉，第二页就会混进全场的评语
+  expect(filmKeys.every((filmKey) => filmKey === key)).toBe(true);
   // 服务端说没有下一页了(nextCursor 为 null)→ 按钮整颗消失
-  await expect(say.getByRole("button", { name: "加载更多" })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "加载更多" })).toHaveCount(0);
 });
 
-test("写一条评语:ping 载荷里真的带了 comment 字段", async ({ page }) => {
+test("在讨论区里写一条评语:ping 载荷里真的带了 comment 字段", async ({ page }) => {
   await stubEmpty(page);
   await stubComments(page, { items: [] });
   const pings: Array<{ votes: Array<Record<string, unknown>> }> = [];
@@ -1491,11 +1553,12 @@ test("写一条评语:ping 载荷里真的带了 comment 字段", async ({ page 
   await card.getByRole("button", { name: /^标记《/ }).click();
   await card.getByRole("button", { name: /贴红贴纸/ }).click();
 
-  const say = page.locator(".rb-say");
-  await expect(say.getByRole("combobox")).toBeEnabled();
-  await say.getByLabel("给哪一部写").selectOption(key);
-  await say.getByLabel("你的评语").fill("拉片细节绝了");
-  await say.getByRole("button", { name: "保存评语" }).click();
+  await card.getByRole("button", { name: /讨论区/ }).click();
+  const dialog = page.getByRole("dialog");
+  // ⚠ 表单里**没有「给哪一部写」这个下拉框**了 —— 弹层本来就只属于这一部
+  //   （那个下拉框是页面级模块的产物，随它一起删掉了）
+  await dialog.getByLabel(/写一句/).fill("拉片细节绝了");
+  await dialog.getByRole("button", { name: "保存评语" }).click();
 
   // 1200ms 防抖之后才发出去
   await expect.poll(() => pings.length, { timeout: 8000 }).toBeGreaterThan(0);
@@ -1506,25 +1569,37 @@ test("写一条评语:ping 载荷里真的带了 comment 字段", async ({ page 
   for (const entry of votes) expect("comment" in entry).toBe(true);
 });
 
-test("评语接口 500:模块走空态,红黑榜照常可用(静默降级)", async ({ page }) => {
+test("评语接口 500:讨论区走空态,红黑榜照常可用(静默降级)", async ({ page }) => {
   await stubEmpty(page);
   await page.route("**/api/stats/film-comments**", (route) =>
     route.fulfill({ status: 500, json: { error: "BOOM" } }),
   );
   await ready(page, "/redblack");
 
-  // 空态要**说清为什么空**,不是留一块空白
-  await expect(page.locator(".rb-say-empty")).toBeVisible();
-  await expect(page.locator(".rb-say-list")).toHaveCount(0);
-
   const key = keyOf("008");
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  // ⚠ 接口挂了也要能打开 —— 讨论区只是附加内容，绝不把整页拖挂
+  await card.getByRole("button", { name: /讨论区/ }).click();
+  const dialog = page.getByRole("dialog");
+  // 空态要**说清为什么空**,不是留一块空白
+  await expect(dialog.locator(".rb-talk-empty")).toBeVisible();
+  await expect(dialog.locator(".rb-talk-list")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  // 贴上贴纸这条主链路一个字节都不受影响
   await card.getByRole("button", { name: /^标记《/ }).click();
   await card.getByRole("button", { name: /贴红贴纸/ }).click();
   await expect(card.locator(".rb-dot--red")).toHaveCount(1);
 });
 
-test("贴纸上没有任何浮层:悬停 / 聚焦都不弹东西出来", async ({ page }) => {
+// 这条用例守的东西 2026-09-29 变了**:悬停现在**确实**会弹东西出来 —— 换款轮盘。
+// 但它的另一半一个字没变,也仍然必须成立:**轮盘不在贴纸里、也不在卡片里**。
+// 所以判据从「悬停/聚焦什么都不弹」改成「弹了,但弹在别处」:
+//   · 贴纸后代恒为 5 个(逐个点名,多塞一个节点都会红);
+//   · 卡片里不许出现轮盘 / 评语 / 弹层;
+//   · 轮盘挂在 `document.body` 上(唯一的挂法,理由见 `StickerSkinWheel.tsx`:画布与卡片都会裁它)。
+test("悬停会弹出换款轮盘,但它不在贴纸里、也不在卡片里", async ({ page }) => {
   await stubEmpty(page);
   await stubComments(page, {
     items: [{ filmKey: keyOf("008"), vote: "red", comment: "好看", displayName: null }],
@@ -1538,20 +1613,208 @@ test("贴纸上没有任何浮层:悬停 / 聚焦都不弹东西出来", async (
   const dot = card.locator(".rb-dot");
   await expect(dot).toHaveCount(1);
 
-  // 贴纸里只有**画它自己的那 5 个节点** —— 评语不在它里面(「不要放在贴纸上,不然很乱」)。
-  // ⚠ 2026-09-29 起贴纸**不再是空的 `<button>`**:异形轮廓与中心微图标必须是它的子节点
-  //   (`.rb-dot__face` → `.rb-dot__edge` / `.rb-dot__icon`,各带一个 `<path>`)。
-  //   所以判据从「子元素数为 0」换成「**逐个点名**」—— 这条用例要守的东西一个字没变
-  //   (里面不许出现评语或任何浮层),而点名比数个数更严:多塞任何一个节点都会红。
+  // 贴纸里只有**画它自己的那 5 个节点** —— 评语与轮盘都不在它里面(「不要放在贴纸上,不然很乱」)。
   await expect(dot.locator(".rb-dot__face")).toHaveCount(1);
   await expect(dot.locator(".rb-dot__face .rb-dot__edge path")).toHaveCount(1);
   await expect(dot.locator(".rb-dot__face .rb-dot__icon path")).toHaveCount(1);
   await expect(dot.locator("*")).toHaveCount(5);
-  await quiet(page);
+
+  // ⚠ 先等「刚贴下」那一档过去:松手时指针正落在贴纸上,那 2.4s 内**刻意不弹**(见 HOVER_MS/PRESS_MS)
+  await expect(dot).not.toHaveAttribute("data-rb-fresh", /.*/);
   await dot.hover();
-  await dot.focus();
+  const wheel = page.locator(".rb-wheel");
+  await expect(wheel).toHaveCount(1);
+
+  // 弹了,但三处都不许有它 —— 这几条才是这条用例真正守的东西
   await expect(dot.locator("*")).toHaveCount(5);
-  await expect(card.locator(".rb-say, [role=tooltip], [role=dialog]")).toHaveCount(0);
-  // 评语区在页面上、但**不在**卡片里(页面级模块)
-  await expect(page.locator(".rb-say")).toHaveCount(1);
+  await expect(dot.locator(".rb-wheel")).toHaveCount(0);
+  await expect(card.locator(".rb-wheel")).toHaveCount(0);
+  // 卡片里也不许冒出讨论区弹层 / 任何浮层（它要点开才挂）
+  await expect(card.locator("[role=tooltip], [role=dialog]")).toHaveCount(0);
+  // ⚠ 「评语模块在页面上」那条断言随「大家说」一起删了（2026-09-29）：页面级模块不再存在，
+  //   评语现在只在**卡片级讨论区弹层**里出现，而它要点开才有。
+  //   入口本身是**恒显**的（0 票的片也能讨论），所以它在、而弹层不在。
+  await expect(card.getByRole("button", { name: /讨论区/ })).toHaveCount(1);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
+
+/* ---------------- 换款轮盘(2026-09-29,PLAN-20260929195500) ----------------
+ * 测什么:能不能打开(三种入口)、预览会不会**只是预览**、点选会不会真的落定并上报、
+ * 关得掉关不掉、以及**既有的「双击贴纸 = 收回」有没有被踩坏**。
+ * ⚠ 2026-09-30 起「收回」的触发是**双击**(单击改成打开环了) —— 下面几处判据跟着改了,
+ *   但守的东西一个字没变:环不能把落在贴纸上的那几下点击吞掉。
+ *
+ * ⚠ 每个用例都得先等「刚贴下」那一档过去:那 `FRESH_MS`(2400ms)内**刻意不弹环**
+ *   ——松手时指针正落在这枚贴纸上,那一瞬间弹环纯属噪音。等它的判据是
+ *   `data-rb-fresh` 属性被摘掉(React 那边 `fresh || undefined` 就是不写属性)。 */
+
+/** 贴一枚红贴纸,并等到「刚贴下」那一档过去(此后才可能弹环)。 */
+async function placeRedAndSettle(page: Page): Promise<{ card: Locator; dot: Locator }> {
+  const key = keyOf("008");
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await card.getByRole("button", { name: /贴红贴纸/ }).click();
+  const dot = card.locator(".rb-dot");
+  await expect(dot).toHaveCount(1);
+  await expect(dot).not.toHaveAttribute("data-rb-fresh");
+  return { card, dot };
+}
+
+/** 轮盘里**当前这一款之外**的另一款(避免「预览与现状同款 → 看不出变化」的假绿)。
+ *  ⚠ 当前款从容器上的 `data-rb-wheel` 读 —— 那是组件与测试之间唯一的机读契约;
+ *    写死某一款的话,新贴那枚的款由带随机后缀的 id 推导,这条用例就会变成看运气。 */
+async function anotherSkin(wheel: Locator): Promise<string> {
+  const current = await wheel.getAttribute("data-rb-wheel");
+  const keys = ["torn", "stub", "sprocket", "scrap", "reel"];
+  const other = keys.find((skin) => skin !== current);
+  expect(other).toBeTruthy();
+  return other as string;
+}
+
+// ⚠ 这三个用例都**只在有鼠标的项目上跑**:轮盘的鼠标入口就是「悬停」,而触屏那档走的是
+//   长按(`PRESS_MS`),两个项目里 `hover()` 的语义完全不同 ——
+//   Playwright 的 `hover()` 还会**顺手把元素滚进视口**,而轮盘按设计「滚动即关」
+//   (锚点是视口坐标),于是它在命中测试之前就被自己关掉了(实测报「被 .rb-card-info 挡住」,
+//   而用 `elementFromPoint` 量下来轮盘节点其实稳稳在最上层 —— 那是**假象**,不是真遮挡)。
+//   触屏的长按入口没有对应的 Playwright API(没有 long-press),所以那一条不在这里假装覆盖。
+test("换款轮盘:悬停弹出、悬停节点只是预览、点选才落定并随票上报", async ({ page, isMobile }) => {
+  test.skip(isMobile, "悬停是鼠标入口；触屏走长按（见 PRESS_MS）");
+  const pings: Array<{ votes: Array<Record<string, unknown>> }> = [];
+  await page.route("**/api/stats/film-votes**", async (route) => {
+    if (route.request().method() === "POST") {
+      pings.push(route.request().postDataJSON() as { votes: Array<Record<string, unknown>> });
+      return route.fulfill({ json: { ok: true, count: 1, votes: {} } });
+    }
+    return route.fulfill({ json: { edition: "biff-2026", votes: {} } });
+  });
+  await stubComments(page, { items: [] });
+  await ready(page, "/redblack");
+
+  const { dot } = await placeRedAndSettle(page);
+  const face = dot.locator(".rb-dot__face");
+  /** 这一枚现在长什么样 —— 读的就是 `clip-path` 吃的那条路径(`--rb-shape`) */
+  const shape = (): Promise<string> =>
+    face.evaluate((node) => (node as HTMLElement).style.getPropertyValue("--rb-shape"));
+  const before = await shape();
+
+  await dot.hover();
+  const wheel = page.locator(".rb-wheel");
+  await expect(wheel).toHaveCount(1);
+  // 5 款一款不少,且**当前那款被明确标出**(`aria-checked` 是视觉与无障碍共用的判据)
+  await expect(wheel.locator(".rb-wheel__node")).toHaveCount(5);
+  await expect(wheel.locator('[role=radio][aria-checked=true]')).toHaveCount(1);
+  // 白底盘(2026-09-30,用户要求「选择的盘白底的,能更清晰看到」)。
+  // ⚠ 断言的是**它真的画出来了**,不是「有这个元素」—— `background` 那串径向渐变少一层
+  //   就会退化成实心圆(正好盖住用户要预览的那枚贴纸),而那不会有任何报错。
+  const plate = wheel.locator(".rb-wheel__plate");
+  await expect(plate).toHaveCount(1);
+  await expect(plate).toHaveCSS("background-image", /radial-gradient/);
+  // 中心要**掏空**:透明到白之间那条硬停色标必须真的在
+  await expect(plate).toHaveCSS("background-image", /transparent/);
+  // 底盘不吃指针(它只是背景),否则指针从贴纸走向节点会被它挡住
+  await expect(plate).toHaveCSS("pointer-events", "none");
+
+  const other = await anotherSkin(wheel);
+  const target = wheel.locator(`[data-rb-wheel-node="${other}"]`);
+  // 名称胶囊(2026-09-30,用户要求「悬停出现贴纸名称」):默认看不见,悬停那颗才露出来。
+  // ⚠ 两个断言缺一不可 —— 只断言「悬停后可见」的话,把名字改成常显也照样绿(那就成了五个名字糊一圈)。
+  await expect(wheel.locator(".rb-wheel__name").first()).toHaveCSS("opacity", "0");
+  // ⚠ 基线要取**现在**这一刻:贴下那一枚本身已经上报过一次(1200ms 防抖),
+  //   写 `toHaveLength(0)` 会红在与预览无关的地方。
+  const pinged = pings.length;
+  await target.hover();
+  // 悬停的这一颗露出名字,而且**只有它**
+  await expect(target.locator(".rb-wheel__name")).toHaveCSS("opacity", "1");
+  await expect(wheel.locator(".rb-wheel__name")).toHaveCount(5);
+  await expect(wheel.locator(".rb-wheel__name").filter({ hasText: /^$/ })).toHaveCount(0);
+  // 预览:贴纸**本体**跟着换款了
+  await expect.poll(shape).not.toBe(before);
+  // ⚠ 但预览**不写盘、不上报** —— 在环上转一圈不该多出任何一次上报
+  expect(pings).toHaveLength(pinged);
+
+  await target.click();
+  await expect(wheel).toHaveCount(0);
+  await expect.poll(shape).not.toBe(before);
+  // 落定之后才跟着票一起上报(服务端按款聚合,展板上的群点才画得出大家选了什么)
+  await expect
+    .poll(() => (pings.at(-1)?.votes?.[0] as { skin?: string } | undefined)?.skin, { timeout: 8000 })
+    .toBe(other);
+});
+
+test("换款轮盘:Esc 关得掉;而「双击贴纸 = 收回」这条既有契约没被踩坏", async ({ page, isMobile }) => {
+  test.skip(isMobile, "悬停是鼠标入口；触屏走长按（见 PRESS_MS）");
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  await ready(page, "/redblack");
+
+  const { dot } = await placeRedAndSettle(page);
+  await dot.hover();
+  const wheel = page.locator(".rb-wheel");
+  await expect(wheel).toHaveCount(1);
+
+  await page.keyboard.press("Escape");
+  await expect(wheel).toHaveCount(0);
+
+  // ⚠ 这条是**回归守卫**:环是悬停弹出来的,而 Playwright 的 `dblclick()` 先 hover 再点,
+  //   所以「双击那枚贴纸」时环**必然开着**(而且第一下点击还会再开一次)——
+  //   若环把这两次点击吞掉,收回就没了。
+  await dot.hover();
+  await expect(wheel).toHaveCount(1);
+  await dot.dblclick();
+  await expect(dot).toHaveCount(0);
+  await expect(wheel).toHaveCount(0);
+});
+
+test("换款轮盘:键盘也能走完(聚焦弹出、方向键转、回车落定)", async ({ page, isMobile }) => {
+  // ⚠ 移动端的 WebKit **不做 Tab 焦点遍历**(实测按 Tab 焦点不动),所以「键盘走到这一枚」
+  //   这件事在那些项目里根本无法发生 —— 那是浏览器的行为差异,不是本页的缺陷。
+  test.skip(isMobile, "移动端浏览器不做 Tab 焦点遍历");
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  await ready(page, "/redblack");
+
+  const { dot } = await placeRedAndSettle(page);
+  // ⚠ 不能直接 `dot.focus()`:程序化聚焦**不匹配 `:focus-visible`**,而环正是靠这个判据
+  //   区分「键盘 Tab 过来」与「鼠标点了一下」的(后者要留给「收回」)。
+  //   所以先键盘移出、再键盘移回来 —— 这才是真的「键盘走到这一枚」。
+  await dot.focus();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+
+  const wheel = page.locator(".rb-wheel");
+  await expect(wheel).toHaveCount(1);
+  // 键盘打开时焦点被收进环里(鼠标悬停打开则**不能**抢焦点)
+  await expect(wheel.locator("[role=radio]:focus")).toHaveCount(1);
+
+  const before = await wheel.getAttribute("data-rb-wheel");
+  await page.keyboard.press("ArrowRight");
+  await expect(wheel.locator("[role=radio]:focus")).not.toHaveAttribute(
+    "data-rb-wheel-node",
+    before as string,
+  );
+  // 方向键只**转移焦点**(顺带预览),不落定 —— 环还开着
+  await expect(wheel).toHaveCount(1);
+  await page.keyboard.press("Enter");
+  await expect(wheel).toHaveCount(0);
+  // 落定之后焦点回到那一枚贴纸上(否则键盘用户会被丢在文档开头)
+  await expect(dot).toBeFocused();
+});
+
+test("换款轮盘:滚一下就关掉(锚点是视口坐标,不跟着滚)", async ({ page, isMobile }) => {
+  test.skip(isMobile, "悬停是鼠标入口；触屏走长按（见 PRESS_MS）");
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  await ready(page, "/redblack");
+
+  const { dot } = await placeRedAndSettle(page);
+  await dot.hover();
+  const wheel = page.locator(".rb-wheel");
+  await expect(wheel).toHaveCount(1);
+
+  // ⚠ 用 `window.scrollBy` 而不是 `mouse.wheel`:WebKit 不支持 `mouse.wheel`(仓库既有结论)
+  await page.evaluate(() => window.scrollBy(0, 240));
+  await expect(wheel).toHaveCount(0);
+  // 关掉之后**不动 board**:这枚贴纸还在(滚动不该顺手把东西改掉)
+  await expect(dot).toHaveCount(1);
+});
+

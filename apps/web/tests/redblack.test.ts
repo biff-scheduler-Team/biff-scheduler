@@ -29,6 +29,7 @@ import {
   placeSticker,
   purgeDemoLeavings,
   reconcile,
+  reskinSticker,
   retintSticker,
   saveStickers,
   saveWatched,
@@ -265,8 +266,8 @@ describe("对接服务端票数", () => {
       ["c", []],
     ] as never);
     expect(votesOf(board)).toEqual([
-      { key: "a", vote: "red", comment: null },
-      { key: "b", vote: "black", comment: null },
+      { key: "a", vote: "red", comment: null, skin: null },
+      { key: "b", vote: "black", comment: null, skin: null },
     ]);
   });
 
@@ -281,11 +282,63 @@ describe("对接服务端票数", () => {
     ] as never);
     const payload = votesOf(board);
     expect(payload).toEqual([
-      { key: "a", vote: "red", comment: null },
-      { key: "b", vote: "black", comment: "稳" },
+      { key: "a", vote: "red", comment: null, skin: null },
+      { key: "b", vote: "black", comment: "稳", skin: null },
     ]);
     // 逐条断言「字段真的在」——`toEqual` 里 `comment: undefined` 与「没有这个键」是两回事
     for (const entry of payload) expect("comment" in entry).toBe(true);
+  });
+
+  // 贴纸款随票一起上报(2026-09-29)。**与 `comment` 逐字同一条理由** ——
+  // 少带 `skin` 字段会被服务端读成「旧版前端」,那一整份的款一个字都不碰。
+  it("votesOf:每一条都带 skin 字段(没说款时是 null,不是省略)", () => {
+    const board: StickerBoard = new Map([
+      ["a", [{ ...sticker("x", "red"), skin: "reel" as const }]],
+      ["b", [sticker("y", "black")]],
+    ] as never);
+    const payload = votesOf(board);
+    expect(payload).toEqual([
+      { key: "a", vote: "red", comment: null, skin: "reel" },
+      { key: "b", vote: "black", comment: null, skin: null },
+    ]);
+    for (const entry of payload) expect("skin" in entry).toBe(true);
+  });
+
+  it("★ 只换了一款皮肤 → 票签名**必须变**（否则这次编辑永远同步不上去）", () => {
+    // 页面那条上报 effect 依赖的正是票签名（不是 board 的引用），签名不变 = 不上报
+    const before: StickerBoard = new Map([["a", [{ ...sticker("x", "red"), skin: "torn" as const }]]] as never);
+    const after: StickerBoard = new Map([["a", [{ ...sticker("x", "red"), skin: "reel" as const }]]] as never);
+    expect(votesSignature(after)).not.toBe(votesSignature(before));
+    // 反面对照：同样的款 → 签名必须一致（否则每次 render 都会白上报一次）
+    expect(votesSignature(before)).toBe(
+      votesSignature(new Map([["a", [{ ...sticker("x", "red"), skin: "torn" as const }]]] as never)),
+    );
+  });
+});
+
+// 换皮肤(2026-09-29)：与 `retintSticker`(换色)**逐字同一套范式** ——
+// 不可变、同引用短路、位置与 id 都保留。为什么单测它:短路写错的话,
+// 「点了一下同款」会被当成一次真编辑 → 白触发一次防抖上报,而且用户看不出哪里不对。
+describe("reskinSticker:原地换一款", () => {
+  const board = (): StickerBoard =>
+    new Map([["a", [{ id: "x", type: "red", posX: 0.3, posY: 0.4, skin: "torn" }]]] as never);
+
+  it("★ 同款 → 返回**同一个引用**（调用方靠它知道「这次什么也没做」）", () => {
+    const before = board();
+    expect(reskinSticker(before, "a", "x", "torn")).toBe(before);
+  });
+
+  it("换款 → 新 board、位置与 id 与颜色都不动，只有 skin 变", () => {
+    const after = reskinSticker(board(), "a", "x", "reel");
+    expect(after.get("a")?.[0]).toEqual({ id: "x", type: "red", posX: 0.3, posY: 0.4, skin: "reel" });
+    // 不可变：原来那份没被改
+    expect(board().get("a")?.[0]?.skin).toBe("torn");
+  });
+
+  it("片不存在 / 贴纸不存在 → 原样返回同一个引用", () => {
+    const before = board();
+    expect(reskinSticker(before, "zzz", "x", "reel")).toBe(before);
+    expect(reskinSticker(before, "a", "zzz", "reel")).toBe(before);
   });
 });
 
@@ -386,7 +439,7 @@ describe("别人的贴纸:票数几枚就画几枚", () => {
 // 叠放顺序(2026-09-28,PLAN-20260928003736)。
 // 为什么单测它:用户报「黑色的贴纸总是会压住红色的贴纸」—— 根因是生成时**红票整段排在黑票之前**,
 // 而 canvas 与分享图都是画家算法(后画的盖住先画的),于是黑票永远在最上层。三处消费同一份数组
-// (卡片画布 / 「看全部」弹层 / 分享图),所以这是**一处实现、三处中招**。
+// (卡片画布 / 分享图),所以这是**一处实现、两处中招**。
 // ⚠ 口径是「按落点纵坐标」(用户 2026-09-28 拍板),**不是**「按贴票时间」:
 //   服务端只回聚合计数(没有时间),真按时间排要回 O(票数) 个时间戳,与量级目标冲突(见 PLAN)。
 describe("别人的贴纸:叠放顺序按落点纵坐标", () => {
@@ -442,11 +495,13 @@ describe("spotOf:落点要真的铺开", () => {
     }
   });
 
-  // 「铺开」的反面同样是口径(2026-09-29,经两轮修订):
+  // 「铺开」的反面同样是口径(2026-09-29 / 2026-09-30,经三轮修订):
   // 用户先反馈「几乎铺满了矩形各个角……让中间密、边缘留白多一点」——
   // 第一版把它做成了**圆盘撒点**:四角是空了,却撒出一条看得见的**椭圆边界**,
   // 用户当场反问「为什么现在贴纸聚成椭圆形了」。
   // ⇒ 口径定稿:**形状仍是矩形**(边缘不许成片空白),变的只是**密度**(中间密、四周疏)。
+  // ⚠ 2026-09-30 三次修订:`SPOT_CENTER_BIAS` 从 0.5 降到 0.22(用户反馈「空白的地方太多了」),
+  //   向心变弱,阈值也跟着放宽 —— 与 `redblack.ts` 里那条注释同一次改动,不要只改一处。
   it("中间密、四周疏,但**没有椭圆边界**:边缘照样有点", () => {
     const spots = Array.from({ length: 400 }, (_, i) => spotOf(`cat:f001#crowd-${i}`));
 
@@ -457,9 +512,9 @@ describe("spotOf:落点要真的铺开", () => {
     expect(inCorners.length).toBeGreaterThan(0);
 
     // ② 但确实向心:横向偏离的中位数要明显小于**均匀**分布(纯均匀时是 0.25;
-    //    本实现实测 ≈ 0.13,取 0.18 作阈值留出余量,同时仍然区分得开)
+    //    本实现(bias=0.22)实测 ≈ 0.18,取 0.22 作阈值留出余量,同时仍然区分得开)
     const devs = spots.map((p) => Math.abs(p.posX - 0.5)).sort((a, b) => a - b);
-    expect(devs[199]).toBeLessThan(0.18);
+    expect(devs[199]).toBeLessThan(0.22);
   });
 });
 

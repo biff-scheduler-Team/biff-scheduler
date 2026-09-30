@@ -18,9 +18,7 @@
  * ⚠ 纯函数 + 常量表,**import 期不碰 DOM**:可被 node 单测直接 import。
  */
 
-import { hashOf, type StickerType } from "./redblack";
-
-/** 形状族。红黑**各有自己的子集**(见 `shapesOf`),不是同一组的重新排列。 */
+/** 形状族。⚠ 2026-09-29 起**红黑共用同一套**（见 `ALL_SHAPES`），不再按颜色拆子集。 */
 export type StickerShape = "torn" | "stub" | "sprocket" | "scrap" | "reel";
 
 /** 设计盒边长。所有形状的顶点都在 `0..SHAPE_BOX` 内描画,与贴纸尺寸同值(32px)。 */
@@ -214,11 +212,9 @@ const VERTICES: Record<StickerShape, readonly Vertex[]> = {
   reel: reelVertices(),
 };
 
-/** 红黑各自的形状子集。**顺序即推导权重**(见 `shapeOf`),不要为了好看的顺序调整它。 */
-const FAMILIES: Record<StickerType, readonly StickerShape[]> = {
-  red: ["torn", "stub", "sprocket"],
-  black: ["torn", "scrap", "reel"],
-};
+/** 全部形状。⚠ 2026-09-29 起**不再按颜色分子集**：红黑共用同一套皮肤，只差底色
+ *  （用户原话「只是红色跟黑色的区别」）。「哪个形状配哪款皮肤」在 `sticker-skin.ts`。 */
+export const ALL_SHAPES: readonly StickerShape[] = ["torn", "stub", "sprocket", "scrap", "reel"];
 
 /** 形状 → 该形状的 SVG path `d`(默认按 `SHAPE_BOX` 原尺寸)。
  *
@@ -229,26 +225,18 @@ export function shapePath(shape: StickerShape, size: number = SHAPE_BOX): string
 }
 
 /** 形状 → 可直接写进内联 CSS 变量的字面量,形如 `path("M…")`。
- *  CSS 侧**只写** `clip-path: var(--rb-shape)`,不出现任何具体路径。 */
-export function shapeClipVar(shape: StickerShape): string {
-  return `path("${shapePath(shape)}")`;
+ *  CSS 侧**只写** `clip-path: var(--rb-shape)`,不出现任何具体路径。
+ *
+ *  ⚠ `size` 是**必填**,不能像 `shapePath` 那样给默认值:这里的 `path()` 是**绝对 px**,
+ *    不会被元素尺寸缩放(`clip-path` 与 `viewBox` 不是一回事 —— 后者会缩放,前者不会)。
+ *    给个默认值就等于「当贴纸正好是这个尺寸时才对」,而贴纸尺寸是**会变**的
+ *    (26 → 20 → 32 → 20 已经改过四轮),那时路径会**静默地**只裁出左上角一小块。
+ *    必填参数强迫每个调用点回答「这枚贴纸现在多大」。 */
+export function shapeClipVar(shape: StickerShape, size: number): string {
+  return `path("${shapePath(shape, size)}")`;
 }
 
 /** 形状 → `Path2D`(Canvas 侧唯一入口:群点 sprite 与分享图都走它)。 */
 export function shapePath2D(shape: StickerShape, size: number = SHAPE_BOX): Path2D {
   return new Path2D(shapePath(shape, size));
-}
-
-/** 某一色可用的全部形状。 */
-export function shapesOf(type: StickerType): readonly StickerShape[] {
-  return FAMILIES[type];
-}
-
-/** 由贴纸 id 推导的**确定性**形状 —— 与 `tiltOf` / `spotOf` 完全同一模式:
- *  不存字段(存了反而多一份可能与位置脱节的脏数据),刷新 / 换设备 / 分享图都稳定。
- *
- *  ⚠ 取 `hashOf` 的**低**位即可:形状只有 2~3 种,不需要 `spotOf` 那套 `mix32` 雪崩收尾。 */
-export function shapeOf(id: string, type: StickerType): StickerShape {
-  const family = FAMILIES[type];
-  return family[hashOf(id) % family.length];
 }

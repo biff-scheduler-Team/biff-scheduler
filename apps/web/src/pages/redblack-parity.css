@@ -357,9 +357,25 @@
 
 /* 卡片 = 左边信息 + 右边贴纸画布 */
 .rb-card {
+  /* ⚠ `position: relative` 是给**讨论区入口**用的(2026-09-30):它现在绝对定位在卡片右上角,
+   *   必须有一个定位祖先,否则会一路飘到视口上。(`contain: paint` 其实也建立了包含块,
+   *   但那是个副作用、不该依赖,所以显式写出来。) */
+  position: relative;
   display: grid;
-  grid-template-columns: 158px minmax(0, 1fr);
-  gap: 14px;
+  /* ⚠ 128 → **108**,`gap` 14 → **8**(2026-09-30 第二轮;用户:「贴纸区和影片信息区稍微调整下,
+   *   加大贴纸区,然后减少两者之间的空白」)。
+   *   ⚠ 两个数必须**一起改**:用户看到的「空白」不是那 14px 的缝,而是
+   *     **「列宽 − 左列真实内容宽 + 缝」**——左列最宽的内容是那颗数字胶囊
+   *     (三位数票时实测 94px),列宽 128 时它右边还空着 34px,再加 14px 缝 = **48px 空档**;
+   *     收成 108 / 8 之后是 **22px**(−54%),同时画布 553 → **579**(+26px)。
+   *   ⚠ 108 的**下界由那颗胶囊定**(94 + 两侧余量):它是 `white-space: nowrap`,
+   *     列宽一旦小于它就会**溢出到缝里、压到画布上**。想再窄,先让胶囊能折行(或缩字号)。
+   *   ⚠ 代价已实测(playwright / 1512 宽 / 60 张卡):片名折行 0/60 → **3/60**,
+   *     英文名多折一行 7/60 → **10/60**;卡片高度不变(渲染出来的那张仍是 258 = 画布 228 + 内边距)。
+   *   ⚠ 折行**不会**把卡片撑高(高度由画布的 `min-height` 定,见 `.rb-canvas`);
+   *     英文名折到第三行是极端个例,那一档本就已经是信息列在决定高度。 */
+  grid-template-columns: 108px minmax(0, 1fr);
+  gap: 8px;
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -376,7 +392,12 @@
    *   「不波及全页重绘」由 `contain` 达成,`will-change` 只买到显存暴涨。 */
   contain: content;
   content-visibility: auto;
-  contain-intrinsic-size: auto 206px;
+  /* ⚠ 2026-09-30 **实测校准**(信息列重排之后又量了一遍;playwright 量 `getBoundingClientRect().height`):
+   *     · 宽屏:实测 **226**(讨论区入口恒显那一版是 255 —— 这次重排收掉了一整行)
+   *     · 窄屏(390):实测 **392**
+   *   偏矮/偏高本身不会画错(带 `auto` 时浏览器会记住上次渲染出的真实高度),但它决定
+   *   **从未渲染过的屏外卡**的占位高度 —— 差得多就会在首次滚动时抖一下滚动条。 */
+  contain-intrinsic-size: auto 258px;
 }
 
 .rb-card[data-rb-hover] {
@@ -384,21 +405,47 @@
   box-shadow: 0 0 0 3px var(--brand-soft);
 }
 
-/* 左侧信息列:固定宽度 —— 所有卡的画布起点一致,整张榜单看起来才齐 */
+/* 左侧信息列:固定宽度 —— 所有卡的画布起点一致,整张榜单看起来才齐。
+ *
+ * ⚠ 2026-09-30 重排:由「整列居中堆叠」(`grid` + `align-content: center`)改成
+ *   **两端对齐的弹性列**(`flex column` + `justify-content: space-between`)。
+ *   居中堆叠的问题是每一项都浮在列的中间:列底空着三十几像素,红 / 黑两枚按钮也跟着悬在半空,
+ *   整张卡读不出上下关系(用户:「散乱、缺乏视知觉秩序」)。现在海报 / 片名贴列顶,
+ *   两枚按钮沉到列底、与右边画布的下缘齐平 —— 「上面是这部片、下面是给它贴纸」一眼可读。
+ * ⚠ 缝宽 4px 保持不变(4 本身即 4 的倍数):`space-between` 在宽屏本来就会把多出来的
+ *   十几像素平摊给这几条缝,窄屏没有富余时才是紧凑的 4px —— 两边各得其所。
+ * ⚠ **这一列不是卡片高度的决定方**(2026-09-30 实测):决定方是画布的 `min-height`。
+ *   所以两端对齐多出来的空间只会变成缝,不会把卡片撑高。
+ * ⚠ `align-items` 必须是 `flex-start`(= 每项按内容宽收缩),**不能**用默认的 `stretch`:
+ *   `.rb-poster-box` 一被撑到 128px 宽,相对**盒子右缘**定位的评分角标就会飘到列的最右边
+ *   (见 `.rb-poster-score`)。
+ * ⚠ 要让展板真的变大,只有两条路:① 上面那个列宽(决定画布有多**宽**,已用);
+ *   ② `.rb-canvas` 的 `min-height`(决定画布有多**高**,会让卡片一起变高)。 */
 .rb-card-info {
-  display: grid;
-  align-content: center;
-  justify-items: start;
-  gap: 5px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 4px;
   min-width: 0;
 }
 
+/* 海报:固定**宽高比 2:3**(与真实海报一致,2026-09-30)。
+ * ⚠ 改前是 58 × 76(约 3:4):`object-fit: cover` 于是每张都从上下各裁掉一条 ——
+ *   同一个榜单里有的片看得出构图、有的只剩中间一坨。给成海报本来的比例,裁切量一致,
+ *   整列的观感才统一。
+ * ⚠ 只给**宽**、高度交给 `aspect-ratio`:窄屏那条覆盖规则因此只需改一个数
+ *   (见文件末的 `@media (max-width: 560px)`),不会出现「宽改了高忘改」的比例漂移。
+ * ⚠ 列高仍然不是由它决定(见 `.rb-card-info`):58 → 87 只吃掉信息列里的富余,
+ *   卡片高度照旧由 `.rb-canvas` 的 `min-height` 兜着。 */
 .rb-poster {
   width: 58px;
-  height: 76px;
-  border-radius: 8px;
+  aspect-ratio: 2 / 3;
+  border-radius: 10px;
   background: var(--raised);
   object-fit: cover;
+  /* 极轻的一层投影:让海报从卡片底色上「浮」起来一档,而不是贴死在平面上 */
+  box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
 }
 
 .rb-poster--none {
@@ -413,12 +460,20 @@
   margin: 0;
   font-size: 15px;
   line-height: 1.35;
+  /* ⚠ 字重**显式写死**:`h2` 全局只给了字号(见 `style.css`),加粗靠的是浏览器默认样式 ——
+   *   将来任一处给它一个 `font-weight`,片名与下面那行英文名的层次会当场塌掉(两个都是常规体)。
+   * ⚠ 字号**不跟着放大**:列宽 128 是按「15px × 8 字一行」定的,抬到 18px 会让中位 4 字的片名
+   *   也开始折行 —— 而这一列的高度虽不影响卡片高矮,却会把海报与片名之间挤成两行。 */
+  font-weight: 700;
 }
 
 .rb-en {
   margin: 0;
   color: var(--muted);
-  font-size: 12px;
+  /* ⚠ 12 → **11**(2026-09-30,用户:「英文名要小于中文名」):15 / 12 只差 3px,
+   *   而英文名更长(实测中位 13 字符、最长 54),视觉上反而比中文名重 ——
+   *   等于层次读反了。拉到 15 / 11 之后,「中文是标题、英文是副题」才立得住。 */
+  font-size: 11px;
   line-height: 1.4;
   /* 窄列:长英文名宁可折行也不截断 —— 截断之后认不出是哪部片 */
   overflow-wrap: anywhere;
@@ -432,44 +487,94 @@
   margin: 2px 0 0;
 }
 
+/* 数字胶囊(红 / 黑计数)。⚠ 这是卡片上**唯一**的内嵌标签样式:状态类信息(评分 / 看过)
+ * 都收进了海报角上那两个角标,所以这里不再有第二种胶囊形态。
+ * ⚠ 内边距 2/8 → 3/10(2026-09-30):3px 是这套胶囊的最小呼吸量,再薄就贴住字了。
+ *   列宽 128 够放(实测「红 165 · 黑 74」连内边距约 100px)。
+ * ⚠ `tabular-nums`:数字按等宽排,票数从 74 涨到 165 时胶囊的宽不跳 —— 榜单上每张卡都在跳
+ *   是「散乱」的一部分。 */
 .rb-chip {
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: 999px;
   background: var(--raised);
   color: var(--muted);
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.rb-chip--red {
-  background: var(--brand-soft);
+/* 海报 + 右上角的评分角标(2026-09-30,用户:「能收起就收起,比如打分就可以放到海报右上角」)。
+ *
+ * ⚠ 包一层 `flex` 而不是靠海报自己:`<img>` 是行内元素,父块会给它留一条基线间隙(约 4px),
+ *   而这一列现在每一像素都在省。`flex` 让子项不再有基线参与。
+ * ⚠ 角标写**数字本身**(「6.9」),不写「评分」两字 —— 名字交给 `title` 与 `aria-label`:
+ *   看得见的越短越好,读屏的仍然完整。 */
+.rb-poster-box {
+  position: relative;
+  display: flex;
+  /* ⚠ 必须显式 `flex-start`:默认的 `stretch` 会把海报的**高度**交给这个盒子的行高决定,
+     而 `aspect-ratio` 推出来的高度反过来又要靠这一行 —— 两者互指。钉成 `flex-start` 之后
+     海报高度只由「宽 58 × 2:3」算,评分 / 标记两个角标才有确定的角可贴。 */
+  align-items: flex-start;
+}
+
+.rb-poster-score {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 24px;
+  padding: 1px 5px;
+  /* ⚠ 底色用 `--surface`(不透明)而不是 `--brand-soft`(半透明):它压在**照片**上,
+     半透明底会让数字随海报明暗忽深忽浅,同一张榜上读起来就不一致了。 */
+  border: 1px solid var(--brand);
+  border-radius: 999px;
+  background: var(--surface);
   color: var(--brand);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
-.rb-chip--black {
-  border: 1px solid var(--line);
-  background: var(--raised);
-  color: var(--text);
-}
-
-/* 单部影片的评分:卡片上唯一带「结论」性质的块 —— 比红黑计数重一档,但仍是一枚小徽章
- * (卡片信息列只有 158px,放大字会把它挤垮)。 */
-.rb-chip--score {
-  border: 1px solid currentcolor;
-  background: var(--brand-soft);
+/* 红黑合并之后那一颗里的两段文字 —— **颜色线索要留着**(原来是两颗各带配色的胶囊)。
+ * ⚠ 只改颜色与字重:胶囊自己的底与边仍由 `.rb-chip` 一层管(见上)。 */
+.rb-tally__red {
   color: var(--brand);
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
 }
 
-/* 「看过」标记 —— 卡片上唯一的开关,点它就是能不能贴的闸门 */
-.rb-mark {
-  padding: 3px 10px;
-  border: 1px dashed var(--line);
-  border-radius: 999px;
-  background: transparent;
+.rb-tally__black {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.rb-tally__sep {
   color: var(--muted);
-  font-size: 11px;
+}
+
+/* 「看过」标记 —— 卡片上唯一的开关,点它就是能不能贴的闸门。
+ *
+ * ⚠ 2026-09-30 从**一颗胶囊**收成**海报左下角的角标**(用户:「海报下面还是太乱了,
+ *   能收起就收起」)。它本来就是**状态**(和右上角那个评分同一类),不是一句要读的话 ——
+ *   摆在信息列里会和「红黑数字」「讨论区」一起把 158px 那一行挤断(实测三颗胶囊要 205px)。
+ * ⚠ 字**没了**,所以 `title` / `aria-label` 必须写全(`title` 由组件挂):那是它唯一的解释。
+ * ⚠ 两个状态靠**形态**区分,不靠字:未标记 = 虚线空心(「这里可以点」),
+ *   已标记 = 实心填色(品牌色)。画布里的提示「标记「看过」即可贴」仍在原地指路。 */
+.rb-mark {
+  position: absolute;
+  left: -6px;
+  bottom: -6px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px dashed var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
   cursor: pointer;
 }
 
@@ -536,49 +641,43 @@
   background: var(--raised);
 }
 
-/* 「看全部 N 枚」(放大看全部贴纸的入口)—— 与 `.rb-mark` 同一档的小按钮:
- * 它是**查看**动作,不是表态,所以不抢红 / 黑那两个贴纸按钮的视觉权重。
- * ⚠ 2026-09-29 用户:「显示为『看全部 239 枚』这类浅灰胶囊……建议样式做一个轻微的 Hover 态
- *   (比如鼠标移上去变红底或加下划线),让用户知道这是一个可以点击展开的入口,
- *   而不是一个纯静态 Label」。两处一起改:
- *   ① 常态的字色由 `--muted` 提到 `--text` —— 与身边那些**真的**死标签(`.rb-chip`)拉开一档;
- *   ② hover 时边框 / 底色 / 字色**三处同时**变(品牌红 + `--brand-soft` 底),
- *      单改字色读起来仍像一句说明,hover 出来才有「按得下去」的手感。 */
-.rb-zoom {
-  padding: 3px 10px;
+/* 「讨论区」入口(2026-09-29,PLAN-20260929195500 —— 它取代了原来那个「看全部 N 枚」)。
+ * 沿用那一档小按钮的成色:**查看**动作,不是表态,所以不抢红 / 黑那两个贴纸按钮的视觉权重。
+ * ⚠ 三处一起给足:常态字色用 `--text`(与身边那些**真的**死标签 `.rb-chip` 拉开一档)、
+ *   hover 时边框 / 底色 / 字色同时变 —— 单改字色读起来仍像一句说明,三处一起变才有
+ *   「按得下去」的手感(这是 2026-09-29 用户在「看全部」上提过的原话,原样保住)。
+ * ⚠ 它**恒显**(0 票的片也能讨论),见 `RbCard` 里那段说明。
+ * ⚠ 2026-09-30 从信息列搬到**卡片右上角**(用户:「讨论区放卡片右上角,这样贴贴纸的区域
+ *   就大一点了」):它和信息列那串胶囊挤一行时,那一行要 146px,信息列因此定 158px ——
+ *   而信息列的宽**就是**画布的宽,搬走之后列宽收到 128px,画布宽了 30px。
+ * ⚠ 代价:它压在画布右上角,那一小块是**点击死区** —— 贴纸落在下面会被盖住
+ *   (悬停不出滚轮、双击收不回)。贴纸本来允许互相重叠(打卡墙),这是同一类代价;
+ *   兜底是「取消标记看过 → 重新标记」会把贴纸全部收回重铺。所以它做得**尽量小**,
+ *   并贴近角(画布那圈 `border-radius` 本来就吃掉了角上一点)。 */
+.rb-talk {
+  position: absolute;
+  /* ⚠ 16 → 12(2026-09-30):入口要贴着角,「离角 16px」在 256px 高的卡上读起来像
+     一件漂在画布里的东西 —— 而它本来就是卡片这一角的附属物(它是绝对定位的,
+     不占布局空间,所以往里挪只影响自己被贴纸盖住的面积,不影响任何排布)。 */
+  top: 12px;
+  right: 12px;
+  /* ⚠ 画布是 `position: relative`,不抬一层会被它盖住(顺序上按钮在后,但都定位了就得比 z-index) */
+  z-index: 2;
+  padding: 3px 9px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface);
   color: var(--text);
   font-size: 11px;
+  line-height: 1.2;
   cursor: pointer;
   transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
 }
 
-.rb-zoom:hover {
+.rb-talk:hover {
   border-color: var(--brand);
   background: var(--brand-soft);
   color: var(--brand);
-}
-
-/* ---------- 「放大看全部」弹层 ---------- */
-
-.rb-zoom-lede {
-  margin: 0 0 10px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-/* 大画布:与卡片那块同源(同一个 `StickerCanvas`),只是铺得开 ——
- * 贴纸是相对坐标的百分比,画布一大,原来叠在一起的点就散开了 */
-.rb-zoom-stage {
-  position: relative;
-  width: 100%;
-  height: min(68vh, 560px);
-  border: 1px dashed var(--line);
-  border-radius: 12px;
-  background: var(--raised);
-  overflow: hidden;
 }
 
 /* ---------- 待贴的两枚贴纸(点一下就落到右边) ---------- */
@@ -587,8 +686,12 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 2px;
+  /* ⚠ 8 → 12(2026-09-30):两枚按钮在同一水平线上,间距是它们之间唯一的层次信号 ——
+     8px 时两颗圆几乎挨着,读起来像一颗被劈成两半。 */
+  gap: 12px;
+  /* ⚠ 不再自带 `margin-top`:它是这一列的**最后一项**,与上面那几段的距离由 `.rb-card-info`
+     的 `space-between` 统一分配(自带 margin 会让这一条缝比其他几条宽,又回到「不齐」)。 */
+  margin-top: 0;
 }
 
 /* 「这枚要回到这儿」(2026-09-23,PLAN-20260923110401):拖着**已经贴着的那一枚**出界时,
@@ -601,40 +704,73 @@
   outline-offset: 3px;
 }
 
+/* 暂存区那两枚贴纸(点一下 → 随机贴到画布;拖到画布 → 落在松手那一点)。
+ *
+ * ⚠ 2026-09-30 统一形态:32px 的不规则 blob(各自 −4° / +4° 歪斜)→ **36px 正圆、不歪**。
+ *   原来的「两枚朝相反方向歪」是想做出手贴的随意感,但两张卡并排时它先被读成
+ *   「左边那颗是歪的」—— 同类东西各自长一个样,正是用户说的「散乱」。
+ *   贴纸的质感仍然保留(内圈高光 + 两层投影),去掉的只是「每个都不一样」。
+ * ⚠ 尺寸必须**两枚一致**:它们是同一个名额的两种取舍(红 / 黑),不是主 / 次关系。 */
 .rb-src {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
   border: 0;
-  border-radius: 48% 52% 45% 55% / 52% 46% 54% 48%;
+  border-radius: 50%;
   color: #fff;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   box-shadow:
     inset 0 0 0 1px rgb(255 255 255 / 18%),
     0 1px 1px rgb(0 0 0 / 16%),
     0 3px 6px rgb(0 0 0 / 12%);
   cursor: pointer;
+  /* ⚠ 悬停 / 按下**都走这一条**过渡:两枚按钮的反馈节奏必须一致,
+   *   否则「哪一颗更活」会被读成权限差异。只动 `box-shadow` 与 `transform`(合成层,
+   *   不触发布局),所以 300 张卡一起按也不会掉帧。 */
+  transition: box-shadow 0.12s ease, transform 0.08s ease;
   /* 触屏上按住它往画布上拖:没有这一行,浏览器会把这个手势判成「滚动页面」并补发
    * `pointercancel`,贴纸根本拖不出去(用户 2026-09-23:「能否实现自己贴的贴纸始终能被自己拖动」)。
-   * ⚠ **只加在这 32px 的按钮上** —— `.rb-dot` 早就有;而 `.rb-canvas` **千万不要**加:
+   * ⚠ **只加在这枚按钮上** —— `.rb-dot` 早就有;而 `.rb-canvas` **千万不要**加:
    *   那一片是卡片右半张,加了之后手指在那块区域就没法滚动页面了。 */
   touch-action: none;
 }
 
+/* 两色都是**实底**:红取 `--rb-red`、黑取 `--rb-black`(深灰 #2f2f36,不是浅灰)。
+ * ⚠ 灰底那一档只由**状态**产生(`data-rb-spent` / `disabled`,见下),不是常态配色 ——
+ *   常态下「黑」必须读得出是一枚能贴的黑贴纸。 */
 .rb-src--red {
   background-color: var(--rb-red);
-  transform: rotate(-4deg);
 }
 
 .rb-src--black {
   background-color: var(--rb-black);
-  transform: rotate(4deg);
 }
 
-/* 已经贴过这一色 / 还没标记「看过」→ 淡下来(不写解释文字,靠形态表达) */
-.rb-src[data-rb-spent],
+/* 按下的手感受:与 `.rb-ghost` / 贴纸一致的「按下去」而不是「变小」 */
+.rb-src:not([disabled]):active {
+  transform: scale(0.95);
+}
+
+/* 键盘焦点:两枚按钮是这张卡的**主操作**,必须有可见焦点环(鼠标点不触发 `:focus-visible`) */
+.rb-src:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* 两种「淡」必须**分得开**(2026-09-30):
+ *   ① 这一色已经贴出去了(`data-rb-spent`)—— 是**用过了**,不是坏了:保住颜色、只是印淡一档,
+ *      去掉投影(贴纸已经落到画布上,手里这枚不再是实体)。
+ *   ② 还没标记「看过」—— 是**现在碰不动**。
+ * ⚠ 改前两者都是 0.3,黑贴纸的深灰被压成一片浅灰 —— 用户读成「按钮用了不明确的浅灰底」,
+ *   其实那正是「已经贴过了」的形态;分开之后,「浅灰」只在真的不可用时出现。 */
+.rb-src[data-rb-spent] {
+  opacity: 0.55;
+  box-shadow: none;
+}
+
 .rb-card:not([data-rb-marked]) .rb-src {
   opacity: 0.3;
 }
@@ -662,7 +798,17 @@
   position: relative;
   /* 允许重叠、也不避让 —— 线下打卡墙本来就不整齐;超出部分裁掉,免得贴纸漫到隔壁卡 */
   overflow: hidden;
-  min-height: 176px;
+  /* ⚠ 176 → 196 → **228**(2026-09-30,用户三轮改过:「贴纸区可以放大一点」)。
+   *   这一格是**卡片高度的决定方**(实测:信息列内容高只有 ~186,比它矮),
+   *   所以每加一像素,卡片就跟着高 1 像素 —— 这是「展板变大」的唯一杠杆,
+   *   在信息列里省高度是没用的(那部分本来就没被用上)。
+   * ⚠ 196 → 228 是**加高**而不是再加宽:这块板当时是 553 × 196(2.8:1)的扁长条,
+   *   而群点是在这块板上铺开的 —— 板越扁,点叠得越凶。所以「放大」主要该长在**高**上,
+   *   宽那一边已经用信息列收窄换过一次了(158 → 128,画布 +30)。
+   *   加高之后卡片 226 → 256(+13%),一屏少约半张卡,这是明示过的代价。
+   *   ⚠ 它是 `min-height` 不是 `height`:信息列比它高时(片名两三行 / 英文名很长),
+   *     展板照样跟着长 —— 两边是 grid 同一行的两个单元格,默认 `stretch` 对齐。 */
+  min-height: 228px;
   border: 1px dashed var(--line);
   border-radius: 12px;
   background: var(--raised);
@@ -754,12 +900,11 @@
  *   纸白边与落影一起裁掉,而纸白边正是 E2E `redblack.spec.ts` 断言的那条 `/1.5px/`。 */
 .rb-dot {
   position: absolute;
-  /* ⚠ 32px 与 `sticker-sprite.ts::STICKER_SIZE` **必须逐字一致**:canvas 上的群点走 sprite,
-   *   这一枚走 DOM,尺寸只此两处表达。
-   *   2026-09-28 曾由 26 缩到 20(PLAN-20260928003736,为了「容纳更多」);
-   *   2026-09-29 又回到 32(PLAN-20260929195500):异形轮廓与中心微图标在 20px 下糊成一粒点。 */
-  width: 32px;
-  height: 32px;
+  /* ⚠ 20px 与 `sticker-sprite.ts::STICKER_SIZE` **必须逐字一致**:canvas 上的群点走 sprite,
+   *   这一枚走 DOM,尺寸只此两处表达(`tests/sticker-sprite.test.ts` 会机械比对,不靠人记)。
+   *   尺寸沿革见 `STICKER_SIZE` 的说明(26 → 20 → 32 → 20,用户四轮改过)。 */
+  width: 20px;
+  height: 20px;
   /* 这枚贴纸是 `<button>`(它可单击收回,顺带让键盘也能收回):把按钮的默认外观清干净,
    * 否则自带的 padding / 边框会把 32px 的方框撑坏 */
   appearance: none;
@@ -807,6 +952,68 @@
   inset: 0;
   display: block;
   clip-path: var(--rb-shape);
+  /* 底色与质感分两层写：底色跟着红/黑走(见下面两条),质感跟着**皮肤**走(见 `[data-rb-material]`)。
+   * 质感是一串 `background-image` 层,经 `--rb-mat` 代进来 —— 这样「2 色 × 3 材质」只需要
+   * 3 条材质规则,而不是 6 条把同一串质感抄两遍(抄两遍就是两份口径,迟早只改一处)。
+   * ⚠ 层序:高光在前(在**上**),材质在后 —— 与 `sticker-material.ts` 里 canvas 那侧
+   *   「倒着遍历」是同一张画的两种写法,改层序必须两边一起改。
+   * ⚠ `var(--rb-mat, none)` 的兜底不是摆设:`--rb-mat` 没定义时整条声明会失效成
+   *   `background-image: none`,连高光一起丢 —— 兜底成 `none`(合法的一层)可保住高光。 */
+  background-image: var(--rb-gloss), var(--rb-mat, none);
+  background-size: auto, var(--rb-mat-size, auto);
+}
+
+/* ---- 材质层(2026-09-29,PLAN-20260929195500) ----
+ * 下面三串值是 `sticker-material.ts::materialBackground()` / `materialBackgroundSize()`
+ * **生成**出来贴在这里的（按 `STICKER_SIZE` = 20 换算）。⚠ 它们是那份配方的**副本**,
+ * 所以 `tests/sticker-material.test.ts` 会逐个材质断言「本文件里就是生成结果」——
+ * 改了配方或改了贴纸尺寸而忘了同步这里,单测会直接把该贴的文本报出来。
+ *
+ * 为什么不内联进元素 style:材质与**具体哪一枚贴纸无关**,300 张卡共用同一条规则;
+ * 内联会把这串长文本复制 300 份(≈250KB DOM 属性),白花内存。
+ * 为什么不干脆只用 canvas 画:我贴的那一枚是**可拖 / 可键盘收回的 `<button>`**,
+ * 它有纸白边、有 outline、有拖拽命中区 —— 这些都得靠 DOM 才成立。 */
+.rb-dot__face[data-rb-material="screen"] {
+  /* 丝网重影:两组角度差 1.5° 的细纹叠出摩尔纹(真实丝网套色没对准就是这样)。 */
+  --rb-mat:
+    repeating-linear-gradient(115deg, rgb(255 255 255 / 5%) 0 0.63px, transparent 0.63px 1.88px),
+    repeating-linear-gradient(113.5deg, rgb(255 255 255 / 4.5%) 0 1.56px, transparent 1.56px 4.38px);
+  --rb-mat-size: auto;
+}
+
+.rb-dot__face[data-rb-material="grain"] {
+  /* 胶片颗粒:两层平铺圆点,细密偏白 + 稀疏偏黑 —— 只用浅色点会读成「磨砂」而不是「颗粒」。
+   * ⚠ 0.34px 的点在 20px 贴纸上落在 1 个物理像素以下,实际读作一层**淡色调**而不是颗粒。
+   *   这是「贴纸缩到 20px」的必然代价(用户已接受),不是写错了 —— 见 `STICKER_SIZE` 的沿革。 */
+  --rb-mat:
+    radial-gradient(circle at 0 0, rgb(255 255 255 / 7%) 0 0.34px, transparent 0.34px),
+    radial-gradient(circle at 0 0, rgb(0 0 0 / 7%) 0 0.5px, transparent 0.5px);
+  --rb-mat-size: 1.88px 1.88px, 3.13px 3.13px;
+}
+
+.rb-dot__face[data-rb-material="ink"] {
+  /* 印章油墨边:中心径向压暗 + 沿内缘一圈深浅不一的墨点(匀的一圈是描边,不均匀才像油墨)。 */
+  --rb-mat:
+    radial-gradient(circle at 10px 10px, transparent 0 5.6px, rgb(0 0 0 / 14%) 11.2px),
+    radial-gradient(circle at 19.08px 10px, rgb(0 0 0 / 8.6%) 0 0.5px, transparent 0.5px),
+    radial-gradient(circle at 18.14px 12.96px, rgb(0 0 0 / 15.5%) 0 0.49px, transparent 0.49px),
+    radial-gradient(circle at 16.21px 15.21px, rgb(0 0 0 / 14.7%) 0 0.76px, transparent 0.76px),
+    radial-gradient(circle at 14.19px 17.25px, rgb(0 0 0 / 16.3%) 0 0.71px, transparent 0.71px),
+    radial-gradient(circle at 11.57px 18.91px, rgb(0 0 0 / 9.5%) 0 0.95px, transparent 0.95px),
+    radial-gradient(circle at 8.36px 19.27px, rgb(0 0 0 / 10.1%) 0 0.58px, transparent 0.58px),
+    radial-gradient(circle at 5.31px 18.12px, rgb(0 0 0 / 9.2%) 0 0.44px, transparent 0.44px),
+    radial-gradient(circle at 3.75px 15.24px, rgb(0 0 0 / 16.6%) 0 0.68px, transparent 0.68px),
+    radial-gradient(circle at 1.79px 12.99px, rgb(0 0 0 / 6.7%) 0 0.38px, transparent 0.38px),
+    radial-gradient(circle at 1.04px 10px, rgb(0 0 0 / 11.8%) 0 1.04px, transparent 1.04px),
+    radial-gradient(circle at 1.16px 6.78px, rgb(0 0 0 / 5.3%) 0 0.59px, transparent 0.59px),
+    radial-gradient(circle at 3.11px 4.21px, rgb(0 0 0 / 15.2%) 0 1px, transparent 1px),
+    radial-gradient(circle at 5.38px 1.99px, rgb(0 0 0 / 9.3%) 0 0.76px, transparent 0.76px),
+    radial-gradient(circle at 8.37px 0.74px, rgb(0 0 0 / 9.4%) 0 0.59px, transparent 0.59px),
+    radial-gradient(circle at 11.43px 1.93px, rgb(0 0 0 / 6.9%) 0 0.94px, transparent 0.94px),
+    radial-gradient(circle at 14.51px 2.18px, rgb(0 0 0 / 9.8%) 0 0.98px, transparent 0.98px),
+    radial-gradient(circle at 16.18px 4.81px, rgb(0 0 0 / 13.5%) 0 0.65px, transparent 0.65px),
+    radial-gradient(circle at 18.41px 6.94px, rgb(0 0 0 / 11.8%) 0 1.05px, transparent 1.05px);
+  --rb-mat-size: auto;
 }
 
 /* 沿**真轮廓**的内描边:把同样一条路径描 2px 的线,再由上面那层 `clip-path` 裁掉外侧一半,
@@ -834,9 +1041,9 @@
 
 .rb-dot--red .rb-dot__face {
   background-color: var(--rb-red);
-  background-image:
-    repeating-linear-gradient(115deg, rgb(255 255 255 / 5%) 0 1px, transparent 1px 3px),
-    radial-gradient(circle at 34% 28%, rgb(255 255 255 / 14%), transparent 62%);
+  /* 径面高光(2026-09-23 起就有,所有材质共用一层):模拟展胶贴纸那种「从左上打光」的反光。
+   * ⚠ 红 14% / 黑 10% —— 黑底本来就更吃光,同样的白压上去会过亮。 */
+  --rb-gloss: radial-gradient(circle at 34% 28%, rgb(255 255 255 / 14%), transparent 62%);
 }
 
 .rb-dot--red .rb-dot__icon {
@@ -845,13 +1052,210 @@
 
 .rb-dot--black .rb-dot__face {
   background-color: var(--rb-black);
-  background-image:
-    repeating-linear-gradient(115deg, rgb(255 255 255 / 5%) 0 1px, transparent 1px 3px),
-    radial-gradient(circle at 34% 28%, rgb(255 255 255 / 10%), transparent 62%);
+  --rb-gloss: radial-gradient(circle at 34% 28%, rgb(255 255 255 / 10%), transparent 62%);
 }
 
 .rb-dot--black .rb-dot__icon {
   fill: var(--rb-icon-black);
+}
+
+/* ---------------- 换款轮盘(2026-09-29,PLAN-20260929195500) ----------------
+ * 「悬停自己那枚贴纸 → 周围弹出一圈 5 款皮肤」。它挂在 `document.body` 上(`position: fixed`),
+ * 理由见 `components/StickerSkinWheel.tsx` 的文件头:画布与卡片**都会裁掉**它
+ * (`.rb-canvas` 是 `overflow: hidden`;`.rb-card` 有 `contain: paint`,连 fixed 后代都圈住)。
+ *
+ * ⚠ 所以下面的规则里**没有一条**依赖 `.rb-dot` / `.rb-card` 的层叠位置 —— 它在另一棵树里。
+ */
+.rb-wheel {
+  position: fixed;
+  /* 容器本身是 0×0 的一个点(锚点 = 那枚贴纸的中心),节点各自从这一点向外铺 */
+  width: 0;
+  height: 0;
+  /* 要压在卡片之上。比 S2 弹层低:弹层打开时轮盘本就该让位(而且那时它也已经被关掉了) */
+  z-index: 40;
+  /* ⚠ 环心到节点之间的那段空隙**不吃指针**:指针从贴纸走向节点时要划过它,
+   *   吃掉的话会先触发贴纸的 `pointerleave`,环还没用就被关掉了。 */
+  pointer-events: none;
+}
+
+/* 白底盘(2026-09-30,用户:「选择的盘白底的,能更清晰看到」)。
+ *
+ * ⚠ 它是**环带,不是实心圆**:中心按「贴纸 + 一点余量」掏空 ——
+ *   预览靠那枚贴纸实时换款,底盘要是实心,用户唯一想看的东西正好被盖住。
+ *   掏空用 `background` 里的**硬停色标**(透明 → 白),不用 `mask`:少一个属性少一处兼容面,
+ *   而这里要的就是一条干净的圆边。
+ * ⚠ 外径 / 内径都由几何常量算出来(`--rb-wheel-radius` / `--rb-wheel-node` / `--rb-wheel-size`,
+ *   都是组件按 `sticker-wheel.ts` 与 `sticker-sprite.ts` 写的)——不在这里写死数字,
+ *   否则改了环半径或贴纸尺寸,底盘就会与节点错位(而那是**看不出来错在哪**的那种错)。
+ * ⚠ 它只是背景:`pointer-events: none`。节点自己 `pointer-events: auto`,
+ *   所以指针照样落在节点上(容器那一层早就整体关掉了,见 `.rb-wheel`)。 */
+.rb-wheel__plate {
+  position: absolute;
+  left: 0;
+  top: 0;
+  --rb-wheel-outer: calc((var(--rb-wheel-radius) + var(--rb-wheel-node) / 2 + 4px) * 2);
+  --rb-wheel-inner: calc(var(--rb-wheel-size) + 14px);
+  width: var(--rb-wheel-outer);
+  height: var(--rb-wheel-outer);
+  margin: calc(var(--rb-wheel-outer) / -2) 0 0 calc(var(--rb-wheel-outer) / -2);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 50%,
+    transparent 0 calc(var(--rb-wheel-inner) / 2),
+    var(--surface) calc(var(--rb-wheel-inner) / 2)
+  );
+  /* 两层:近层收边、远层扩散 —— 与贴纸的落影同一个手法,让底盘读起来是「浮起来的一张盘」 */
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 10%),
+    0 10px 26px rgb(0 0 0 / 16%);
+  pointer-events: none;
+  /* 与节点同一节奏地淡入(但**不做错峰**:底盘是一整块,一颗颗冒没有意义) */
+  animation: rb-wheel-plate 160ms ease-out backwards;
+}
+
+@keyframes rb-wheel-plate {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 环心那一圈虚线:告诉眼睛「这一圈是围着谁的」。⚠ 它不是贴纸本体(本体在卡片里),
+ *   所以只描边、不填底 —— 填底会正好盖住用户想看清的那一枚。 */
+.rb-wheel__hub {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(var(--rb-wheel-size) + 10px);
+  height: calc(var(--rb-wheel-size) + 10px);
+  margin: calc((var(--rb-wheel-size) + 10px) / -2) 0 0 calc((var(--rb-wheel-size) + 10px) / -2);
+  border: 1.5px dashed var(--line);
+  border-radius: 50%;
+}
+
+.rb-wheel__node {
+  position: absolute;
+  left: 0;
+  top: 0;
+  /* ⚠ 44px 是**点击区**,不是贴纸的大小 —— 里面那枚小贴纸与真贴纸等大(见组件说明) */
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  /* 容器是 `pointer-events: none`(见上),节点必须自己接回来 */
+  pointer-events: auto;
+  /* 先居中到锚点,再按座位偏移。⚠ 两步都写在 `transform` 里:用 `left/top` 定位会让
+   *   每一颗都触发一次布局,而这个环是「一瞬间弹出来的」,布局抖动最容易被看见。 */
+  transform: translate(-50%, -50%) translate(var(--rb-wheel-dx), var(--rb-wheel-dy));
+  /* `backwards` 让节点在 `animation-delay` 那段时间里保持 `from` 的样子(隐形),
+   * 否则会先全亮地闪一下再逐颗冒出来 */
+  animation: rb-wheel-pop 220ms cubic-bezier(0.2, 0.9, 0.3, 1.35) backwards;
+  animation-delay: var(--rb-wheel-delay);
+}
+
+/* 「气泡式」出现:从环心(偏移归零)带一点过冲弹出去。⚠ 过冲靠的是 `cubic-bezier` 的
+ * 第三个参数(>1)而不是 `scale(1.2)` 之类的中间帧 —— 后者会与最终态的 `scale(1)` 打架。 */
+@keyframes rb-wheel-pop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) translate(0, 0) scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) translate(var(--rb-wheel-dx), var(--rb-wheel-dy)) scale(1);
+  }
+}
+
+.rb-wheel__chip {
+  /* ⚠ 尺寸不写死:由组件按 `sticker-sprite.ts::STICKER_SIZE` 写成 `--rb-wheel-size` ——
+   *   里面那枚小贴纸必须与真贴纸**等大**(预览才所见即所得),写死一个 20 就是第二处口径。 */
+  position: relative;
+  width: var(--rb-wheel-size);
+  height: var(--rb-wheel-size);
+  transition: transform 0.12s ease;
+}
+
+/* 皮肤名(2026-09-30,用户:「悬停出现贴纸名称」)。
+ * ⚠ 默认 `opacity: 0` 而不是不渲染:它必须**留在无障碍树里**吗?不必 ——
+ *   名字已经在节点的 `aria-label` 上了,这里纯粹是给眼睛看的补充,所以 `aria-hidden` 不必加、
+ *   但也要注意它不该被读屏重复念一遍(节点上的 `aria-label` 已经覆盖)。
+ * ⚠ 一次只显示一颗(悬停/聚焦的那颗),所以相邻节点的名字**不可能**互相压到。
+ * ⚠ 挂哪一侧由 `--rb-wheel-label-dir`(±1)决定 —— 见组件的说明:一律朝环外。 */
+.rb-wheel__name {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%)
+    translateY(calc(var(--rb-wheel-label-dir) * (var(--rb-wheel-size) / 2 + 12px)));
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  opacity: 0;
+  /* 名字不吃指针:它挂在节点下方,吃到的话指针从名字上滑向节点会先触发 leave */
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.rb-wheel__node:hover .rb-wheel__name,
+.rb-wheel__node:focus-visible .rb-wheel__name {
+  opacity: 1;
+}
+
+/* 当前用的那款:一圈品牌色描边(判据直接用 `aria-checked`,不再多挂一个 data 属性 ——
+ * 多一个属性就多一处可能与无障碍状态不同步的地方)。 */
+.rb-wheel__node[aria-checked="true"] .rb-wheel__chip {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+  border-radius: 50%;
+}
+
+.rb-wheel__node:hover .rb-wheel__chip,
+.rb-wheel__node:focus-visible .rb-wheel__chip {
+  transform: scale(1.15);
+}
+
+.rb-wheel__node:focus-visible {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 动效敏感:整圈直接出现在终点位置(锚点与尺寸都不变,只是不做弹出与放大过渡) */
+  .rb-wheel__node {
+    animation: none;
+  }
+
+  /* 白底盘同理:直接出现,不做那一下淡入与缩放 */
+  .rb-wheel__plate {
+    animation: none;
+  }
+
+  .rb-wheel__chip {
+    transition: none;
+  }
+
+  /* 名称胶囊也直接切换 —— 这里只是「显不显示」,不是动效的一部分 */
+  .rb-wheel__name {
+    transition: none;
+  }
+
+  .rb-wheel__node:hover .rb-wheel__chip,
+  .rb-wheel__node:focus-visible .rb-wheel__chip {
+    transform: none;
+  }
 }
 
 /* 「刚贴下的那一枚」:在**常驻纸白边之外**再套一圈更亮的描边
@@ -870,16 +1274,6 @@
 .rb-dot:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
-}
-
-/* 「放大看全部」弹层里那一枚是**只读**的(2026-09-23,PLAN-20260923104622):卡片上那枚可拖、
- * 单击可收回,弹层里只有「看」。光标不能还是 `grab` —— 它在这儿拖不动,留着那是在承诺一个
- * 不存在的交互;`pointer-events: none` 顺带保证它不会挡住将来的命中测试。
- * ⚠ 外观(尺寸 / 形状 / 白边 / 歪斜)全部继承 `.rb-dot`,这里**只改「能不能碰」** ——
- *   那圈纸白边因此仍然只有一处实现。 */
-.rb-dot--still {
-  cursor: default;
-  pointer-events: none;
 }
 
 /* 「别人的贴纸」那一层 canvas:尺寸铺满画布,画出来的点与我贴的那枚**同尺寸、同实心度**
@@ -907,11 +1301,11 @@
   top: 0;
   left: 0;
   z-index: 60;
-  /* ⚠ 跟着 `.rb-dot` 一起走(2026-09-28 缩、2026-09-29 放):它比贴纸本体大 2px(32 → 34),
-   *   这个「浮起来显得大一点」的相对关系保持不变;margin 恒为负的半径,把浮标中心对准指针。 */
-  width: 34px;
-  height: 34px;
-  margin: -17px 0 0 -17px;
+  /* ⚠ 跟着 `.rb-dot` 一起走(20 → 22):比贴纸本体大 2px 的「浮起来显得大一点」的关系不变;
+   *   margin 恒为负的半径,把浮标中心对准指针。 */
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
   /* ⚠ 浮标**刻意不是**形状族的一员(所以这里是正圆而不是 `clip-path`):
    *   它代表的那枚贴纸**还不存在** —— id 要到松手落库时才生成,形状与图标都还没有。
    *   给它固定一种轮廓,等于在承诺一个不会兑现的外观(松手可能落在别处、也可能是另一种形状)。 */
@@ -974,10 +1368,10 @@
   position: absolute;
   top: 0;
   left: 0;
-  /* ⚠ 32px 与 `.rb-dot` 同尺寸(2026-09-29 由 20 提到 32):它标的是「贴纸**落下去**的位置」,
+  /* ⚠ 与 `.rb-dot` 同尺寸(20px):它标的是「贴纸**落下去**的位置」,
    *   尺寸不一致会让人以为落点被压缩/放大了。 */
-  width: 32px;
-  height: 32px;
+  width: 20px;
+  height: 20px;
   /* ⚠ 居中用负 margin,把 `transform` **整个**留给位移:拖拽期间每帧要写的是位移,而
    * `left` / `top` 是**布局属性** —— 每帧写它们等于每帧把这张卡拖进一次 layout 重算,
    * 正好抵消掉本轮「不再每帧做全页命中测试」省下来的那点开销。
@@ -1006,13 +1400,17 @@
     gap: 10px;
     padding: 12px;
     /* ⚠ 单列之后卡片更高,估值要跟着上调:估得太小会让 `content-visibility: auto` 在快速滚动时
-       反复用错高度,滚动条一直抖 */
-    contain-intrinsic-size: auto 340px;
+       反复用错高度,滚动条一直抖。
+       ⚠ 2026-09-30 按 390px 宽校准;同日海报改 2:3 之后**再 +6**
+         (窄屏那一格从 48 × 66 变成 48 × 72,见下面 `.rb-poster`)。
+       ⚠ 首批 8 张实测落在 340~450,差值正好是海报那一格 —— 带 `auto` 时浏览器会记住
+         上次渲染出的真实高度,所以这里给的是**上限那一档**,不是平均值。 */
+    contain-intrinsic-size: auto 450px;
   }
 
+  /* ⚠ 只改宽:高度由 `.rb-poster` 的 `aspect-ratio: 2 / 3` 推出来(= 72) */
   .rb-poster {
     width: 48px;
-    height: 66px;
   }
 
   .rb-canvas {
@@ -1032,34 +1430,14 @@
  * ⚠ 颜色一律走既有 token(`--brand` / `--line` / `--surface` / `--raised` / `--muted` / `--ink`),
  *   在本文件之外不新增色值(AGENTS §5:token 是唯一色源)。 */
 
-.rb-say {
-  display: grid;
-  gap: 12px;
-  padding: 20px 22px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: var(--surface);
-}
-
-.rb-say-head {
-  display: grid;
-  gap: 4px;
-}
-
-.rb-say-title {
-  margin: 0;
-  font-size: 18px;
-  line-height: 1.2;
-}
-
-.rb-say-lede {
+.rb-talk-lede {
   margin: 0;
   color: var(--muted);
   font-size: 12px;
 }
 
 /* 还没贴过任何片:给一句**怎么开始**,而不是渲染一个空的 select */
-.rb-say-note {
+.rb-talk-note {
   margin: 0;
   padding: 10px 12px;
   border: 1px dashed var(--line);
@@ -1068,7 +1446,7 @@
   font-size: 12px;
 }
 
-.rb-say-form {
+.rb-talk-form {
   display: grid;
   gap: 6px;
   padding: 12px 14px;
@@ -1077,13 +1455,12 @@
   background: var(--raised);
 }
 
-.rb-say-label {
+.rb-talk-label {
   color: var(--muted);
   font-size: 11px;
 }
 
-.rb-say-select,
-.rb-say-input {
+.rb-talk-input {
   width: 100%;
   padding: 6px 10px;
   border: 1px solid var(--line);
@@ -1095,31 +1472,30 @@
   font-size: 13px;
 }
 
-.rb-say-input {
+.rb-talk-input {
   min-height: 56px;
   line-height: 1.5;
   /* 竖着拉可以,横着拉会把版面撑破 */
   resize: vertical;
 }
 
-.rb-say-input:disabled {
+.rb-talk-input:disabled {
   opacity: 0.6;
 }
 
-.rb-say-select:focus-visible,
-.rb-say-input:focus-visible {
+.rb-talk-input:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 1px;
 }
 
-.rb-say-actions {
+.rb-talk-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
 }
 
-.rb-say-count {
+.rb-talk-count {
   color: var(--muted);
   font-size: 11px;
   /* 等宽数字:否则「9/140」变「10/140」时这一小块会跳一下 */
@@ -1127,7 +1503,7 @@
 }
 
 /* 模块里唯一的主操作 —— 与「生成分享图」同一条:品牌色实底,其余都是弱按钮 */
-.rb-say-save {
+.rb-talk-save {
   padding: 6px 16px;
   border: 1px solid var(--brand);
   border-radius: 999px;
@@ -1138,23 +1514,23 @@
   cursor: pointer;
 }
 
-.rb-say-save:hover:not(:disabled) {
+.rb-talk-save:hover:not(:disabled) {
   filter: brightness(1.08);
 }
 
-.rb-say-save:disabled,
-.rb-say-more:disabled {
+.rb-talk-save:disabled,
+.rb-talk-more:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.rb-say-empty {
+.rb-talk-empty {
   margin: 0;
   color: var(--muted);
   font-size: 13px;
 }
 
-.rb-say-list {
+.rb-talk-list {
   display: grid;
   gap: 10px;
   margin: 0;
@@ -1163,7 +1539,7 @@
 }
 
 /* 一行 = 红/黑徽章 + 正文 + (片名 · 昵称) */
-.rb-say-item {
+.rb-talk-item {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 4px 10px;
@@ -1173,7 +1549,7 @@
   background: var(--raised);
 }
 
-.rb-say-vote {
+.rb-talk-vote {
   grid-row: span 2;
   align-self: start;
   padding: 2px 8px;
@@ -1182,18 +1558,18 @@
   white-space: nowrap;
 }
 
-.rb-say-vote--red {
+.rb-talk-vote--red {
   background: var(--brand-soft);
   color: var(--brand);
 }
 
-.rb-say-vote--black {
+.rb-talk-vote--black {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--text);
 }
 
-.rb-say-text {
+.rb-talk-text {
   margin: 0;
   font-size: 14px;
   line-height: 1.6;
@@ -1201,21 +1577,16 @@
   overflow-wrap: anywhere;
 }
 
-.rb-say-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+/* 一行行尾的「谁说的」。⚠ 弹层里**只属于这一部片子**，所以不再显示片名 ——
+ * 原来那个「《片名》· 昵称」的两段结构随页面级模块一起删了（片名在弹层标题里）。 */
+.rb-talk-name {
   margin: 0;
   color: var(--muted);
   font-size: 11px;
 }
 
-.rb-say-film {
-  color: var(--ink);
-}
-
 /* 「加载更多」—— 它是弱动作(翻页),不抢「保存评语」的权重 */
-.rb-say-more {
+.rb-talk-more {
   justify-self: center;
   padding: 6px 18px;
   border: 1px solid var(--line);
@@ -1226,14 +1597,14 @@
   cursor: pointer;
 }
 
-.rb-say-more:hover:not(:disabled) {
+.rb-talk-more:hover:not(:disabled) {
   border-color: var(--brand);
   color: var(--brand);
 }
 
 /* 窄屏:模块内边距收一档(与 `.rb-card` 那条 560px 断点同一处口径) */
 @media (max-width: 560px) {
-  .rb-say {
+  .rb-talk {
     padding: 16px 14px;
   }
 }

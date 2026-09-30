@@ -19,11 +19,17 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { countsSignature, crowdStickers, tiltOf, type StickerCounts } from "../redblack";
+import {
+  countsSignature,
+  crowdStickers,
+  skinsSignature,
+  tiltOf,
+  type SkinCrowdCounts,
+  type StickerCounts,
+} from "../redblack";
 import { observeResize } from "../shared-resize-observer";
 import { needsRedraw, type DrawKey } from "../sticker-canvas-guard";
-import { glyphOf } from "../sticker-glyph";
-import { shapeOf } from "../sticker-shape";
+import { resolveSkin } from "../sticker-skin";
 import { onSpriteInvalidate, spriteEpoch, STICKER_SIZE, stickerSprite } from "../sticker-sprite";
 import { useDpr } from "../use-dpr";
 
@@ -32,11 +38,13 @@ interface StickerCanvasProps {
   filmKey: string;
   /** 要画的**别人的**票数(已减掉我自己那一枚) */
   counts: StickerCounts;
+  /** 这一部**按款**的票数（服务端聚合，2026-09-29）。缺省 = 一份都没有 → 全部按 id 兜底。 */
+  skins?: SkinCrowdCounts;
   /** 是否在视口附近。false 时不上屏、也把 backing store 释放掉 */
   inView: boolean;
 }
 
-export function StickerCanvas({ filmKey, counts, inView }: StickerCanvasProps) {
+export function StickerCanvas({ filmKey, counts, skins, inView }: StickerCanvasProps) {
   const ref = useRef<HTMLCanvasElement | null>(null);
   // 上一次**真正画下去**时用的参数(见 sticker-canvas-guard)
   const lastRef = useRef<DrawKey | null>(null);
@@ -80,13 +88,14 @@ export function StickerCanvas({ filmKey, counts, inView }: StickerCanvasProps) {
       width: Math.max(1, Math.round(box.width * dpr)),
       height: Math.max(1, Math.round(box.height * dpr)),
       counts: countsSignature(counts),
+      skins: skinsSignature(skins),
       epoch,
     };
     if (!needsRedraw(lastRef.current, key)) return;
-    paint(canvas, filmKey, counts, box.width, box.height, dpr);
+    paint(canvas, filmKey, counts, skins, box.width, box.height, dpr);
     // 记下「这次画下去时用的参数」:尺寸在 `paint` 里走的是同一条式子,`key` 就是实际写进画布的那一份
     lastRef.current = key;
-  }, [inView, box, dpr, filmKey, counts, epoch]);
+  }, [inView, box, dpr, filmKey, counts, skins, epoch]);
 
   return <canvas ref={ref} className="rb-ink" aria-hidden="true" />;
 }
@@ -96,6 +105,7 @@ function paint(
   canvas: HTMLCanvasElement,
   filmKey: string,
   counts: StickerCounts,
+  skins: SkinCrowdCounts | undefined,
   cssWidth: number,
   cssHeight: number,
   dpr: number,
@@ -114,10 +124,9 @@ function paint(
   ctx.clearRect(0, 0, cssWidth, cssHeight);
   // 贴纸坐标是**中心**的百分比(与 DOM 版的 translate(-50%,-50%) 同一口径)
   const half = STICKER_SIZE / 2;
-  for (const sticker of crowdStickers(filmKey, counts)) {
-    // 形状与图标**由 id 确定性推导**(与 `tiltOf` 同一模式),所以这里不需要任何额外状态,
-    // 也不必并进 `DrawKey`:`counts` + `filmKey` 已经唯一决定了这一整组贴纸长什么样。
-    const sprite = stickerSprite(sticker.type, shapeOf(sticker.id, sticker.type), glyphOf(sticker.id, sticker.type), dpr);
+  for (const sticker of crowdStickers(filmKey, counts, skins)) {
+    // 款由 `crowdStickers` 按**服务端分布**摊好（没带款的老票按 id 兜底），这里只解析成外观。
+    const sprite = stickerSprite(sticker.type, resolveSkin(sticker.id, sticker.skin), dpr);
     ctx.save();
     ctx.translate(sticker.posX * cssWidth, sticker.posY * cssHeight);
     ctx.rotate((tiltOf(sticker.id) * Math.PI) / 180);

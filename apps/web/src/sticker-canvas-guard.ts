@@ -21,6 +21,10 @@ export interface DrawKey {
   height: number;
   /** 票数签名(`redblack.ts::countsSignature`) */
   counts: string;
+  /** **按款**票数签名(`redblack.ts::skinsSignature`)，2026-09-29 加。
+   *  ⚠ 必须单独一项：「有人把红票从撕裂圆片换成票根」**不改变两色总数**，
+   *    只看 `counts` 会把这次变化判成「不用重画」，画面会停在旧分布上。 */
+  skins: string;
   /** 贴纸**外观**版本(`sticker-sprite.ts::spriteEpoch`) —— `--rb-red` / `--rb-black` 一变就 +1。
    *  ⚠ 尺寸与票数一个都没动时,「配色变了要重画」这件事只由它表达。 */
   epoch: number;
@@ -35,6 +39,7 @@ export function needsRedraw(prev: DrawKey | null, next: DrawKey): boolean {
     prev.width !== next.width ||
     prev.height !== next.height ||
     prev.counts !== next.counts ||
+    prev.skins !== next.skins ||
     prev.epoch !== next.epoch
   );
 }

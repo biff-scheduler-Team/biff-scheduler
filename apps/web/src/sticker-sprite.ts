@@ -18,18 +18,31 @@
  */
 
 import type { StickerType } from "./redblack";
-import { glyphPath, glyphPlacement, type StickerGlyph } from "./sticker-glyph";
+import { glyphPath, glyphPlacement } from "./sticker-glyph";
+// 材质配方与绘制只在 `sticker-material.ts` 一处实现（页面 CSS 侧的数值是照抄它）。
+import { paintMaterial } from "./sticker-material";
 // 轮廓与分享图(`redblack-poster.ts`)、CSS(内联 `--rb-shape`)共用同一条路径 —— 四处表达
 // 都从 `sticker-shape.ts` 取,不要在这里另描一份。
-import { shapePath2D, type StickerShape } from "./sticker-shape";
+import { SHAPE_BOX, shapePath2D } from "./sticker-shape";
+// 一款皮肤 = 轮廓 + 材质 + 图标，整套绑定；这里只消费 `skin`，不自己拆。
+import { skinSpec, type StickerSkin } from "./sticker-skin";
 
-/** 贴纸边长(CSS px)。⚠ 必须与 `.rb-dot` 的 `width` / `height` 一致。
+/** 贴纸边长(CSS px)。**全站唯一的尺寸口径**。
  *
- * ⚠ 2026-09-28 由 26 缩到 20(PLAN-20260928003736,为了「容纳更多」);
- *   2026-09-29 又回到 **32**(PLAN-20260929195500):用户要的是「像实体贴纸」——
- *   异形轮廓 + 中心微图标在 20px 下完全糊成一粒点。代价已明示并接受:
- *   卡片画布约 176px 高,32px 时纵向只铺得下 5 行(20px 是 8 行)。 */
-export const STICKER_SIZE = 32;
+ * ⚠ 必须与 `.rb-dot` 的 `width` / `height` 逐字一致 —— 一边是 canvas 画的群点、
+ *   一边是 DOM 那枚可拖的按钮,尺寸只此两处表达(`tests/sticker-sprite.test.ts`
+ *   会机械比对样式表里那个数,不靠注释提醒)。
+ * ⚠ 它同时是**其它几条路径的缩放基准**:`StickerFace` 用它算 `clip-path: path()`,
+ *   `materialBackground()` 用它把材质配方换算到实际尺寸 —— 改这里,
+ *   材质那段 CSS 会**对不上**(单测会直接把该贴什么报出来),不要只改数字。
+ *
+ * 尺寸沿革(用户四轮改过,记下来免得再猜):
+ *   26 → 20(2026-09-28,PLAN-20260928003736,为了「容纳更多」,纵向 8 行)
+ *     → 32(2026-09-29 上午,为「像实体贴纸」:异形轮廓 + 微图标在 20px 下糊成一粒点)
+ *     → **20**(2026-09-29 下午):用户看过 32 的实机效果后明确要求「都调小一点,20 左右差不多」。
+ *   用户已知并接受的代价:微图标实际只有 `20 × 0.45 = 9px`,票根的 V 形撕口 / 齿孔只剩轮廓感;
+ *   细密那几层材质(胶片颗粒)在这个尺寸下落在 1px 以下,实际读作一层淡淡的色调。 */
+export const STICKER_SIZE = 20;
 
 /** sprite 四周给落影留的余量(CSS px)。
  *
@@ -139,20 +152,16 @@ function readPalette(): Palette {
 }
 
 /** sprite 缓存键。
- *  ⚠ **形状与图标都必须进键**:以前只有 `type@dpr`,因为那时候「同色贴纸长得一模一样」是对的;
- *    现在两者都由 id 推导、同一张卡上会同时出现好几种组合,不按它们分桶就会
- *    「先画的那种外观被复用给所有贴纸」(没有任何报错,只有人眼看得出来)。
- *  ⚠ 分桶后上界 = 红族 3×3 + 黑族 3×3 = 18 种组合 × 至多 2 档 dpr = 36 张,仍是**有界**的。 */
-function spriteKey(type: StickerType, shape: StickerShape, glyph: StickerGlyph, dpr: number): string {
-  return `${type}@${shape}@${glyph}@${dpr}`;
+ *  ⚠ **款必须进键**:以前只有 `type@dpr`,因为那时候「同色贴纸长得一模一样」是对的;
+ *    现在同一张卡上会同时出现好几款,不按款分桶就会「先画的那款被复用给所有贴纸」
+ *    (没有任何报错,只有人眼看得出来)。
+ *  ⚠ 形状与图标不必再单独进键 —— 它们由款决定（`skinSpec`），款进键就够了。
+ *  ⚠ 分桶上界 = 2 色 × 5 款 × 至多 3 档 dpr = 30 张，仍是**有界**的（比加款前还少）。 */
+function spriteKey(type: StickerType, skin: StickerSkin, dpr: number): string {
+  return `${type}@${skin}@${dpr}`;
 }
 
-function build(
-  type: StickerType,
-  shape: StickerShape,
-  glyph: StickerGlyph,
-  dpr: number,
-): StickerSprite {
+function build(type: StickerType, skin: StickerSkin, dpr: number): StickerSprite {
   const size = STICKER_SIZE;
   const side = size + SPRITE_PAD * 2;
   const canvas = document.createElement("canvas");
@@ -165,7 +174,7 @@ function build(
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.translate(SPRITE_PAD, SPRITE_PAD);
   const colors = readPalette();
-  const body = shapePath2D(shape, size);
+  const body = shapePath2D(skinSpec(skin).shape, size);
 
   // ① 三层外落影(`box-shadow` 的后三条)—— 用同一条轮廓填充三次,影子叠在元素下方
   for (const [offsetY, blur, shadowColor] of SHADOWS) {
@@ -182,22 +191,11 @@ function build(
   ctx.fillStyle = colors.base[type];
   ctx.fill(body);
 
-  // ③ 斜向细条纹:`repeating-linear-gradient(115deg, 白 5% 0 1px, 透明 1px 3px)`
-  //    —— 把画布转 25° 之后,竖线就是原来的 115°(竖线 90° + 25°)
-  ctx.save();
-  ctx.clip(body);
-  ctx.translate(size / 2, size / 2);
-  ctx.rotate((25 * Math.PI) / 180);
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  const reach = Math.ceil(size);
-  for (let x = -reach; x <= reach; x += 3) {
-    ctx.moveTo(x + 0.5, -reach);
-    ctx.lineTo(x + 0.5, reach);
-  }
-  ctx.stroke();
-  ctx.restore();
+  // ③ 材质层（2026-09-29）：丝网重影 / 胶片颗粒 / 印章油墨边，由**皮肤**决定。
+  //    ⚠ 配方与绘制只在 `sticker-material.ts` 一处实现（CSS 侧的数值是照抄它，见那里的说明）——
+  //      在这里再写一套就等于同一款材质两份表达，两边迟早长得不一样。
+  const material = skinSpec(skin).material;
+  paintMaterial(ctx, material, body, size);
 
   // ④ 径面高光:`radial-gradient(circle at 34% 28%, 白 N%, 透明 62%)`
   ctx.save();
@@ -223,38 +221,36 @@ function build(
   ctx.translate(spot.x, spot.y);
   ctx.scale(spot.scale, spot.scale);
   ctx.fillStyle = colors.icon[type];
-  ctx.fill(new Path2D(glyphPath(glyph)));
+  ctx.fill(new Path2D(glyphPath(skinSpec(skin).glyph)));
   ctx.restore();
 
   // ⑥ 内描边(`inset 0 0 0 1px`):裁到形状内再描 2px 的线,可见的就是内侧那一像素
+  //    ⚠ 线宽必须**按设计盒等比**,不能写死 2:DOM 那侧的描边是 SVG `<path>` 上的
+  //      `stroke-width: 2`(**viewBox 单位**),它会随元素尺寸自动缩放 —— 贴纸不是 32px 时
+  //      (比如现在的 20)两边的描边粗细就会不一样,而这只差 0.75px、只有并排看才看得出来。
   ctx.save();
   ctx.clip(body);
   ctx.strokeStyle = "rgba(255, 255, 255, 0.18)";
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 2 * (size / SHAPE_BOX);
   ctx.stroke(body);
   ctx.restore();
 
   return { canvas, pad: SPRITE_PAD };
 }
 
-/** 取一枚贴纸 sprite —— 按 `(颜色, 形状, 图标, dpr)` 缓存,同一帧里同类的上百枚共用同一张。
+/** 取一枚贴纸 sprite —— 按 `(颜色, 款, dpr)` 缓存,同一帧里同类的上百枚共用同一张。
  *
- * ⚠ `shape` / `glyph` 由**调用方**从贴纸 id 推好再传(`sticker-shape.ts::shapeOf` /
- *   `sticker-glyph.ts::glyphOf`)—— 本模块不碰 id:它要能被缓存,就必须只依赖这四个键。
- * ⚠ 上界 = 18 种「色×形状×图标」组合 × 至多 2~3 档 dpr ≈ 36~54 张离屏画布。
+ * ⚠ `skin` 由**调用方**从那一枚推好再传（`sticker-skin.ts::resolveSkin(id, sticker.skin)`）——
+ *   本模块不碰 id:它要能被缓存,就必须只依赖这三个键。
+ * ⚠ 上界 = 2 色 × 5 款 × 至多 3 档 dpr = 30 张离屏画布。
  *   单张 `(32 + 2×12)² × dpr²` 像素 —— dpr = 1 时约 12KB、dpr = 2 时约 50KB、dpr = 3 时约 113KB
- *   (逐张 4 字节/像素)。最坏一档 ≈ 6MB,但它**与票数无关**、且同一张卡里同类只留一份 ——
+ *   (逐张 4 字节/像素)。最坏一档 ≈ 3.4MB,但它**与票数无关**、且同一张卡里同类只留一份 ——
  *   `O(1) 有界`,不会随票数上涨。 */
-export function stickerSprite(
-  type: StickerType,
-  shape: StickerShape,
-  glyph: StickerGlyph,
-  dpr: number,
-): StickerSprite {
-  const key = spriteKey(type, shape, glyph, dpr);
+export function stickerSprite(type: StickerType, skin: StickerSkin, dpr: number): StickerSprite {
+  const key = spriteKey(type, skin, dpr);
   const hit = cache.get(key);
   if (hit) return hit;
-  const built = build(type, shape, glyph, dpr);
+  const built = build(type, skin, dpr);
   cache.set(key, built);
   return built;
 }
