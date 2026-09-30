@@ -315,7 +315,9 @@ test("少数派颜色不会被抹掉:1 红 / 100 黑 也画得出那枚红", asy
   await ready(page, "/redblack");
 
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
-  await expect(card.locator(".rb-chip--tally")).toHaveText("红 1");
+  // ⚠ 期望值必须**两侧都写**(2026-09-30,CI 实测红):红黑合并成一颗之后,两侧都非 0 就都出现 ——
+  //   只写「红 1」是合并前「红黑各一颗」时代的残留(那时这一条只断言红那颗)。
+  await expect(card.locator(".rb-chip--tally")).toHaveText("红 1 · 黑 100");
   // 画布真的画了 101 枚、其中 1 枚红 —— 曾经的「按比例取整」会把这枚红抹掉
   const canvas = await paintedCanvas(card);
   await expect(canvas).toHaveAttribute("data-rb-crowd", "101");
@@ -1560,8 +1562,19 @@ test("在讨论区里写一条评语:ping 载荷里真的带了 comment 字段",
   await dialog.getByLabel(/写一句/).fill("拉片细节绝了");
   await dialog.getByRole("button", { name: "保存评语" }).click();
 
-  // 1200ms 防抖之后才发出去
-  await expect.poll(() => pings.length, { timeout: 8000 }).toBeGreaterThan(0);
+  // 1200ms 防抖之后才发出去。
+  // ⚠ 判据必须是**载荷里有没有那句评语**,不能只等「有没有 ping」(2026-09-30,CI 实测红):
+  //   贴下那一枚贴纸**自己就会发一条**(同样走 1200ms 防抖),它比「保存评语」那条先到 ——
+  //   只等计数就会读到上一条,而那条的 `comment` 是 `null`。CI 上负载高,这里必红、本地通常不红。
+  await expect
+    .poll(
+      () => {
+        const mineNow = pings.at(-1)?.votes.find((entry) => entry.key === key);
+        return mineNow?.comment ?? null;
+      },
+      { timeout: 8000 },
+    )
+    .toBe("拉片细节绝了");
   const votes = pings.at(-1)!.votes;
   const mine = votes.find((entry) => entry.key === key);
   expect(mine?.comment).toBe("拉片细节绝了");
@@ -1709,8 +1722,10 @@ test("换款轮盘:悬停弹出、悬停节点只是预览、点选才落定并�
   const plate = wheel.locator(".rb-wheel__plate");
   await expect(plate).toHaveCount(1);
   await expect(plate).toHaveCSS("background-image", /radial-gradient/);
-  // 中心要**掏空**:透明到白之间那条硬停色标必须真的在
-  await expect(plate).toHaveCSS("background-image", /transparent/);
+  // 中心要**掏空**:透明到白之间那条硬停色标必须真的在。
+  // ⚠ 不能只断言关键字 `transparent`(2026-09-30,CI 实测红):**计算值里它被归一成 `rgba(0, 0, 0, 0)`**,
+  //   三个引擎都是如此 —— 那句断言必红。两种形态都接,要守的仍然是「中心那一段是全透明的」这件事。
+  await expect(plate).toHaveCSS("background-image", /transparent|rgba\(0,\s*0,\s*0,\s*0\)/);
   // 底盘不吃指针(它只是背景),否则指针从贴纸走向节点会被它挡住
   await expect(plate).toHaveCSS("pointer-events", "none");
 
