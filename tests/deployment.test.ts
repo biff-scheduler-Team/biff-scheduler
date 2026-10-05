@@ -35,11 +35,15 @@ it("missing branch and mismatched production target fail before cloud writes", (
     expect(calls).toEqual([]);
   }
 });
-it("migrates first and deploys web with its own Wrangler identity guard", () => {
+// ⚠ 顺序是**契约的一部分**（2026-10-05，PLAN-20261005182415 修订 5）：迁移之后必须**先 API、再 web**。
+// 载荷契约只向前兼容（新 API 认旧前端），反过来「新前端打到旧 API」会 422 —— 顺序反了就有几分钟窗口。
+// 这条断言同时也钉住了两个 Worker 的身份守卫（各自带自己的 tag / name）。
+it("migrates first, then deploys the API **before** the web (each with its own Wrangler identity guard)", () => {
   const { result, calls } = run({ WORKERS_CI: "1", WORKERS_CI_BRANCH: "main", CLOUDFLARE_ACCOUNT_ID: targets.accountId, WRANGLER_CI_MATCH_TAG: targets["biff-scheduler"].tag });
   expect(result.status).toBe(0);
   expect(calls).toEqual([
     { args: ["run", "db:migrate:remote"], tag: targets["biff-scheduler"].tag },
+    { args: ["run", "deploy", "-w", "@biff/api"], tag: targets["biff-scheduler"].tag, name: "biff-scheduler" },
     { args: ["run", "deploy", "-w", "@biff/web"], tag: targets["biff-scheduler-web"].tag, name: "biff-scheduler-web" },
   ]);
 });

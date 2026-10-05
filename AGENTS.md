@@ -114,12 +114,15 @@ typecheck / lint / 单测仍是**部署前**门禁。详见 §2。
 - **唯一常规路径:`git push origin main`**。完整链路(两个 Worker + 一次生产迁移都在里面):
   1. Workers Builds 跑 `npm run build`(typecheck → lint → 单测 → 各 workspace 构建);
   2. 成功后 npm 自动跑 `postbuild`(`scripts/prepare-cloudflare.mjs`)——**仅当 `WORKERS_CI_BRANCH=main`**
-     时执行生产 D1 迁移 `db:migrate:remote` 并部署前端 Worker `biff-scheduler-web`;
-     本地构建与预览分支**不迁移、不部署**;
-  3. 最后由仓库原有的 `npx wrangler deploy` 发布 API Worker `biff-scheduler`(公开入口;
-     非 `/api/*` 请求由它经 `WEB` service binding 转发给前端 Worker)。
+     时执行生产 D1 迁移 `db:migrate:remote`,然后**先部署 API Worker、再部署前端 Worker**
+     `biff-scheduler-web`;本地构建与预览分支**不迁移、不部署**;
+     ⚠ **API 先于 web 是硬要求**(2026-10-05,PLAN-20261005182415 修订 5):载荷契约向前兼容的方向是
+     「新 API 认旧前端」,反过来(新前端打到旧 API)会 422。顺序反了就有几分钟窗口出这种 422;
+  3. 最后由仓库原有的 `npx wrangler deploy` 再发布一次 API Worker `biff-scheduler`(公开入口;
+     非 `/api/*` 请求由它经 `WEB` service binding 转发给前端 Worker)。第 2 步已经部署过它,
+     这一步是同一份代码的幂等重发 —— 保留是为了不动 CI 侧那条既有命令。
 - **禁止** `wrangler pages deploy`(旧 Pages 已不在访问链路);**也禁止**拿 `npm run deploy` 当常规路径
-  (它是 `build → 迁移 → web → api` 的手动兜底,只在 Cloudflare 侧不可用时才用)。
+  (它是 `build → 迁移 → api → web` 的手动兜底,只在 Cloudflare 侧不可用时才用)。
 - 生效域名是 `https://biff.lcandy.co`;`biff.iff.day` 已进 `APP_ORIGIN` 白名单与账号系统回调登记,
   但**自定义域名尚未挂到 Worker 上**(该子域无 DNS 解析),需人工在 CF 控制台挂载,详见 `docs/account-integration.md`。
 - 线上核对带 cache-buster;最强判据 = **asset hash 相同**(不是内容 grep)+ 自己新增字符串 + 阴性对照。

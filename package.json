@@ -24,7 +24,7 @@
     "verify:full": "npm run build && playwright test -c playwright.react.config.ts",
     "postbuild": "node scripts/prepare-cloudflare.mjs",
     "preview": "npm run build && wrangler dev -c apps/api/wrangler.jsonc -c apps/web/wrangler.jsonc",
-    "deploy": "npm run build && npm run db:migrate:remote && npm run deploy -w @biff/web && npm run deploy -w @biff/api",
+    "deploy": "npm run build && npm run db:migrate:remote && npm run deploy -w @biff/api && npm run deploy -w @biff/web",
     "db:generate": "npm run db:generate -w @biff/api",
     "db:migrate": "npm run db:migrate -w @biff/api",
     "db:migrate:remote": "npm run db:migrate:remote -w @biff/api",

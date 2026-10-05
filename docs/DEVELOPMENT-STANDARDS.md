@@ -398,7 +398,11 @@ diff 只含 `*.md` 与代码注释 → 跳过「代码质量 / 安全 / 性能�
 - **唯一常规路径**:`git push origin main` → Cloudflare Workers Builds 自动构建上线 `https://biff.lcandy.co`。
 - ❌ **禁止** `wrangler pages deploy`(旧 Pages 项目已不在访问链路,传上去没人访问)。
 - **PR / 预览分支不部署**:`scripts/prepare-cloudflare.mjs` 只在 `WORKERS_CI_BRANCH=main` 时执行生产 D1 迁移
-  并部署前端 Worker,所以 PR 分支的构建**不会**碰生产、也不会上线;生产只发生在 merge 到 `main` 之后(§4.5)。
+  并部署 Worker,所以 PR 分支的构建**不会**碰生产、也不会上线;生产只发生在 merge 到 `main` 之后(§4.5)。
+- **迁移之后先部署 API、再部署前端**(2026-10-05,`PLAN-20261005182415` 修订 5):载荷契约只**向前**兼容
+  (新 API 认旧前端;发布期两条载荷并存),反过来「新前端打到旧 API」会得到 422。
+  顺序反了就有几分钟窗口出这种 422 —— 两处入口(CI 的 `prepare-cloudflare.mjs` 与手动兜底
+  `npm run deploy`)都已经按「迁移 → api → web」排。
 - 部署前确认工作区**没有别人的在途改动**搭车上线(见 §7)。
 - 线上核对:
   - 必须带 cache-buster:`curl -sL "https://biff.lcandy.co/<f>.json?cb=$(date +%s)"`。

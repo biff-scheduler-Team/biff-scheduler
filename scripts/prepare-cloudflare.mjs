@@ -20,6 +20,16 @@ if (process.env.WORKERS_CI) {
       throw new Error("Production build must belong to the configured BIFF API Worker and account.");
     const steps = [
       { args: ["run", "db:migrate:remote"], env: process.env },
+      // ⚠ **API 必须先于前端上线**（2026-10-05，PLAN-20261005182415 修订 5）。
+      // 原顺序是「迁移 → web」，API 留给构建结束后那条 `npx wrangler deploy` ——
+      // 于是**新前端会先于新 API 生效几分钟**。那段时间里新前端发的增量载荷会被旧 API 的
+      // `.strict()` 判成 422（用户看到「服务端拒绝了这次上报」），
+      // 而反向（旧前端 + 新 API）本来就是安全的（API 保留了整份替换那条路径）。
+      // 提到 web 之前之后，构建结束那条命令会**再部署一次 API** —— 同一份代码、幂等，无害；
+      // 保留它是为了不动 CI 侧那条既有命令（它同时是「构建产物能上线」的兜底）。
+      { args: ["run", "deploy", "-w", "@biff/api"], env: {
+        ...process.env, WRANGLER_CI_MATCH_TAG: api.tag, WRANGLER_CI_OVERRIDE_NAME: api.name,
+      } },
       // Each child retains Wrangler's identity guard, using its own known Worker ID.
       // The parent environment remains scoped to the API for the final CI deploy.
       { args: ["run", "deploy", "-w", "@biff/web"], env: {
