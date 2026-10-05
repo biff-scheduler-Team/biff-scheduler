@@ -34,6 +34,14 @@ export interface StatWrite {
    * 命中行数 > 0 说明这次减法把聚合减过头了（正常路径永远为 0）。
    */
   drift?: string;
+  /**
+   * 写组：**同组的语句必须同生共死**（`chunkStatements` 只会在组边界上切块）。
+   * `undefined` = 自己一组，与相邻语句无关（want / screening / ticket / telemetry 就是这一档）。
+   *
+   * ⚠ 同组的语句必须**相邻**：`chunkStatements` 按「`group` 相同的连续段」归组，不做重排 ——
+   *    「同一部片的语句要挨在一起」是**调用方**的事（见 `film-vote-store.ts` 那段说明）。
+   */
+  group?: string;
 }
 
 /** 每批语句条数：一次 `batch()` 往返里最多执行多少条。 */
@@ -101,13 +109,40 @@ export function isNonPositiveInt(column: AnySQLiteColumn): SQL {
   return sql`${column} <= 0`;
 }
 
-/** 按固定条数切块（纯函数，便于单测钉住「往返次数与条数的关系」）。 */
-export function chunkStatements<T>(items: readonly T[], size = STAT_BATCH_SIZE): T[][] {
-  const groups: T[][] = [];
-  for (let index = 0; index < items.length; index += size) {
-    groups.push(items.slice(index, index + size));
+/** 按固定条数切块，**但只在写组边界上切**（纯函数，便于单测钉住这两条口径）。
+ *
+ * ⚠ 这是 2026-10-05 修的那个坑（PLAN-20261005182415 §B）：原来按 40 条**硬切**，于是
+ *   「贡献行落在第 k 块、聚合行落在第 k+1 块」这种劈法会在服务端留下**永不修复**的半截状态 ——
+ *   `replaceContributorVotes` 只在「贡献行有差分」时修聚合，而贡献行已经等于那份载荷了，
+ *   差分为空 ⇒ 直接 return ⇒ 榜上永远少一枚（服务端能观测到：贡献表有我、聚合表没有）。
+ *   现在同组的语句要么一起落、要么一起不落，最坏退化成「这一部片整体没写」。
+ *
+ * ⚠ 空组 / 超长组的边界：单个写组比 `size` 还大时只能整批发出去（块会超限），这时**留一条
+ *   `warn` 而不是静默劈开** —— 劈开的后果就是上面那个半截状态，静默是查不出来的。 */
+export function chunkStatements<T extends { group?: string }>(
+  items: readonly T[],
+  size = STAT_BATCH_SIZE,
+): T[][] {
+  // ① 先按「`group` 相同的连续段」归组成不可拆的单位（`undefined` 自成一单位）
+  const units: T[][] = [];
+  for (const item of items) {
+    const last = units[units.length - 1];
+    if (item.group !== undefined && last?.[0]?.group === item.group) last.push(item);
+    else units.push([item]);
   }
-  return groups;
+  // ② 再把单位装进批次：装不下就收口，绝不在单位内部切
+  const batches: T[][] = [];
+  let current: T[] = [];
+  for (const unit of units) {
+    if (unit.length > size) console.warn(`stat_batch_group_oversize size=${unit.length}`);
+    if (current.length > 0 && current.length + unit.length > size) {
+      batches.push(current);
+      current = [];
+    }
+    current.push(...unit);
+  }
+  if (current.length) batches.push(current);
+  return batches;
 }
 
 /** 从 D1 的批量结果里取影响行数（垫片与线上都返回 `meta.changes`）。 */

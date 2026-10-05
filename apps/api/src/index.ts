@@ -29,6 +29,7 @@ import {
   readSkinCounts,
   readVoteCounts,
   readVoteRows,
+  recountVoteStats,
   removeContributorVote,
   replaceContributorVotes,
 } from "./film-vote-store";
@@ -836,6 +837,24 @@ app.post("/api/admin/film-vote-contributions/claim", async (c) => {
       displayName: normalizeDisplayName(c.get("profile").displayName),
     }),
   );
+});
+
+/** 管理端「聚合对账」（2026-10-05，PLAN-20261005182415 §B）。
+ *
+ * 为什么需要它：写路径**只在「贡献行有差分」时**才修正聚合，所以「贡献行有了、聚合没跟上」
+ * 这种半截状态是**永不修复**的 —— 服务端只能观测到「我贴了但榜上没有」。
+ * 这个接口按贡献表把两台当前累计表重算一遍，运维 / 定时任务随时可调。
+ * ⚠ **不动日桶（趋势）**：它记的是「当天变了多少」，没有历史可依（见 `recountVoteStats`）。
+ * ⚠ 幂等：`gaps` 回 0 就说明对账干净了；不是 0 说明这一轮没跑完，再调一次。 */
+app.post("/api/admin/recount", async (c) => {
+  const edition = editionParam(c.req.query("edition"));
+  if (!edition) return c.json({ error: "INVALID_EDITION" }, 422);
+  return c.json({
+    edition,
+    ...(await recountVoteStats(database(c.env.DB), edition)),
+    // 显式写出来，免得运维以为趋势也一起修了
+    dailyRebuilt: false,
+  });
 });
 
 /** 管理端「我是不是管理员」：前端据此决定渲染什么。

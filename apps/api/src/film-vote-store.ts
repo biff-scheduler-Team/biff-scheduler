@@ -118,14 +118,28 @@ export async function replaceContributorVotes(
   const now = Date.now();
   // 日桶用同一时刻算日界（`day.ts`：KST，只能服务端算）
   const day = kstDay(now);
-  const writes: StatWrite[] = [];
+  /** 这一次上报的语句，**按影片归拢**（2026-10-05，PLAN-20261005182415 §B）。
+   *
+   * ⚠ 为什么不能像原来那样先攒进一个平铺数组：`chunkStatements` 现在**只在写组边界上切块**，
+   *   而写组是按「`group` 相同的连续段」认的 —— 平铺数组里「某部片的贡献行」与「它自己的聚合行」
+   *   隔着几十条语句，分块时照样会被劈开，修了个寂寞。所以从**攒的那一刻**就按片归拢，
+   *   并且给每条语句打上 `group: filmKey`。
+   * ⚠ 片内的相对顺序不变（贡献行 → 聚合行 → 按款 → 日桶），所以中途失败时一部片要么整片落、
+   *   要么整片不落 —— 不会再留下「贡献行有了、聚合没跟上」那种**永不修复**的半截状态。 */
+  const byFilm = new Map<string, StatWrite[]>();
+  const push = (filmKey: string, ...items: StatWrite[]): void => {
+    const tagged = items.map((item) => ({ ...item, group: item.group ?? filmKey }));
+    const list = byFilm.get(filmKey);
+    if (list) list.push(...tagged);
+    else byFilm.set(filmKey, tagged);
+  };
 
   const statKey = (filmKey: string) =>
     and(eq(filmVoteStat.edition, edition), eq(filmVoteStat.film_key, filmKey));
 
   /** 加一票：聚合行「插入或原地加」（行不存在时用 delta 作初值）。 */
   const addVote = (filmKey: string, vote: FilmVote, delta: number) => {
-    writes.push({
+    push(filmKey, {
       statement: db
         .insert(filmVoteStat)
         .values({
@@ -146,7 +160,8 @@ export async function replaceContributorVotes(
     });
     // 日账本按**颜色**分桶（见 `stat-daily.ts` 白名单里的说明：合成一个桶会让改票当天互相抵消）。
     // ⚠ 并进同一个 batch，理由见 `stat-daily.ts` 文件头。
-    writes.push(
+    push(
+      filmKey,
       ...dailyBucketWrites(
         db,
         { edition, day, metric: voteDailyMetric(vote), target: filmKey, weightDelta: delta },
@@ -159,14 +174,14 @@ export async function replaceContributorVotes(
   const removeVote = (filmKey: string, vote: FilmVote, delta: number) => {
     const key = statKey(filmKey);
     const column = vote === "red" ? filmVoteStat.red_count : filmVoteStat.black_count;
-    writes.push({
+    push(filmKey, {
       statement: db
         .update(filmVoteStat)
         .set({ updated_at: sql`${filmVoteStat.updated_at}` })
         .where(and(key, wouldGoNegativeInt(column, delta))),
       drift: `${edition}/${filmKey}`,
     });
-    writes.push({
+    push(filmKey, {
       statement: db
         .update(filmVoteStat)
         .set(
@@ -176,14 +191,15 @@ export async function replaceContributorVotes(
         )
         .where(key),
     });
-    writes.push({
+    push(filmKey, {
       statement: db
         .delete(filmVoteStat)
         .where(
           and(key, isNonPositiveInt(filmVoteStat.red_count), isNonPositiveInt(filmVoteStat.black_count)),
         ),
     });
-    writes.push(
+    push(
+      filmKey,
       ...dailyBucketWrites(
         db,
         { edition, day, metric: voteDailyMetric(vote), target: filmKey, weightDelta: delta },
@@ -208,7 +224,7 @@ export async function replaceContributorVotes(
 
   /** 按款加一票：与 `addVote` 同形，多一个 `skin` 维、列名是 `count`。 */
   const addSkinCount = (filmKey: string, skin: StickerSkin, vote: FilmVote, delta: number): void => {
-    writes.push({
+    push(filmKey, {
       statement: db
         .insert(filmVoteSkinStat)
         .values({ edition, film_key: filmKey, skin, vote, count: delta, updated_at: now })
@@ -227,29 +243,30 @@ export async function replaceContributorVotes(
   /** 按款撤一票：探测负漂移 → 钳零写入 → 归零即删行（顺序不可换，与 `removeVote` 同一手）。 */
   const removeSkinCount = (filmKey: string, skin: StickerSkin, vote: FilmVote, delta: number): void => {
     const key = skinKey(filmKey, skin, vote);
-    writes.push({
+    push(filmKey, {
       statement: db
         .update(filmVoteSkinStat)
         .set({ updated_at: sql`${filmVoteSkinStat.updated_at}` })
         .where(and(key, wouldGoNegativeInt(filmVoteSkinStat.count, delta))),
       drift: `${edition}/${filmKey}/${skin}/${vote}`,
     });
-    writes.push({
+    push(filmKey, {
       statement: db
         .update(filmVoteSkinStat)
         .set({ count: clampAddInt(filmVoteSkinStat.count, delta), updated_at: now })
         .where(key),
     });
-    writes.push({
+    push(filmKey, {
       statement: db
         .delete(filmVoteSkinStat)
         .where(and(key, isNonPositiveInt(filmVoteSkinStat.count))),
     });
   };
 
-  // 顺序要紧：先把贡献行落定，再动聚合 —— 中途失败时聚合顶多短暂偏小，不会多算。
+  // 顺序要紧：一部片内部**先把贡献行落定、再动聚合** —— 中途失败时那一部片整体没写，
+  // 不会留下「贡献行有了、聚合没跟上」（那是差分为空 ⇒ **永不修复**的半截状态）。
   for (const entry of removed) {
-    writes.push({
+    push(entry.key, {
       statement: db
         .delete(filmVoteContribution)
         .where(
@@ -262,7 +279,7 @@ export async function replaceContributorVotes(
     });
   }
   for (const entry of added) {
-    writes.push({
+    push(entry.key, {
       statement: db
         .insert(filmVoteContribution)
         .values({
@@ -301,7 +318,7 @@ export async function replaceContributorVotes(
   for (const filmKey of extrasEdits) {
     const vote = votes.get(filmKey);
     if (!vote) continue;
-    writes.push({
+    push(filmKey, {
       statement: db
         .update(filmVoteContribution)
         .set({
@@ -343,12 +360,107 @@ export async function replaceContributorVotes(
     if (after) addSkinCount(filmKey, after, vote, 1);
   }
 
-  await flushStatBatch(db, writes);
+  // ⚠ 按片展开：`chunkStatements` 认的是「同一 `group` 的**连续段**」，所以「一部片的语句相邻」
+  //   必须由这里保证 —— 上面那几轮循环本身是「先把所有片的贡献行写完、再统一写聚合」，
+  //   只有在收口时按片展开，一部片的语句才真的相邻、真的同组。
+  await flushStatBatch(db, [...byFilm.values()].flat());
 }
 
 /** 撤掉这个贡献者的全部投票（登出、或匿名身份升级为登录身份时调用）。 */
 export async function clearContributorVotes(db: Db, edition: string, contributor: string): Promise<void> {
   await replaceContributorVotes(db, edition, contributor, new Map());
+}
+
+/* ---------------- 聚合对账（2026-10-05，PLAN-20261005182415 §B） ----------------
+ * 由来：上面的写路径**只在「贡献行有差分」时**才修正聚合。而半截提交（老代码按 40 条硬切
+ * 那会儿）留下的正是「贡献行有了、聚合没跟上」—— 差分为空 ⇒ `replaceContributorVotes`
+ * 直接 return ⇒ **永远修不回来**。服务端能观测到的症状：`film_vote_contribution` 有我这一票，
+ * 而榜上的数字不含它。
+ * 这里给运维 / 定时任务开一条**唯一**能把它修回来的出口：按贡献表把两台当前累计表重算一遍。
+ *
+ * ⚠ **幂等**：全部按贡献表现算，连跑两次结果一致（不信任何前端传来的值）。
+ * ⚠ **不动日桶（`stat_daily`）**：它记的是「当天变了多少」，没有历史可依 —— 重算只能修
+ *    「当前累计」那两张表。这条必须写在返回值与 docstring 里，否则运维会以为它修全了。
+ * ⚠ 四条语句**逐条**执行、而且**不用 DELETE + INSERT**：任何一条中途失败都不会把表清空
+ *    （最坏是「修到一半」，再跑一次就收敛）。 */
+
+export interface RecountResult {
+  /** 重算后还有票的影片数（`film_vote_stat` 的行数）。 */
+  films: number;
+  /** 对账后**还剩几处不一致**（贡献表 vs 两色总数表）。⚠ 正常必须是 0 —— 它不是 0 就说明
+   *  重算本身没跑完（中途失败），再跑一次即可。 */
+  gaps: number;
+}
+
+export async function recountVoteStats(db: Db, edition: string): Promise<RecountResult> {
+  const now = Date.now();
+  // ① 两色总数：有票的按贡献表 upsert。
+  // ⚠ `INSERT ... SELECT` 配 `ON CONFLICT` 时必须带 `WHERE`（SQLite 靠它把 upsert 子句与
+  //    JOIN 的 ON 区分开）—— 下面这句的 `WHERE edition = ?` 正是那个作用，去掉会直接语法报错。
+  await db.run(sql`
+    INSERT INTO film_vote_stat (edition, film_key, red_count, black_count, updated_at)
+    SELECT edition, film_key,
+           SUM(CASE WHEN vote = 'red' THEN 1 ELSE 0 END),
+           SUM(CASE WHEN vote = 'black' THEN 1 ELSE 0 END),
+           ${now}
+    FROM film_vote_contribution
+    WHERE edition = ${edition}
+    GROUP BY edition, film_key
+    ON CONFLICT(edition, film_key) DO UPDATE SET
+      red_count = excluded.red_count,
+      black_count = excluded.black_count,
+      updated_at = excluded.updated_at
+  `);
+  // ② 票被撤光的那些影片 → 删掉残行（「归零即删行」是这张表既有的口径，见 `removeVote`）
+  await db.run(sql`
+    DELETE FROM film_vote_stat
+    WHERE edition = ${edition}
+      AND NOT EXISTS (
+        SELECT 1 FROM film_vote_contribution AS c
+        WHERE c.edition = film_vote_stat.edition AND c.film_key = film_vote_stat.film_key
+      )
+  `);
+  // ③ 按款细分：同一套 upsert + 清残行。⚠ `skin IS NULL` 的票不进这本账（没带款的旧票），
+  //    与 `replaceContributorVotes` / `formatSkinCounts` 是同一条口径。
+  await db.run(sql`
+    INSERT INTO film_vote_skin_stat (edition, film_key, skin, vote, count, updated_at)
+    SELECT edition, film_key, skin, vote, COUNT(*), ${now}
+    FROM film_vote_contribution
+    WHERE edition = ${edition} AND skin IS NOT NULL
+    GROUP BY edition, film_key, skin, vote
+    ON CONFLICT(edition, film_key, skin, vote) DO UPDATE SET
+      count = excluded.count,
+      updated_at = excluded.updated_at
+  `);
+  await db.run(sql`
+    DELETE FROM film_vote_skin_stat
+    WHERE edition = ${edition}
+      AND NOT EXISTS (
+        SELECT 1 FROM film_vote_contribution AS c
+        WHERE c.edition = film_vote_skin_stat.edition
+          AND c.film_key = film_vote_skin_stat.film_key
+          AND c.skin = film_vote_skin_stat.skin
+          AND c.vote = film_vote_skin_stat.vote
+      )
+  `);
+  // ④ 对账：把「还剩几处不一致」回给调用方（运维看一眼就知道修干净没有）。
+  //    ⚠ 与上面那四条是**独立**的读，不去断言它们是同一个快照（D1 没有跨语句事务）。
+  const filmsRow = (await db.get(sql`
+    SELECT COUNT(*) AS n FROM film_vote_stat WHERE edition = ${edition}
+  `)) as Record<string, unknown> | undefined;
+  const gapsRow = (await db.get(sql`
+    SELECT COUNT(*) AS n FROM (
+      SELECT c.film_key
+      FROM film_vote_contribution AS c
+      LEFT JOIN film_vote_stat AS s
+             ON s.edition = c.edition AND s.film_key = c.film_key
+      WHERE c.edition = ${edition}
+      GROUP BY c.film_key, s.red_count, s.black_count
+      HAVING SUM(CASE WHEN c.vote = 'red'   THEN 1 ELSE 0 END) <> COALESCE(s.red_count, 0)
+          OR SUM(CASE WHEN c.vote = 'black' THEN 1 ELSE 0 END) <> COALESCE(s.black_count, 0)
+    )
+  `)) as Record<string, unknown> | undefined;
+  return { films: Number(filmsRow?.n ?? 0), gaps: Number(gapsRow?.n ?? 0) };
 }
 
 /** 匿名贡献者的标识前缀(`anon:<SHA-256(匿名 cookie)>`)。
