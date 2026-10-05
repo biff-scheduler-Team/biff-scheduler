@@ -19,6 +19,7 @@ import {
   skinsSignature,
   type SkinCrowdCounts,
   type Sticker,
+  type SyncedStickerFace,
 } from "../src/redblack";
 import { STICKER_SKIN_KEYS } from "@biff/contracts/sticker";
 import { ALL_SKINS } from "../src/sticker-skin";
@@ -93,41 +94,52 @@ describe("crowdStickers：按服务端的款分布铺", () => {
   });
 });
 
-describe("othersSkins：把我自己那一枚从分布里扣掉", () => {
-  const mine = (skin: (typeof ALL_SKINS)[number], type: "red" | "black"): Sticker => ({
-    id: "s-mine",
+describe("othersSkins：把**服务端已确认**的我那一枚从分布里扣掉", () => {
+  /** 服务端那份快照里，我这一票长什么样（色 + 款）。 */
+  const face = (skin: (typeof ALL_SKINS)[number] | null, type: "red" | "black"): SyncedStickerFace => ({
     type,
-    posX: 0.5,
-    posY: 0.5,
     skin,
   });
 
   it("★ 扣掉我那一桶（款 + 色都要对）", () => {
     const before: SkinCrowdCounts = { stub: { red: 3, black: 1 } };
-    expect(othersSkins(before, [mine("stub", "red")])).toEqual({ stub: { red: 2, black: 1 } });
+    expect(othersSkins(before, face("stub", "red"))).toEqual({ stub: { red: 2, black: 1 } });
   });
 
-  it("我没贴 / 分布里没有我 → 原样不动", () => {
+  it("★ 换款当拍（服务端那份里还是旧款）→ 只扣旧款那一桶，别人新款一枚不少", () => {
+    // 服务端分布：我这一枚还是 `stub`（换款那条上报还没落地），另有**别人**的 2 枚 `scrap`。
+    const before: SkinCrowdCounts = { stub: { red: 1, black: 0 }, scrap: { red: 2, black: 0 } };
+    // 用户刚把本地那枚换成 `scrap`，而**服务端已确认的**那一面仍是 `stub` —— 扣减必须以它为准。
+    expect(othersSkins(before, face("stub", "red"))).toEqual({
+      stub: { red: 0, black: 0 },
+      // ⚠ 这一条是本次修复的要害：别人的 `scrap` **一枚都不能少**。
+      //   改前拿**本地当前款**去扣，结果会是 `stub:{red:1}` + `scrap:{red:1}` ——
+      //   一边凭空多出一枚我的旧款（像别人贴的），一边把别人的新款扣掉一枚，
+      //   就是用户 2026-10-05 报的「换自己的皮肤，把红黑榜别人的皮肤也换了」。
+      scrap: { red: 2, black: 0 },
+    });
+  });
+
+  it("服务端那份里没有我（还没确认 / 是没带款的老票）→ 原样不动", () => {
     const before: SkinCrowdCounts = { stub: { red: 3, black: 1 } };
-    expect(othersSkins(before, [])).toBe(before);
-    expect(othersSkins(before, [mine("scrap", "red")])).toBe(before);
+    expect(othersSkins(before, undefined)).toBe(before);
+    // ⚠ 没有款（迁移前的旧票）时服务端按款聚合里**根本没有我这一桶** —— 不能按 id 兜底去扣，
+    //   那会从**别人的**桶里扣掉一枚（与上面那条 bug 是同一种形状）。
+    expect(othersSkins(before, face(null, "red"))).toBe(before);
+  });
+
+  it("分布里没有我那一款 → 原样返回（那不是错误）", () => {
+    const before: SkinCrowdCounts = { stub: { red: 3, black: 1 } };
+    expect(othersSkins(before, face("scrap", "red"))).toBe(before);
   });
 
   it("桶已经空了 → 不扣成负数", () => {
     const before: SkinCrowdCounts = { stub: { red: 0, black: 1 } };
-    expect(othersSkins(before, [mine("stub", "red")])).toBe(before);
+    expect(othersSkins(before, face("stub", "red"))).toBe(before);
   });
 
   it("没有分布数据（老接口）→ 原样返回，让画布走「按 id 兜底」那条分支", () => {
-    expect(othersSkins(undefined, [mine("stub", "red")])).toBeUndefined();
-  });
-
-  it("没存款的贴纸按 id 兜底来扣（与画布上那枚的款解析同一支函数）", () => {
-    const id = "s-legacy";
-    const skin = derivedSkin(id);
-    const before: SkinCrowdCounts = { [skin]: { red: 1, black: 0 } };
-    const legacy: Sticker = { id, type: "red", posX: 0.5, posY: 0.5 };
-    expect(othersSkins(before, [legacy])).toEqual({ [skin]: { red: 0, black: 0 } });
+    expect(othersSkins(undefined, face("stub", "red"))).toBeUndefined();
   });
 });
 

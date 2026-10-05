@@ -319,27 +319,38 @@ export function reconcile(
  *    (前者少画、后者多画 —— 后者正是用户报的那个 bug)。
  *  ⚠ 卡片画布(`StickerCanvas`)与分享图(`redblack-poster.ts`)必须共用这一条 ——
  *    两处各写一份,分享图上摊出来的贴纸数就会与卡片对不上。 */
+/** 服务端已确认含我的那份票里，**我那一枚长什么样**（色 + 款）。
+ *
+ *  它是「从按款分布里扣掉我自己那一枚」的**唯一**基准（见 `othersSkins`），
+ *  与 `redblack.ts::reconcile` 扣「两色总数」时用的那份快照是同一份（`film-votes.ts::synced`）。 */
+export interface SyncedStickerFace {
+  type: StickerType;
+  /** 服务端那份里我这一票带的款。`null` = 没带款（迁移前的旧票 / 老客户端上报的）——
+   *  ⚠ 这时**不能**按 id 兜底去扣：服务端按款聚合里根本没有我这一桶，扣了就是扣别人的。 */
+  skin: StickerSkin | null;
+}
+
 /** 群点画的是**别人的贴纸**，所以「按款分布」也要扣掉我自己那一枚（2026-09-29）。
  *
- *  ⚠ 与 `othersOf` 是同一件事的「按款版」，但**简单得多**：一人一片一票（`MAX_PER_FILM = 1`），
- *    所以最多只扣一枚，而且款与颜色都是**本地确定**的（服务端聚合里那个桶就是刚上报的那一枚）。
- *  ⚠ 上报还没落地的那一拍：服务端分布里还没有我这一桶 → 扣不掉（原样返回），
- *    于是群点会**多**一枚不该出现的款。这与 `othersOf` 靠 `serverMine` 扣减是同一个窗口、
- *    同一类偏差 —— 两者要一起理解，改一处必须看另一处。
- *  ⚠ 没有分布数据（老接口 / 还没拉到）时原样返回：那是 `crowdStickers` 里「按 id 兜底」
- *    那条正常分支，不是错误。 */
+ *  ⚠ 基准必须是**服务端已确认的**我那一面（`synced`），**不是本地当前贴的那一枚** ——
+ *    这与 `othersOf` 靠 `serverMine` 扣减是**同一套口径**（2026-09-23「收回贴纸后仍残留」定下的），
+ *    两处必须一起理解，改一处必须看另一处。
+ *  ⚠ 2026-10-05 修的用户反馈（「换自己的贴纸皮肤，把红黑榜别人的皮肤也换了」）：
+ *    改前这里拿**本地当前款**去扣，而换款到上报落地之间（1200ms 防抖 + 一次往返，失败还更久）
+ *    服务端聚合里还是**旧款** —— 于是旧款那一桶没被扣（群点凭空多一枚「我旧款」），
+ *    新款那一桶被白扣（某个**别人**的新款贴纸从群点里消失），两个方向同时发生。
+ *  ⚠ 我这一票没带款 / 分布里没有我那一款 / 还没有分布数据（老接口、还没拉到）→ 原样返回：
+ *    那是 `crowdStickers` 里「按 id 兜底」那条正常分支，不是错误。 */
 export function othersSkins(
   counts: SkinCrowdCounts | undefined,
-  mine: readonly Sticker[],
+  synced: SyncedStickerFace | undefined,
 ): SkinCrowdCounts | undefined {
-  const self = mine[0];
-  if (!counts || !self) return counts;
-  const skin = self.skin ?? derivedSkin(self.id);
-  const bucket = counts[skin];
+  if (!counts || !synced?.skin) return counts;
+  const bucket = counts[synced.skin];
   if (!bucket) return counts;
-  const left = bucket[self.type] - 1;
+  const left = bucket[synced.type] - 1;
   if (left < 0) return counts;
-  return { ...counts, [skin]: { ...bucket, [self.type]: left } };
+  return { ...counts, [synced.skin]: { ...bucket, [synced.type]: left } };
 }
 
 export function othersOf(counts: StickerCounts, mine: StickerCounts): StickerCounts {

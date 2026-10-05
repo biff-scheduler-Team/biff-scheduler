@@ -15,7 +15,7 @@ import { isStickerSkin, type StickerSkin } from "@biff/contracts/sticker";
 // ⚠ 只作**类型**引入（`import type`）：`redblack.ts` 是这一层的大户，运行期不值得为两个类型
 //    多一次模块加载，也避免任何潜在的首屏顺序纠缠。
 import { timeoutSignal } from "./net";
-import type { FilmSkinCounts, SkinCrowdCounts } from "./redblack";
+import type { FilmSkinCounts, SkinCrowdCounts, SyncedStickerFace } from "./redblack";
 import { wholeCount } from "./util";
 
 /** 影片 key → 红 / 黑票数 */
@@ -83,6 +83,16 @@ function emptySkins(): FilmSkinCounts {
  *    卡片 / hero / 分享图共用。
  * ⚠ 只在**上报成功**那一刻切换（见 `scheduleFilmVotesPing`），乱切会造出「贴纸先涨回来再降下去」。 */
 let synced: FilmVoteCounts = emptyCounts();
+
+/** 上面那份快照里，**我那一枚长什么样**（key → 色 + 款）—— 扣「别人的**按款**分布」时的基准。
+ *
+ *  ⚠ 与 `synced` 是**同一份快照的两半**，必须在同一刻切换：`synced` 回答「扣几枚」，
+ *    这一份回答「从哪个桶扣」。画群点时**只能**用它，不能用本地当前款 ——
+ *    换款到上报落地之间本地已经换了、服务端聚合里还是旧款，拿本地款去扣会从**别人的**桶里
+ *    扣掉一枚（用户 2026-10-05 报的「换自己的贴纸皮肤，把红黑榜别人的皮肤也换了」）。
+ *  ⚠ 键缺席 / `skin` 为 `null`（没带款的老票）都是**合法**状态：那表示服务端按款聚合里
+ *    没有我这一桶，扣减时原样返回（见 `redblack.ts::othersSkins`）。 */
+let syncedFaces: Readonly<Record<string, SyncedStickerFace>> = Object.create(null);
 
 /** 服务端回的**按款**分布（影片 key → 款 → 两色计数）。与 `cache` 同一次响应里到达。
  *
@@ -155,6 +165,12 @@ export function peekSyncedVotes(): FilmVoteCounts {
   return synced;
 }
 
+/** 服务端已确认的那份快照里，**我那一枚的色 + 款**（同步读，见 `syncedFaces` 的说明）。
+ *  画群点前扣「按款分布」时要用它，**不要**用本地当前贴的那一枚。 */
+export function peekSyncedFaces(): Readonly<Record<string, SyncedStickerFace>> {
+  return syncedFaces;
+}
+
 /** 服务端回的**按款**分布（同步读，未加载过则为空表）。调用方记得先扣掉自己那一枚。 */
 export function peekFilmSkins(): FilmSkinCounts {
   return skinCache;
@@ -164,14 +180,23 @@ export function peekFilmSkins(): FilmSkinCounts {
  *
  * ⚠ **不广播** —— 调用方负责在同一拍里把新的 `counts` 也刷出来（见 `scheduleFilmVotesPing`：
  *    「先采纳、再重拉」），否则两次广播之间会出现「贴纸先涨回来一枚、再降下去」的跳动。
- * ⚠ 空表也是合法输入（我撤回全部票）—— 它表达的是「服务端那份里现在已经没有我了」。 */
-export function adoptSyncedVotes(votes: Iterable<{ key: string; vote: "red" | "black" }>): void {
+ * ⚠ 空表也是合法输入（我撤回全部票）—— 它表达的是「服务端那份里现在已经没有我了」。
+ * ⚠ 两半（计数 `synced` 与外观 `syncedFaces`）**同进同退**：漏掉款那一半，换款那一拍群点会
+ *    从错的桶里扣（见 `syncedFaces` 的说明，那是 2026-10-05 修的那个 bug）。 */
+export function adoptSyncedVotes(
+  votes: Iterable<{ key: string; vote: "red" | "black"; skin?: StickerSkin | null }>,
+): void {
   const next = emptyCounts();
-  for (const { key, vote } of votes) {
+  const nextFaces: Record<string, SyncedStickerFace> = Object.create(null);
+  for (const { key, vote, skin } of votes) {
     if (!key) continue;
     next[key] = vote === "red" ? { red: 1, black: 0 } : { red: 0, black: 1 };
+    // 与 `parseFilmSkins` / `dedupeVotes` 同一道白名单：不认识的款记成「没带款」，**不猜** ——
+    // 猜错一款就会从**别人的**桶里扣掉一枚。
+    nextFaces[key] = { type: vote, skin: isStickerSkin(skin) ? skin : null };
   }
   synced = next;
+  syncedFaces = nextFaces;
 }
 
 /** 读取端白名单：服务端固然不会发坏数据，但客户端缓存**不能假设上游永远正确**

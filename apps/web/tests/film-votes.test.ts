@@ -125,6 +125,60 @@ describe("synced:服务端那份 counts 里属于我的票", () => {
   });
 });
 
+// `synced` 的**款**那一维（2026-10-05，PLAN-20261005184621）。
+// 为什么单测它：画布扣减「别人的按款分布」时要用**服务端已确认的我那一枚**，不能用本地当前款 ——
+// 记错的唯一表现是「换了自己的皮肤，红黑榜上别人的贴纸跟着变一下」，没有异常、没有报错。
+describe("syncedFaces:服务端那份里我那一枚的色 + 款", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it("★ 本地换款后、上报成功之前仍是旧款（拿本地新款去扣就会扣错别人的桶）", async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        okJson({
+          votes: { a: { red: 1, black: 0 } },
+          skins: { a: { scrap: { red: 1, black: 0 } } },
+        }),
+      ),
+    );
+    const { adoptSyncedVotes, peekSyncedFaces, scheduleFilmVotesPing } = await import(
+      "../src/film-votes"
+    );
+
+    adoptSyncedVotes([{ key: "a", vote: "red", skin: "stub" }]);
+    expect(peekSyncedFaces()).toEqual({ a: { type: "red", skin: "stub" } });
+
+    // 用户换款 → 上报排队，但**还没落地**：synced 那一面必须还是旧款
+    scheduleFilmVotesPing([{ key: "a", vote: "red", skin: "scrap" }]);
+    expect(peekSyncedFaces()).toEqual({ a: { type: "red", skin: "stub" } });
+
+    // 上报成功那一拍才切换（与 peekSyncedVotes 同拍，见 applyPingSuccess）
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(peekSyncedFaces()).toEqual({ a: { type: "red", skin: "scrap" } });
+  });
+
+  it("没带款的票 → skin 记成 null（扣减时原样返回，不按 id 兜底去扣别人的桶）", async () => {
+    vi.resetModules();
+    const { adoptSyncedVotes, peekSyncedFaces } = await import("../src/film-votes");
+    adoptSyncedVotes([{ key: "a", vote: "black" }]);
+    expect(peekSyncedFaces()).toEqual({ a: { type: "black", skin: null } });
+  });
+
+  it("空表也是合法输入：它说的是「服务端那份里已经没有我了」", async () => {
+    vi.resetModules();
+    const { adoptSyncedVotes, peekSyncedFaces } = await import("../src/film-votes");
+    adoptSyncedVotes([{ key: "a", vote: "red", skin: "stub" }]);
+    adoptSyncedVotes([]);
+    expect(peekSyncedFaces()).toEqual({});
+  });
+});
+
 describe("loadFilmVotes 容错", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
