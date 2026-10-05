@@ -7,6 +7,7 @@
  */
 
 import { EDITION } from "./edition";
+import { timeoutSignal } from "./net";
 
 export interface ScreeningCounts {
   /** 该场出现在多少人的行程里 */
@@ -46,7 +47,7 @@ export async function loadScreeningCounts(force = false): Promise<ScreeningCount
       const response = await fetch(`/api/stats/screening-counts?edition=${EDITION}`, {
         credentials: "same-origin",
         cache: "no-store",
-        signal: AbortSignal.timeout(12_000),
+        signal: timeoutSignal(12_000),
       });
       if (!response.ok) return cache ?? emptyCounts();
       const body = (await response.json()) as Partial<ScreeningCounts>;
@@ -81,7 +82,7 @@ export function scheduleScreeningPing(codes: Iterable<string>): void {
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ edition: EDITION, codes: list }),
-      signal: AbortSignal.timeout(12_000),
+      signal: timeoutSignal(12_000),
     })
       .then((response) => {
         if (response.ok) return loadScreeningCounts(true);

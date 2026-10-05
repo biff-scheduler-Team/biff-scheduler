@@ -14,6 +14,7 @@ import { EDITION } from "./edition";
 import { isStickerSkin, type StickerSkin } from "@biff/contracts/sticker";
 // ⚠ 只作**类型**引入（`import type`）：`redblack.ts` 是这一层的大户，运行期不值得为两个类型
 //    多一次模块加载，也避免任何潜在的首屏顺序纠缠。
+import { timeoutSignal } from "./net";
 import type { FilmSkinCounts, SkinCrowdCounts } from "./redblack";
 import { wholeCount } from "./util";
 
@@ -237,7 +238,7 @@ export async function loadFilmVotes(force = false): Promise<FilmVoteCounts> {
       const response = await fetch(`/api/stats/film-votes?edition=${EDITION}`, {
         credentials: "same-origin",
         cache: "no-store",
-        signal: AbortSignal.timeout(12_000),
+        signal: timeoutSignal(12_000),
       });
       if (!response.ok) return cache ?? emptyCounts();
       const body = (await response.json()) as { votes?: unknown; skins?: unknown };
@@ -299,7 +300,7 @@ async function sendVotes(
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ edition: EDITION, votes: list.slice(0, end) }),
-      signal: AbortSignal.timeout(12_000),
+      signal: timeoutSignal(12_000),
     });
     // ⚠ 抛**带种类的**错误（见 `FilmVotesPingRejectedError`）：视图层要靠它把
     //   「服务端拒绝」与「网络不通」分开提示 —— 这一条正是 2026-09-30 那次

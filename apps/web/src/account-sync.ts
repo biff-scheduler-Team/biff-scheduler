@@ -11,6 +11,7 @@ import {
 } from "./sync-data";
 
 import { accountSchema, accountUserIdSchema as id, type Account } from "@biff/contracts/account";
+import { timeoutSignal } from "./net";
 export { accountSchema };
 export type { Account };
 const recordsSchema = z.record(z.string(), z.string());
@@ -96,7 +97,7 @@ export async function api(path: string, init: RequestInit = {}) {
     ...init,
     credentials: "same-origin",
     cache: "no-store",
-    signal: init.signal ?? AbortSignal.timeout(12_000),
+    signal: init.signal ?? timeoutSignal(12_000),
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({ error: "REQUEST_FAILED" }));

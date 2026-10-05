@@ -19,6 +19,7 @@
  */
 
 import { EDITION } from "./edition";
+import { timeoutSignal } from "./net";
 
 export type FilmCommentVote = "red" | "black";
 
@@ -132,7 +133,7 @@ export function parseCommentsPage(raw: unknown): FilmCommentsPage {
  *    没有新开一条读路径：读出形状、白名单、游标语义全部不变。
  *  ⚠ 失败（404 / 500 / 断网）与「这一页本来就是空的」都回同一份空页 —— 调用方无法区分，
  *    这是有意的：业务上它俩的处理完全一样（照常显示已有的那些行）。
- *  ⚠ 弹层关掉后返回也无所谓：`AbortSignal.timeout` 保证请求不会永远挂着。 */
+ *  ⚠ 弹层关掉后返回也无所谓：`timeoutSignal` 保证请求不会永远挂着。 */
 export async function loadFilmComments(
   options: { filmKey?: string | null; cursor?: string | null; limit?: number } = {},
 ): Promise<FilmCommentsPage> {
@@ -146,7 +147,7 @@ export async function loadFilmComments(
     const response = await fetch(`/api/stats/film-comments?${params.toString()}`, {
       credentials: "same-origin",
       cache: "no-store",
-      signal: AbortSignal.timeout(12_000),
+      signal: timeoutSignal(12_000),
     });
     if (!response.ok) return emptyPage();
     return parseCommentsPage(await response.json());

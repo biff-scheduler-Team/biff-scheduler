@@ -1,6 +1,7 @@
 /** 「想看人数」的客户端缓存（GET /api/stats/want-counts）+ 极简的匿名片键上报。 */
 
 import { EDITION } from "./edition";
+import { timeoutSignal } from "./net";
 let cache: Record<string, number> | null = null;
 let loading: Promise<Record<string, number>> | null = null;
 // ⚠ 用全局 `setTimeout` 而不是 `window.setTimeout`：本模块由 `state.ts::saveLocal()` 调用，
@@ -33,7 +34,7 @@ export async function loadWantCounts(force = false): Promise<Record<string, numb
       const response = await fetch(`/api/stats/want-counts?edition=${EDITION}`, {
         credentials: "same-origin",
         cache: "no-store",
-        signal: AbortSignal.timeout(12_000),
+        signal: timeoutSignal(12_000),
       });
       if (!response.ok) return cache ?? Object.create(null);
       const body = (await response.json()) as { counts?: Record<string, number> };
@@ -59,7 +60,7 @@ export function scheduleWantPing(filmKeys: Iterable<string>) {
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ edition: EDITION, films }),
-      signal: AbortSignal.timeout(12_000),
+      signal: timeoutSignal(12_000),
     })
       .then((response) => {
         if (response.ok) return loadWantCounts(true);

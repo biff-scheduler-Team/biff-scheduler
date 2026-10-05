@@ -28,6 +28,7 @@ import {
   type TelemetryKind,
 } from "@biff/contracts/telemetry";
 import { EDITION } from "./edition";
+import { timeoutSignal } from "./net";
 // 取整口径的唯一来源（此前本文件另写了一份 `whole`，见 util.ts 的说明）
 import { wholeCount as whole } from "./util";
 
@@ -107,7 +108,7 @@ export async function loadTelemetryCounts(force = false): Promise<TelemetryCount
       const response = await fetch(`/api/stats/telemetry-counts?edition=${EDITION}`, {
         credentials: "same-origin",
         cache: "no-store",
-        signal: AbortSignal.timeout(12_000),
+        signal: timeoutSignal(12_000),
       });
       if (!response.ok) return cache ?? {};
       const body = (await response.json()) as { counts?: unknown };
@@ -175,7 +176,7 @@ export async function flushTelemetry(): Promise<void> {
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ edition: EDITION, events }),
-      signal: AbortSignal.timeout(12_000),
+      signal: timeoutSignal(12_000),
     });
     if (response.ok) await loadTelemetryCounts(true);
   } catch {

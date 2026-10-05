@@ -11,6 +11,7 @@
  */
 
 import { EDITION } from "./edition";
+import { timeoutSignal } from "./net";
 import { wholeCount } from "./util";
 
 /** 一场的四项计数（与 api 侧 `ticket-stats.ts::TicketCounts` 同形）。 */
@@ -77,7 +78,7 @@ export async function loadTicketCounts(force = false): Promise<TicketOutcomeCoun
       const response = await fetch(`/api/stats/ticket-counts?edition=${EDITION}`, {
         credentials: "same-origin",
         cache: "no-store",
-        signal: AbortSignal.timeout(12_000),
+        signal: timeoutSignal(12_000),
       });
       if (!response.ok) return cache ?? emptyCounts();
       const body = (await response.json()) as { tickets?: unknown };
