@@ -1,0 +1,501 @@
+{
+ "source_url": "https://map.naver.com/p/favorite/sharedPlace/folder/c90119d8251849efa1b60845364915a0",
+ "api": "https://pages.map.naver.com/save-pages/api/maps-bookmark/v3/shares/c90119d8251849efa1b60845364915a0/bookmarks?start=0&limit=5000&sort=lastUseTime&createIdNo=false&lang=ko",
+ "folder_name": "부산국제영화제 스태프 추천맛집",
+ "folder_memo": "맛동여지도 X 부산국제영화제",
+ "owner": "misi****",
+ "bookmark_count": 49,
+ "fetched_at": "2026-10-05",
+ "items": [
+  {
+   "sid": "12997521",
+   "name_kr": "박기모조방낙지",
+   "name_en": "Park ki mo jobangnakji",
+   "category": "음식점",
+   "address_kr": "부산 금정구 부곡로141번길 4",
+   "lat": 35.22858,
+   "lng": 129.09202,
+   "place_url": "https://map.naver.com/p/entry/place/12997521"
+  },
+  {
+   "sid": "2078958892",
+   "name_kr": "진본명태탕",
+   "name_en": "JINBON MYEONTAE SOUP",
+   "category": "음식점",
+   "address_kr": "부산 해운대구 센텀동로 25",
+   "lat": 35.17114,
+   "lng": 129.13191,
+   "place_url": "https://map.naver.com/p/entry/place/2078958892"
+  },
+  {
+   "sid": "1056800445",
+   "name_kr": "보노베리 해운대점",
+   "name_en": "bonoberry",
+   "category": "카페",
+   "address_kr": "부산 해운대구 중동1로 25-2",
+   "lat": 35.16294,
+   "lng": 129.16254,
+   "place_url": "https://map.naver.com/p/entry/place/1056800445"
+  },
+  {
+   "sid": "1183894256",
+   "name_kr": "우동토오루",
+   "name_en": "Udon Tooru",
+   "category": "음식점",
+   "address_kr": "부산 해운대구 달맞이길 12",
+   "lat": 35.162,
+   "lng": 129.16628,
+   "place_url": "https://map.naver.com/p/entry/place/1183894256"
+  },
+  {
+   "sid": "37704363",
+   "name_kr": "맛찬들왕소금구이 해운대점",
+   "name_en": "Matchandeul Salted Grill Haeundae Branch",
+   "category": "음식점",
+   "address_kr": "부산 해운대구 해운대로608번길 46",
+   "lat": 35.16097,
+   "lng": 129.15912,
+   "place_url": "https://map.naver.com/p/entry/place/37704363"
+  },
+  {
+   "sid": "1674478746",
+   "name_kr": "거루캥테이블 송정본점",
+   "name_en": "garookangtable",
+   "category": "음식점",
+   "address_kr": "부산 해운대구 송정구덕포길 64",
+   "lat": 35.17297,
+   "lng": 129.19759,
+   "place_url": "https://map.naver.com/p/entry/place/1674478746"
+  },
+  {
+   "sid": "19714662",
+   "name_kr": "송정해변막국수 해운대점",
+   "name_en": "Songjeong Haebyeon Makguksu Haeundae Branch",
+   "category": "음식점",
+   "address_kr": "부산 해운대구 좌동순환로446번길 15-6",
+   "lat": 35.1622,
+   "lng": 129.17262,
+   "place_url": "https://map.naver.com/p/entry/place/19714662"
+  },
+  {
+   "sid": "17018095",
+   "name_kr": "송원물회횟집",
+   "name_en": "Songwon Mulhoe Hoetjip",
+   "category": "음식점",
+   "address_kr": "부산 해운대구 송정중앙로15번길 86",
+   "lat": 35.18666,
+   "lng": 129.20488,
+   "place_url": "https://map.naver.com/p/entry/place/17018095"
+  },
+  {
+   "sid": "1322825615",
+   "name_kr": "후스후무무 베이커리",
+   "name_en": "Who's who Mumu bakery",
+   "category": "카페",
+   "address_kr": "부산 해운대구 달맞이길62번길 3",
+   "lat": 35.16076,
+   "lng": 129.17145,
+   "place_url": "https://map.naver.com/p/entry/place/1322825615"
+  },
+  {
+   "sid": "645310585",
+   "name_kr": "딥슬립커피",
+   "name_en": "deepsleepcoffee",
+   "category": "카페",
+   "address_kr": "부산 수영구 수영로 663",
+   "lat": 35.16496,
+   "lng": 129.11442,
+   "place_url": "https://map.naver.com/p/entry/place/645310585"
+  },
+  {
+   "sid": "1536113064",
+   "name_kr": "간빠맥주",
+   "name_en": "KANPAI BEER",
+   "category": "BAR",
+   "address_kr": "부산 수영구 남천바다로33번길 9",
+   "lat": 35.14896,
+   "lng": 129.11423,
+   "place_url": "https://map.naver.com/p/entry/place/1536113064"
+  },
+  {
+   "sid": "1096811020",
+   "name_kr": "남천 모소리",
+   "name_en": "Mosori",
+   "category": "음식점",
+   "address_kr": "부산 수영구 수영로388번길 25-4",
+   "lat": 35.14024,
+   "lng": 129.10842,
+   "place_url": "https://map.naver.com/p/entry/place/1096811020"
+  },
+  {
+   "sid": "1305694779",
+   "name_kr": "슌사이쿠보 화명",
+   "name_en": "Shunsai Kubo Hwamyeong",
+   "category": "음식점",
+   "address_kr": "부산 북구 양달로4번길 17",
+   "lat": 35.24089,
+   "lng": 129.01471,
+   "place_url": "https://map.naver.com/p/entry/place/1305694779"
+  },
+  {
+   "sid": "1576741878",
+   "name_kr": "램지",
+   "name_en": "Ramsey",
+   "category": "음식점",
+   "address_kr": "부산 수영구 광안해변로284번길 38",
+   "lat": 35.15337,
+   "lng": 129.12517,
+   "place_url": "https://map.naver.com/p/entry/place/1576741878"
+  },
+  {
+   "sid": "1199260468",
+   "name_kr": "율링",
+   "name_en": "yulling",
+   "category": "음식점",
+   "address_kr": "부산 해운대구 달맞이길62번길 28",
+   "lat": 35.15887,
+   "lng": 129.17059,
+   "place_url": "https://map.naver.com/p/entry/place/1199260468"
+  },
+  {
+   "sid": "1008464649",
+   "name_kr": "백일평냉",
+   "name_en": "100.1.Pyeongnaeng",
+   "category": "음식점",
+   "address_kr": "부산 수영구 남천바다로10번길 29",
+   "lat": 35.14856,
+   "lng": 129.11164,
+   "place_url": "https://map.naver.com/p/entry/place/1008464649"
+  },
+  {
+   "sid": "1417059494",
+   "name_kr": "진돼지곰탕",
+   "name_en": "jin dwejigomtang",
+   "category": "음식점",
+   "address_kr": "부산 수영구 광안해변로284번길 4",
+   "lat": 35.15574,
+   "lng": 129.12474,
+   "place_url": "https://map.naver.com/p/entry/place/1417059494"
+  },
+  {
+   "sid": "11722115",
+   "name_kr": "옛날오막집",
+   "name_en": "Yetnal Omak Jib",
+   "category": "음식점",
+   "address_kr": "부산 서구 구덕로274번길 14",
+   "lat": 35.109,
+   "lng": 129.01978,
+   "place_url": "https://map.naver.com/p/entry/place/11722115"
+  },
+  {
+   "sid": "1783647786",
+   "name_kr": "구덕포끝집고기 서면전포점",
+   "name_en": "LASTHOUSE Seomyeon Jeonpo",
+   "category": "음식점",
+   "address_kr": "부산 부산진구 전포대로176번길 19",
+   "lat": 35.15237,
+   "lng": 129.06667,
+   "place_url": "https://map.naver.com/p/entry/place/1783647786"
+  },
+  {
+   "sid": "21572260",
+   "name_kr": "호호사직닭발 온천점",
+   "name_en": "Hoho Sajikdakbal Oncheon Branch",
+   "category": "음식점",
+   "address_kr": "부산 동래구 온천장로107번길 5",
+   "lat": 35.22016,
+   "lng": 129.08388,
+   "place_url": "https://map.naver.com/p/entry/place/21572260"
+  },
+  {
+   "sid": "12022049",
+   "name_kr": "구조방낙지",
+   "name_en": "jobangnakji",
+   "category": "음식점",
+   "address_kr": "부산 동래구 명륜로94번길 39",
+   "lat": 35.20405,
+   "lng": 129.08396,
+   "place_url": "https://map.naver.com/p/entry/place/12022049"
+  },
+  {
+   "sid": "12984223",
+   "name_kr": "진주냉면 대연본점",
+   "name_en": "jinjunaengmyeon_daeyeon",
+   "category": "음식점",
+   "address_kr": "부산 남구 유엔로 214",
+   "lat": 35.1299,
+   "lng": 129.09963,
+   "place_url": "https://map.naver.com/p/entry/place/12984223"
+  },
+  {
+   "sid": "1363310300",
+   "name_kr": "기장끝집 일광점",
+   "name_en": "Gijangkkeutjib Ilgwang Location",
+   "category": "음식점",
+   "address_kr": "부산 기장군 일광읍 일광로 293",
+   "lat": 35.27279,
+   "lng": 129.24961,
+   "place_url": "https://map.naver.com/p/entry/place/1363310300"
+  },
+  {
+   "sid": "16611898",
+   "name_kr": "진경순 부대꼬마김밥 부산대본점",
+   "name_en": "Jingyeongsun Budae Mini Gimbap Pusan National Univ. Main Branch",
+   "category": "음식점",
+   "address_kr": "부산 금정구 장전온천천로 57",
+   "lat": 35.23,
+   "lng": 129.08898,
+   "place_url": "https://map.naver.com/p/entry/place/16611898"
+  },
+  {
+   "sid": "11861751",
+   "name_kr": "이레옥 곰탕",
+   "name_en": "Ireok Gomtang",
+   "category": "음식점",
+   "address_kr": "부산 해운대구 마린시티3로 51",
+   "lat": 35.15373,
+   "lng": 129.1464,
+   "place_url": "https://map.naver.com/p/entry/place/11861751"
+  },
+  {
+   "sid": "2044718137",
+   "name_kr": "파리앤케이크",
+   "name_en": "Paris and Cake",
+   "category": "카페",
+   "address_kr": "부산 해운대구 해운대해변로298번길 9",
+   "lat": 35.16093,
+   "lng": 129.16469,
+   "place_url": "https://map.naver.com/p/entry/place/2044718137"
+  },
+  {
+   "sid": "1018231043",
+   "name_kr": "은쏨",
+   "name_en": "EUNSSOM",
+   "category": "카페",
+   "address_kr": "부산 해운대구 우동1로38번길 2",
+   "lat": 35.16472,
+   "lng": 129.15737,
+   "place_url": "https://map.naver.com/p/entry/place/1018231043"
+  },
+  {
+   "sid": "1924629037",
+   "name_kr": "골목포차",
+   "name_en": "Golmok Pocha",
+   "category": "BAR",
+   "address_kr": "부산 수영구 광안로7번길 52",
+   "lat": 35.15941,
+   "lng": 129.11447,
+   "place_url": "https://map.naver.com/p/entry/place/1924629037"
+  },
+  {
+   "sid": "1873701998",
+   "name_kr": "부사노뎅 광안본점",
+   "name_en": "BUSANODEN",
+   "category": "BAR",
+   "address_kr": "부산 수영구 광안로 59-4",
+   "lat": 35.15495,
+   "lng": 129.11894,
+   "place_url": "https://map.naver.com/p/entry/place/1873701998"
+  },
+  {
+   "sid": "1520655114",
+   "name_kr": "보광당탕제원",
+   "name_en": "Bogwangdang Herbal Decoction Facility",
+   "category": "BAR",
+   "address_kr": "부산 수영구 망미번영로70번길 156",
+   "lat": 35.16894,
+   "lng": 129.11596,
+   "place_url": "https://map.naver.com/p/entry/place/1520655114"
+  },
+  {
+   "sid": "1237516724",
+   "name_kr": "초필살돼지구이 광안직영점",
+   "name_en": "chopilssal BBQ",
+   "category": "음식점",
+   "address_kr": "부산 수영구 광남로108번길 9",
+   "lat": 35.15123,
+   "lng": 129.11591,
+   "place_url": "https://map.naver.com/p/entry/place/1237516724"
+  },
+  {
+   "sid": "1065665475",
+   "name_kr": "와와반점",
+   "name_en": "Wawa Chinese Restaurant",
+   "category": "음식점",
+   "address_kr": "부산 수영구 수영로606번길 27",
+   "lat": 35.15961,
+   "lng": 129.11504,
+   "place_url": "https://map.naver.com/p/entry/place/1065665475"
+  },
+  {
+   "sid": "1240276893",
+   "name_kr": "해양산국밥 부산 민락점",
+   "name_en": "haeyangsan",
+   "category": "음식점",
+   "address_kr": "부산 수영구 광남로 209",
+   "lat": 35.15887,
+   "lng": 129.12192,
+   "place_url": "https://map.naver.com/p/entry/place/1240276893"
+  },
+  {
+   "sid": "37725647",
+   "name_kr": "오쪽이락 광안본점",
+   "name_en": "ojjokerak",
+   "category": "음식점",
+   "address_kr": "부산 수영구 민락로 7-7",
+   "lat": 35.1559,
+   "lng": 129.12239,
+   "place_url": "https://map.naver.com/p/entry/place/37725647"
+  },
+  {
+   "sid": "1327687046",
+   "name_kr": "자기야막창",
+   "name_en": "Darling Grilled Entrails",
+   "category": "음식점",
+   "address_kr": "부산 수영구 광서로10번길 5",
+   "lat": 35.16439,
+   "lng": 129.1135,
+   "place_url": "https://map.naver.com/p/entry/place/1327687046"
+  },
+  {
+   "sid": "13439258",
+   "name_kr": "삼삼아구찜",
+   "name_en": "samsamagujjim",
+   "category": "음식점",
+   "address_kr": "부산 수영구 무학로21번길 96",
+   "lat": 35.16583,
+   "lng": 129.11718,
+   "place_url": "https://map.naver.com/p/entry/place/13439258"
+  },
+  {
+   "sid": "21848718",
+   "name_kr": "이하정간장게장",
+   "name_en": "Ihajeong Soy Sauce Marinated Crab",
+   "category": "음식점",
+   "address_kr": "부산 수영구 광서로10번길 46",
+   "lat": 35.16607,
+   "lng": 129.11421,
+   "place_url": "https://map.naver.com/p/entry/place/21848718"
+  },
+  {
+   "sid": "1079700612",
+   "name_kr": "정식당",
+   "name_en": "Jungsik",
+   "category": "음식점",
+   "address_kr": "부산 수영구 수영로510번길 40",
+   "lat": 35.15077,
+   "lng": 129.11361,
+   "place_url": "https://map.naver.com/p/entry/place/1079700612"
+  },
+  {
+   "sid": "1369772274",
+   "name_kr": "신통영굴국밥",
+   "name_en": "Sintongyeong Gulgukbab",
+   "category": "BAR",
+   "address_kr": "부산 수영구 수영로725번길 24",
+   "lat": 35.16884,
+   "lng": 129.11744,
+   "place_url": "https://map.naver.com/p/entry/place/1369772274"
+  },
+  {
+   "sid": "1026494929",
+   "name_kr": "라프 광안리점",
+   "name_en": "LAF_gwangalli",
+   "category": "카페",
+   "address_kr": "부산 수영구 광안로61번길 7",
+   "lat": 35.1549,
+   "lng": 129.11925,
+   "place_url": "https://map.naver.com/p/entry/place/1026494929"
+  },
+  {
+   "sid": "1758898685",
+   "name_kr": "바닷마을과자점",
+   "name_en": "seatownbakery",
+   "category": "카페",
+   "address_kr": "부산 수영구 광남로48번길 43",
+   "lat": 35.14604,
+   "lng": 129.11411,
+   "place_url": "https://map.naver.com/p/entry/place/1758898685"
+  },
+  {
+   "sid": "1322732936",
+   "name_kr": "광안리남매",
+   "name_en": "Gwangallinamme",
+   "category": "BAR",
+   "address_kr": "부산 수영구 남천동로108번길 54",
+   "lat": 35.14674,
+   "lng": 129.11406,
+   "place_url": "https://map.naver.com/p/entry/place/1322732936"
+  },
+  {
+   "sid": "2055630566",
+   "name_kr": "몽삼 광안리 본점",
+   "name_en": "mongsam",
+   "category": "음식점",
+   "address_kr": "부산 수영구 남천바다로 34",
+   "lat": 35.14848,
+   "lng": 129.11399,
+   "place_url": "https://map.naver.com/p/entry/place/2055630566"
+  },
+  {
+   "sid": "13572322",
+   "name_kr": "마라도 일식당",
+   "name_en": "Marado Omakase",
+   "category": "음식점",
+   "address_kr": "부산 수영구 민락본동로11번길 38",
+   "lat": 35.15749,
+   "lng": 129.12664,
+   "place_url": "https://map.naver.com/p/entry/place/13572322"
+  },
+  {
+   "sid": "31927676",
+   "name_kr": "둔내막국수",
+   "name_en": "Dunnae Makguksu",
+   "category": "음식점",
+   "address_kr": "부산 수영구 수영로725번길 62-3",
+   "lat": 35.16854,
+   "lng": 129.11522,
+   "place_url": "https://map.naver.com/p/entry/place/31927676"
+  },
+  {
+   "sid": "1106833506",
+   "name_kr": "데일리럭키",
+   "name_en": "DAILY LUCKY",
+   "category": "카페",
+   "address_kr": "부산 수영구 수영로540번길 7",
+   "lat": 35.15393,
+   "lng": 129.1126,
+   "place_url": "https://map.naver.com/p/entry/place/1106833506"
+  },
+  {
+   "sid": "1156147371",
+   "name_kr": "비비재",
+   "name_en": "Bibijae",
+   "category": "음식점",
+   "address_kr": "부산 수영구 남천바다로10번길 45",
+   "lat": 35.14794,
+   "lng": 129.11145,
+   "place_url": "https://map.naver.com/p/entry/place/1156147371"
+  },
+  {
+   "sid": "16431860",
+   "name_kr": "돌솥밥집",
+   "name_en": "Stone Pot Restaurant",
+   "category": "음식점",
+   "address_kr": "부산 중구 광복로37번길 7-1",
+   "lat": 35.10002,
+   "lng": 129.02905,
+   "place_url": "https://map.naver.com/p/entry/place/16431860"
+  },
+  {
+   "sid": "1285621590",
+   "name_kr": "깡돼후",
+   "name_en": "Kkangdwae Hu",
+   "category": "음식점",
+   "address_kr": "부산 중구 부평1길 57",
+   "lat": 35.10206,
+   "lng": 129.02577,
+   "place_url": "https://map.naver.com/p/entry/place/1285621590"
+  }
+ ]
+}

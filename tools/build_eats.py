@@ -5,14 +5,29 @@
 为什么走「离线管线 + 产物检入」而不是构建时实抓:
     源文档是腾讯文档的**只读分享**,单元格走 canvas 渲染 + 私有 protobuf 载荷,
     没有公开契约,不能在构建里依赖。导出一次、跑一次、把 JSON 检进仓库,才可 diff、可 review。
+    第二个源(Naver 共享收藏夹)同理 —— 那是个页面内嵌 iframe 才拿得到的私有接口,
+    所以只把**快照**检进 `data/`,管线本身仍然零网络。
 
 用法::
 
-    python3 tools/build_eats.py data/_cache/biff-eats.csv
+    python3 tools/build_eats.py data/_cache/biff-eats.csv [data/naver-eats-2026.json]
 
-输入要求(与源表格同表头,顺序无关)::
+第二个参数**可选**:给了就把 Naver 收藏夹快照并进同一份清单,不给则行为与从前一致。
+
+输入要求 —— 表格(与源表格同表头,顺序无关)::
 
     韩文名 / 英文名 / 中文名 / 营业时间 / 菜单 / 人均（人民币） / 韩文地址 / 英文地址 / 备注 / 链接
+
+输入要求 —— Naver 快照(`items[]` 至少要有 `name_kr` 与 `place_url`)::
+
+    sid / name_kr / name_en / category / address_kr / lat / lng / place_url
+
+怎么重新抓 Naver 快照(2026-10-05 实测还原;不要在构建期做,这是一次性取证):
+    1. 打开 `map.naver.com/p/favorite/sharedPlace/folder/<shareId>`;
+    2. 页面里挂着一个跨域 iframe `pages.map.naver.com/save-pages/pc/detail-list/<shareId>`,
+       数据是它调的 `GET /save-pages/api/maps-bookmark/v3/shares/<shareId>/bookmarks`;
+    3. 参数照抄快照里的 `api` 字段 —— **`lang=ko` 不能省**(不加时 `name` 返回罗马音而非韩文原名),
+       **不要加 `placeInfo=true`**(加了 `limit` 上限只有 20,拿不全)。
 
 产物结构见 `apps/web/src/eats.ts::EatsFile` —— 两者必须同步改。
 """
@@ -118,10 +133,14 @@ def slug_of(row: Mapping[str, str], seen: dict[str, int]) -> str:
 
 def build_shops(
     rows: Iterable[Mapping[str, str]],
+    seen: dict[str, int],
 ) -> tuple[list[dict[str, object]], str, list[str]]:
-    """把原始行转成产物里的 shop 列表;顺带挑出 `*` 开头的提示行。"""
+    """把原始行转成产物里的 shop 列表;顺带挑出 `*` 开头的提示行。
+
+    `seen` 由调用方持有并**跨源共用** —— 两个源合并之后 slug 仍须全局唯一,
+    各自记一份会在两源撞名时产出重复 id,页面渲染出两张 key 相同的卡片。
+    """
     shops: list[dict[str, object]] = []
-    seen: dict[str, int] = {}
     notice = ""
     skipped: list[str] = []
     for raw in rows:
@@ -156,9 +175,58 @@ def build_shops(
     return shops, notice, skipped
 
 
+def naver_source_line(payload: Mapping[str, object]) -> str:
+    """产物 `source` 里的 Naver 那一段 —— 收藏夹名与 URL 都取自快照,不写死。"""
+    name = norm(payload.get("folder_name")) or "Naver 共享收藏夹"
+    url = norm(payload.get("source_url"))
+    return f"Naver 共享收藏夹《{name}》 {url}".strip()
+
+
+def build_naver_shops(
+    payload: Mapping[str, object],
+    seen: dict[str, int],
+) -> list[dict[str, object]]:
+    """把 Naver 共享收藏夹快照转成同一形状的 shop 列表。
+
+    ⚠ 快照里只有「韩文名 / 英文罗马音 / 品类 / 道路名地址 / 精确店铺页」这几样 ——
+    营业时间、人均、中文名**源里就没有**,一律留空,不猜(与本模块既有口径一致)。
+    ⚠ 店名不翻译(用户 2026-10-05 裁决):`name_zh` 恒为空,卡片主名因此落到韩文。
+    """
+    items = payload.get("items")
+    if not isinstance(items, list):
+        raise SystemExit("Naver 快照里没有 items 数组 —— 检查文件是否被截断。")
+    shops: list[dict[str, object]] = []
+    for item in items:
+        if not isinstance(item, Mapping):
+            continue
+        name_kr = norm(item.get("name_kr"))
+        name_en = norm(item.get("name_en"))
+        # 没有店名的记录直接丢:既没法显示,也没法做地图检索(与表格那侧同一条判据)。
+        if not (name_kr or name_en):
+            continue
+        address_kr = norm(item.get("address_kr"))
+        shops.append(
+            {
+                "id": slug_of({"name_kr": name_kr, "name_en": name_en, "name_zh": ""}, seen),
+                "name_kr": name_kr,
+                "name_en": name_en,
+                "name_zh": "",
+                "hours": "",
+                "menu": norm(item.get("category")),
+                "price": "",
+                "address_kr": address_kr,
+                "address_en": "",
+                "note": "",
+                "link": norm(item.get("place_url")),
+                "district": district_of(address_kr),
+            }
+        )
+    return shops
+
+
 def main(argv: Sequence[str]) -> int:
-    """命令行入口:CSV 路径 → `apps/web/public/eats.json`。"""
-    if len(argv) != 2:
+    """命令行入口:CSV 路径 [Naver 快照路径] → `apps/web/public/eats.json`。"""
+    if len(argv) not in (2, 3):
         print(__doc__)
         return 2
     source = Path(argv[1])
@@ -166,11 +234,26 @@ def main(argv: Sequence[str]) -> int:
         raise SystemExit(f"找不到输入文件:{source}")
 
     rows, note = read_rows(source)
-    shops, notice, skipped = build_shops(rows)
+    # 两源共用同一张 slug 表 —— 合并后 id 必须全局唯一。
+    seen: dict[str, int] = {}
+    shops, notice, skipped = build_shops(rows, seen)
+
+    sources = ["腾讯文档《BIFF吃喝》 https://docs.qq.com/sheet/DRWpTTmpsc1dmRERy"]
+    naver_total = 0
+    if len(argv) == 3:
+        naver_path = Path(argv[2])
+        if not naver_path.exists():
+            raise SystemExit(f"找不到 Naver 快照:{naver_path}")
+        naver_payload = json.loads(naver_path.read_text(encoding="utf-8"))
+        naver_shops = build_naver_shops(naver_payload, seen)
+        naver_total = len(naver_shops)
+        shops += naver_shops
+        sources.append(naver_source_line(naver_payload))
+
     out = Path(__file__).resolve().parent.parent / "apps" / "web" / "public" / "eats.json"
     payload = {
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        "source": "腾讯文档《BIFF吃喝》 https://docs.qq.com/sheet/DRWpTTmpsc1dmRERy",
+        "source": " + ".join(sources),
         "encoding": note,
         "notice": notice,
         "shops": shops,
@@ -180,7 +263,10 @@ def main(argv: Sequence[str]) -> int:
     for shop in shops:
         key = str(shop["district"])
         by_district[key] = by_district.get(key, 0) + 1
-    print(f"写入 {out} —— {len(shops)} 家,分区 {by_district}")
+    print(
+        f"写入 {out} —— {len(shops)} 家"
+        f"(表格 {len(shops) - naver_total} + Naver {naver_total}),分区 {by_district}"
+    )
     if skipped:
         print(f"⚠ 跳过 {len(skipped)} 行没有店名的记录(表里就没有名字,无法显示/检索):{skipped}")
     return 0

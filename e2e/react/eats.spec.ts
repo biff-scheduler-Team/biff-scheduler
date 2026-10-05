@@ -3,7 +3,8 @@
 // 覆盖:① 导航位置(吃喝紧跟在红黑榜之后,与选片主线无关);
 //      ⚠ 2026-09-22 用户重排导航后末尾是「建议」,吃喝不再是最后一项(`PLAN-20260922102751`);② 清单渲染 + 三条地图链接的模板;
 //      ③ 搜索与分区筛选;④ 用户自己添加的店落本地键并出现在列表;
-//      ⑤ 地图数据源没配密钥时(503)**静默降级** —— Naver 那条仍是搜索链接,页面不报错。
+//      ⑤ 地图数据源没配密钥时(503)**静默降级** —— Naver 那条仍是搜索链接,页面不报错;
+//      ⑥ 第二源 Naver 共享收藏夹并进来之后的呈现口径(`PLAN-20261005201040`)。
 //
 // ⚠ 所有用例都把 `/api/eats/lookup` 钉成 503:测试环境没有 Worker,
 //   不钉的话 40 家店会各自打一次真实请求,既慢又不确定。
@@ -57,10 +58,41 @@ test("清单来自 eats.json,每张卡三个地图入口且模板正确", async 
   // 汇总数与实际渲染的卡片数一致(不写死 40,表格改了这条也不会红)
   await expect(page.locator(".count")).toHaveText(`${await page.locator(".eat-card").count()} 家`);
 
-  // 没有人工链接的店就只有三个地图入口 —— 别给所有卡都渲染一个空链接
+  // 没有来源链接的店就只有三个地图入口 —— 别给所有卡都渲染一个空链接
   const plain = page.locator('[data-eat-id="cu"]');
   await expect(plain.locator(".eat-links a")).toHaveCount(3);
-  await expect(page.locator(".eat-curated")).toHaveCount(5);
+  // ⚠ 这里**不写死**「一共几个来源链接」:第二源(Naver 收藏夹)本来就会增删,
+  //   写死 5 在并进 49 家之后立刻变成一颗必红的雷。要钉的是「空链接 / 伪协议不外泄」,
+  //   不是数量 —— 所以改为逐条校验协议。
+  const curated = page.locator(".eat-curated");
+  expect(await curated.count()).toBeGreaterThan(0);
+  for (const href of await curated.evaluateAll((nodes) => nodes.map((n) => n.getAttribute("href") ?? ""))) {
+    expect(href).toMatch(/^https:\/\//);
+  }
+});
+
+// 2026-10-05 `PLAN-20261005201040`:Naver 共享收藏夹《부산국제영화제 스태프 추천맛집》并进同一份清单。
+// 收藏夹随时会增删,所以钉的是**这一家的呈现口径**,不是「一共多少家」。
+test("Naver 收藏夹的店:韩文名当主名、品类进 chip、精确 Naver 店铺页做第四个入口", async ({ page }) => {
+  await lookupOff(page);
+  await ready(page, "/eats");
+  const card = page.locator('[data-eat-id="bonoberry"]');
+  await expect(card).toBeVisible();
+  // 源里没有中文名也不翻译(用户裁决)→ 主名落到韩文,副名是罗马音
+  await expect(card.locator(".eat-name")).toHaveText("보노베리 해운대점");
+  await expect(card.locator(".eat-sub")).toHaveText("bonoberry");
+  await expect(card).toContainText("부산 해운대구 중동1로 25-2");
+  // 分区按既有判据从韩文地址推出来;品类原样进 menu(chip 第二位)
+  await expect(card.locator(".eat-chip").nth(0)).toHaveText("海云台");
+  await expect(card.locator(".eat-chip").nth(1)).toHaveText("카페");
+  // 三个地图入口 + 收藏夹自带的精确店铺页
+  const links = card.locator(".eat-links a");
+  await expect(links).toHaveCount(4);
+  await expect(links.nth(3)).toHaveText(/Naver 店铺 ↗/);
+  await expect(links.nth(3)).toHaveAttribute("href", "https://map.naver.com/p/entry/place/1056800445");
+  // 检索串优先韩文名(与《BIFF吃喝》那条口径一致;这边连中文名都没有)
+  const naver = decodeURIComponent((await links.nth(1).getAttribute("href")) ?? "");
+  expect(naver).toContain("보노베리 해운대점");
 });
 
 // 回归 `PLAN-20260917002528`:同名 key `q` 在影片库 / 红黑榜 / 吃喝三页各有一份语义,

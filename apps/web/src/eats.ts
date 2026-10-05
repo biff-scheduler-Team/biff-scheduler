@@ -1,7 +1,10 @@
-// 「吃喝」——《BIFF吃喝》餐厅清单(2026-09-16,`PLAN-20260916232230`)。
+// 「吃喝」—— 釜山餐厅清单(2026-09-16 `PLAN-20260916232230`;2026-10-05 `PLAN-20261005201040` 并入第二源)。
 //
-// ★ 数据从哪来:离线管线 `tools/build_eats.py` 读表格导出 → 产出 `public/eats.json`(产物检入仓库)。
-//   不在构建时实抓腾讯文档 —— 那边是 canvas 渲染 + 私有 protobuf,没有公开契约(见 PLAN「方案取舍」)。
+// ★ 数据从哪来:离线管线 `tools/build_eats.py` 读**两个**输入 → 产出 `public/eats.json`(产物检入仓库):
+//   ① 腾讯文档《BIFF吃喝》的 CSV 导出;② Naver 共享收藏夹《부산국제영화제 스태프 추천맛집》的快照
+//   `data/naver-eats-2026.json`(49 家,只有韩文名 / 罗马音 / 品类 / 道路名地址 / 精确店铺页)。
+//   两源都不在构建时实抓 —— 一个走 canvas 渲染 + 私有 protobuf,另一个的接口只在自己的
+//   跨域 iframe 里可用(见 `tools/build_eats.py` 文件头「怎么重新抓」)。
 //
 // ★ 地图跳转为什么有三个:「韩国店在 Naver 的收录率高于 Google」是选片现场的共识,
 //   表里又正好有韩文名,所以 Google / Naver / Kakao 各给一个入口。三条都是普通 URL,
@@ -102,8 +105,9 @@ export function eatLinks(query: string): EatLinks {
   };
 }
 
-/** 表里「链接」列那条**人工整理**的链接(小红书 / naver.me / instagram)。
- *  含金量高于自动搜索 —— naver.me 是精确到店的短链,小红书写的是这家店的食记。
+/** 来源给的**精确到店**链接 —— 两种来路,页面一视同仁:
+ *  ① 表格「链接」列人工整理的(小红书 / naver.me / instagram,含金量高于自动搜索);
+ *  ② Naver 收藏夹自带的地图页 `map.naver.com/p/entry/place/<sid>`(2026-10-05 起)。
  *  按域名给个人话的标签,别在卡片上印一个光秃秃的 URL。 */
 export function eatLinkLabel(url: string): string {
   if (!url) return "";

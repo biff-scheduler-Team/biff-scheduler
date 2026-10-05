@@ -8,7 +8,8 @@
 //   这也是本轮刻意不接 Places API 的原因(Enterprise SKU 每月只有 1,000 次免费)。
 //   链接模板一律来自 `legend.ts`,本页不自己拼 URL。
 //
-// ★ 数据来自 `public/eats.json`(离线管线 `tools/build_eats.py` 的产物,检入仓库)。
+// ★ 数据来自 `public/eats.json`(离线管线 `tools/build_eats.py` 的产物,检入仓库)——
+//   两源合并:剧组同事整理的《BIFF吃喝》表格 + Naver 共享收藏夹《부산국제영화제 스태프 추천맛집》。
 //   用户自己加的店走 `biff.eats.v1`,默认只存本地;登录 IFFDAY 后随既有链路同步到自己那份。
 //
 // ★ 刻意**不自己算「现在是否营业」**:营业时间那列是原表的自由文本(含「15:00-17:00 休息」
@@ -381,7 +382,8 @@ export function EatsPage() {
       </div>
       <div className="summary-strip">
         <span>
-          清单来自剧组同事整理的《BIFF吃喝》表格{file?.generated_at ? `（${file.generated_at}）` : ""}
+          清单来自剧组同事整理的《BIFF吃喝》表格 + Naver 共享收藏夹《부산국제영화제 스태프 추천맛집》
+          {file?.generated_at ? `（${file.generated_at}）` : ""}
         </span>
         {subs.length > 0 && <span>其中 {subs.length} 家是你自己添加的</span>}
         <EatAddEntry onAdded={setSubs} />
