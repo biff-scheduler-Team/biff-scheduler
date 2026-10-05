@@ -1926,7 +1926,7 @@ test("★ 触屏长按换款:带一点点抖动也照样弹出轮盘,松手不�
   await stubComments(page, { items: [] });
   await ready(page, "/redblack");
 
-  const { dot } = await placeRedAndSettle(page);
+  const { card, dot } = await placeRedAndSettle(page);
   const box = (await dot.boundingBox())!;
   const origin = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   const touch = (type: string, dx = 0, dy = 0) =>
@@ -1981,12 +1981,46 @@ test("★ 触屏长按换款:带一点点抖动也照样弹出轮盘,松手不�
   await page.locator(".rb-sort-hint").click();
   await expect(wheel).toHaveCount(0);
 
-  // ---- ④ 挪过阈值就是「拖」,不该再弹环 ----
+  // ---- ④ 环开着时,抬手的**漂移**与补发的 `pointerleave` 都不该把环收掉 ----
+  // ⚠ 用户 2026-10-05:「长按后 一松手圆盘就消失了 应该选了皮肤才消失」。真机上按住半秒再抬手,
+  //   接触点必然带一点漂移(实测 14px)—— 所以「让位」的阈值(`WHEEL_YIELD_SLOP_TOUCH` = 24)
+  //   必须比它宽,否则环会被自己收掉。
+  await touch("pointerdown");
+  await expect(wheel).toHaveCount(1, { timeout: 3000 });
+  await touch("pointermove", 14, 0);
+  await page.waitForTimeout(200);
+  await expect(wheel).toHaveCount(1);
+  // ⚠ 判据取**手势类型**而不是这一个事件的 `pointerType`(见 `onPointerLeave` 的说明)——
+  //   这里故意把它报成 `mouse`:改前会走鼠标那条关环逻辑,260ms 后环就没了。
+  //   ⚠ 派发的是 `pointerout`(冒泡)而不是 `pointerleave`(不冒泡):React 的
+  //     `onPointerLeave` 就是在根节点上听 `pointerout` 合成出来的。
+  await dot.dispatchEvent("pointerout", {
+    pointerType: "mouse",
+    pointerId: 7,
+    isPrimary: true,
+    relatedTarget: null,
+    clientX: origin.x + 14,
+    clientY: origin.y,
+  });
+  await page.waitForTimeout(400); // > `WHEEL_GRACE_MS`
+  await expect(wheel).toHaveCount(1);
+  // ⚠ 松手点取**当下量到的画布中心**,不要用缓存的 `origin`:上面第 ③ 步那次
+  //   `locator(".rb-sort-hint").click()` 会让页面滚动,`origin` 从此过期 ——
+  //   而过期的落点会被判成「出界 → 收回」,把这一枚**真的收走**(实测:贴纸当场没了,
+  //   下一条断言报的是「元素已不在」)。落点这个坑仓库里另一条用例也是这么绕的。
+  const canvasRect = (await card.locator(".rb-canvas").boundingBox())!;
+  const drop = { x: canvasRect.x + canvasRect.width / 2, y: canvasRect.y + canvasRect.height / 2 };
+  await touch("pointerup", drop.x - origin.x, drop.y - origin.y);
+  // 收尾:把环关掉,免得这条判据的中间状态影响下一条
+  await page.keyboard.press("Escape");
+  await expect(wheel).toHaveCount(0);
+
+  // ---- ⑤ 挪过阈值就是「拖」,不该再弹环 ----
   await touch("pointerdown");
   await touch("pointermove", -60, 0);
   await page.waitForTimeout(PRESS_MS + 200); // > `PRESS_MS`
   await expect(wheel).toHaveCount(0);
-  await touch("pointerup");
+  await touch("pointerup", drop.x - origin.x, drop.y - origin.y);
 });
 
 test("★ 触屏:环弹出后一动就关掉,且这一拖真的生效(「想拖却弹出换肤」的回归)", async ({ page }) => {
