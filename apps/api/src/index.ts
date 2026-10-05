@@ -21,6 +21,7 @@ import {
 } from "./film-vote-stats";
 import {
   ANON_PREFIX,
+  applyVoteOps,
   auditVoteRows,
   claimContributorVotes,
   exposeVoteRows,
@@ -589,9 +590,29 @@ app.post("/api/stats/want-ping", limited(pingLimiter), async (c) => {
  * 贴纸是离散的实体隐喻,3 个人贴了红就该显示 3(见 `film-vote-stats.ts` 的说明)。
  * 读公开(榜单本来就是给大家看的),写匿名也可用(身份口径与 want-ping 完全一致)。 */
 
+/** 一条增量 op（2026-10-05，PLAN-20261005182415 §C）。
+ *  ⚠ 只有 `set` / `remove` 两种：**改色就是一次新的 `set`** —— 这一条正是「重放幂等」的来源
+ *    （把同一部片设成同一个状态，第二次是空差分）。
+ *  ⚠ 形状只管「是字符串、别超长」，真正的白名单收口在 `film-vote-stats.ts::mergeVoteOps`
+ *    （那里调 `normalizeComment` / `normalizeSkin`）—— 与整份替换那条路径同一道。 */
+const voteOpSchema = z.discriminatedUnion("op", [
+  z
+    .object({
+      op: z.literal("set"),
+      key: z.string().min(1).max(128),
+      vote: z.enum(["red", "black"]),
+      comment: z.string().max(1000).nullable().optional(),
+      skin: z.string().max(40).nullable().optional(),
+    })
+    .strict(),
+  z.object({ op: z.literal("remove"), key: z.string().min(1).max(128) }).strict(),
+]);
+
 const filmVotePingSchema = z
   .object({
     edition: z.enum(EDITIONS).optional().default(DEFAULT_EDITION),
+    // ⚠ 这一份**保留**：部署期新旧客户端并存，老客户端发的是整份替换（见 `if (ops)` 那条分流）。
+    //   什么时候能删：等确认线上不再有旧 bundle（SW 预缓存会把老版本留很久）。
     votes: z
       .array(
         z
@@ -620,9 +641,23 @@ const filmVotePingSchema = z
           })
           .strict(),
       )
-      .max(MAX_VOTES_PER_PING),
+      .max(MAX_VOTES_PER_PING)
+      .optional(),
+    // 新客户端：一批增量 op。⚠ 与 `votes` **二选一**（下面那条 refine），两边都带 = 422 ——
+    // 含糊的载荷比报错更难查（该按哪一份写？）。
+    ops: z.array(voteOpSchema).max(MAX_VOTES_PER_PING).optional(),
+    /** 设备标识（客户端生成、落 `iffday.workspace.*`）。⚠ 它不是身份：身份仍是 `contributor`。 */
+    clientId: z.string().min(1).max(64).optional(),
+    /** 这一批的批次号（**每台设备各数各的**，从 1 开始）。`seq <= 水位` 的批次整批跳过。 */
+    seq: z.number().int().nonnegative().optional(),
   })
-  .strict();
+  .strict()
+  .refine((value) => (value.ops === undefined) !== (value.votes === undefined), {
+    message: "EXACTLY_ONE_OF_VOTES_OR_OPS",
+  })
+  .refine((value) => value.ops === undefined || (value.clientId !== undefined && value.seq !== undefined), {
+    message: "OPS_REQUIRE_CLIENT_ID_AND_SEQ",
+  });
 
 app.get("/api/stats/film-votes", async (c) => {
   const edition = editionParam(c.req.query("edition"));
@@ -635,10 +670,24 @@ app.get("/api/stats/film-votes", async (c) => {
   return c.json({ edition, votes, skins });
 });
 
+/** 上报成功后回给客户端的那两块聚合（两色总数 + 按款细分）。**两条上报路径共用**。
+ *
+ *  ⚠ 顺手把**最新聚合**一起回给客户端（2026-09-28）：前端本来就要在「上报成功后」再 GET 一次
+ *    `/api/stats/film-votes` 才能看到自己这一票体现在榜上 —— 那是多出来的一整个 RTT，弱网下尤其明显。
+ *    这里多读一次聚合（与读接口同一条 `readVoteCounts`，同一份一致性口径），前端就能少走一次往返。
+ *    老客户端不看这个字段，多带一份数据对它没有影响。
+ *  ⚠ 按款聚合也一并回（2026-09-29）：前端上报成功后要立刻按**真实分布**重画群点，
+ *    而它刚选的那一款正是这次上报写进去的 —— 不回就得再等一次 GET 才看得到自己改了款。
+ *  ⚠ 两者是**两次独立查询**（D1 无跨语句事务），别把它们相减当成不变量去断言。 */
+async function votesPingBody(db: ReturnType<typeof database>, edition: string) {
+  const [votes, skins] = await Promise.all([readVoteCounts(db, edition), readSkinCounts(db, edition)]);
+  return { ok: true as const, votes, skins };
+}
+
 app.post("/api/stats/film-votes-ping", limited(pingLimiter), async (c) => {
   const parsed = filmVotePingSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "INVALID_FILM_VOTE_PING" }, 422);
-  const { edition, votes } = parsed.data;
+  const { edition, ops, clientId, seq } = parsed.data;
   const config = configuration(c.env);
   const db = database(c.env.DB);
   const { session } = await sessionFor(
@@ -664,6 +713,49 @@ app.post("/api/stats/film-votes-ping", limited(pingLimiter), async (c) => {
     }
     contributor = `anon:${await hash(anon)}`;
   }
+  // 「这一次带了评语吗」——**两条路径共用的判据**（整份替换看 `votes[].comment`，增量看 `ops[].comment`）。
+  // 昵称:反馈板 / 讨论区那两处直接取 `c.get("profile").displayName` —— 它们挂了 `requireIdentity`,
+  // 中间件**已经**替它们解析过身份。而这条 ping 必须支持匿名(口径 1),中间件不会替它解析,所以这里自己来。
+  // ⚠ 只在**这次真的带了评语**时解析:纯贴纸的上报(绝大多数)不该为它多一次上游往返。
+  // ⚠ 未登录 / 解析失败 → `null`(前端显示「匿名观众」),**不阻塞写票** ——
+  //   昵称是展示用的附加信息,为它把「贴纸没贴上去」当掉不划算。
+  const wantsDisplayName = ops
+    ? ops.some((op) => op.op === "set" && normalizeComment(op.comment) !== null)
+    : (parsed.data.votes ?? []).some((entry) => normalizeComment(entry.comment) !== null);
+  let displayName: string | null = null;
+  if (session && wantsDisplayName) {
+    const outcome = await resolveIdentity(
+      c.env,
+      getCookie(c, sessionCookieName(config)),
+      c.req.header("cf-connecting-ip"),
+      session,
+    );
+    if (!("failure" in outcome)) displayName = normalizeDisplayName(outcome.profile.displayName);
+  }
+
+  /* ---------------- 增量上报（新客户端，2026-10-05，PLAN-20261005182415 §C） ----------------
+   * 一批 ops + 一个**每台设备各数各的**批次号。服务端先把「当前状态 + 这批 op」合成目标状态，
+   * 再走下面那条同样的整份替换写路径 —— 所以 op 是「意图」，不是补丁。 */
+  if (ops) {
+    // refine 已经保证这两个字段跟着 `ops` 一起来；这里只是收窄类型（真缺了就是坏载荷，不猜）
+    if (!clientId || seq === undefined) return c.json({ error: "INVALID_FILM_VOTE_PING" }, 422);
+    const result = await applyVoteOps(db, edition, contributor, clientId, seq, ops, { displayName });
+    return c.json({
+      ...(await votesPingBody(db, edition)),
+      count: result.total,
+      // ⚠ 回显批次号：客户端据此把待发队列里那一批划掉。`seq <= 水位` 的批次服务端**整批跳过**
+      //   （重放 / 乱序到的旧批次），`skipped` 让客户端能把「白跑一趟」与「真写进去了」区分开。
+      appliedSeq: seq,
+      skipped: !result.applied,
+    });
+  }
+
+  /* ---------------- 整份替换（旧客户端；部署期与增量路径**并存**） ----------------
+   * ⚠ 这一条**不能急着删**：SW 预缓存会把旧 bundle 留很久（`registerType: "autoUpdate"`），
+   *   删早了那些标签页的票就再也上不来。 */
+  const votes = parsed.data.votes;
+  // refine 保证 `votes` / `ops` 二选一；这里是类型收窄（真漏了就是坏载荷，不猜）
+  if (!votes) return c.json({ error: "INVALID_FILM_VOTE_PING" }, 422);
   // 归一化兜一层:zod 挡结构,这里挡「同一部片发了两条」这类语义重复(以最后一条为准)
   const normalized = normalizeVotes(votes);
   // 评语(2026-09-29,PLAN-20260929181900):与票在**同一次整份替换**里写下去,
@@ -687,32 +779,8 @@ app.post("/api/stats/film-votes-ping", limited(pingLimiter), async (c) => {
   const skins = carriesSkins
     ? new Map(votes.map((entry) => [entry.key, normalizeSkin(entry.skin)]))
     : undefined;
-  // 昵称:反馈板 / 讨论区那两处直接取 `c.get("profile").displayName` —— 它们挂了
-  // `requireIdentity`,中间件**已经**替它们解析过身份。而这条 ping 必须支持匿名(口径 1),
-  // 中间件不会替它解析,所以这里自己来一次。
-  // ⚠ 只在**这次真的带了评语**时解析:纯贴纸的上报(绝大多数)不该为它多一次上游往返。
-  // ⚠ 未登录 / 解析失败 → `null`(前端显示「匿名观众」),**不阻塞写票** ——
-  //   昵称是展示用的附加信息,为它把「贴纸没贴上去」当掉不划算。
-  const hasComment = comments ? [...comments.values()].some((text) => text !== null) : false;
-  let displayName: string | null = null;
-  if (session && hasComment) {
-    const outcome = await resolveIdentity(
-      c.env,
-      getCookie(c, sessionCookieName(config)),
-      c.req.header("cf-connecting-ip"),
-      session,
-    );
-    if (!("failure" in outcome)) displayName = normalizeDisplayName(outcome.profile.displayName);
-  }
   await replaceContributorVotes(db, edition, contributor, normalized, { comments, displayName, skins });
-  // ⚠ 顺手把**最新聚合**一起回给客户端（2026-09-28）：前端本来就要在「上报成功后」再 GET 一次
-  //   `/api/stats/film-votes` 才能看到自己这一票体现在榜上 —— 那是多出来的一整个 RTT，
-  //   弱网下尤其明显。这里多读一次聚合（与读接口同一条 `readVoteCounts`，同一份一致性口径），
-  //   前端就能少走一次往返。老客户端不看这个字段，多带一份数据对它没有影响。
-  // 按款聚合也一并回（2026-09-29）：前端上报成功后要立刻按**真实分布**重画群点，
-  // 而它刚选的那一款正是这次上报写进去的 —— 不回就得再等一次 GET 才看得到自己改了款。
-  const [counts, skinCounts] = await Promise.all([readVoteCounts(db, edition), readSkinCounts(db, edition)]);
-  return c.json({ ok: true, count: normalized.size, votes: counts, skins: skinCounts });
+  return c.json({ ...(await votesPingBody(db, edition)), count: normalized.size });
 });
 
 /** 「大家说」—— 跨片按时间倒序读一页评语(2026-09-29,PLAN-20260929181900)。

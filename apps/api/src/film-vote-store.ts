@@ -10,16 +10,19 @@
 import type { StickerSkin } from "@biff/contracts/sticker";
 import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { database } from "./db";
-import { filmVoteContribution, filmVoteSkinStat, filmVoteStat } from "./db/schema";
+import { filmVoteContribution, filmVoteSkinStat, filmVoteStat, filmVoteSync } from "./db/schema";
 import {
   diffVotes,
   formatSkinCounts,
   formatVoteCounts,
   isFilmVote,
   mergeVoteBoards,
+  mergeVoteOps,
   normalizeSkin,
   type CommentCursor,
   type FilmVote,
+  type VoteBoard,
+  type VoteOp,
 } from "./film-vote-stats";
 import { kstDay } from "./day";
 import { dailyBucketWrites, voteDailyMetric } from "./stat-daily";
@@ -369,6 +372,114 @@ export async function replaceContributorVotes(
 /** 撤掉这个贡献者的全部投票（登出、或匿名身份升级为登录身份时调用）。 */
 export async function clearContributorVotes(db: Db, edition: string, contributor: string): Promise<void> {
   await replaceContributorVotes(db, edition, contributor, new Map());
+}
+
+/* ---------------- 增量上报（2026-10-05，PLAN-20261005182415 §C） ----------------
+ * 上报从「整份替换」加成「一台设备一批 ops + 一个批次号」。这里有两个东西：
+ *   ① 上面那条写路径**照旧复用**（差分 + 聚合 + 日桶全是它，绝不另写一份）；
+ *   ② 新增的只有「水位」：`film_vote_sync` 回答「这一批是不是已经落过了」。
+ *
+ * ⚠ **为什么水位要按设备记**（主键里那个 `client_id`）：`seq` 是每台设备各数各的。少了这一维，
+ *    两台设备会用同一个 `contributor` 把对方的 seq 当成「已落过的重放」跳过 ——
+ *    症状是「我这台贴的票上不去」，而且在服务端看不出来（水位是 6，人家发的是 5）。
+ * ⚠ **为什么水位要最后推**：中途失败时水位不动 ⇒ 客户端重发同一批 ⇒ 因为每个 op 都是
+ *    「把这部片设成某状态」，重放只会得到空差分。反过来（先推水位）就是**静默丢票**。
+ * ⚠ **为什么还是整份替换的语义**：op 是**意图**，不是补丁。服务端先把「当前状态 + 这批 op」
+ *    合成目标状态，再交给上面那条整份替换路径 —— 所以「部分载荷」在这里本来就是安全的。 */
+
+/** 按身份读当前那面墙（三张表同源）。⚠ 与写路径同一道白名单：坏行直接丢。 */
+export async function readContributorBoard(
+  db: Db,
+  edition: string,
+  contributor: string,
+): Promise<VoteBoard> {
+  const rows = await readContributorVotes(db, edition, contributor);
+  const board: VoteBoard = { votes: new Map(), comments: new Map(), skins: new Map() };
+  for (const row of rows) {
+    if (!isFilmVote(row.vote)) continue;
+    board.votes.set(row.film_key, row.vote);
+    board.comments.set(row.film_key, row.comment ?? null);
+    board.skins.set(row.film_key, normalizeSkin(row.skin));
+  }
+  return board;
+}
+
+/** 这台设备报到哪一批了（没报到过就是 0）。 */
+async function readLastSeq(
+  db: Db,
+  edition: string,
+  contributor: string,
+  clientId: string,
+): Promise<number> {
+  const row = await db
+    .select({ last_seq: filmVoteSync.last_seq })
+    .from(filmVoteSync)
+    .where(
+      and(
+        eq(filmVoteSync.edition, edition),
+        eq(filmVoteSync.contributor, contributor),
+        eq(filmVoteSync.client_id, clientId),
+      ),
+    )
+    .get();
+  return Math.max(0, Math.trunc(Number(row?.last_seq ?? 0)));
+}
+
+/** 推进水位。⚠ `max(旧值, 新值)` 而不是直接赋值：两批并发时它们都会读到同一个旧值、
+ *  都通过守卫，直接赋值会让**已经落过的**那一批把水位写低（与 `clampAddInt` 同一类手法）。 */
+async function writeLastSeq(
+  db: Db,
+  edition: string,
+  contributor: string,
+  clientId: string,
+  seq: number,
+): Promise<void> {
+  const now = Date.now();
+  await db
+    .insert(filmVoteSync)
+    .values({ edition, contributor, client_id: clientId, last_seq: seq, updated_at: now })
+    .onConflictDoUpdate({
+      target: [filmVoteSync.edition, filmVoteSync.contributor, filmVoteSync.client_id],
+      set: { last_seq: sql`max(${filmVoteSync.last_seq}, ${seq})`, updated_at: now },
+    });
+}
+
+export interface ApplyVoteOpsResult {
+  /** `false` = 这一批的 `seq` 不大于水位，**整批跳过**（重放 / 乱序到的旧批次）。 */
+  applied: boolean;
+  /** 合并后的票数（跳过的批次也回，便于客户端对账）。 */
+  total: number;
+}
+
+/** 应用一批增量 ops（`applyVoteOps` 的**纯**那一半在 `film-vote-stats.ts::mergeVoteOps`）。
+ *
+ *  ⚠ 多一次「读当前那面墙」的往返（`readContributorBoard` + 写路径自己的那次读）：换来的是
+ *    **不复制第二条写路径**。往返数是**常数级**的（与 op 条数无关），这正是 `stat-batch.ts`
+ *    那条「逐条 await 会线性放大」的约束想守住的性质。 */
+export async function applyVoteOps(
+  db: Db,
+  edition: string,
+  contributor: string,
+  clientId: string,
+  seq: number,
+  ops: readonly VoteOp[],
+  extras?: { displayName?: string | null },
+): Promise<ApplyVoteOpsResult> {
+  const board = await readContributorBoard(db, edition, contributor);
+  if (seq > 0 && seq <= (await readLastSeq(db, edition, contributor, clientId))) {
+    return { applied: false, total: board.votes.size };
+  }
+  const next = mergeVoteOps(board, ops);
+  // ⚠ 目标状态整份给出（`comments` / `skins` 覆盖 `next.votes` 的每一部片）：op 的含义就是
+  //   「这一票现在是这个状态」，所以这里**不是**「不碰那两列」，而是「按这一份写」。
+  await replaceContributorVotes(db, edition, contributor, next.votes, {
+    comments: next.comments,
+    skins: next.skins,
+    ...(extras?.displayName !== undefined ? { displayName: extras.displayName } : {}),
+  });
+  // ⚠ 水位**最后**推（见文件头那段的说明）
+  if (seq > 0) await writeLastSeq(db, edition, contributor, clientId, seq);
+  return { applied: true, total: next.votes.size };
 }
 
 /* ---------------- 聚合对账（2026-10-05，PLAN-20261005182415 §B） ----------------
