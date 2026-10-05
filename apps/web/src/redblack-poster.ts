@@ -293,7 +293,10 @@ const FIELD_H = 88;
 const FIELD_TOP = 8;
 /** 文字列与贴纸区之间的最小间距 */
 const COL_GAP = 28;
-/** 贴纸区里一枚贴纸的边长 —— 比卡片上的 32 小一号(这里的行高只有 104,一行还要塞下别的字)。
+/** 贴纸区里一枚贴纸的边长 —— 比卡片上那枚(`sticker-sprite.ts::STICKER_SIZE`)小得多:
+ *  这里的行高只有 104,一行还要塞下别的字。
+ *  ⚠ 它是**独立**的尺寸口径(不跟 `STICKER_SIZE` 联动),所以 `sticker-glyph.ts::ICON_RATIO`
+ *    一变,这张图上的中心图标也会跟着变(14px 贴上从 7.7px 缩到 6.44px)——见那边的说明。
  *  ⚠ 它只是**尺寸**,形状仍然是 `sticker-shape.ts` 那一份(经 `shapePath(shape, size)` 等比换算)。 */
 const FIELD_STICKER = 14;
 

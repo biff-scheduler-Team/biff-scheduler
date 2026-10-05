@@ -14,6 +14,7 @@ import { ALL_SHAPES } from "../src/sticker-shape";
 import { ALL_GLYPHS } from "../src/sticker-glyph";
 import { STICKER_MATERIAL_LIST } from "../src/sticker-material";
 import { ALL_SKINS, FALLBACK_SKIN, derivedSkin, resolveSkin, skinSpec } from "../src/sticker-skin";
+import type { SkinSpec } from "../src/sticker-skin";
 import { hashOf } from "../src/redblack";
 
 describe("皮肤的登记表", () => {
@@ -25,12 +26,21 @@ describe("皮肤的登记表", () => {
     for (const skin of ALL_SKINS) {
       const spec = skinSpec(skin);
       expect(ALL_SHAPES).toContain(spec.shape);
-      // ⚠ `none`（留空）**不在** `ALL_GLYPHS` 里：它不是「一个图形」，而是「这一款不印图形」。
-      //    2026-10-05 缩到三款后没有哪一款留空了（上一轮用它的场记板已下线），
-      //    但这条口径仍然成立 —— 断言留着，免得将来加回留空款时静默传过。
-      expect(spec.glyph === "none" || ALL_GLYPHS.includes(spec.glyph)).toBe(true);
+      expect(ALL_GLYPHS).toContain(spec.glyph);
       expect(STICKER_MATERIAL_LIST).toContain(spec.material);
     }
+  });
+
+  // ⚠ 与 `sticker-material.test.ts` 那条「没有登记了却没人用的材质」是同一条口径，
+  //   这里把**三样**一起守住（2026-10-05）：上一轮五款皮肤时 `star` / `exit` / `none` 三个图形
+  //   都没有任何皮肤指向（`none` 的唯一消费者是随后下线的场记板），删款之后就成了静默的死项 ——
+  //   而「哪款配哪个图形」本该只有一个答案。断言写成「被用到的集合 == 登记表」，不逐条列名字。
+  it("★ 轮廓 / 图形 / 材质都没有死项（登记表 == 被用到的集合）", () => {
+    const used = (pick: (spec: SkinSpec) => string): string[] =>
+      [...new Set(ALL_SKINS.map((skin) => pick(skinSpec(skin))))].sort();
+    expect(used((spec) => spec.glyph)).toEqual([...ALL_GLYPHS].sort());
+    expect(used((spec) => spec.shape)).toEqual([...ALL_SHAPES].sort());
+    expect(used((spec) => spec.material)).toEqual([...STICKER_MATERIAL_LIST].sort());
   });
 
   it("★ 红黑共用同一套皮肤 —— 「只是红色跟黑色的区别」", () => {

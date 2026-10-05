@@ -21,7 +21,7 @@ import { skinSpec, type StickerSkin } from "../sticker-skin";
 // ⚠ 贴纸边长从 `sticker-sprite.ts` 取(**全站唯一口径**),不在这里另写一个数。
 //   它有两个用处:① `clip-path: path()` 是**绝对 px**、必须按实际尺寸生成;
 //   ② 材质那段 CSS 也是按实际尺寸换算的(`materialBackground`)。
-//   两个都由尺寸派生 —— 自己写一个 20 就等于多了一处口径。
+//   两个都由尺寸派生 —— 自己写一个 24 就等于多了一处口径。
 import { STICKER_SIZE } from "../sticker-sprite";
 
 interface StickerFaceProps {
