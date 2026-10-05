@@ -49,6 +49,7 @@ import {
   type StickerBoard,
   type StickerCounts,
   type StickerType,
+  type SyncedStickerFace,
 } from "./redblack";
 
 /** 每个榜取前几名 */
@@ -131,6 +132,12 @@ export interface RbPosterInput {
    *  ⚠ 缺席是**合法状态**（老接口 / 最小模型）：群点退回「按 id 兜底」，
    *    观感与加皮肤前一致 —— 不知道就别装作知道。 */
   skins?: FilmSkinCounts;
+  /** 影片 key → **服务端已确认**的我那一枚（色 + 款）—— `othersSkins` 扣减时的基准。
+   *  ⚠ 必须是 synced 快照（`film-votes.ts::peekSyncedFaces`），**不是**本地 board：
+   *    换款到上报落地之间本地已经是新款、而服务端聚合里还是旧款，拿本地款去扣会从**别人的**
+   *    桶里扣掉一枚（用户 2026-10-05 报的「换自己的皮肤把别人的也换了」，分享图同款 bug）。
+   *  ⚠ 缺席 = 当作「服务端那份里没有我」→ 不扣（与卡片那边同一条口径，不知道就别装作知道）。 */
+  syncedFaces?: ReadonlyMap<string, SyncedStickerFace>;
   board: StickerBoard;
   /** 页面 hero 那份「全站」统计 —— **传进来而不是重算**,分享图与页面才会是同一些数字 */
   site: { total: number; red: number; black: number };
@@ -188,6 +195,7 @@ function toRow(
   crowd: CrowdCounts,
   board: StickerBoard,
   skins: FilmSkinCounts,
+  syncedFaces: ReadonlyMap<string, SyncedStickerFace>,
 ): RbPosterRow {
   const counts: StickerCounts = crowd.get(film.key) ?? { total: 0, red: 0, black: 0 };
   const placed = board.get(film.key) ?? [];
@@ -197,10 +205,11 @@ function toRow(
   // ⚠ 按款分布同样要**扣掉我自己那一枚**（与卡片里 `crowdSkins` 同一条口径、同一支函数）。
   //   不扣的话分享图会比卡片多画一枚 —— 而它恰好是我的款与色，看起来还挺合理，
   //   所以只能靠这条口径挡住：**两条路径的扣减必须来自同一个函数**。
+  // ⚠ 基准是「服务端已确认的我那一面」（`syncedFaces`），**不是本地 board** —— 见 `RbPosterInput`。
   const stickers = crowdStickers(
     film.key,
     othersOf(counts, mine),
-    othersSkins(skins[film.key], board.get(film.key) ?? []),
+    othersSkins(skins[film.key], syncedFaces.get(film.key)),
   ).map(toSticker);
   // 一部只有一枚贴纸(`MAX_PER_FILM = 1`),取第一枚就是「我贴的那一色」
   const mySticker = placed[0];
@@ -219,6 +228,9 @@ function toRow(
   };
 }
 
+/** 缺省的空「synced 外观表」—— 共用一份，免得每次调用造新 Map（与 `skins = {}` 同一个手法）。 */
+const NO_SYNCED_FACES: ReadonlyMap<string, SyncedStickerFace> = new Map();
+
 /**
  * 构建分享图模型。
  *
@@ -229,7 +241,7 @@ function toRow(
  *  ② 三榜都取**前 `TOP_N`**;「我贴过的」那一节**不截断**。
  */
 export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
-  const { films, crowd, board, skins = {}, site, mine, today } = input;
+  const { films, crowd, board, skins = {}, syncedFaces = NO_SYNCED_FACES, site, mine, today } = input;
   const picked = input.sections ?? allSections();
   const candidates = boardFilms(films);
 
@@ -242,7 +254,7 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
         entry.mode,
       )
         .slice(0, TOP_N)
-        .map((film) => toRow(film, crowd, board, skins));
+        .map((film) => toRow(film, crowd, board, skins, syncedFaces));
       return { ...entry, rows };
     })
     .filter((entry) => entry.rows.length > 0);
@@ -253,7 +265,9 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
     crowd,
     "total",
   );
-  const myRows = picked.has("mine") ? placedFilms.map((film) => toRow(film, crowd, board, skins)) : [];
+  const myRows = picked.has("mine")
+    ? placedFilms.map((film) => toRow(film, crowd, board, skins, syncedFaces))
+    : [];
 
   return {
     eyebrow: `${EDITION.replace("-", " ").toUpperCase()} · 观影红黑榜`,

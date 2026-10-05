@@ -27,7 +27,12 @@ import {
   TOP_N,
   type RbPosterSection,
 } from "../redblack-poster";
-import type { CrowdCounts, FilmSkinCounts, StickerBoard } from "../redblack";
+import type {
+  CrowdCounts,
+  FilmSkinCounts,
+  StickerBoard,
+  SyncedStickerFace,
+} from "../redblack";
 import { copyImageOrDownload } from "./share-image";
 import {
   ActionButton,
@@ -50,6 +55,10 @@ interface RedBlackShareDialogProps {
    *  ⚠ 这里给的是**全量**（不是只有当前榜单那几部）：分享图要画整份影片库，
    *    与 `crowd` 给 `reconciledCrowd` 而不是 `filmCounts` 是同一条理由。 */
   skins?: FilmSkinCounts;
+  /** 影片 key → **服务端已确认**的我那一枚（色 + 款）—— 海报扣「按款分布」时的基准。
+   *  ⚠ 与卡片同源（`RedBlackPage` 传同一份 `syncedFaces`），**不是**本地 board：
+   *    换款还没上报落地时拿本地款去扣会把别人的那一枚扣掉（见 `redblack.ts::othersSkins`）。 */
+  syncedFaces?: ReadonlyMap<string, SyncedStickerFace>;
   board: StickerBoard;
   /** 与页面 hero 同一份数字(传进来而不是重算 —— 图里的数必须与页面上看到的一字不差) */
   site: { total: number; red: number; black: number };
@@ -61,6 +70,7 @@ export function RedBlackShareDialog({
   films,
   crowd,
   skins,
+  syncedFaces,
   board,
   site,
   mine,
@@ -71,7 +81,16 @@ export function RedBlackShareDialog({
   const [error, setError] = useState("");
   // 数据快照:只在挂载时取一次(见文件头)。用 `useState` 的惰性初值而不是 `useMemo([])`,
   // 就是为了明确表达「这是个初值,不是派生量」。
-  const [snapshot] = useState(() => ({ films, crowd, skins, board, site, mine, today: new Date() }));
+  const [snapshot] = useState(() => ({
+    films,
+    crowd,
+    skins,
+    syncedFaces,
+    board,
+    site,
+    mine,
+    today: new Date(),
+  }));
   const [sections, setSections] = useState<Set<RbPosterSection>>(allSections);
   const model = useMemo(
     () => buildRbPosterModel({ ...snapshot, sections }),

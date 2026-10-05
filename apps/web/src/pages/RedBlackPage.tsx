@@ -80,6 +80,7 @@ import {
   type StickerBoard,
   type StickerCounts,
   type StickerType,
+  type SyncedStickerFace,
 } from "../redblack";
 import {
   adoptSyncedVotes,
@@ -88,6 +89,7 @@ import {
   onFilmVotesPingFailure,
   peekFilmSkins,
   peekFilmVotes,
+  peekSyncedFaces,
   peekSyncedVotes,
   resumePendingFilmVotes,
   scheduleFilmVotesPing,
@@ -211,8 +213,13 @@ interface RbCardProps {
   counts: StickerCounts;
   /** 这一部**按款**的票数（服务端聚合，2026-09-29）。稀疏：没有款数据的片是 `undefined`。
    *  ⚠ 与 `counts` 不同，它**原样来自服务端**（**含我自己那一枚** —— 服务端不知道谁是「我」），
-   *    所以用之前必须在卡片内 `othersSkins` 扣掉；页面那层不替它做 `reconcile`。 */
+   *    所以用之前必须在卡片内 `othersSkins` 扣掉；页面那层不替它做 `reconcile`。
+   *  ⚠ 扣减基准是 `syncedFace`（**服务端已确认**的我那一枚），**不是** `placed` —— 见它的说明。 */
   skins?: SkinCrowdCounts;
+  /** **服务端已确认**的我那一枚（色 + 款）—— `othersSkins` 从 `skins` 里扣的基准（2026-10-05）。
+   *  ⚠ 不能用 `placed`（本地当前那枚）：换款到上报落地之间本地已经是新款、而服务端聚合里还是
+   *    旧款，拿本地款去扣会从**别人的**桶里扣掉一枚（用户 2026-10-05 报的「把别人的皮肤也换了」）。 */
+  syncedFace?: SyncedStickerFace;
   /** 这一部是不是「刚贴下那一枚」的持有者 —— 只有它**多一圈会起伏的亮描边**;
    *  ⚠ 与「常驻纸白边」是两回事:后者在 `.rb-dot` 上恒有,不靠这个 prop(见 CSS 里的说明) */
   fresh: boolean;
@@ -338,6 +345,14 @@ export function RedBlackPage() {
     adoptSyncedVotes(votesOf(boot.board));
     return peekSyncedVotes();
   });
+  // 「服务端那份快照里**我那一枚长什么样**」（色 + 款）—— 与 `syncedVotes` 是同一份快照的另一半，
+  // 必须在同一刻切换：它回答「从哪个桶扣」（见 `redblack.ts::SyncedStickerFace`）。
+  // ⚠ 扣「别人的按款分布」时**只能**用它，不能用本地当前那枚 —— 换款到上报落地之间两者不同拍，
+  //   拿本地款去扣会从**别人的**桶里扣掉一枚（用户 2026-10-05 报的那个 bug）。
+  const [syncedFaces, setSyncedFaces] = useState<Readonly<Record<string, SyncedStickerFace>>>(() => {
+    adoptSyncedVotes(votesOf(boot.board));
+    return peekSyncedFaces();
+  });
   // 票数**结算**了没有(成功、失败、空表都算结算)—— 首屏那次排序发生在它之前,见下面的补排
   const [votesSettled, setVotesSettled] = useState(false);
   useEffect(() => {
@@ -345,6 +360,7 @@ export function RedBlackPage() {
       setVotes(next);
       setFilmSkins(peekFilmSkins());
       setSyncedVotes(peekSyncedVotes());
+      setSyncedFaces(peekSyncedFaces());
       setVotesSettled(true);
       // 上一次没发成功的那一份**补发**（2026-10-05，PLAN-20261005182415 §A）：关页 / 切后台 /
       // 崩溃时那次上报只活在定时器闭包里，盘上留着这一份就是为了在这儿补上。
@@ -358,6 +374,7 @@ export function RedBlackPage() {
       setVotes(peekFilmVotes());
       setFilmSkins(peekFilmSkins());
       setSyncedVotes(peekSyncedVotes());
+      setSyncedFaces(peekSyncedFaces());
     });
   }, []);
   const crowd: CrowdCounts = useMemo(() => crowdOf(votes), [votes]);
@@ -492,9 +509,9 @@ export function RedBlackPage() {
   );
   /** 卡片要的**按款**分布（2026-09-29）。与 `reconciledCrowd` 同一手法：值没变就**沿用旧对象**。
    *
-   *  ⚠ 这里**不做** `reconcile` 那套「减服务端确认的那份、加我当前的」—— 按款分布只用来决定
+   *  ⚠ 这里**不做**「减服务端确认的那份、加我当前的」那套 —— 按款分布只用来决定
    *    「别人的贴纸长什么样」，而我贴的那一枚是**单独画的 DOM**、根本不进群点。
-   *    扣我自己的动作在 `RbCard` 里做（`othersSkins`），那里才同时知道「我的款」与「我的色」。
+   *    扣我自己的动作在 `RbCard` 里做（`othersSkins`），基准是下面那份 `syncedFaceByKey`。
    *  ⚠ 稀疏：没有款数据的片**不进这张表**（`get` 得到 `undefined`），卡片那边正好走
    *    「按 id 兜底」那条分支 —— 与老接口 / 还没拉到时的行为一致。 */
   const filmSkinCache = useRef(new Map<string, SkinCrowdCounts>());
@@ -508,6 +525,20 @@ export function RedBlackPage() {
     filmSkinCache.current = next;
     return next;
   }, [filmSkins]);
+  /** 卡片 / 分享图扣「按款分布」时的基准：**服务端已确认的我那一枚**（色 + 款，2026-10-05）。
+   *  ⚠ 与 `filmSkinsByKey` 同一手法：值没变就**沿用旧对象** —— `RbCard` 是 `memo` 的，
+   *    每次上报成功都造一批新对象会让近 300 张卡白渲染一遍。 */
+  const syncedFaceCache = useRef(new Map<string, SyncedStickerFace>());
+  const syncedFaceByKey = useMemo(() => {
+    const cache = syncedFaceCache.current;
+    const next = new Map<string, SyncedStickerFace>();
+    for (const [key, face] of Object.entries(syncedFaces)) {
+      const prev = cache.get(key);
+      next.set(key, prev && prev.type === face.type && prev.skin === face.skin ? prev : face);
+    }
+    syncedFaceCache.current = next;
+    return next;
+  }, [syncedFaces]);
   const totals = useMemo(() => {
     // 「我的」那份:只回答「标记了几部 / 贴了几枚 / 还能贴几枚」(hero 里那行小字)
     let marked = 0;
@@ -1171,6 +1202,7 @@ export function RedBlackPage() {
                 placed={board.get(film.key)}
                 counts={filmCounts.get(film.key)!}
                 skins={filmSkinsByKey.get(film.key)}
+                syncedFace={syncedFaceByKey.get(film.key)}
                 fresh={freshKeys.has(film.key)}
                 onToggleWatched={toggleWatched}
                 onPlaceByTap={placeByTap}
@@ -1199,6 +1231,9 @@ export function RedBlackPage() {
                与上面 `crowd` 给 `reconciledCrowd` 而不是 `filmCounts` 是同一条理由。
                ⚠ 它是**服务端原样那份**(含我)—— 海报那边自己 `othersSkins` 扣掉。 */
             skins={filmSkins}
+            /* ⚠ 扣减基准与卡片**同一份**（`syncedFaceByKey`）：服务端已确认的我那一枚（色 + 款）。
+               传本地 board 的话，换款还没上报落地时海报也会扣错桶（与卡片是同一次修复）。 */
+            syncedFaces={syncedFaceByKey}
             board={board}
             site={{ total: totals.total, red: totals.red, black: totals.black }}
             mine={{ marked: totals.marked, placed: totals.placed, quota: totals.quota }}
@@ -1230,6 +1265,7 @@ const RbCard = memo(function RbCard({
   placed,
   counts,
   skins,
+  syncedFace,
   fresh,
   onToggleWatched,
   onPlaceByTap,
@@ -1255,11 +1291,13 @@ const RbCard = memo(function RbCard({
   const filmScore = scoreOf(counts);
 
   const myStickers = placed ?? EMPTY_STICKERS;
-  // 「别人的贴纸**各是什么款**」= 服务端按款分布 − 我自己那一枚（口径在 `redblack.ts::othersSkins`）。
-  // ⚠ 必须跟着 `othersOf` 一起扣：不扣的话我自己那一桶会留在分布里，群点会**多画一枚**
-  //   （多出来那枚恰好是我的款与色，看起来还挺合理 —— 所以只能靠这条口径挡住）。
+  // 「别人的贴纸**各是什么款**」= 服务端按款分布 − **服务端已确认的**我那一枚
+  // （口径在 `redblack.ts::othersSkins`）。
+  // ⚠ 必须跟着 `othersOf` 一起扣，而且基准必须同样是「服务端那份里的我」（`syncedFace`）：
+  //   改前这里传的是本地当前那枚（`myStickers`）—— 换款到上报落地之间服务端聚合里还是旧款，
+  //   于是旧款桶没被扣、新款桶被白扣，群点看起来就像「别人的皮肤也换了」（2026-10-05 用户报的）。
   // ⚠ 没有分布数据时 `othersSkins` 原样返回 `undefined` → 画布走「按 id 兜底」那条正常分支。
-  const crowdSkins = othersSkins(skins, myStickers);
+  const crowdSkins = othersSkins(skins, syncedFace);
 
   /* ---------------- 换款轮盘（2026-09-29，PLAN-20260929195500） ----------------
    * 三种打开方式，各自绕开一个已经存在的坑：
