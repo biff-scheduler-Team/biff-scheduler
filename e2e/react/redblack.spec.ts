@@ -254,7 +254,7 @@ test("标记「看过」→ 贴一枚红:画布上立刻出现,并上报给服�
   //   (E2E 里没有 workspace 包的 paths,引不进来,只能抄)。换款时必须跟着改 ——
   //   2026-09-30 换款时就漏了这条(以及 `anotherSkin` 里那份),CI 一跑就红,
   //   那条漏的已改成从 DOM 读;这条留着是因为这里**不开轮盘**,没有别的东西可对齐。
-  expect(String(sent[0].skin)).toMatch(/^(clap|palm|stub|scrap|sprocket)$/);
+  expect(String(sent[0].skin)).toMatch(/^(stub|scrap|sprocket)$/);
 });
 
 test("服务端的全体票数渲染成卡片上的红黑数字与只读小点", async ({ page }) => {
@@ -407,8 +407,8 @@ test("「别人的贴纸」与我贴的那枚同尺寸,只差常驻纸白边与�
   const mine = card.locator(".rb-dot");
   await expect(mine).toHaveCount(1);
   // 尺寸口径同源两处:CSS 的 `.rb-dot` 与 canvas sprite 的 `sticker-sprite.ts::STICKER_SIZE`
-  // (26 → 20 → 32 → 20,用户四轮改过;单测守着 sprite 那一侧,这里守 DOM 这一侧)
-  await expect(mine.first()).toHaveCSS("width", "20px");
+  // (26 → 20 → 32 → 20 → 24,用户五轮改过;单测守着 sprite 那一侧,这里守 DOM 这一侧)
+  await expect(mine.first()).toHaveCSS("width", "24px");
   await expect(mine.first()).toHaveCSS("cursor", "grab");
 
   // 贴纸本体(2026-09-29):外形**不是** `border-radius`,而是内联 `--rb-shape` 交给 `clip-path`;
@@ -421,7 +421,7 @@ test("「别人的贴纸」与我贴的那枚同尺寸,只差常驻纸白边与�
   // 内联变量里的那条路径必须**真的按贴纸尺寸**生成 —— 这是 `clip-path: path()` 的经典坑:
   // 它是**绝对 px**、不像 SVG 的 `viewBox` 那样随元素缩放。生成时用了别的尺寸(比如设计盒的 32)
   // 不会报错,只会把贴纸**静默地**裁掉右下角 —— 只有人眼看得出来。
-  // 量法:把那段路径塞进一个临时 SVG 量 `getBBox()`;真按 20 生成 → 包围盒就是 20×20 上下,
+  // 量法:把那段路径塞进一个临时 SVG 量 `getBBox()`;真按 24 生成 → 包围盒就是 24×24 上下,
   // 用错尺寸则会是 32。
   // ⚠ 2026-09-29 起 `--rb-shape` 写在**本体那一层**(`.rb-dot__face`,它就是被 `clip-path` 裁的那层),
   //   不再挂在 `.rb-dot` 按钮上 —— 形状与图标一起归 `StickerFace` 管。
@@ -439,15 +439,15 @@ test("「别人的贴纸」与我贴的那枚同尺寸,只差常驻纸白边与�
     return { width: measured.width, height: measured.height, d };
   });
   expect(box.d.length).toBeGreaterThan(10);
-  // ⚠ 判据相对**贴纸自己的尺寸**(20px),不要写死一个区间:5 款轮廓的包围盒差得很远 ——
-  //   撕裂圆片/胶卷盘几乎占满设计盒,而胶片残片是一条**斜置的窄条**(宽 ~77%、高只 ~56%)。
-  // 两个上界抓的是同一件事:按**别的尺寸**生成(比如设计盒的 32)时,每一款的宽都会到 23~31
+  // ⚠ 判据相对**贴纸自己的尺寸**(24px),不要写死一个区间:三款轮廓的包围盒差得很远 ——
+  //   票根 / 胶片齿孔接近占满设计盒,而胶片残片是一条**斜置的窄条**(宽 ~77%、高只 ~56%)。
+  // 两个上界抓的是同一件事:按**别的尺寸**生成(比如设计盒的 32)时,包围盒会明显超过 24
   //   —— 所以宽的上界是那条真正可靠的判据。
   // 两个下界只抓「退化 / 真被裁掉一角」,所以取得松(高那一侧最窄的款只有 56%)。
-  expect(box.width).toBeLessThanOrEqual(20.5);
-  expect(box.width).toBeGreaterThan(20 * 0.65);
-  expect(box.height).toBeLessThanOrEqual(20.5);
-  expect(box.height).toBeGreaterThan(20 * 0.5);
+  expect(box.width).toBeLessThanOrEqual(24.5);
+  expect(box.width).toBeGreaterThan(24 * 0.65);
+  expect(box.height).toBeLessThanOrEqual(24.5);
+  expect(box.height).toBeGreaterThan(24 * 0.5);
 
   // **常驻纸白边**(2026-09-23):我贴的那一枚独有,群点那边(canvas / sprite)不许有这一层 ——
   // 票数一多,同色同尺寸的点里根本认不出自己那枚,「自己贴的贴纸始终能被自己拖动」就先卡在“找不到”。
@@ -1693,7 +1693,8 @@ async function anotherSkin(wheel: Locator): Promise<string> {
   const current = await wheel.getAttribute("data-rb-wheel");
   // ⚠ **不再手抄一份名单**:2026-09-30 换款(`torn` / `reel` → `clap` / `palm`)时这里抄的那份
   //   没跟着改,于是这条用例去点一个已经不存在的节点、红在「元素找不到」上 ——
-  //   而它想守的其实是「换一款给用户看」,与具体是哪五款无关。
+  //   而它想守的其实是「换一款给用户看」,与具体是哪几款无关
+  //   (2026-10-05 缩到三款时也是因为它从 DOM 读,才没有第三次踩同一个坑)。
   //   现在名单从**轮盘自己渲染出来的节点**读:契约层换款,这条自动跟上。
   const keys = await wheel
     .locator("[data-rb-wheel-node]")
@@ -1732,8 +1733,8 @@ test("换款轮盘:悬停弹出、悬停节点只是预览、点选才落定并�
   await dot.hover();
   const wheel = page.locator(".rb-wheel");
   await expect(wheel).toHaveCount(1);
-  // 5 款一款不少,且**当前那款被明确标出**(`aria-checked` 是视觉与无障碍共用的判据)
-  await expect(wheel.locator(".rb-wheel__node")).toHaveCount(5);
+  // 三款一款不少,且**当前那款被明确标出**(`aria-checked` 是视觉与无障碍共用的判据)
+  await expect(wheel.locator(".rb-wheel__node")).toHaveCount(3);
   await expect(wheel.locator('[role=radio][aria-checked=true]')).toHaveCount(1);
   // 白底盘(2026-09-30,用户要求「选择的盘白底的,能更清晰看到」)。
   // ⚠ 断言的是**它真的画出来了**,不是「有这个元素」—— `background` 那串径向渐变少一层
@@ -1751,7 +1752,7 @@ test("换款轮盘:悬停弹出、悬停节点只是预览、点选才落定并�
   const other = await anotherSkin(wheel);
   const target = wheel.locator(`[data-rb-wheel-node="${other}"]`);
   // 名称胶囊(2026-09-30,用户要求「悬停出现贴纸名称」):默认看不见,悬停那颗才露出来。
-  // ⚠ 两个断言缺一不可 —— 只断言「悬停后可见」的话,把名字改成常显也照样绿(那就成了五个名字糊一圈)。
+  // ⚠ 两个断言缺一不可 —— 只断言「悬停后可见」的话,把名字改成常显也照样绿(那就成了几个名字糊一圈)。
   await expect(wheel.locator(".rb-wheel__name").first()).toHaveCSS("opacity", "0");
   // ⚠ 基线要取**现在**这一刻:贴下那一枚本身已经上报过一次(1200ms 防抖),
   //   写 `toHaveLength(0)` 会红在与预览无关的地方。
@@ -1759,7 +1760,7 @@ test("换款轮盘:悬停弹出、悬停节点只是预览、点选才落定并�
   await target.hover();
   // 悬停的这一颗露出名字,而且**只有它**
   await expect(target.locator(".rb-wheel__name")).toHaveCSS("opacity", "1");
-  await expect(wheel.locator(".rb-wheel__name")).toHaveCount(5);
+  await expect(wheel.locator(".rb-wheel__name")).toHaveCount(3);
   await expect(wheel.locator(".rb-wheel__name").filter({ hasText: /^$/ })).toHaveCount(0);
   // 预览:贴纸**本体**跟着换款了
   await expect.poll(shape).not.toBe(before);

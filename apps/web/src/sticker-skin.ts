@@ -44,11 +44,9 @@ export interface SkinSpec {
 /** 皮肤 → 外观。⚠ 类型是 `Record<StickerSkin, …>`：`@biff/contracts/sticker` 里加一款而
  *  这里忘了登记，会**编译不过**（而不是运行时画出一个不存在的形状）。 */
 const SKINS: Record<StickerSkin, SkinSpec> = {
-  // 2026-09-30 定稿：场记板 / 金棕榈 / 票根 / 胶片残片 / 胶片齿孔（红黑同一套，只差颜色）。
-  // ⚠ `palm` 复用 `torn` 的**轮廓**：一款皮肤是「形状 + 图标 + 材质」的组合，
-  //   形状可以被多款复用 —— 所以这边少画一套轮廓，而「撕裂圆片」这个款名下线并不浪费它的形状。
-  clap: { shape: "clap", glyph: "none", material: "screen" },
-  palm: { shape: "torn", glyph: "palm", material: "ink" },
+  // 2026-10-05 定稿：票根 / 胶片残片 / 胶片齿孔（红黑同一套，只差颜色）。
+  // ⚠ 场记板（`clap`）与金棕榈（`palm`）已下线；它们的轮廓 `clap` / `torn`、图形 `palm`
+  //   与材质 `screen` 一并删掉（`screen` 唯一消费者就是场记板）—— 三款现在各用一个轮廓。
   stub: { shape: "stub", glyph: "heart", material: "ink" },
   scrap: { shape: "scrap", glyph: "bolt", material: "grain" },
   sprocket: { shape: "sprocket", glyph: "hole", material: "grain" },

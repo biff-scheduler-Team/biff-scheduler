@@ -25,8 +25,9 @@ describe("皮肤的登记表", () => {
     for (const skin of ALL_SKINS) {
       const spec = skinSpec(skin);
       expect(ALL_SHAPES).toContain(spec.shape);
-      // ⚠ `none`（留空）**不在** `ALL_GLYPHS` 里：它不是「一个图形」，而是「这一款不印图形」——
-      //    场记板正是留空的那一款（2026-09-30，用户口径：板子自己就是内容）。
+      // ⚠ `none`（留空）**不在** `ALL_GLYPHS` 里：它不是「一个图形」，而是「这一款不印图形」。
+      //    2026-10-05 缩到三款后没有哪一款留空了（上一轮用它的场记板已下线），
+      //    但这条口径仍然成立 —— 断言留着，免得将来加回留空款时静默传过。
       expect(spec.glyph === "none" || ALL_GLYPHS.includes(spec.glyph)).toBe(true);
       expect(STICKER_MATERIAL_LIST).toContain(spec.material);
     }
@@ -39,7 +40,7 @@ describe("皮肤的登记表", () => {
       // 同一款取两次必须是同一份（不存在「红版 / 黑版」）
       expect(skinSpec(skin)).toBe(skinSpec(skin));
     }
-    // 五款的轮廓互不相同、图标也互不相同（否则并排看像复制粘贴）
+    // 各款的轮廓互不相同、图标也互不相同（否则并排看像复制粘贴）
     const shapes = ALL_SKINS.map((skin) => skinSpec(skin).shape);
     const glyphs = ALL_SKINS.map((skin) => skinSpec(skin).glyph);
     expect(new Set(shapes).size).toBe(ALL_SKINS.length);
@@ -54,7 +55,7 @@ describe("皮肤的登记表", () => {
 
 describe("取款：存了的用它，没存的按 id 兜底", () => {
   it("★ 存了且合法 → 用它", () => {
-    expect(resolveSkin("s-anything", "palm")).toBe("palm");
+    expect(resolveSkin("s-anything", "sprocket")).toBe("sprocket");
     expect(resolveSkin("s-anything", "stub")).toBe("stub");
   });
 
@@ -70,7 +71,7 @@ describe("取款：存了的用它，没存的按 id 兜底", () => {
     }
   });
 
-  it("兜底会在五款之间铺开（不是永远落在同一款上）", () => {
+  it("兜底会在各款之间铺开（不是永远落在同一款上）", () => {
     const seen = new Set(
       Array.from({ length: 200 }, (_, i) => derivedSkin(`cat:f001#crowd-${i}`)),
     );

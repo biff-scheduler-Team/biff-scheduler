@@ -13,20 +13,19 @@
  *   将来若要单独统计材质就现成），但具体怎么呈现只在绘制侧定义。
  */
 
-/** 可选皮肤（2026-09-30 定稿 5 款：**红黑同一套，只差颜色**）。
+/** 可选皮肤（2026-10-05 定稿 3 款：**红黑同一套，只差颜色**）。
  *
  *  ⚠ 数组顺序 = 轮盘里的排列顺序 = 群点分款时的稳定次序。不要为了好看重排：
  *    群点的落点由 id 推导，改顺序会让「同一个人同一票」在别人屏幕上换个位置。
  *
- *  ⚠ 这一轮**换掉了两款**：`torn`（撕裂圆片）与 `reel`（胶卷盘）下线，新上
- *    `clap`（场记板）与 `palm`（金棕榈）；`torn` 的**轮廓**没浪费 —— `palm` 复用它。
+ *  ⚠ 沿革：2026-09-30 定稿五款（场记板 / 金棕榈 / 票根 / 胶片残片 / 胶片齿孔）；
+ *    2026-10-05 用户要求「只保留三种，去掉场记板和金棕榈」→ 剩下下面这三款。
  *    ⚠ 删款不是改这一行就完事：库里那两款的行**必须一起清**
  *      （`film_vote_contribution.skin` + `film_vote_skin_stat`），
  *      否则它们的桶永远减不掉、群点会比卡片上的数字多一枚
- *      （操作约束原话见 `apps/api/src/film-vote-store.ts` 的 `prevSkins` 那段）。 */
+ *      （操作约束原话见 `apps/api/src/film-vote-store.ts` 的 `prevSkins` 那段；
+ *      本次的清理见迁移 `0014_drop_clap_palm_skins.sql`）。 */
 export const STICKER_SKINS = [
-  { key: "clap", label: "场记板" },
-  { key: "palm", label: "金棕榈" },
   { key: "stub", label: "票根" },
   { key: "scrap", label: "胶片残片" },
   { key: "sprocket", label: "胶片齿孔" },
@@ -43,7 +42,7 @@ export const STICKER_SKIN_KEYS: readonly StickerSkin[] = STICKER_SKINS.map((skin
  *    而不是渲染时抛错或画出一个不存在的形状。
  *  ⚠ 2026-09-30 换款时**它必须跟着换**：原来落 `torn`，而 `torn` 已下线 ——
  *    留着一个不在白名单里的兜底款，等于每次兜底都要再走一次「白名单外的值怎么画」那条分支。
- *    现在落 `stub`（票根）：五款里最中性的一枚，读起来正好像「没有特意挑过」。 */
+ *    现在落 `stub`（票根）：三款里最中性的一枚，读起来正好像「没有特意挑过」。 */
 export const DEFAULT_STICKER_SKIN: StickerSkin = "stub";
 
 const skinSet = new Set<string>(STICKER_SKIN_KEYS);
@@ -61,10 +60,12 @@ export function stickerSkinLabel(key: string): string {
 }
 
 /** 材质变体：一款皮肤绑定一种（「一款 = 轮廓 + 材质 + 图标 整套绑定」）。
- *  · `screen` 丝网重影 —— 斜向细纹 + 半透明重影
  *  · `grain`  胶片颗粒 —— 确定性噪点
- *  · `ink`    印章油墨边 —— 边缘不均匀的深色轮廓 */
-export const STICKER_MATERIALS = ["screen", "grain", "ink"] as const;
+ *  · `ink`    印章油墨边 —— 边缘不均匀的深色轮廓
+ *  ⚠ 2026-10-05 下线 `screen`（丝网重影）：它唯一的消费者是场记板，而那一款已经删了 ——
+ *    材质表里留一个没有任何皮肤指向的项，正是 `sticker-material.test.ts` 那条
+ *    「登记了却没人用」守卫要挡的东西。 */
+export const STICKER_MATERIALS = ["grain", "ink"] as const;
 
 export type StickerMaterial = (typeof STICKER_MATERIALS)[number];
 

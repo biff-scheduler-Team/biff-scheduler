@@ -7,14 +7,14 @@
  *
  * ⚠ 形状与质感必须与 `redblack-parity.css` 里的 `.rb-dot` **逐字对应**
  *   (用户 2026-09-22 选的是「预渲染 sprite,视觉几乎不变」):
- *   · 尺寸由 `STICKER_SIZE` 给出(沿革 26 → 20 → 32 → 20,用户四轮改过;现在停在 20)。
- *     ⚠ 这里原本写着「尺寸 32×32」——**过期了**:放大到 32 的那一轮事后被用户缩回 20,
- *       「图标要读得出来」这件事现在由 `ICON_RATIO` 顶着(0.45 → 0.55,见 `sticker-glyph.ts`),
- *       而不是靠贴纸本身变大;
- *   · 轮廓 —— 由 `sticker-shape.ts` 的**形状族**给出(`torn` / `stub` / `sprocket` / `scrap` / `reel`),
+ *   · 尺寸由 `STICKER_SIZE` 给出(沿革 26 → 20 → 32 → 20 → **24**;
+ *     2026-10-05 用户「把贴纸放大一点」,同时要求中心图标**尺寸不变** ——
+ *     那件事由 `ICON_RATIO` 0.55 → 0.46 顶着,见 `sticker-glyph.ts`);
+ *   · 轮廓 —— 由 `sticker-shape.ts` 的**形状族**给出(`stub` / `sprocket` / `scrap`),
  *     不再是一条固定的 border-radius;
  *   · 三层外落影 + 一层内描边(`inset 0 0 0 1px rgb(255 255 255 / 18%)`);
- *   · 红 / 黑各一层斜向细条纹(115°,周期 3px)+ 一枚径面高光(圆心 34% / 28%);
+ *   · 材质层由**皮肤**决定(`sticker-material.ts`),红 / 黑只差底色;
+ *   · 一枚径面高光(圆心 34% / 28%);
  *   · 中心微图标由 `sticker-glyph.ts` 给出,占贴纸边长 `ICON_RATIO`。
  *   颜色**只从 CSS token 读**(`--rb-red` / `--rb-black` / `--rb-icon-*`),这里绝不另写一份十六进制。
  */
@@ -38,14 +38,15 @@ import { skinSpec, type StickerSkin } from "./sticker-skin";
  *   `materialBackground()` 用它把材质配方换算到实际尺寸 —— 改这里,
  *   材质那段 CSS 会**对不上**(单测会直接把该贴什么报出来),不要只改数字。
  *
- * 尺寸沿革(用户四轮改过,记下来免得再猜):
+ * 尺寸沿革(用户五轮改过,记下来免得再猜):
  *   26 → 20(2026-09-28,PLAN-20260928003736,为了「容纳更多」,纵向 8 行)
  *     → 32(2026-09-29 上午,为「像实体贴纸」:异形轮廓 + 微图标在 20px 下糊成一粒点)
- *     → **20**(2026-09-29 下午):用户看过 32 的实机效果后明确要求「都调小一点,20 左右差不多」。
- *   用户已知并接受的代价:微图标实际只有 `20 × ICON_RATIO`(2026-09-30 起 = **11px**;
- *   在那之前是 `20 × 0.45 = 9px`,五款图形糊成一粒噪点),票根的 V 形撕口 / 齿孔只剩轮廓感;
- *   细密那几层材质(胶片颗粒)在这个尺寸下落在 1px 以下,实际读作一层淡淡的色调。 */
-export const STICKER_SIZE = 20;
+ *     → 20(2026-09-29 下午):用户看过 32 的实机效果后明确要求「都调小一点,20 左右差不多」
+ *     → **24**(2026-10-05):用户「把贴纸放大一点」—— 取 24 而不是回到 32(那一档已被否决过),
+ *       并把 `ICON_RATIO` 调回 0.46,让中心图标**停在 11px 不变**(用户「中间挖孔大小不变」)。
+ *   用户已知并接受的代价:微图标只有 11px(不随贴纸放大),票根的 V 形撕口 / 齿孔只剩轮廓感;
+ *   细密那几层材质(胶片颗粒)落在 1px 上下,实际读作一层淡淡的色调。 */
+export const STICKER_SIZE = 24;
 
 /** sprite 四周给落影留的余量(CSS px)。
  *
@@ -77,14 +78,12 @@ const cache = new Map<string, StickerSprite>();
 /** 「样式表还没生效」这一种意外用的中性灰 —— 一眼能看出不对 */
 const FALLBACK = "#8b8b8b";
 
-/** 贴纸用到的全部颜色,**一起读、一起失效**:底色的红黑、微图标的两种墨色,外加金棕榈的金。 */
+/** 贴纸用到的全部颜色,**一起读、一起失效**:底色的红黑 + 微图标的两种墨色。
+ *  ⚠ 2026-10-05：金棕榈下线后**不再有**「不跟纸色走」的墨色，`iconGold` 随之删掉 ——
+ *    图标墨色现在只有红 / 黑两档，与 CSS 里 `.rb-dot--red/black .rb-dot__icon` 逐条对应。 */
 interface Palette {
   base: Record<StickerType, string>;
   icon: Record<StickerType, string>;
-  /** 金棕榈那枚叶子的金 —— 唯一一个**不跟纸色走**的图标墨色(见 CSS 里 `--rb-icon-gold` 的说明)。
-   *  ⚠ 它必须在这里一起读:canvas 上的群点与 DOM 上的贴纸是**同一款皮肤**,
-   *    两处取的墨色不一样就会出现「卡片上是金叶、群点上是白叶」。 */
-  iconGold: string;
 }
 
 let palette: Palette | null = null;
@@ -155,7 +154,6 @@ function readPalette(): Palette {
   palette = {
     base: { red: read("--rb-red"), black: read("--rb-black") },
     icon: { red: read("--rb-icon-red"), black: read("--rb-icon-black") },
-    iconGold: read("--rb-icon-gold"),
   };
   return palette;
 }
@@ -165,7 +163,7 @@ function readPalette(): Palette {
  *    现在同一张卡上会同时出现好几款,不按款分桶就会「先画的那款被复用给所有贴纸」
  *    (没有任何报错,只有人眼看得出来)。
  *  ⚠ 形状与图标不必再单独进键 —— 它们由款决定（`skinSpec`），款进键就够了。
- *  ⚠ 分桶上界 = 2 色 × 5 款 × 至多 3 档 dpr = 30 张，仍是**有界**的（比加款前还少）。 */
+ *  ⚠ 分桶上界 = 2 色 × 3 款 × 至多 3 档 dpr = 18 张，仍是**有界**的（比五款那会儿还少）。 */
 function spriteKey(type: StickerType, skin: StickerSkin, dpr: number): string {
   return `${type}@${skin}@${dpr}`;
 }
@@ -230,10 +228,10 @@ function build(type: StickerType, skin: StickerSkin, dpr: number): StickerSprite
   ctx.clip(body);
   ctx.translate(spot.x, spot.y);
   ctx.scale(spot.scale, spot.scale);
-  // ⚠ 墨色按**图标**分档(与 CSS 里 `.rb-dot__face[data-rb-glyph="palm"]` 那条规则同一件事):
-  //   金棕榈的叶子红贴黑贴都是金的,其余图标仍跟纸色走。
+  // ⚠ 墨色只有「跟纸色」这一档(与 CSS 里 `.rb-dot--red/black .rb-dot__icon` 对应)——
+  //   2026-10-05 金棕榈下线后,那款「恒为金」的特判已随之删掉。
   //   `none`(留空)是空路径,画不出东西 —— 但这一支仍然照走,不必为它加特判。
-  ctx.fillStyle = glyph === "palm" ? colors.iconGold : colors.icon[type];
+  ctx.fillStyle = colors.icon[type];
   ctx.fill(new Path2D(glyphPath(glyph)));
   ctx.restore();
 
@@ -255,9 +253,10 @@ function build(type: StickerType, skin: StickerSkin, dpr: number): StickerSprite
  *
  * ⚠ `skin` 由**调用方**从那一枚推好再传（`sticker-skin.ts::resolveSkin(id, sticker.skin)`）——
  *   本模块不碰 id:它要能被缓存,就必须只依赖这三个键。
- * ⚠ 上界 = 2 色 × 5 款 × 至多 3 档 dpr = 30 张离屏画布。
- *   单张 `(32 + 2×12)² × dpr²` 像素 —— dpr = 1 时约 12KB、dpr = 2 时约 50KB、dpr = 3 时约 113KB
- *   (逐张 4 字节/像素)。最坏一档 ≈ 3.4MB,但它**与票数无关**、且同一张卡里同类只留一份 ——
+ * ⚠ 上界 = 2 色 × 3 款 × 至多 3 档 dpr = 18 张离屏画布。
+ *   单张 `(STICKER_SIZE + 2×SPRITE_PAD)² × dpr²` 像素 = `(24 + 2×12)² × dpr²`
+ *   —— dpr = 1 时约 9KB、dpr = 2 时约 37KB、dpr = 3 时约 83KB
+ *   (逐张 4 字节/像素)。最坏一档 ≈ 1.5MB,但它**与票数无关**、且同一张卡里同类只留一份 ——
  *   `O(1) 有界`,不会随票数上涨。 */
 export function stickerSprite(type: StickerType, skin: StickerSkin, dpr: number): StickerSprite {
   const key = spriteKey(type, skin, dpr);

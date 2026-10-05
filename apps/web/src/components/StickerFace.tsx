@@ -40,9 +40,10 @@ export function StickerFace({ skin }: StickerFaceProps) {
     <span
       className="rb-dot__face"
       data-rb-material={spec.material}
-      // ⚠ `data-rb-glyph` 交给 CSS 选**图标墨色**:金棕榈那枚叶子是唯一一个不跟纸色走的
-      //   (金,见 `redblack-parity.css` 的 `--rb-icon-gold`)。挂在这一层而不是 `.rb-dot`:
-      //   图标是「款」的属性,这一层正是「款长什么样」的边界。
+      // ⚠ `data-rb-glyph` 交给 CSS 选**图标墨色**:挂在这一层而不是 `.rb-dot`,
+      //   因为图标是「款」的属性,这一层正是「款长什么样」的边界。
+      //   ⚠ 2026-10-05 金棕榈下线后 CSS 里那条按图标覆写墨色的规则也删了,这个属性**仍然留着** ——
+      //     将来若再出现一款不跟纸色走的图标,规则挂这一层即可(不必回头改组件)。
       data-rb-glyph={spec.glyph}
       // ⚠ 轮廓按**实际贴纸尺寸**生成:`clip-path: path()` 是绝对 px、不随元素缩放
       //   (SVG 的 `viewBox` 才会缩放,两者不是一回事)。传错尺寸不会报错,

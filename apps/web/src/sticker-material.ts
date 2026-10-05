@@ -19,9 +19,9 @@
  *   · 代价是样式表里那几行是「副本」，所以 `tests/sticker-material.test.ts` 会
  *     **逐个材质断言样式表里就是这串生成结果**（照 `sticker-shape.test.ts` 守 CSS 的既有做法）。
  *
- * ⚠ 一切几何都用**32 设计盒**里的像素（`BOX = 32`）：DOM 那枚恒为 32px，直接照用；
- *   canvas 传入的 `size` 可能是 14 / 24 / 32，统一 `ctx.scale(size / BOX)` 换算
- *   ——**不要**为小尺寸另写一套配方（那就是第二处口径）。
+ * ⚠ 一切几何都用**32 设计盒**里的像素（`BOX = 32`）：两种渲染器都传**实际贴纸尺寸**
+ *   （DOM 那枚是 `sticker-sprite.ts::STICKER_SIZE`，canvas 可能是 14 / 24），
+ *   统一按 `size / BOX` 换算 ——**不要**为某个尺寸另写一套配方（那就是第二处口径）。
  *
  * ⚠ 纯常量 + 纯函数，**import 期不碰 DOM**（`paintMaterial` 只在真画时才碰 ctx）。
  * ⚠ 一切随机必须是**确定性**整数哈希（禁用 `Math.random`）：否则 sprite 每次重建都不一样，
@@ -36,8 +36,8 @@ export type { StickerMaterial };
  *  那个是「贴纸多大」，这个是「材质配方按多大的盒子写」。 */
 const BOX = 32;
 
-/** 材质面板：一款皮肤绑一种。 */
-export const STICKER_MATERIAL_LIST: readonly StickerMaterial[] = ["screen", "grain", "ink"];
+/** 材质面板：一款皮肤绑一种。⚠ 2026-10-05 `screen`（丝网重影）随场记板下线，见契约层说明。 */
+export const STICKER_MATERIAL_LIST: readonly StickerMaterial[] = ["grain", "ink"];
 
 /** 颜色 + 透明度。⚠ 不直接存 `rgba(...)` 字符串：CSS 要 `rgb(r g b / a%)`、canvas 要
  *  `rgba(r,g,b,a)`，存字符串就得在两边各做一次解析（或者赌 canvas 接受 CSS4 语法）。 */
@@ -70,13 +70,15 @@ function noise(i: number, salt: number): number {
 
 /**
  * 一层材质。几何单位是 32 设计盒里的 px。
- *  · `stripe` 斜向细纹（`angle` 用 **CSS 角度**约定：0° 朝上、顺时针）
  *  · `dots`   平铺圆点（从盒子左上角起铺，`pitch` 一格、半径 `radius`）
  *  · `blob`   指定位置的一个圆点（印章油墨的不均匀感靠它）
  *  · `edge`   以盒子中心为圆心的径向压暗（`from` 起、`to` 止）
+ *
+ *  ⚠ 2026-10-05：原有的 `stripe`（斜向细纹，`angle` 走 CSS 角度约定）是 `screen` 材质**唯一**
+ *    用到的层型，随那款材质下线一并删掉 —— 「角度换算 CSS `Ndeg` ↔ canvas `rotate(N-90)`」
+ *    那半套口径（`layerToCss` / `paintLayer` 各一处）也随之消失。
  */
 type MaterialLayer =
-  | { kind: "stripe"; angle: number; pitch: number; width: number; ink: Ink }
   | { kind: "dots"; pitch: number; radius: number; ink: Ink }
   | { kind: "blob"; x: number; y: number; radius: number; ink: Ink }
   | { kind: "edge"; from: number; to: number; ink: Ink };
@@ -113,9 +115,7 @@ function inkBeads(): MaterialLayer[] {
 /**
  * 材质配方 —— **整个材质体系唯一的数据来源**。
  *
- * 三款的意图（用户原话：「丝网重影 / 胶片颗粒 / 印章油墨边」）：
- *  · `screen` 丝网重影：两组**角度差 1.5°** 的细纹。只有一组是「布纹」，两组错开才对——
- *    真实丝网印刷套色没对准，就是这种几乎重合、慢慢「涨开」的摩尔纹。
+ * 两款的意图（用户原话：「丝网重影 / 胶片颗粒 / 印章油墨边」里的后两档）：
  *  · `grain` 胶片颗粒：两层平铺圆点（细密偏白 + 稀疏偏黑）。真实胶片颗粒是**明暗都有**的，
  *    只用浅色点会读成「磨砂」而不是「颗粒」。
  *  · `ink` 印章油墨边：一圈径向压暗 + 沿内缘洒的不均匀墨点。关键在**不均匀** ——
@@ -124,10 +124,6 @@ function inkBeads(): MaterialLayer[] {
  * ⚠ 改任何一个数，`tests/sticker-material.test.ts` 会要求样式表里那几行同步（它会报出该贴什么）。
  */
 const RECIPES: Record<StickerMaterial, readonly MaterialLayer[]> = {
-  screen: [
-    { kind: "stripe", angle: 115, pitch: 3, width: 1, ink: WHITE(0.05) },
-    { kind: "stripe", angle: 113.5, pitch: 7, width: 2.5, ink: WHITE(0.045) },
-  ],
   grain: [
     { kind: "dots", pitch: 3, radius: 0.55, ink: WHITE(0.07) },
     { kind: "dots", pitch: 5, radius: 0.8, ink: BLACK(0.07) },
@@ -138,14 +134,8 @@ const RECIPES: Record<StickerMaterial, readonly MaterialLayer[]> = {
   ],
 };
 
-/** 一层 → CSS `background-image` 里的一段。
- *  ⚠ 角度的换算见 `paintMaterial` 里那段说明：CSS 的 `Ndeg` 与 canvas 的 `rotate(N-90)` 等价，
- *    两处必须成对改。 */
+/** 一层 → CSS `background-image` 里的一段。 */
 function layerToCss(layer: MaterialLayer, scale: number): string {
-  if (layer.kind === "stripe") {
-    const { angle, pitch, width, ink } = layer;
-    return `repeating-linear-gradient(${angle}deg, ${cssInk(ink)} 0 ${at(width, scale)}px, transparent ${at(width, scale)}px ${at(pitch, scale)}px)`;
-  }
   if (layer.kind === "dots") {
     // `at 0 0`：把圆的圆心钉在**每一格贴片的左上角**，与 canvas 那边「从盒子左上角起按 pitch 铺点」逐格对应。
     // 不写 `at 0 0` 的话圆心会落在贴片正中，两条路径整格错开半格。
@@ -216,26 +206,6 @@ export function paintMaterial(
 }
 
 function paintLayer(ctx: CanvasRenderingContext2D, layer: MaterialLayer): void {
-  if (layer.kind === "stripe") {
-    const { angle, pitch, width, ink } = layer;
-    ctx.save();
-    // ⚠ CSS 的角度约定(0° 朝上、顺时针)与 canvas 的 rotate(0 = +x 轴)差 90°：
-    //   CSS `Ndeg` 的渐变线方向 = (sin N, -cos N)；canvas rotate(a) 把 +x 映到 (cos a, sin a)。
-    //   令两者相等得 a = N - 90。**改这里必须同时改 `layerToCss`**。
-    ctx.rotate(((angle - 90) * Math.PI) / 180);
-    ctx.strokeStyle = canvasInk(ink);
-    ctx.lineWidth = width;
-    ctx.beginPath();
-    // 转完之后「沿渐变线的位置」就是 x；铺的范围要盖住旋转后的对角线
-    const reach = BOX;
-    for (let x = -reach; x <= reach; x += pitch) {
-      ctx.moveTo(x + width / 2, -reach);
-      ctx.lineTo(x + width / 2, reach);
-    }
-    ctx.stroke();
-    ctx.restore();
-    return;
-  }
   if (layer.kind === "dots") {
     const { pitch, radius, ink } = layer;
     ctx.fillStyle = canvasInk(ink);

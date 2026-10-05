@@ -200,7 +200,7 @@ export const filmVoteSkinStat = sqliteTable("film_vote_skin_stat", {
   updated_at: integer().notNull(),
 }, (table) => [
   // ⚠ 主键带 `(skin, vote)` 两维，而不是「一款一行、红黑两列」：后者等于把「款」写进列名，
-  //   加一款就要改表。这样同一部片最多 5 款 × 2 色 = 10 行，仍然可枚举。
+  //   加一款就要改表。这样同一部片最多 3 款 × 2 色 = 6 行，仍然可枚举。
   primaryKey({ columns: [table.edition, table.film_key, table.skin, table.vote] }),
 ]);
 

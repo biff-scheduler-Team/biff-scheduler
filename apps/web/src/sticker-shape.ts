@@ -19,10 +19,11 @@
  */
 
 /** 形状族。⚠ 2026-09-29 起**红黑共用同一套**（见 `ALL_SHAPES`），不再按颜色拆子集。
- *  ⚠ 2026-09-30 换款：`reel`（胶卷盘）下线，新上 `clap`（场记板）；`torn` 留着 ——
- *    它虽然不再是「一款皮肤」，但**金棕榈复用它当轮廓**（见 `sticker-skin.ts`），
- *    所以形状与皮肤**不是一一对应**的关系：形状可以被多款复用，皮肤是「形状+图标+材质」的组合。 */
-export type StickerShape = "torn" | "stub" | "sprocket" | "scrap" | "clap";
+ *  ⚠ 2026-10-05：随场记板 / 金棕榈下线，`clap` 与 `torn`（撕裂圆片）两个轮廓一并删掉 ——
+ *    `torn` 早已不是「一款皮肤」，它只是被金棕榈**借去当轮廓**（见旧版 `sticker-skin.ts`）；
+ *    借它的那一款删了，它也就没有消费者了。
+ *    「形状可以被多款复用」这条能力仍然成立，只是当下三款各用一个轮廓。 */
+export type StickerShape = "stub" | "sprocket" | "scrap";
 
 /** 设计盒边长。所有形状的顶点都在 `0..SHAPE_BOX` 内描画,与贴纸尺寸同值(32px)。 */
 export const SHAPE_BOX = 32;
@@ -80,29 +81,7 @@ function outline(vertices: readonly Vertex[], size: number): string {
   return parts.join("");
 }
 
-/* ---------------- 五个形状 ---------------- */
-
-/** 撕裂圆片:主体是圆,右下四分之一处把 5 个顶点交错推里推外并打成尖角 —— 读作「手撕边」。
- *  ⚠ 抖动**不能用 `Math.random`**:形状是「这一枚长什么样」的一部分,必须可复现。 */
-function tornVertices(): Vertex[] {
-  const out: Vertex[] = [];
-  const COUNT = 26;
-  for (let i = 0; i < COUNT; i++) {
-    const angle = (i / COUNT) * Math.PI * 2;
-    // 经典整数哈希:同一个 i 永远同一个抖动值
-    const raw = Math.sin(i * 12.9898) * 43758.5453;
-    const jitter = ((raw % 1) + 1) % 1;
-    // 撕裂段取 i=5..9:角度约 69°~125°,即**右下**那一片(canvas 的 y 轴朝下)
-    const torn = i >= 5 && i <= 9;
-    const radius = torn ? (i % 2 === 0 ? 13.3 : 15.7) : 15 + (jitter - 0.5) * 1.1;
-    out.push({
-      x: SHAPE_BOX / 2 + Math.cos(angle) * radius,
-      y: SHAPE_BOX / 2 + Math.sin(angle) * radius,
-      sharp: torn,
-    });
-  }
-  return out;
-}
+/* ---------------- 三个形状 ---------------- */
 
 /** 票根切角:左右两条长边正中各挖一个 V 形撕口,四角带圆 —— 电影院撕票的那张纸。 */
 function stubVertices(): Vertex[] {
@@ -189,44 +168,16 @@ function scrapVertices(): Vertex[] {
   return out;
 }
 
-/** 场记板:翻盖(合板条) + 板身,两者之间有可见的台阶间隙 —— 32px / 20px 下靠三件事认出它:
- *  ① 翻盖比板身宽(各侧探出 3 单位 ≈ 1.9px@20),看得出「探头」;
- *  ② 翻盖顶边斜 4 单位(左 y=3、右 y=7),一眼是「打开」的板;
- *  ③ 翻盖与板身之间有 2.5 单位(≈1.6px@20)的凹陷台阶,读成间隙。
- *
- *  ⚠ **不画条纹**(同上一版的理由:1px 以下的条只会糊)。
- *  ⚠ 轮廓是**单一闭合环**:台阶靠左右各一组「外→内」的尖角拐做出来,不是两条独立路径。 */
-function clapVertices(): Vertex[] {
-  return [
-    // 翻盖(宽:x 2→30,高:y 3→11;比板身各侧宽 3 单位)
-    { x: 2, y: 3, sharp: true }, // 翻盖左上
-    { x: 30, y: 7, sharp: true }, // 翻盖右上(斜 4 单位)
-    { x: 30, y: 11, sharp: true }, // 翻盖右下
-    // 右侧台阶:从翻盖外缘(x=30)跳到板身外缘(x=27),再往下 2.5 到板身顶
-    { x: 27, y: 11, sharp: true },
-    { x: 27, y: 13.5, sharp: true },
-    // 板身(窄:x 5→27,y 13.5→28;左下右下带圆角)
-    { x: 27, y: 28 }, // 板身右下(圆角)
-    { x: 5, y: 28 }, // 板身左下(圆角)
-    { x: 5, y: 13.5, sharp: true }, // 板身左上
-    // 左侧台阶:从板身外缘(x=5)跳到翻盖外缘(x=2),跟着斜度往上
-    { x: 5, y: 11, sharp: true },
-    { x: 2, y: 9, sharp: true }, // 翻盖左下(y=9 而不是 11:左端比右端高 2,与翻盖斜度一致)
-  ];
-}
-
 /** 形状 → 顶点环。⚠ 只在这里登记一次,`shapePath` 与单测都读它。 */
 const VERTICES: Record<StickerShape, readonly Vertex[]> = {
-  torn: tornVertices(),
   stub: stubVertices(),
   sprocket: sprocketVertices(),
   scrap: scrapVertices(),
-  clap: clapVertices(),
 };
 
 /** 全部形状。⚠ 2026-09-29 起**不再按颜色分子集**：红黑共用同一套皮肤，只差底色
  *  （用户原话「只是红色跟黑色的区别」）。「哪个形状配哪款皮肤」在 `sticker-skin.ts`。 */
-export const ALL_SHAPES: readonly StickerShape[] = ["clap", "torn", "stub", "sprocket", "scrap"];
+export const ALL_SHAPES: readonly StickerShape[] = ["stub", "sprocket", "scrap"];
 
 /** 形状 → 该形状的 SVG path `d`(默认按 `SHAPE_BOX` 原尺寸)。
  *

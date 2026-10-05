@@ -49,7 +49,7 @@ describe("材质 ↔ 样式表：副本不许漂移", () => {
     for (const material of STICKER_MATERIAL_LIST) {
       expect(squishedCss).toContain(`.rb-dot__face[data-rb-material="${material}"] {`);
     }
-    // 层数不能全一样到「看起来只有一条规则」——三个材质各自的层数必然不同
+    // 层数不能全一样到「看起来只有一条规则」——两个材质各自的层数必然不同
     const layerCounts = STICKER_MATERIAL_LIST.map((m) => materialBackground(m, STICKER_SIZE).split("radial-gradient").length + materialBackground(m, STICKER_SIZE).split("repeating-linear-gradient").length);
     expect(new Set(layerCounts).size).toBeGreaterThan(1);
   });
@@ -63,7 +63,7 @@ describe("材质 ↔ 样式表：副本不许漂移", () => {
 });
 
 describe("材质的配方本身", () => {
-  it("三个材质都有内容，且互不相同（不能是同一串换个名字）", () => {
+  it("每个材质都有内容，且互不相同（不能是同一串换个名字）", () => {
     for (const material of STICKER_MATERIAL_LIST) {
       expect(materialBackground(material, STICKER_SIZE).length).toBeGreaterThan(10);
     }
@@ -98,7 +98,7 @@ describe("材质的配方本身", () => {
     const dotted: StickerMaterial[] = ["grain"];
     for (const material of STICKER_MATERIAL_LIST) {
       const size = materialBackgroundSize(material, STICKER_SIZE);
-      // ⚠ 小数也要认:配方按 32 设计盒写,换算到实际贴纸尺寸(20)后就是小数
+      // ⚠ 小数也要认:配方按 32 设计盒写,换算到实际贴纸尺寸(24)后就是小数
       if (dotted.includes(material)) expect(size).toMatch(/^\d+(\.\d+)?px \d+(\.\d+)?px/);
       else expect(size).toBe("auto");
     }

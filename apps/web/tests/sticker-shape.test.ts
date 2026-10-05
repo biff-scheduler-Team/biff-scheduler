@@ -59,7 +59,7 @@ describe("形状的几何", () => {
 });
 
 describe("中心微图标的几何", () => {
-  it("五款图形各自闭合、坐标落在自己的设计盒内", () => {
+  it("全部图形各自闭合、坐标落在自己的设计盒内", () => {
     for (const glyph of ALL_GLYPHS) {
       const d = glyphPath(glyph);
       expect(d.endsWith("Z")).toBe(true);
@@ -74,11 +74,11 @@ describe("中心微图标的几何", () => {
     expect(new Set(ALL_GLYPHS.map((glyph) => glyphPath(glyph))).size).toBe(ALL_GLYPHS.length);
   });
 
-  // ⚠ 0.45 → 0.55(2026-09-30):0.45 那句「下限」是按 32px 写的，而贴纸实际是 20px
-  //   —— 9px 的图标五款全糊，见 `sticker-glyph.ts` 里 `ICON_RATIO` 的说明。
-  it("图标占比是 55% —— 20px 贴纸上约 11px，32px 形状盒上约 18px", () => {
-    expect(ICON_RATIO).toBeCloseTo(0.55, 5);
-    expect(Math.round(SHAPE_BOX * ICON_RATIO)).toBe(18);
+  // ⚠ 0.45 → 0.55(2026-09-30) → 0.46(2026-10-05):贴纸放大到 24px 时，
+  //   用比例把中心图标的**实际像素**压回放大前的 11px(用户「中间挖孔大小不变」)。
+  it("图标占比是 46% —— 24px 贴纸上仍是约 11px(与放大前 20 × 0.55 同值)", () => {
+    expect(ICON_RATIO).toBeCloseTo(0.46, 5);
+    expect(Math.round(SHAPE_BOX * ICON_RATIO)).toBe(15);
     expect(Math.round(STICKER_SIZE * ICON_RATIO)).toBe(11);
   });
 
@@ -92,8 +92,8 @@ describe("中心微图标的几何", () => {
       expect(x).toBeCloseTo(size - drawn - x, 6);
       expect(y).toBeCloseTo(size - drawn - y, 6);
     }
-    // (32 − 24 × (32 × 0.55 / 24)) / 2 = 7.2
-    expect(glyphPlacement(SHAPE_BOX).x).toBeCloseTo(7.2, 6);
+    // (32 − 24 × (32 × 0.46 / 24)) / 2 = 8.64
+    expect(glyphPlacement(SHAPE_BOX).x).toBeCloseTo(8.64, 6);
   });
 });
 
@@ -117,20 +117,20 @@ describe("单一来源（四处消费不许各描一份）", () => {
   });
 
   it("`shapeClipVar` 产出的是 CSS 能直接吃的 path() 字面量", () => {
-    const value = shapeClipVar("torn", SHAPE_BOX);
+    const value = shapeClipVar("stub", SHAPE_BOX);
     expect(value.startsWith('path("M')).toBe(true);
     expect(value.endsWith('")')).toBe(true);
-    expect(value).toBe(`path("${shapePath("torn")}")`);
+    expect(value).toBe(`path("${shapePath("stub")}")`);
   });
 
   // `clip-path: path()` 是**绝对 px**、不随元素缩放（这一点与 SVG 的 `viewBox` 不同）。
   // 贴纸尺寸已经改过四轮，一旦有人忘了把尺寸传进来，症状是贴纸**被裁掉右下角**
   // —— 而那不会报错、只有人眼看得出来，所以这里把它钉死。
   it("★ 传给 `shapeClipVar` 的尺寸会真的反映到坐标上（不是被忽略）", () => {
-    const big = shapeClipVar("torn", SHAPE_BOX);
-    const small = shapeClipVar("torn", SHAPE_BOX / 2);
+    const big = shapeClipVar("stub", SHAPE_BOX);
+    const small = shapeClipVar("stub", SHAPE_BOX / 2);
     expect(small).not.toBe(big);
-    expect(small).toBe(`path("${shapePath("torn", SHAPE_BOX / 2)}")`);
+    expect(small).toBe(`path("${shapePath("stub", SHAPE_BOX / 2)}")`);
     // 折半之后所有坐标（含控制点）都不该跑出盒子 —— 用最大坐标近似校验一下
     const coords = (small.match(/-?\d+(\.\d+)?/g) ?? []).map(Number);
     for (const value of coords) expect(Math.abs(value)).toBeLessThanOrEqual(SHAPE_BOX / 2 + 0.01);

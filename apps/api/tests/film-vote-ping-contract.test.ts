@@ -119,7 +119,7 @@ describe("上报载荷的前后端契约：前端真的会发的形状，服务�
 
   it("★ 一条带评语、一条 `null`（同一份载荷混发）：两票都落库，只有那一条进讨论区", async () => {
     const response = await ping(env, [
-      entry("cat:f001", "red", "有评语", "palm"),
+      entry("cat:f001", "red", "有评语", "sprocket"),
       entry("cat:f002", "black"),
     ]);
     expect(response.status).toBe(200);

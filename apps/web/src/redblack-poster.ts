@@ -343,14 +343,6 @@ function stickerBody(shape: StickerShape, size: number): Path2D {
   return built;
 }
 
-/** 图标墨色:金棕榈那枚叶子**恒为金**(与页面 `--rb-icon-gold` 是同一件事),
- *  其余图形仍走深底海报专属的那一档白。
- *  ⚠ 抽成一处的理由与页面侧一样:海报里画图标有两处(榜单行左侧那枚「我贴的」、
- *    贴纸区里的每一枚),两处各写一遍 `glyph === "palm" ? … : …` 迟早会漏一处。 */
-function iconInk(glyph: StickerGlyph): string {
-  return glyph === "palm" ? C.stickerGold : C.stickerInk;
-}
-
 /** 微图标 `Path2D` 缓存(图形本身与尺寸无关,缩放交给绘制时的 `ctx.scale`)。 */
 const iconCache = new Map<StickerGlyph, Path2D>();
 
@@ -430,9 +422,9 @@ function drawField(ctx: CanvasRenderingContext2D, row: RbPosterRow, x: number, t
       ctx.lineWidth = 1.6;
       ctx.stroke(body);
     }
-    // 中心微图标:与页面上是同一族图形(同样由款决定),墨色用深底海报专属的那一档
-    // (金棕榈除外 —— 它恒为金,见 `iconInk`)
-    drawStickerIcon(ctx, skinSpec(s.skin).glyph, FIELD_STICKER, iconInk(skinSpec(s.skin).glyph));
+    // 中心微图标:与页面上是同一族图形(同样由款决定),墨色用深底海报专属的那一档。
+    // ⚠ 2026-10-05：金棕榈下线后不再有「恒为金」的那一款，墨色只剩 `C.stickerInk` 一档。
+    drawStickerIcon(ctx, skinSpec(s.skin).glyph, FIELD_STICKER, C.stickerInk);
     ctx.restore();
   });
   ctx.restore();
@@ -475,7 +467,7 @@ function drawRow(
       ctx.stroke(body);
     }
     if (mineSticker) {
-      drawStickerIcon(ctx, skinSpec(mineSkin).glyph, size, iconInk(skinSpec(mineSkin).glyph));
+      drawStickerIcon(ctx, skinSpec(mineSkin).glyph, size, C.stickerInk);
     }
     ctx.restore();
   } else {

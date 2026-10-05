@@ -197,7 +197,7 @@ export async function replaceContributorVotes(
    * 这边只覆盖**带款**的那些票。所以两者的加减必须同源同拍，否则群点会比数字多或少。
    *
    * ⚠ **不进日账本**（`stat-daily`）：账本要回答的是「今天红黑各涨了多少」，而款是展示细节；
-   *   把款并进桶会让桶数乘 5，且白名单那边本来就只有「颜色」这一维的口径。 */
+   *   把款并进桶会让桶数乘上款数，且白名单那边本来就只有「颜色」这一维的口径。 */
   const skinKey = (filmKey: string, skin: StickerSkin, vote: FilmVote) =>
     and(
       eq(filmVoteSkinStat.edition, edition),

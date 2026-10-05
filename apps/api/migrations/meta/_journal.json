@@ -92,6 +92,13 @@
       "when": 1790754663189,
       "tag": "0013_drop_retired_sticker_skins",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1791191693450,
+      "tag": "0014_drop_clap_palm_skins",
+      "breakpoints": true
     }
   ]
 }

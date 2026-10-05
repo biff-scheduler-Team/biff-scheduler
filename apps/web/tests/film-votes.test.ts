@@ -61,7 +61,7 @@ describe("parseFilmSkins 白名单", () => {
     const { parseFilmSkins } = await import("../src/film-votes");
     expect(
       parseFilmSkins({
-        a: { stub: { red: "2", black: -5 }, palm: { red: 0, black: 0 } },
+        a: { stub: { red: "2", black: -5 }, sprocket: { red: 0, black: 0 } },
       }),
     ).toEqual({ a: { stub: { red: 2, black: 0 } } });
   });
@@ -239,7 +239,7 @@ describe("scheduleFilmVotesPing", () => {
       // 没给款(老调用形状)→ 补 null
       { key: "a", vote: "red" },
       // 给了款 → 原样带上
-      { key: "b", vote: "black", skin: "palm" },
+      { key: "b", vote: "black", skin: "sprocket" },
       // 脏值(不在契约层白名单里)→ 归成 null,而不是把它发上去让服务端丢整条
       { key: "c", vote: "red", skin: "not-a-skin" as never },
     ]);
@@ -250,7 +250,7 @@ describe("scheduleFilmVotesPing", () => {
       .votes;
     expect(votes).toEqual([
       { key: "a", vote: "red", comment: null, skin: null },
-      { key: "b", vote: "black", comment: null, skin: "palm" },
+      { key: "b", vote: "black", comment: null, skin: "sprocket" },
       { key: "c", vote: "red", comment: null, skin: null },
     ]);
     for (const entry of votes) expect("skin" in entry).toBe(true);

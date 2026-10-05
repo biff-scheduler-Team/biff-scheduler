@@ -36,10 +36,12 @@ function tally(list: readonly Sticker[]): Record<string, number> {
 describe("crowdStickers：按服务端的款分布铺", () => {
   it("★ 分布被真的用上了（而不是一律按 id 兜底）", () => {
     const counts = { total: 5, red: 3, black: 2 };
-    const skins: SkinCrowdCounts = { stub: { red: 2, black: 0 }, palm: { red: 0, black: 2 } };
+    // ⚠ 分布里这两款**不能撞上** `derivedSkin("cat:f001#crowd-2")`：兜底那枚的款由 id 哈希定
+    //   （这里是 `scrap`），撞上的话 tally 会把它并进同一桶 —— 那条断言就变成看运气。
+    const skins: SkinCrowdCounts = { stub: { red: 2, black: 0 }, sprocket: { red: 0, black: 2 } };
     expect(tally(crowdStickers("cat:f001", counts, skins))).toEqual({
       stub: 2,
-      palm: 2,
+      sprocket: 2,
       // 红 3 枚里只有 2 枚带款，差的那一枚按 id 兜底
       [derivedSkin("cat:f001#crowd-2")]: 1,
     });
@@ -81,7 +83,7 @@ describe("crowdStickers：按服务端的款分布铺", () => {
   it("id 与位置仍**只由序号决定**（分布变了也不该让其它贴纸挪位置）", () => {
     const counts = { total: 3, red: 2, black: 1 };
     const before = crowdStickers("cat:f001", counts, { stub: { red: 2, black: 0 } });
-    const after = crowdStickers("cat:f001", counts, { palm: { red: 2, black: 0 } });
+    const after = crowdStickers("cat:f001", counts, { scrap: { red: 2, black: 0 } });
     // 同一个序号 = 同一个 id = 同一个落点
     for (let i = 0; i < counts.total; i += 1) {
       expect(after[i].id).toBe(before[i].id);
@@ -108,7 +110,7 @@ describe("othersSkins：把我自己那一枚从分布里扣掉", () => {
   it("我没贴 / 分布里没有我 → 原样不动", () => {
     const before: SkinCrowdCounts = { stub: { red: 3, black: 1 } };
     expect(othersSkins(before, [])).toBe(before);
-    expect(othersSkins(before, [mine("palm", "red")])).toBe(before);
+    expect(othersSkins(before, [mine("scrap", "red")])).toBe(before);
   });
 
   it("桶已经空了 → 不扣成负数", () => {
@@ -132,7 +134,7 @@ describe("othersSkins：把我自己那一枚从分布里扣掉", () => {
 describe("skinsSignature：画布重绘的判据", () => {
   it("★ 只换了一款（两色总数一个都没动）也要变 —— 否则画面停在旧分布上", () => {
     const before: SkinCrowdCounts = { stub: { red: 2, black: 0 } };
-    const after: SkinCrowdCounts = { palm: { red: 2, black: 0 } };
+    const after: SkinCrowdCounts = { scrap: { red: 2, black: 0 } };
     expect(skinsSignature(after)).not.toBe(skinsSignature(before));
   });
 
@@ -141,8 +143,8 @@ describe("skinsSignature：画布重绘的判据", () => {
   });
 
   it("内容一样 → 签名一样（否则每次拉取都会白重画一遍）", () => {
-    expect(skinsSignature({ stub: { red: 1, black: 2 }, palm: { red: 0, black: 1 } })).toBe(
-      skinsSignature({ palm: { red: 0, black: 1 }, stub: { red: 1, black: 2 } }),
+    expect(skinsSignature({ stub: { red: 1, black: 2 }, scrap: { red: 0, black: 1 } })).toBe(
+      skinsSignature({ scrap: { red: 0, black: 1 }, stub: { red: 1, black: 2 } }),
     );
   });
 
@@ -153,7 +155,7 @@ describe("skinsSignature：画布重绘的判据", () => {
 });
 
 describe("derivedSkin：兜底款必须铺得开且确定", () => {
-  it("五款都会出现（不是永远落在同一款上）", () => {
+  it("各款都会出现（不是永远落在同一款上）", () => {
     const seen = new Set(Array.from({ length: 300 }, (_, i) => derivedSkin(`cat:f001#crowd-${i}`)));
     expect([...seen].sort()).toEqual([...STICKER_SKIN_KEYS].sort());
   });

@@ -45,7 +45,7 @@ function skinRows(sqlite: DatabaseSync): Array<{ skin: string; vote: string; cou
 describe("normalizeSkin（纯函数：款的唯一收口）", () => {
   it("白名单内原样通过，其余一律 null", () => {
     expect(normalizeSkin("stub")).toBe("stub");
-    expect(normalizeSkin("palm")).toBe("palm");
+    expect(normalizeSkin("sprocket")).toBe("sprocket");
     // 不是字符串的那几档 —— 它的调用方全是不可信来源（上报载荷 / 被改过的库行）
     expect(normalizeSkin(undefined)).toBeNull();
     expect(normalizeSkin(null)).toBeNull();
@@ -64,12 +64,12 @@ describe("formatSkinCounts（纯函数：聚合行 → 稀疏字典）", () => {
       formatSkinCounts([
         { film_key: "f001", skin: "stub", vote: "red", count: 2 },
         { film_key: "f001", skin: "stub", vote: "black", count: 1 },
-        { film_key: "f002", skin: "palm", vote: "black", count: 3 },
+        { film_key: "f002", skin: "sprocket", vote: "black", count: 3 },
         { film_key: "f003", skin: "torn", vote: "red", count: 0 },
       ]),
     ).toEqual({
       f001: { stub: { red: 2, black: 1 } },
-      f002: { palm: { red: 0, black: 3 } },
+      f002: { sprocket: { red: 0, black: 3 } },
     });
   });
 
@@ -79,9 +79,9 @@ describe("formatSkinCounts（纯函数：聚合行 → 稀疏字典）", () => {
         { film_key: "f001", skin: "nope", vote: "red", count: 5 },
         { film_key: "f001", skin: "stub", vote: "purple", count: 5 },
         { film_key: "f001", skin: "stub", vote: "red", count: -3 },
-        { film_key: "f001", skin: "palm", vote: "red", count: "4" },
+        { film_key: "f001", skin: "sprocket", vote: "red", count: "4" },
       ]),
-    ).toEqual({ f001: { palm: { red: 4, black: 0 } } });
+    ).toEqual({ f001: { sprocket: { red: 4, black: 0 } } });
   });
 });
 
@@ -114,13 +114,13 @@ describe("按款聚合的写路径（d1 垫片，跑真 SQL）", () => {
       skins: skins([["f001", "stub"]]),
     });
     await replaceContributorVotes(db, EDITION, "u1", new Map([["f001", "red"]]), {
-      skins: skins([["f001", "palm"]]),
+      skins: skins([["f001", "sprocket"]]),
     });
     // 票与颜色都没变 → 总数那条路径根本不该被触发（`diffVotes` 看不见这次编辑）
     expect(await readVoteCounts(db, EDITION)).toEqual({ f001: { red: 1, black: 0 } });
-    expect(await readSkinCounts(db, EDITION)).toEqual({ f001: { palm: { red: 1, black: 0 } } });
+    expect(await readSkinCounts(db, EDITION)).toEqual({ f001: { sprocket: { red: 1, black: 0 } } });
     // 旧桶要**真的被删行**，而不是留一个 count = 0
-    expect(skinRows(sqlite)).toEqual([{ skin: "palm", vote: "red", count: 1 }]);
+    expect(skinRows(sqlite)).toEqual([{ skin: "sprocket", vote: "red", count: 1 }]);
   });
 
   it("★ 改色同时带着款一起走：旧 (款,色) 减、新 (款,色) 加", async () => {
@@ -128,10 +128,10 @@ describe("按款聚合的写路径（d1 垫片，跑真 SQL）", () => {
       skins: skins([["f001", "stub"]]),
     });
     await replaceContributorVotes(db, EDITION, "u1", new Map([["f001", "black"]]), {
-      skins: skins([["f001", "palm"]]),
+      skins: skins([["f001", "sprocket"]]),
     });
     expect(await readVoteCounts(db, EDITION)).toEqual({ f001: { red: 0, black: 1 } });
-    expect(await readSkinCounts(db, EDITION)).toEqual({ f001: { palm: { red: 0, black: 1 } } });
+    expect(await readSkinCounts(db, EDITION)).toEqual({ f001: { sprocket: { red: 0, black: 1 } } });
   });
 
   it("★ 撤票：按款那一行也要归零删行", async () => {
@@ -205,12 +205,12 @@ describe("按款聚合的写路径（d1 垫片，跑真 SQL）", () => {
       skins: skins([["f001", "stub"]]),
     });
     await replaceContributorVotes(db, EDITION, "sub-1", new Map([["f002", "black"]]), {
-      skins: skins([["f002", "palm"]]),
+      skins: skins([["f002", "sprocket"]]),
     });
     await claimContributorVotes(db, EDITION, "anon:x", "sub-1");
     expect(await readSkinCounts(db, EDITION)).toEqual({
       f001: { stub: { red: 1, black: 0 } },
-      f002: { palm: { red: 0, black: 1 } },
+      f002: { sprocket: { red: 0, black: 1 } },
     });
     expect(storedSkin(sqlite, "sub-1", "f001")).toBe("stub");
     // 源那几行被清掉后，它的聚合也必须一起清干净（否则群点会永远多一枚）

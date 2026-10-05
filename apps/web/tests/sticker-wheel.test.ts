@@ -1,7 +1,7 @@
 // 换款轮盘的**几何**（2026-09-29，PLAN-20260929195500）。
 //
 // 为什么单测这几行：节点位置错了**不会报错**，只会让那一圈看起来「有点歪」
-// —— 而圈里躺着的是用户要点的那 5 款皮肤，歪了就看不出「哪颗是现在这款、哪颗在旁边」。
+// —— 而圈里躺着的是用户要点的那几款皮肤，歪了就看不出「哪颗是现在这款、哪颗在旁边」。
 // 具体守两条容易被无意改坏的性质：**第一颗在正上方**、**等角度均分**。
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -41,7 +41,7 @@ describe("wheelSeat：节点怎么摆在环上", () => {
     const list = seats();
     const chords = list.map((seat, index) => chord(seat, list[(index + 1) % COUNT]));
     for (const value of chords) expect(value).toBeCloseTo(chords[0], 1);
-    // 5 等分时弦长 = 2R·sin(π/5)
+    // N 等分时弦长 = 2R·sin(π/N)
     expect(chords[0]).toBeCloseTo(2 * WHEEL_RADIUS * Math.sin(Math.PI / COUNT), 1);
   });
 

@@ -17,14 +17,8 @@
    *   色值只在这一处表达(AGENTS.md §5)。 */
   --rb-icon-red: rgb(255 255 255 / 92%);
   --rb-icon-black: rgb(255 255 255 / 72%);
-  /* 金棕榈那枚叶子的**金**(2026-09-30)。⚠ 它是**唯一一个不跟纸色走**的图标墨色 ——
-   * 红贴黑贴上都是金叶:用户拍板「参考戛纳金棕榈」,而戛纳那枚本来就是金的,
-   * 让它随纸色变成白叶,名字在两个颜色上都立不住。
-   * ⚠ 取值是「哑金」而不是高饱和的金(`#ffd700` 那类):它压在 `--rb-red` 上时,
-   *   过亮的金会变成一块反光斑点,读不出是叶子。
-   * ⚠ 与另外两条墨色一样,它同时被 `sticker-sprite.ts::readPalette` 读走(canvas 上的群点
-   *   与分享图要同一份金)—— 色值只在这一处表达(AGENTS.md §5)。 */
-  --rb-icon-gold: #d9b45c;
+  /* ⚠ 2026-10-05：金棕榈下线后**不再有**「不跟纸色走」的墨色，`--rb-icon-gold` 已删 ——
+   *   图标墨色只剩上面红 / 黑两档，与 `.rb-dot--red/black .rb-dot__icon` 一一对应。 */
   /* 规则浮层的底色(2026-09-29)。⚠ 也走 token 而不是就地写死(AGENTS.md §5):
    * 它是**深色浮层 + 白字**,在亮 / 暗两种主题下都成立,所以不随主题翻转 ——
    * 但颜色仍然只在这一处表达,将来要调只改这里。 */
@@ -939,11 +933,11 @@
  *   纸白边与落影一起裁掉,而纸白边正是 E2E `redblack.spec.ts` 断言的那条 `/1.5px/`。 */
 .rb-dot {
   position: absolute;
-  /* ⚠ 20px 与 `sticker-sprite.ts::STICKER_SIZE` **必须逐字一致**:canvas 上的群点走 sprite,
+  /* ⚠ 24px 与 `sticker-sprite.ts::STICKER_SIZE` **必须逐字一致**:canvas 上的群点走 sprite,
    *   这一枚走 DOM,尺寸只此两处表达(`tests/sticker-sprite.test.ts` 会机械比对,不靠人记)。
-   *   尺寸沿革见 `STICKER_SIZE` 的说明(26 → 20 → 32 → 20,用户四轮改过)。 */
-  width: 20px;
-  height: 20px;
+   *   尺寸沿革见 `STICKER_SIZE` 的说明(26 → 20 → 32 → 20 → 24,用户五轮改过)。 */
+  width: 24px;
+  height: 24px;
   /* 这枚贴纸是 `<button>`(它可单击收回,顺带让键盘也能收回):把按钮的默认外观清干净,
    * 否则自带的 padding / 边框会把 32px 的方框撑坏 */
   appearance: none;
@@ -1003,55 +997,49 @@
 }
 
 /* ---- 材质层(2026-09-29,PLAN-20260929195500) ----
- * 下面三串值是 `sticker-material.ts::materialBackground()` / `materialBackgroundSize()`
- * **生成**出来贴在这里的（按 `STICKER_SIZE` = 20 换算）。⚠ 它们是那份配方的**副本**,
+ * 下面两串值是 `sticker-material.ts::materialBackground()` / `materialBackgroundSize()`
+ * **生成**出来贴在这里的（按 `STICKER_SIZE` = 24 换算）。⚠ 它们是那份配方的**副本**,
  * 所以 `tests/sticker-material.test.ts` 会逐个材质断言「本文件里就是生成结果」——
  * 改了配方或改了贴纸尺寸而忘了同步这里,单测会直接把该贴的文本报出来。
+ * ⚠ 2026-10-05：`screen`（丝网重影）随场记板下线，这条规则**已删** —— 材质表里留一条
+ *   没有任何皮肤指向的规则，正是单测那条「登记了却没人用」守卫要挡的东西。
  *
  * 为什么不内联进元素 style:材质与**具体哪一枚贴纸无关**,300 张卡共用同一条规则;
  * 内联会把这串长文本复制 300 份(≈250KB DOM 属性),白花内存。
  * 为什么不干脆只用 canvas 画:我贴的那一枚是**可拖 / 可键盘收回的 `<button>`**,
  * 它有纸白边、有 outline、有拖拽命中区 —— 这些都得靠 DOM 才成立。 */
-.rb-dot__face[data-rb-material="screen"] {
-  /* 丝网重影:两组角度差 1.5° 的细纹叠出摩尔纹(真实丝网套色没对准就是这样)。 */
-  --rb-mat:
-    repeating-linear-gradient(115deg, rgb(255 255 255 / 5%) 0 0.63px, transparent 0.63px 1.88px),
-    repeating-linear-gradient(113.5deg, rgb(255 255 255 / 4.5%) 0 1.56px, transparent 1.56px 4.38px);
-  --rb-mat-size: auto;
-}
-
 .rb-dot__face[data-rb-material="grain"] {
   /* 胶片颗粒:两层平铺圆点,细密偏白 + 稀疏偏黑 —— 只用浅色点会读成「磨砂」而不是「颗粒」。
-   * ⚠ 0.34px 的点在 20px 贴纸上落在 1 个物理像素以下,实际读作一层**淡色调**而不是颗粒。
-   *   这是「贴纸缩到 20px」的必然代价(用户已接受),不是写错了 —— 见 `STICKER_SIZE` 的沿革。 */
+   * ⚠ 0.41px 的点在 24px 贴纸上落在 1 个物理像素以下,实际读作一层**淡色调**而不是颗粒。
+   *   这是「贴纸只有 24px」的必然代价(用户已接受),不是写错了 —— 见 `STICKER_SIZE` 的沿革。 */
   --rb-mat:
-    radial-gradient(circle at 0 0, rgb(255 255 255 / 7%) 0 0.34px, transparent 0.34px),
-    radial-gradient(circle at 0 0, rgb(0 0 0 / 7%) 0 0.5px, transparent 0.5px);
-  --rb-mat-size: 1.88px 1.88px, 3.13px 3.13px;
+    radial-gradient(circle at 0 0, rgb(255 255 255 / 7%) 0 0.41px, transparent 0.41px),
+    radial-gradient(circle at 0 0, rgb(0 0 0 / 7%) 0 0.6px, transparent 0.6px);
+  --rb-mat-size: 2.25px 2.25px, 3.75px 3.75px;
 }
 
 .rb-dot__face[data-rb-material="ink"] {
   /* 印章油墨边:中心径向压暗 + 沿内缘一圈深浅不一的墨点(匀的一圈是描边,不均匀才像油墨)。 */
   --rb-mat:
-    radial-gradient(circle at 10px 10px, transparent 0 5.6px, rgb(0 0 0 / 14%) 11.2px),
-    radial-gradient(circle at 19.08px 10px, rgb(0 0 0 / 8.6%) 0 0.5px, transparent 0.5px),
-    radial-gradient(circle at 18.14px 12.96px, rgb(0 0 0 / 15.5%) 0 0.49px, transparent 0.49px),
-    radial-gradient(circle at 16.21px 15.21px, rgb(0 0 0 / 14.7%) 0 0.76px, transparent 0.76px),
-    radial-gradient(circle at 14.19px 17.25px, rgb(0 0 0 / 16.3%) 0 0.71px, transparent 0.71px),
-    radial-gradient(circle at 11.57px 18.91px, rgb(0 0 0 / 9.5%) 0 0.95px, transparent 0.95px),
-    radial-gradient(circle at 8.36px 19.27px, rgb(0 0 0 / 10.1%) 0 0.58px, transparent 0.58px),
-    radial-gradient(circle at 5.31px 18.12px, rgb(0 0 0 / 9.2%) 0 0.44px, transparent 0.44px),
-    radial-gradient(circle at 3.75px 15.24px, rgb(0 0 0 / 16.6%) 0 0.68px, transparent 0.68px),
-    radial-gradient(circle at 1.79px 12.99px, rgb(0 0 0 / 6.7%) 0 0.38px, transparent 0.38px),
-    radial-gradient(circle at 1.04px 10px, rgb(0 0 0 / 11.8%) 0 1.04px, transparent 1.04px),
-    radial-gradient(circle at 1.16px 6.78px, rgb(0 0 0 / 5.3%) 0 0.59px, transparent 0.59px),
-    radial-gradient(circle at 3.11px 4.21px, rgb(0 0 0 / 15.2%) 0 1px, transparent 1px),
-    radial-gradient(circle at 5.38px 1.99px, rgb(0 0 0 / 9.3%) 0 0.76px, transparent 0.76px),
-    radial-gradient(circle at 8.37px 0.74px, rgb(0 0 0 / 9.4%) 0 0.59px, transparent 0.59px),
-    radial-gradient(circle at 11.43px 1.93px, rgb(0 0 0 / 6.9%) 0 0.94px, transparent 0.94px),
-    radial-gradient(circle at 14.51px 2.18px, rgb(0 0 0 / 9.8%) 0 0.98px, transparent 0.98px),
-    radial-gradient(circle at 16.18px 4.81px, rgb(0 0 0 / 13.5%) 0 0.65px, transparent 0.65px),
-    radial-gradient(circle at 18.41px 6.94px, rgb(0 0 0 / 11.8%) 0 1.05px, transparent 1.05px);
+    radial-gradient(circle at 12px 12px, transparent 0 6.72px, rgb(0 0 0 / 14%) 13.44px),
+    radial-gradient(circle at 22.9px 12px, rgb(0 0 0 / 8.6%) 0 0.6px, transparent 0.6px),
+    radial-gradient(circle at 21.77px 15.56px, rgb(0 0 0 / 15.5%) 0 0.59px, transparent 0.59px),
+    radial-gradient(circle at 19.46px 18.26px, rgb(0 0 0 / 14.7%) 0 0.92px, transparent 0.92px),
+    radial-gradient(circle at 17.02px 20.7px, rgb(0 0 0 / 16.3%) 0 0.85px, transparent 0.85px),
+    radial-gradient(circle at 13.88px 22.7px, rgb(0 0 0 / 9.5%) 0 1.14px, transparent 1.14px),
+    radial-gradient(circle at 10.04px 23.13px, rgb(0 0 0 / 10.1%) 0 0.7px, transparent 0.7px),
+    radial-gradient(circle at 6.38px 21.74px, rgb(0 0 0 / 9.2%) 0 0.52px, transparent 0.52px),
+    radial-gradient(circle at 4.5px 18.29px, rgb(0 0 0 / 16.6%) 0 0.81px, transparent 0.81px),
+    radial-gradient(circle at 2.15px 15.59px, rgb(0 0 0 / 6.7%) 0 0.46px, transparent 0.46px),
+    radial-gradient(circle at 1.25px 12px, rgb(0 0 0 / 11.8%) 0 1.25px, transparent 1.25px),
+    radial-gradient(circle at 1.39px 8.14px, rgb(0 0 0 / 5.3%) 0 0.71px, transparent 0.71px),
+    radial-gradient(circle at 3.73px 5.06px, rgb(0 0 0 / 15.2%) 0 1.2px, transparent 1.2px),
+    radial-gradient(circle at 6.45px 2.39px, rgb(0 0 0 / 9.3%) 0 0.91px, transparent 0.91px),
+    radial-gradient(circle at 10.04px 0.89px, rgb(0 0 0 / 9.4%) 0 0.71px, transparent 0.71px),
+    radial-gradient(circle at 13.71px 2.32px, rgb(0 0 0 / 6.9%) 0 1.13px, transparent 1.13px),
+    radial-gradient(circle at 17.42px 2.62px, rgb(0 0 0 / 9.8%) 0 1.17px, transparent 1.17px),
+    radial-gradient(circle at 19.42px 5.78px, rgb(0 0 0 / 13.5%) 0 0.78px, transparent 0.78px),
+    radial-gradient(circle at 22.1px 8.32px, rgb(0 0 0 / 11.8%) 0 1.26px, transparent 1.26px);
   --rb-mat-size: auto;
 }
 
@@ -1098,16 +1086,13 @@
   fill: var(--rb-icon-black);
 }
 
-/* 金棕榈:唯一的**按图标**覆写墨色的一档(见 `--rb-icon-gold` 的说明)。
- * ⚠ 选择器是 `.rb-dot__face[data-rb-glyph]` 而不是 `.rb-dot--palm`:图标是**款**的属性、
- *   不是颜色的属性,挂在脸上那层(`StickerFace` 的根元素)才对得上它的归属。
- * ⚠ 权重必须比上面那两条(0,2,0)高,否则红黑两色的规则会把它盖掉 —— 这里是 0,3,0。 */
-.rb-dot__face[data-rb-glyph="palm"] .rb-dot__icon {
-  fill: var(--rb-icon-gold);
-}
+/* ⚠ 2026-10-05：金棕榈下线后**没有**「按图标覆写墨色」这一档了 ——
+ *   那条 `.rb-dot__face[data-rb-glyph="palm"]` 规则已删，图标墨色只剩上面红 / 黑两条。
+ *   （`StickerFace` 仍然挂着 `data-rb-glyph`：它是「款 → 怎么画」的边界，将来若再出现
+ *     一款不跟纸色走的图标，规则挂在这一层即可。） */
 
 /* ---------------- 换款轮盘(2026-09-29,PLAN-20260929195500) ----------------
- * 「悬停自己那枚贴纸 → 周围弹出一圈 5 款皮肤」。它挂在 `document.body` 上(`position: fixed`),
+ * 「悬停自己那枚贴纸 → 周围弹出一圈 3 款皮肤」。它挂在 `document.body` 上(`position: fixed`),
  * 理由见 `components/StickerSkinWheel.tsx` 的文件头:画布与卡片**都会裁掉**它
  * (`.rb-canvas` 是 `overflow: hidden`;`.rb-card` 有 `contain: paint`,连 fixed 后代都圈住)。
  *
@@ -1348,11 +1333,11 @@
   top: 0;
   left: 0;
   z-index: 60;
-  /* ⚠ 跟着 `.rb-dot` 一起走(20 → 22):比贴纸本体大 2px 的「浮起来显得大一点」的关系不变;
+  /* ⚠ 跟着 `.rb-dot` 一起走(24 → 26):比贴纸本体大 2px 的「浮起来显得大一点」的关系不变;
    *   margin 恒为负的半径,把浮标中心对准指针。 */
-  width: 22px;
-  height: 22px;
-  margin: -11px 0 0 -11px;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
   /* ⚠ 浮标**刻意不是**形状族的一员(所以这里是正圆而不是 `clip-path`):
    *   它代表的那枚贴纸**还不存在** —— id 要到松手落库时才生成,形状与图标都还没有。
    *   给它固定一种轮廓,等于在承诺一个不会兑现的外观(松手可能落在别处、也可能是另一种形状)。 */
@@ -1415,15 +1400,18 @@
   position: absolute;
   top: 0;
   left: 0;
-  /* ⚠ 与 `.rb-dot` 同尺寸(20px):它标的是「贴纸**落下去**的位置」,
+  /* ⚠ 与 `.rb-dot` 同尺寸(24px):它标的是「贴纸**落下去**的位置」,
    *   尺寸不一致会让人以为落点被压缩/放大了。 */
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   /* ⚠ 居中用负 margin,把 `transform` **整个**留给位移:拖拽期间每帧要写的是位移,而
    * `left` / `top` 是**布局属性** —— 每帧写它们等于每帧把这张卡拖进一次 layout 重算,
    * 正好抵消掉本轮「不再每帧做全页命中测试」省下来的那点开销。
-   * `transform` 只走合成层,不碰布局(与 `.rb-ghost` 同一手法)。 */
-  margin: -16px 0 0 -16px;
+   * `transform` 只走合成层,不碰布局(与 `.rb-ghost` 同一手法)。
+   * ⚠ 负 margin 必须**恒等于半宽**(= `-width / 2`):原来写死的 `-16px` 是 32px 那轮
+   *   留下的,贴纸缩回 20 之后预览中心就一直偏 6px(只是虚线圈,肉眼没报出来);
+   *   2026-10-05 尺寸改 24 时顺手订正成 `-12px`。 */
+  margin: -12px 0 0 -12px;
   border: 1.5px dashed var(--rb-red);
   /* 与 `.rb-ghost` 同一理由:预览标的是一枚**尚未生成**的贴纸,不该承诺某个具体轮廓 */
   border-radius: 50%;

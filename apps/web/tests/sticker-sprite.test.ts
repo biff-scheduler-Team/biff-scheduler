@@ -88,7 +88,7 @@ describe("贴纸外观失效:token 一变就要重画", () => {
     const before = mod.spriteEpoch();
 
     // 主题监听是**惰性**挂的:第一次真要去读颜色时才装
-    mod.stickerSprite("red", "clap", 2);
+    mod.stickerSprite("red", "stub", 2);
     const watcher = FakeMutationObserver.last;
     expect(watcher?.observed).toEqual([[{}, { attributes: true, attributeFilter: ["data-theme"] }]]);
 
@@ -102,7 +102,7 @@ describe("贴纸外观失效:token 一变就要重画", () => {
   it("退订之后不再收到通知", () => {
     const seen: number[] = [];
     const stop = mod.onSpriteInvalidate(() => seen.push(1));
-    mod.stickerSprite("black", "clap", 2);
+    mod.stickerSprite("black", "stub", 2);
     const watcher = FakeMutationObserver.last;
 
     watcher?.fire();
@@ -114,7 +114,7 @@ describe("贴纸外观失效:token 一变就要重画", () => {
   });
 
   it("监听只挂一个:取多次 sprite 不会越挂越多", () => {
-    mod.stickerSprite("red", "clap", 2);
+    mod.stickerSprite("red", "stub", 2);
     mod.stickerSprite("black", "scrap", 2);
     mod.stickerSprite("red", "stub", 1);
     expect(FakeMutationObserver.created).toBe(1);
@@ -123,8 +123,8 @@ describe("贴纸外观失效:token 一变就要重画", () => {
 
 describe("分桶缓存:款必须是键的一部分", () => {
   it("同一个 (色, 款, dpr) 复用同一张离屏画布", () => {
-    const a = mod.stickerSprite("red", "clap", 2);
-    const b = mod.stickerSprite("red", "clap", 2);
+    const a = mod.stickerSprite("red", "stub", 2);
+    const b = mod.stickerSprite("red", "stub", 2);
     expect(b.canvas).toBe(a.canvas);
   });
 
@@ -134,9 +134,9 @@ describe("分桶缓存:款必须是键的一部分", () => {
   });
 
   it("换色 / 换 dpr 仍然是各自的桶", () => {
-    const red = mod.stickerSprite("red", "clap", 2).canvas;
-    const black = mod.stickerSprite("black", "clap", 2).canvas;
-    const red1x = mod.stickerSprite("red", "clap", 1).canvas;
+    const red = mod.stickerSprite("red", "stub", 2).canvas;
+    const black = mod.stickerSprite("black", "stub", 2).canvas;
+    const red1x = mod.stickerSprite("red", "stub", 1).canvas;
     expect(black).not.toBe(red);
     expect(red1x).not.toBe(red);
   });
@@ -148,14 +148,14 @@ describe("分桶缓存:款必须是键的一部分", () => {
         for (const dpr of [1, 2]) seen.add(mod.stickerSprite(type, skin, dpr).canvas);
       }
     }
-    // 2 色 × 5 款 × 2 档 dpr = 20
-    expect(seen.size).toBe(20);
+    // 2 色 × 3 款 × 2 档 dpr = 12
+    expect(seen.size).toBe(12);
   });
 });
 
 describe("尺寸口径", () => {
-  it("贴纸 20px(2026-09-29:用户看过 32 的实机效果后要求调小)", () => {
-    expect(mod.STICKER_SIZE).toBe(20);
+  it("贴纸 24px(2026-10-05:用户「把贴纸放大一点」;32 那一档此前已被否决过)", () => {
+    expect(mod.STICKER_SIZE).toBe(24);
   });
 
   // 尺寸是**两处表达**(canvas sprite 那一侧 + CSS 里那枚 DOM 按钮),靠注释提醒是靠不住的 ——
