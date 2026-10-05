@@ -360,25 +360,17 @@
   font-size: 12px;
 }
 
-/* 触屏专属的一句用法(2026-10-05,用户:「整个换贴纸样式的地方没有提示」)。
- * ⚠ 桌面端 `display: none`:鼠标**悬停**自己那枚贴纸就能发现换款,不需要这句话;
- *   而触屏没有 hover,长按是完全隐式的手势 —— 不写出来就真的没人知道。
- * ⚠ 用媒体查询而不是 JS 判设备:`display: none` 的代价是零,而 JS 判断会让首帧与后续渲染
- *   不一致(首屏拿不到 `matchMedia` 的那一档)。
+/* 换款入口的一句用法(2026-10-05,用户:「整个换贴纸样式的地方没有提示」)。
+ * ⚠ 鼠标与触屏**都是长按**(悬停入口 2026-10-05 已删),而长按在界面上完全不可见 ——
+ *   不写出来就真的没人知道。所以它现在**两边都显示**,不再按 `(hover: none)` 分档
+ *   (改前只在触屏显示,那时鼠标靠悬停就能发现)。
  * ⚠ `flex-basis: 100%` 与上面那条 `.rb-sort-hint` 同款:它要**独占一行**,
  *   否则会挤在「重新排序」旁边,被读成又一个胶囊按钮。 */
-.rb-touch-tip {
-  display: none;
+.rb-wheel-tip {
   flex-basis: 100%;
   margin: 0;
   color: var(--muted);
   font-size: 12px;
-}
-
-@media (hover: none) {
-  .rb-touch-tip {
-    display: block;
-  }
 }
 
 /* ---------- 空榜引导(不再有示例贴纸,只留一句怎么开始) ---------- */
@@ -997,19 +989,25 @@
   cursor: grabbing;
 }
 
-/* ---------- 触屏长按的「蓄力进度环」(2026-10-05) ----------
- * 用户 2026-10-05：「整个换贴纸样式的地方没有提示」—— 触屏上没有 hover，换款唯一的手势是
- * **长按**，而长按在界面上完全不可见。这一圈就是它的提示：按下去的**那一刻**就开始转，
- * 转满一圈（`PRESS_MS`）就弹出轮盘；松手 / 划动即消失 —— 所以常态下一点噪音都不占。
+/* ---------- 长按的「蓄力进度环」(2026-10-05) ----------
+ * 用户 2026-10-05 的两句话合起来就是这一圈的全部理由:
+ *   「整个换贴纸样式的地方没有提示」+「长按需要有圆形进度条和动效」——
+ * 换款唯一的手势是**长按**(鼠标与触屏同一套,见 `PRESS_MS`),而长按在界面上完全不可见。
+ * 这一圈就是它的提示:按下去的**那一刻**就出来,进度弧从 12 点方向顺时针扫满一圈
+ * (`PRESS_MS`)就弹出轮盘;松手 / 划动即消失 —— 所以常态下一点噪音都不占。
  *
- * ⚠ 时长由 JS 从 `PRESS_MS` 写成 `--rb-press-ms`，样式表里**不写第二份**：
- *   两处不一致的症状是「环转完了但还没开」或「还没转完就开了」，都只有肉眼看得出来。
- * ⚠ 扇形进度靠 `conic-gradient` + `@property`（`background-image` 本身不可过渡，
- *   不把角度注册成可动画的自定义属性，这一圈根本不会转）。
- *   ⚠ `inherits: false`：它只是这一枚贴纸的动画变量，不该往下继承。
- * ⚠ 它是**环**（`mask` 把中心掏空）：贴纸本体正是用户在看的预览，不能被盖住。
- * ⚠ 画在 `::after` 而不是另加一个真元素：贴纸的子树有 E2E 断言守着
- *   （「贴纸里没有别的浮层」），伪元素不进 DOM 树；顺带它也跟着 `--rb-tilt` 一起歪，正好像
+ * ⚠ 时长由 JS 从 `PRESS_MS` 写成 `--rb-press-ms`,样式表里**不写第二份**:
+ *   两处不一致的症状是「弧扫完了但还没开」或「还没扫完就开了」,都只有肉眼看得出来。
+ * ⚠ 进度靠 `conic-gradient` + 注册过的 `@property`(`background-image` 本身不可过渡,
+ *   不把角度注册成可动画的自定义属性,这一圈根本不会动)。
+ *   ⚠ `inherits: false`:它只是这一枚贴纸的动画变量,不该往下继承。
+ * ⚠ 它是**环**(`mask` 把中心掏空):贴纸本体正是用户在看的预览,不能被盖住。
+ *   `inset: -6px` + 3.5px 粗细是量过的:环落在半径 14.5–18px 这一带 ——
+ *   贴纸半径只有 12px(再往里就会被它那几层外扩约 10px 的落影糊住),所以互不遮挡。
+ * ⚠ 底轨用 `--line`、进度弧用 `--brand`:两色都随主题走(`--brand` 在暗色下是浅粉 `#fa7889`),
+ *   亮 / 暗、红贴 / 黑贴都读得出来 —— 这一圈画在**画布**上,不在贴纸上。
+ * ⚠ 画在 `::after` 而不是另加一个真元素:贴纸的子树有 E2E 断言守着
+ *   (「贴纸里没有别的浮层」),伪元素不进 DOM 树;顺带它也跟着 `--rb-tilt` 一起歪,正好像
  *   套在贴纸上的一圈。 */
 @property --rb-press-turn {
   syntax: "<angle>";
@@ -1020,20 +1018,35 @@
 .rb-dot[data-rb-pressing]::after {
   content: "";
   position: absolute;
-  inset: -5px;
+  inset: -6px;
   border-radius: 50%;
-  /* ⚠ 先隐形、隔一拍才显形（2026-10-05 用户反馈：「当时想拖动贴纸 就马上会触发换肤」）——
-   *   按下去的**第一瞬间**就闪出这圈，会让「其实是想拖」的人以为自己误触了换肤。
-   *   拖动的起手在 100ms 内就离开原位（那时这一圈还没显形，也就不会闪一下），
-   *   而真想长按的人本来就要按满 `PRESS_MS`，晚 120ms 出现几乎无感。 */
-  opacity: 0;
-  /* `0deg` 兜底：万一 `@property` 没生效（老引擎），至少还能画出一圈静态底环 */
-  background: conic-gradient(var(--brand) var(--rb-press-turn, 0deg), rgb(255 255 255 / 26%) 0);
-  mask: radial-gradient(circle, transparent calc(50% - 2px), #000 calc(50% - 2px));
+  /* 一条 `conic-gradient` 同时画**底轨**与**进度弧**:`--rb-press-turn` 之前是品牌色,
+     之后是底轨色(两个色标共用一个角度,所以那条边界就是进度头)。
+     ⚠ `0deg` 兜底:万一 `@property` 没生效(老引擎),至少留下一圈完整的底轨,不至于什么都没有。 */
+  background: conic-gradient(
+    var(--brand) var(--rb-press-turn, 0deg),
+    var(--line) var(--rb-press-turn, 0deg)
+  );
+  /* 掏空中心 → 只剩 3.5px 宽的一圈。`closest-side` 让它在方盒里也按内切圆算半径 */
+  mask: radial-gradient(closest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
+  /* ① 出场那一下的缩放 + 淡入(120ms,只在按下那一刻);
+     ② 进度弧自己扫满一圈(`--rb-press-ms`);`forwards` 让它停在满圈上等轮盘接棒 */
   animation:
-    rb-press-turn var(--rb-press-ms, 0ms) linear forwards,
-    rb-press-in 1ms linear 120ms forwards;
+    rb-press-in 120ms ease-out,
+    rb-press-turn var(--rb-press-ms, 0ms) linear forwards;
   pointer-events: none;
+}
+
+@keyframes rb-press-in {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @keyframes rb-press-turn {
@@ -1046,10 +1059,15 @@
   }
 }
 
-@keyframes rb-press-in {
-  to {
-    opacity: 1;
-  }
+/* 蓄力期间贴纸本体**微微鼓起来**一下:环在扫、贴纸也在「憋劲」,整件事才读得成一次蓄力。
+ * ⚠ 只动 `.rb-dot__face`(那张「画」),**绝不动外层那枚 `<button>`**:外层的盒子是
+ *   命中区与落库坐标的基准(拖拽起手、`elementFromPoint` 判落点、E2E 量 `boundingBox()` 都读它)——
+ *   让它动等于「贴纸在哪」与「点在哪儿」变成两个答案(落地动效那段注释里记着同一个坑)。
+ * ⚠ `transition` 只写在这条规则里:抬起手时属性一去掉,`transition` 也跟着没了 ——
+ *   于是「松开」是**立刻**回到原样。这是刻意的:取消蓄力该是一下子的事,不该拖 160ms。 */
+.rb-dot[data-rb-pressing] .rb-dot__face {
+  transform: scale(1.07);
+  transition: transform 160ms ease-out;
 }
 
 /* 贴纸的**本体**:外形 + 底色 + 质感。`--rb-shape` 由 React 按贴纸 id 推导后写成内联变量
@@ -1367,6 +1385,17 @@
   .rb-wheel__node:hover .rb-wheel__chip,
   .rb-wheel__node:focus-visible .rb-wheel__chip {
     transform: none;
+  }
+
+  /* 蓄力环:进度弧**要留** —— 它是「还要按多久」的唯一提示,属于功能而不是装饰。
+     去掉的是另外两处装饰:出场的缩放淡入、以及贴纸本体那一下「鼓劲」。 */
+  .rb-dot[data-rb-pressing]::after {
+    animation: rb-press-turn var(--rb-press-ms, 0ms) linear forwards;
+  }
+
+  .rb-dot[data-rb-pressing] .rb-dot__face {
+    transform: none;
+    transition: none;
   }
 }
 

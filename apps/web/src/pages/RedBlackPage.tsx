@@ -177,13 +177,16 @@ const LAND_MS = 380;
  *    随机数不进任何持久化状态,刷新后贴纸不会「换个角度」。 */
 const LAND_SPIN = 12;
 
-/** 悬停多久才弹出换款轮盘(ms)。
- *  ⚠ 必须有这个延时:榜单上近 300 张卡,指针横穿页面时会**一路划过**好几枚贴纸,
- *    不给延时就是一路弹环。160ms 略高于「扫过」、明显低于「停住想看」的体感点。 */
-const HOVER_MS = 160;
-/** 触屏长按多久算「要换款」(ms)。
- *  ⚠ 触屏没有 hover,而**轻点已经是「收回」**了(2026-09-28 的既有契约,E2E 守着)——
- *    所以换款只能另占一个手势:长按。500ms 是系统里「长按」的通用量级。 */
+/** 长按多久算「要换款」(ms) —— **鼠标与触屏同一个值、同一条代码路径**
+ *  (2026-10-05,用户:「我希望只保留一个 长按 不管是触屏还是鼠标」)。
+ *
+ *  ⚠ 为什么换款必须另占一个手势:**轻点**被「什么都不做」占着(用户 2026-09-30 定的:
+ *    单击在这枚贴纸上就是「按住 / 拖」的起手),**双击**被「收回」占着
+ *    (2026-09-28 的既有契约,E2E 守着)—— 只剩长按。
+ *  ⚠ 2026-10-05 之前鼠标走的是**悬停 `pointerenter` + 160ms**(`HOVER_MS`,已删):
+ *    两条手势就是两套逻辑,而用户要的是一条。500ms 是系统里「长按」的通用量级。
+ *  ⚠ 附带好处:悬停开环在近 300 张卡的榜单上必须靠延时避开「指针横穿一路弹环」,
+ *    长按天然没有这个问题 —— 没人会一路按着鼠标划过整页。 */
 const PRESS_MS = 500;
 /** 指针离开贴纸 / 环之后，隔多久把环关掉(ms)。
  *  ⚠ 必须留这段宽限：贴纸与节点之间隔了 26px 的空隙，指针穿过它时会先触发贴纸的
@@ -1165,12 +1168,11 @@ export function RedBlackPage() {
           {mode === "total" ? "按贴纸总数" : mode === "red" ? "按红贴纸数" : "按黑贴纸数"}
           从高到低；贴纸变化不会打乱当前顺序
         </p>
-        {/* 触屏专属的一句用法 —— `display: none` 由 CSS 给，只在 `(hover: none)` 显示。
-            ⚠ 桌面端不需要它：鼠标**悬停**自己那枚贴纸就能发现这个功能（那条路一直都在）；
-              而触屏没有 hover，「长按」是一条完全隐式的手势 —— 不写出来就真的没人知道
-              （用户 2026-10-05 报的正是「整个换贴纸的地方没有提示」）。
-            ⚠ 不在 JS 里判设备：那会让首帧与后续渲染不一致（而 `display: none` 的代价是零）。 */}
-        <p className="rb-touch-tip">长按自己贴的那枚贴纸，可以换一款皮肤。</p>
+        {/* 换款入口的一句用法 —— 鼠标与触屏**都是长按**（2026-10-05），而长按在界面上完全
+            不可见：不写出来就真的没人知道（用户 2026-10-05 报的正是「整个换贴纸的地方没有提示」）。
+            ⚠ 2026-10-05 之前它只在 `(hover: none)` 显示 —— 那时鼠标靠悬停就能发现；悬停入口
+              删掉之后桌面端同样需要这句话，所以它现在**两边都显示**。 */}
+        <p className="rb-wheel-tip">长按自己贴的那枚贴纸，可以换一款皮肤。</p>
       </div>
 
       {/* 空榜引导。⚠ 条件**只能**看全站票数(`totals.total`),**不能**掺「我标记了几片」
@@ -1305,41 +1307,48 @@ const RbCard = memo(function RbCard({
   // ⚠ 没有分布数据时 `othersSkins` 原样返回 `undefined` → 画布走「按 id 兜底」那条正常分支。
   const crowdSkins = othersSkins(skins, syncedFace);
 
-  /* ---------------- 换款轮盘（2026-09-29，PLAN-20260929195500；触屏一套 2026-10-05） ----------------
-   * 三条打开方式，各自绕开一个已经存在的坑：
-   *   · 鼠标 `pointerenter` → 延时 `HOVER_MS`：不延时的话指针扫过整屏会**一路弹环**；
+  /* ---------------- 换款轮盘（2026-09-29，PLAN-20260929195500；手势收敛 2026-10-05） ----------------
+   * **两条**打开方式，各自绕开一个已经存在的坑：
+   *   · **长按 `PRESS_MS`**（鼠标与触屏**同一套** —— 2026-10-05 用户：「我希望只保留一个 长按
+   *     不管是触屏还是鼠标」）：按下即亮「蓄力进度环」，500ms 到点开环；
+   *     期间位移越过 `slop`（与拖拽同一套阈值）就作废 —— 那一轮是「拖」，交给 `beginDrag`；
    *   · 键盘 `focus`，但**必须是 `:focus-visible`**：鼠标点击也会让按钮获得焦点，
-   *     不筛这一步就会「点一下收回 + 同时弹出一个环」；
-   *   · 触屏**长按 `PRESS_MS`**（容差与拖拽同一套 `slop`，见 `onPointerMove`）——
-   *     轻点被「什么都不做」占着（用户 2026-09-30 定的：单击是按住 / 拖的起手），
-   *     双击被「收回」占着（2026-09-28 的既有契约，E2E 守着），换款只能另占一个手势。
+   *     不筛这一步就会「按住鼠标 + 同时弹出一个环」。
+   *     键盘既不是触屏也不是鼠标，它没有「长按」可言，所以这一条保留（E2E 守着）。
    *
-   * ⚠ **触屏与鼠标是两套开 / 关环逻辑**（用户 2026-10-05：「手机端应该有单独的一套换肤逻辑」）：
+   * ⚠ **开环是同一套，关环仍是两条** —— 这不是选择，是正确性：
    *   鼠标靠「指针离开贴纸 / 环」关（`scheduleClose`）；触屏**不能**用那一套 ——
    *   那里「离开」只等于抬手，会把刚开出来的环当场收掉；
    *   触屏改由「点环外任意处（`StickerSkinWheel` 里的外部点击）/ 滚动页面 / 点选定款」关。
    *
-   * ⚠ **拖动优先**（同日用户第二次反馈：「当时想拖动贴纸 就马上会触发换肤」）：
-   *   拖的起手常常是「先按住停一下、再移」—— 那一停就已经超过 `PRESS_MS`，环先弹了出来。
-   *   所以环开着时一旦位移越过 `slop`，立刻关环、让 `beginDrag` 接管
-   *   （见 `onPointerMove` 里那条 ★）：**用户动起来了，就不该再是换肤**。
-   *
-   * ⚠ 刚贴下的那 `FRESH_MS` **不弹**：松手时指针正落在这枚贴纸上，那一瞬间弹环纯属噪音。
-   *   直接用 `fresh` 这个已有状态、不另记时间戳 —— 它表达的就是「刚才那一下落在这枚」。 */
+   * ⚠ 2026-10-05 之前鼠标走的是**悬停**（`HOVER_MS`），那条已删：两条手势就是两套逻辑。
+   * ⚠ 开环上**不再有** `fresh`（刚贴下 `FRESH_MS` 内不弹）这道闸门 —— 它原来的理由是
+   *   「悬停时指针正落在这枚贴纸上，那一瞬间弹环纯属噪音」，而悬停已经删掉，这个理由不存在了；
+   *   长按本来就是用户主动按下去的，谈不上「误弹」。
+   *   （`fresh` 本身仍在用：闪描边与落地动效，见下面那两个 effect。） */
   const [wheelFor, setWheelFor] = useState<{ id: string; x: number; y: number } | null>(null);
   /** 轮盘里悬停 / 聚焦的那一款（还没落定）。`null` = 没有预览，贴纸显示它真正的款。 */
   const [preview, setPreview] = useState<StickerSkin | null>(null);
-  /** 这次是**键盘**开的环吗 —— 是的话要把焦点收进环里（鼠标悬停开环**不能**抢焦点）。
+  /** 这次是**键盘**开的环吗 —— 是的话要把焦点收进环里（指针长按开的环**不能**抢焦点）。
    *  ⚠ 用 ref 而不是 state：`closeWheel` 需要在**同一次调用里**读它来决定要不要把焦点还回去，
    *    而 state 在 `useCallback([])` 里是闭包里的旧值。它只在「开 / 关的同一拍」被读，ref 够。 */
   const wheelByKeyboard = useRef(false);
   /** 我们自己刚把焦点塞回贴纸 —— 那一拍不许被 `onFocus` 当成「用户键盘走过来」（见 `closeWheel`）。 */
   const restoreGuard = useRef(false);
-  const openTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** 长按期间挪过没有：挪过就说明用户想的是「拖」，不是在求换款。 */
   const pressMoved = useRef(false);
+  /** 长按起手点 —— 判定「这一次到底挪了没有」用。
+   *  ⚠ 阈值必须与拖拽**同一套**（触屏 `DRAG_SLOP_TOUCH` / 鼠标 `DRAG_SLOP_MOUSE`）：
+   *    2026-10-05 之前这里对触屏是「动一下就作废」的无条件置真，而按住半秒几乎不可能
+   *    完全不动 —— 于是「长按换款」在真机上根本开不出环（用户报的「移动端交互有点奇怪」的根因）。
+   *    拖拽那条路（`beginDrag` 里的 `slop`）一直是有阈值的，只有长按这条漏了。 */
+  const pressStart = useRef({ x: 0, y: 0 });
+  /** 正在按住（长按进行中）。
+   *  它只驱动那一圈「蓄力进度环」（见 CSS 的 `[data-rb-pressing]`）——
+   *  这是「按住有东西在发生、还要按多久」唯一看得见的提示，鼠标与触屏都有。 */
+  const [pressing, setPressing] = useState(false);
   /** 最近一次指针**是不是触屏**。
    *  ⚠ 触屏上「轻点」也会让按钮获得焦点，而 **WebKit 把点按也算 `:focus-visible`**
    *    （2026-09-30 CI `mobile-webkit` 实测）：于是「轻点什么都不做」这条契约在 iPhone 上
@@ -1348,23 +1357,8 @@ const RbCard = memo(function RbCard({
    *  ⚠ 只挡**指针**来的那一次：键盘（Tab）压根不经过 `pointerdown`，这个 ref 保持 `false`，
    *    键盘聚焦照常开环（`spec` 里那条「键盘也能走完」守着）。 */
   const pointerTouch = useRef(false);
-  /** 长按起手点 —— 判定「这一次到底挪了没有」用。
-   *  ⚠ 阈值必须与拖拽**同一套**（触屏 `DRAG_SLOP_TOUCH` / 鼠标 `DRAG_SLOP_MOUSE`）：
-   *    2026-10-05 之前这里是「动一下就作废」的无条件置真，而触屏按住半秒几乎不可能完全不动 ——
-   *    于是长按**根本开不出环**（用户报的「移动端交互有点奇怪」的根因）。
-   *    拖拽那条路（`beginDrag` 里的 `slop`）一直是有阈值的，只有长按这条漏了。 */
-  const pressStart = useRef({ x: 0, y: 0 });
-  /** 这一次指针**还按着**没有。
-   *  ⚠ 只在它开着时才处理 `pointermove` —— 鼠标不按着划过贴纸也会送 `pointermove`，
-   *    而 `pressStart` 是**上一次按下**的坐标，拿它算位移会得出一个毫无意义的「移动了」。 */
-  const pressDown = useRef(false);
-  /** 正在按住（触屏长按进行中）。
-   *  它只驱动那一圈「蓄力进度环」（见 CSS 的 `[data-rb-pressing]`）——
-   *  触屏上没有 hover，**这一圈就是「能长按换款」唯一看得见的提示**。 */
-  const [pressing, setPressing] = useState(false);
 
   const closeWheel = useCallback(() => {
-    clearTimeout(openTimer.current);
     clearTimeout(pressTimer.current);
     clearTimeout(closeTimer.current);
     const restoreFocus = wheelByKeyboard.current;
@@ -1372,7 +1366,7 @@ const RbCard = memo(function RbCard({
     setWheelFor(null);
     setPreview(null);
     // ⚠ 键盘开的环必须把焦点**还给那一枚贴纸**：环一卸载，焦点就落回 `body`，
-    //   键盘用户会被丢到文档开头（下一次 Tab 从页头开始）。鼠标开的环**不能**抢焦点。
+    //   键盘用户会被丢到文档开头（下一次 Tab 从页头开始）。指针长按开的环**不能**抢焦点。
     // ⚠ 还要挡一拍：程序化 `focus()` 在「最近一次交互是键盘」时**会**匹配 `:focus-visible`，
     //   于是 `onFocus` 会立刻把环又开回来（按 Escape 变成关不掉）。这一拍由 `restoreGuard` 挡。
     if (restoreFocus) {
@@ -1394,11 +1388,10 @@ const RbCard = memo(function RbCard({
     closeTimer.current = setTimeout(closeWheel, WHEEL_GRACE_MS);
   }, [closeWheel]);
 
-  // 卸载时收掉三个计时器 —— 否则它们会在组件没了之后各触发一次 `setState`
+  // 卸载时收掉两个计时器 —— 否则它们会在组件没了之后各触发一次 `setState`
   // （榜单滚动时卡片会被卸载，这条路径不是理论上的）
   useEffect(
     () => () => {
-      clearTimeout(openTimer.current);
       clearTimeout(pressTimer.current);
       clearTimeout(closeTimer.current);
     },
@@ -1645,7 +1638,7 @@ const RbCard = memo(function RbCard({
             type="button"
             className={`rb-dot rb-dot--${sticker.type}`}
             data-rb-fresh={fresh || undefined}
-            /* 触屏长按进行中 → 贴纸外圈亮起一圈「蓄力进度环」。
+            /* 长按进行中 → 贴纸外圈亮起一圈「蓄力进度环」（鼠标与触屏都亮）。
                ⚠ 时长从 `PRESS_MS` 带过来（`--rb-press-ms`），样式表里**不写第二份** ——
                  两处不一致的症状是「环转完了但还没开」或者「还没转完就开了」。 */
             data-rb-pressing={pressing || undefined}
@@ -1657,23 +1650,21 @@ const RbCard = memo(function RbCard({
                 "--rb-press-ms": `${PRESS_MS}ms`,
               } as CSSProperties
             }
-            aria-label={`${sticker.type === "red" ? "红" : "黑"}贴纸；双击收回暂存区，悬停、长按或聚焦可换一款皮肤，拖动或按方向键可在《${film.zh}》自己的张贴区里挪位置，拖出这张画布也是收回`}
+            aria-label={`${sticker.type === "red" ? "红" : "黑"}贴纸；双击收回暂存区，长按或键盘聚焦可换一款皮肤，拖动或按方向键可在《${film.zh}》自己的张贴区里挪位置，拖出这张画布也是收回`}
             onPointerDown={(event) => {
               onBeginDrag(event, sticker.type, film.key, sticker.id);
               // ⚠ 记下这一次指针是不是触屏 —— 紧接着的聚焦会用到(见 `pointerTouch`)。
               //   浏览器把「获得焦点」排在 `pointerdown` 的默认动作里,所以这里先写、后面读得到。
               pointerTouch.current = event.pointerType !== "mouse";
-              // ⚠ 所有指针类型都重置一遍。它只被下面那个**触屏长按**定时器读,而定时器只在
-              //   非鼠标那支起 —— 所以重置严格说只有那一支需要。全类型重置是**保险**:
-              //   让「这一次手势有没有挪动」在每次按下时都有个确定的起点,不依赖上一次的残留值。
+              // ⚠ 所有指针类型都重置一遍:让「这一次手势有没有挪动」在每次按下时都有个
+              //   确定的起点,不依赖上一次的残留值。
               pressMoved.current = false;
-              pressDown.current = true;
               // 这一次长按的起手点 —— 下面 `onPointerMove` 用它算位移（和拖拽同一套阈值）
               pressStart.current = { x: event.clientX, y: event.clientY };
-              // 触屏才起长按计时；鼠标那条路走 hover（见 `PRESS_MS` 的说明）
-              if (event.pointerType === "mouse") return;
+              // ⚠ 鼠标与触屏**同一套**：都起长按计时（2026-10-05,见 `PRESS_MS` 的说明）。
+              //   鼠标那条 hover 入口已删 —— 两条手势就是两套逻辑,而用户要的是一条。
               clearTimeout(pressTimer.current);
-              // 进度环：按下去就亮，用户立刻看得到「按住有东西在发生」
+              // 进度环：按下去的**同时**就亮，用户立刻看得到「按住有东西在发生」
               setPressing(true);
               pressTimer.current = setTimeout(() => {
                 setPressing(false);
@@ -1682,17 +1673,11 @@ const RbCard = memo(function RbCard({
               }, PRESS_MS);
             }}
             onPointerMove={(event) => {
-              // ⚠ 这一段**只服务触屏**：鼠标那条路走 hover（没有长按计时器、也没有进度环），
-              //   把它排除掉，桌面端的行为就与加这一轮之前**逐字一致**。
-              //   2026-10-05 实测：不排除的话，鼠标按下时那一丁点移动会把**悬停开出来的环**关掉，
-              //   连带踩坏「双击自己贴的那一枚才收回」那条既有契约（E2E 当场红）。
-              if (event.pointerType === "mouse") return;
-              // 没按着就不算手势
-              if (!pressDown.current) return;
-              // ⚠ 越过阈值才算「挪过」，阈值与拖拽那条路**同一套**。
-              //   2026-10-05 之前这里是无条件置真 —— 触屏按住半秒的一点点抖动就把长按作废了，
+              // ⚠ 越过阈值才算「挪过」，阈值与拖拽那条路**同一套**（触屏 10px / 鼠标 8px）。
+              //   2026-10-05 之前这里是无条件置真 —— 按住半秒的一点点抖动就把长按作废了，
               //   于是「长按换款」在真机上根本走不通（用户报的正是这个）。
-              const slop = DRAG_SLOP_TOUCH;
+              if (pressMoved.current) return;
+              const slop = event.pointerType === "touch" ? DRAG_SLOP_TOUCH : DRAG_SLOP_MOUSE;
               if (
                 Math.abs(event.clientX - pressStart.current.x) <= slop &&
                 Math.abs(event.clientY - pressStart.current.y) <= slop
@@ -1700,36 +1685,32 @@ const RbCard = memo(function RbCard({
                 return;
               }
               // ★ **拖动优先**（2026-10-05 用户第二次反馈：「当时想拖动贴纸 就马上会触发换肤」）：
-              //   人拖贴纸的起手常常是「先按住停顿一下再移」—— 那一停就超过 `PRESS_MS`，环先弹了出来。
-              //   所以补一条：**环已经开着而用户又动起来了 → 立刻把环关掉，让拖动接管**。
-              //   没有这一条，用户会看到环挂在「半天前量好的那个位置」上，而贴纸已经被拖到别处。
-              //   ⚠ 判定与长按共用同一个 `slop`：只是抖一下不会把环关掉。
+              //   人拖贴纸的起手常常是「先按住停一下、再移」—— 那一停就超过 `PRESS_MS`，环先弹了出来，
+              //   而环弹出后没有任何东西把它取消。所以补一条：**环已经开着而用户又动起来了 →
+              //   立刻把环关掉，让 `beginDrag` 接管**。没有这一条，用户会看到环挂在
+              //   「半天前量好的那个位置」上，而贴纸已经被拖到别处。
+              //   ⚠ 判定与长按共用同一个 `slop`（上面那道 `return`）：只是抖一下不会把环关掉。
               if (wheelOpen) closeWheel();
-              if (pressMoved.current) return;
               // 挪过就不再是长按（是拖）—— 把计时器与进度环一起收掉，免得它半路又弹出来
               pressMoved.current = true;
               clearTimeout(pressTimer.current);
               setPressing(false);
             }}
             onPointerUp={() => {
-              pressDown.current = false;
               clearTimeout(pressTimer.current);
               setPressing(false);
             }}
             onPointerCancel={() => {
-              pressDown.current = false;
               clearTimeout(pressTimer.current);
               setPressing(false);
             }}
-            onPointerEnter={(event) => {
-              // 指针回到贴纸这一带 → 取消「正要关掉环」那一次（从环上走回来不该把它关掉）
+            onPointerEnter={() => {
+              // ⚠ 这里只剩这一件事了：指针回到贴纸这一带 → 取消「正要关掉环」那一次
+              //   （从环上的节点走回贴纸，不该被那 260ms 的宽限关掉）。
+              //   ⚠ 悬停**开环**那条 2026-10-05 已删（见 `PRESS_MS` 的说明）。
               cancelClose();
-              if (event.pointerType !== "mouse" || fresh || wheelOpen) return;
-              clearTimeout(openTimer.current);
-              openTimer.current = setTimeout(() => openWheel(sticker.id, false), HOVER_MS);
             }}
             onPointerLeave={(event) => {
-              clearTimeout(openTimer.current);
               // ⚠ 触屏没有 hover：「指针离开」在那里只等于**抬手**，不是「移开」——
               //   用它关环会让「长按开环 → 松手」当场把环收掉，用户根本来不及点节点。
               //   触屏的关闭路径改走「点环外任意处 / 滚动页面 / 点选定款」
@@ -1744,12 +1725,12 @@ const RbCard = memo(function RbCard({
               //   不挡的话「轻点什么都不做」在 iPhone 上会变成「轻点就弹环」。
               if (pointerTouch.current) return;
               // `:focus-visible` 是**唯一**能区分「键盘 Tab 过来」与「鼠标点了一下」的判据
-              if (!event.target.matches(":focus-visible") || fresh || wheelOpen) return;
+              if (!event.target.matches(":focus-visible") || wheelOpen) return;
               openWheel(sticker.id, true);
             }}
             onClick={(event) => {
               // ⚠ 2026-09-30 用户口径（改过一版）：收回是**双击**，而单击**什么都不做** ——
-              //   这枚贴纸本质是一根拖拽手柄；「换款」另有**悬停 / 触屏长按 / 键盘聚焦**三条入口，
+              //   这枚贴纸本质是一根拖拽手柄；「换款」另有**长按 / 键盘聚焦**两条入口，
               //   不必再借用单击。第一版曾让单击「延迟 260ms 开环」，用户看过之后否掉了：
               //   单击在这枚贴纸上就该是「按住/拖」的起手，而不是又一个动作。
               // ⚠ 双击**立即**收回：不再需要「等一等看会不会来第二下」——那是给单击留时机才有的开销。

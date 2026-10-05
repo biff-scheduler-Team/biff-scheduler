@@ -70,6 +70,34 @@ async function quiet(page: Page) {
     .catch(() => undefined);
 }
 
+/** 长按多久弹出换款轮盘(ms) —— **鼠标与触屏同一个值**(2026-10-05)。
+ *  ⚠ 它必须与实现里的 `PRESS_MS` 一致:不一致的症状是「环还没开就断言」而超时,
+ *    而不是一条说得出所以然的红。 */
+const PRESS_MS = 500;
+
+/** **鼠标长按**开环 —— 2026-10-05 起它是鼠标**唯一**的开环手势(悬停那条入口已删)。
+ *
+ *  ⚠ 为什么不再用 `dot.hover()`:悬停现在什么都不做了 —— 「划过不弹」正是本轮要守的判据。
+ *  ⚠ 起手前先把指针移到贴纸正中再按下:`mouse.down()` 落在的是指针**上一次停留**的位置,
+ *    那多半不是这枚贴纸(拖拽那几条用例踩过同一个坑,见它们那段说明)。
+ *  ⚠ 按住期间**一次都不挪**:越过 `slop`(鼠标 8px)长按就作废、转成拖拽。
+ *  ⚠ 松手之后环**仍然开着**(鼠标靠 `pointerleave` 关,不是靠抬手),调用方接着点节点即可。 */
+async function pressOpenWheel(page: Page, dot: Locator): Promise<void> {
+  // ⚠ 起手用 `hover()` 而不是「先量 `boundingBox()` 再 `mouse.move()`」:后者拿的是
+  //   **过期坐标** —— 榜单上那些 `loading="lazy"` 的海报随时会把版面顶一下,量完之后版面一动,
+  //   按下去就落在别处(实测 3 worker 并行时 2/6 假红:贴纸**一次 `pointerdown` 都没收到**,
+  //   环自然永远不出来)。`hover()` 会等元素稳定、并在按下的那一刻现算中心 ——
+  //   与拖拽那几条用例同一手法。
+  await dot.hover();
+  await page.mouse.down();
+  // ⚠ 按住**直到环真的出现**,不能写死等待时长:`PRESS_MS` 那条 `setTimeout` 在主线程忙时
+  //   会被推迟,「固定等 650ms」可能在计时器到点**之前**就 `mouse.up()` ——
+  //   而抬手会把计时器清掉,环永远不出来(实测 4/6 假红)。
+  await expect(page.locator(".rb-wheel")).toHaveCount(1);
+  // ⚠ 开环之后再松手不影响它:鼠标那条关环走的是 `pointerleave`,不是抬手。
+  await page.mouse.up();
+}
+
 test("首次进入是空榜:一枚贴纸都没有,只留一句怎么开始", async ({ page }) => {
   await stubEmpty(page);
   await ready(page, "/redblack");
@@ -544,7 +572,7 @@ test("讨论区:数字与卡片一致、按片读、只列写了评语的人、E
 //  ① **双击收回** —— 原先是单击。用户 2026-09-30 要求改成双击:单击太容易误触
 //     (尤其「拖完松手」浏览器补发的那一次 click,得靠 `movedRef` 之类的旁证去挡)。
 //     于是单击必须有个**真**含义,不能变成「点了没反应」—— 它现在是**什么都不做**:
-//     换款另有悬停 / 触屏长按 / 键盘聚焦三条入口(第一版曾让单击开环,用户看过之后否掉了)。
+//     换款另有**长按 / 键盘聚焦**两条入口(第一版曾让单击开环,用户看过之后否掉了)。
 //     ⚠ 触屏上「轻点」还会顺带聚焦,而 WebKit 把点按也算 `:focus-visible` —— 实现在
 //       `RedBlackPage.tsx::pointerTouch` 里把触屏来的聚焦挡掉了,否则这条在 iPhone 上必红。
 //  ② **拖一下不能顺手收走** —— `pointerup` 之后浏览器还会补一次 `click`,
@@ -572,7 +600,7 @@ test("双击自己贴的那一枚才收回;单击什么都不做", async ({ page
   await expect(trayRed).toHaveAttribute("data-rb-spent", "true");
 
   // ① 单击:**什么都不做**(用户 2026-09-30 口径)。这枚贴纸本质是一根拖拽手柄,
-  //   「换款」另有悬停 / 触屏长按 / 键盘聚焦三条入口,不必再借用单击。
+  //   「换款」另有**长按 / 键盘聚焦**两条入口,不必再借用单击。
   //   ⚠ 所以这里要断言**两件事都没发生**:既不收回、也不弹环 ——
   //   只断言「没收回」的话,把单击接回「开环」也照样绿。
   await mine.click();
@@ -670,7 +698,7 @@ test("拖一下微调位置不算点击:贴纸不会被顺手收走,也不会弹
   const after = (await mine.boundingBox())!;
   expect(Math.abs(after.x - before.x) + Math.abs(after.y - before.y)).toBeGreaterThan(4);
   // ⚠ 2026-09-30 追加:拖完松手补发的那一次 click **更不该弹出换款环** ——
-  //   单击在这枚贴纸上**什么都不做**(用户口径),环形只由悬停 / 长按 / 键盘聚焦打开。
+  //   单击在这枚贴纸上**什么都不做**(用户口径),环只由**长按 / 键盘聚焦**打开。
   //   所以此刻轮盘一枚都不该有,无论 `pressMoved` 是什么。
   await expect(page.locator(".rb-wheel")).toHaveCount(0);
 });
@@ -1627,13 +1655,13 @@ test("评语接口 500:讨论区走空态,红黑榜照常可用(静默降级)", 
   await expect(card.locator(".rb-dot--red")).toHaveCount(1);
 });
 
-// 这条用例守的东西 2026-09-29 变了**:悬停现在**确实**会弹东西出来 —— 换款轮盘。
+// 这条用例守的东西 2026-09-29 变了**:长按现在**确实**会弹东西出来 —— 换款轮盘。
 // 但它的另一半一个字没变,也仍然必须成立:**轮盘不在贴纸里、也不在卡片里**。
-// 所以判据从「悬停/聚焦什么都不弹」改成「弹了,但弹在别处」:
+// 所以判据从「聚焦什么都不弹」改成「弹了,但弹在别处」:
 //   · 贴纸后代恒为 5 个(逐个点名,多塞一个节点都会红);
 //   · 卡片里不许出现轮盘 / 评语 / 弹层;
 //   · 轮盘挂在 `document.body` 上(唯一的挂法,理由见 `StickerSkinWheel.tsx`:画布与卡片都会裁它)。
-test("悬停会弹出换款轮盘,但它不在贴纸里、也不在卡片里", async ({ page }) => {
+test("长按会弹出换款轮盘,但它不在贴纸里、也不在卡片里", async ({ page }) => {
   await stubEmpty(page);
   await stubComments(page, {
     items: [{ filmKey: keyOf("008"), vote: "red", comment: "好看", displayName: null }],
@@ -1653,9 +1681,15 @@ test("悬停会弹出换款轮盘,但它不在贴纸里、也不在卡片里", a
   await expect(dot.locator(".rb-dot__face .rb-dot__icon path")).toHaveCount(1);
   await expect(dot.locator("*")).toHaveCount(5);
 
-  // ⚠ 先等「刚贴下」那一档过去:松手时指针正落在贴纸上,那 2.4s 内**刻意不弹**(见 HOVER_MS/PRESS_MS)
-  await expect(dot).not.toHaveAttribute("data-rb-fresh", /.*/);
+  // ⚠ **划过不弹**(2026-10-05 的回归判据):悬停那条入口已删 —— 鼠标也得长按。
+  //   先挪一次指针再断言,否则「哪天有人把悬停开环加回来」这条也照样绿。
+  //   ⚠ 而且必须**等过**旧那条的 `HOVER_MS`(160ms)再断:悬停开环是**延时**的,
+  //     `toHaveCount(0)` 在它弹出来之前就会满足 —— 那样这条守卫等于什么都没守。
   await dot.hover();
+  await page.waitForTimeout(400);
+  await expect(page.locator(".rb-wheel")).toHaveCount(0);
+
+  await pressOpenWheel(page, dot);
   const wheel = page.locator(".rb-wheel");
   await expect(wheel).toHaveCount(1);
 
@@ -1672,17 +1706,20 @@ test("悬停会弹出换款轮盘,但它不在贴纸里、也不在卡片里", a
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
-/* ---------------- 换款轮盘(2026-09-29,PLAN-20260929195500) ----------------
- * 测什么:能不能打开(三种入口)、预览会不会**只是预览**、点选会不会真的落定并上报、
- * 关得掉关不掉、以及**既有的「双击贴纸 = 收回」有没有被踩坏**。
+/* ---------------- 换款轮盘(2026-09-29,PLAN-20260929195500;手势收敛 2026-10-05) ----------------
+ * 测什么:能不能打开(**长按** —— 鼠标与触屏同一套;键盘聚焦是等价入口)、预览会不会
+ * **只是预览**、点选会不会真的落定并上报、关得掉关不掉、以及**既有的「双击贴纸 = 收回」
+ * 有没有被踩坏**。
  * ⚠ 2026-09-30 起「收回」的触发是**双击**(单击改成打开环了) —— 下面几处判据跟着改了,
  *   但守的东西一个字没变:环不能把落在贴纸上的那几下点击吞掉。
- *
- * ⚠ 每个用例都得先等「刚贴下」那一档过去:那 `FRESH_MS`(2400ms)内**刻意不弹环**
- *   ——松手时指针正落在这枚贴纸上,那一瞬间弹环纯属噪音。等它的判据是
- *   `data-rb-fresh` 属性被摘掉(React 那边 `fresh || undefined` 就是不写属性)。 */
+ * ⚠ 2026-10-05 起鼠标**不再靠悬停开环**(那条入口已删,见 `PLAN-20261005194221`):
+ *   原来的 `dot.hover()` 全部换成 `pressOpenWheel()`(鼠标长按 500ms);
+ *   触屏那条由「★ 触屏长按换款」用手动派发的 `pointerType: "touch"` 事件覆盖。 */
 
-/** 贴一枚红贴纸,并等到「刚贴下」那一档过去(此后才可能弹环)。 */
+/** 贴一枚红贴纸,并等 `data-rb-fresh` 摘掉。
+ *  ⚠ 2026-10-05 起它**不再**是「能不能弹环」的闸门 —— 那道闸门随悬停入口一起删了
+ *    (长按本来就是用户主动按下去的,没有「误弹」可言)。这里保留这一次等待,是为了让
+ *    「这一枚已经落定」有个确定的判据,免得后面的断言跑在落地动效中间。 */
 async function placeRedAndSettle(page: Page): Promise<{ card: Locator; dot: Locator }> {
   const key = keyOf("008");
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
@@ -1712,14 +1749,15 @@ async function anotherSkin(wheel: Locator): Promise<string> {
   return other as string;
 }
 
-// ⚠ 这三个用例都**只在有鼠标的项目上跑**:轮盘的鼠标入口就是「悬停」,而触屏那档走的是
-//   长按(`PRESS_MS`),两个项目里 `hover()` 的语义完全不同 ——
-//   Playwright 的 `hover()` 还会**顺手把元素滚进视口**,而轮盘按设计「滚动即关」
+// ⚠ 下面这几个「鼠标那条」的用例都**只在桌面项目上跑**:它们用 `page.mouse` 走鼠标那条路。
+//   触屏那条由「★ 触屏长按换款」用手动派发的 `pointerType: "touch"` 事件覆盖 ——
+//   两者现在走**同一段代码**(见 `PRESS_MS` 的说明),不必在移动项目上重复跑一遍。
+//   ⚠ Playwright 的 `hover()` 还会**顺手把元素滚进视口**,而轮盘按设计「滚动即关」
 //   (锚点是视口坐标),于是它在命中测试之前就被自己关掉了(实测报「被 .rb-card-info 挡住」,
 //   而用 `elementFromPoint` 量下来轮盘节点其实稳稳在最上层 —— 那是**假象**,不是真遮挡)。
-//   触屏的长按入口没有对应的 Playwright API(没有 long-press),所以那一条不在这里假装覆盖。
-test("换款轮盘:悬停弹出、悬停节点只是预览、点选才落定并随票上报", async ({ page, isMobile }) => {
-  test.skip(isMobile, "悬停是鼠标入口；触屏走长按（见 PRESS_MS）");
+//   `pressOpenWheel()` 里那次 `scrollIntoViewIfNeeded()` 发生在**开环之前**,不受这条影响。
+test("换款轮盘:长按弹出、悬停节点只是预览、点选才落定并随票上报", async ({ page, isMobile }) => {
+  test.skip(isMobile, "这一条走 `page.mouse`；触屏那条在「★ 触屏长按换款」里用手动派发的事件覆盖");
   const pings: Array<{ ops: Array<Record<string, unknown>> }> = [];
   await page.route("**/api/stats/film-votes**", async (route) => {
     if (route.request().method() === "POST") {
@@ -1732,13 +1770,19 @@ test("换款轮盘:悬停弹出、悬停节点只是预览、点选才落定并�
   await ready(page, "/redblack");
 
   const { dot } = await placeRedAndSettle(page);
+  // ⚠ 先等提示条退场:它挂在视口**底部**、`role=alertdialog`、而且**接得住指针** ——
+  //   下面那次 `target.hover()` 会先落在它身上(Playwright 原话:`intercepts pointer events`),
+  //   然后为了躲它去滚动页面,而轮盘「滚动即关」:节点当场被卸载,报的是「element was detached」。
+  //   ⚠ 2026-10-05 之前这条不会踩上,只是因为开环之后**立刻**就 hover 了节点;
+  //     长按要多花 500ms,正好挪进那条提示条的退场窗口里(实测抓到 `…_toast-remove`)。
+  await quiet(page);
   const face = dot.locator(".rb-dot__face");
   /** 这一枚现在长什么样 —— 读的就是 `clip-path` 吃的那条路径(`--rb-shape`) */
   const shape = (): Promise<string> =>
     face.evaluate((node) => (node as HTMLElement).style.getPropertyValue("--rb-shape"));
   const before = await shape();
 
-  await dot.hover();
+  await pressOpenWheel(page, dot);
   const wheel = page.locator(".rb-wheel");
   await expect(wheel).toHaveCount(1);
   // 三款一款不少,且**当前那款被明确标出**(`aria-checked` 是视觉与无障碍共用的判据)
@@ -1761,7 +1805,14 @@ test("换款轮盘:悬停弹出、悬停节点只是预览、点选才落定并�
   const target = wheel.locator(`[data-rb-wheel-node="${other}"]`);
   // 名称胶囊(2026-09-30,用户要求「悬停出现贴纸名称」):默认看不见,悬停那颗才露出来。
   // ⚠ 两个断言缺一不可 —— 只断言「悬停后可见」的话,把名字改成常显也照样绿(那就成了几个名字糊一圈)。
-  await expect(wheel.locator(".rb-wheel__name").first()).toHaveCSS("opacity", "0");
+  // ⚠ 但**不能**拿 `.first()` 硬碰「opacity 0」:开环的手势把光标留在了贴纸正中,
+  //   而轮盘中心未必正好落在光标底下(锚点只在开环那一刻量一次,期间版面可能被
+  //   `loading="lazy"` 的海报顶过;`clampAnchor` 也会夹它)—— 于是某一颗可能恰好在
+  //   光标底下、名字已经亮着。判据写成「亮着的**最多一颗**」:常显 ⇒ 3 颗全亮 ⇒ 照样红。
+  const litNames = await wheel
+    .locator(".rb-wheel__name")
+    .evaluateAll((nodes) => nodes.filter((node) => getComputedStyle(node).opacity === "1").length);
+  expect(litNames).toBeLessThanOrEqual(1);
   // ⚠ 基线要取**现在**这一刻:贴下那一枚本身已经上报过一次(1200ms 防抖),
   //   写 `toHaveLength(0)` 会红在与预览无关的地方。
   const pinged = pings.length;
@@ -1784,6 +1835,87 @@ test("换款轮盘:悬停弹出、悬停节点只是预览、点选才落定并�
     .toBe(other);
 });
 
+test("换款轮盘:Esc 关得掉;而「双击贴纸 = 收回」这条既有契约没被踩坏", async ({ page, isMobile }) => {
+  test.skip(isMobile, "这一条走 `page.mouse`；触屏那条在「★ 触屏长按换款」里用手动派发的事件覆盖");
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  await ready(page, "/redblack");
+
+  const { dot } = await placeRedAndSettle(page);
+  await pressOpenWheel(page, dot);
+  const wheel = page.locator(".rb-wheel");
+  await expect(wheel).toHaveCount(1);
+
+  await page.keyboard.press("Escape");
+  await expect(wheel).toHaveCount(0);
+
+  // ⚠ 这条是**回归守卫**:环开着的时候双击那枚贴纸,两次点击都得落到「收回」上 ——
+  //   若环把这两次点击吞掉,收回就没了。
+  //   ⚠ 2026-10-05 之前环是**悬停**弹出来的,而 `dblclick()` 先 hover 再点,所以环「必然开着」;
+  //     现在鼠标也得**长按**才开,所以这里显式开一次,情境反而更干净。
+  await pressOpenWheel(page, dot);
+  await expect(wheel).toHaveCount(1);
+  await dot.dblclick();
+  await expect(dot).toHaveCount(0);
+  await expect(wheel).toHaveCount(0);
+});
+
+test("换款轮盘:键盘也能走完(聚焦弹出、方向键转、回车落定)", async ({ page, isMobile }) => {
+  // ⚠ 移动端的 WebKit **不做 Tab 焦点遍历**(实测按 Tab 焦点不动),所以「键盘走到这一枚」
+  //   这件事在那些项目里根本无法发生 —— 那是浏览器的行为差异,不是本页的缺陷。
+  test.skip(isMobile, "移动端浏览器不做 Tab 焦点遍历");
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  await ready(page, "/redblack");
+
+  const { dot } = await placeRedAndSettle(page);
+  // ⚠ 不能直接 `dot.focus()`:程序化聚焦**不匹配 `:focus-visible`**,而环正是靠这个判据
+  //   区分「键盘 Tab 过来」与「鼠标点了一下」的(后者要留给「收回」)。
+  //   所以先键盘移出、再键盘移回来 —— 这才是真的「键盘走到这一枚」。
+  await dot.focus();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+
+  const wheel = page.locator(".rb-wheel");
+  await expect(wheel).toHaveCount(1);
+  // 键盘打开时焦点被收进环里(指针长按打开的环则**不能**抢焦点)
+  await expect(wheel.locator("[role=radio]:focus")).toHaveCount(1);
+
+  const before = await wheel.getAttribute("data-rb-wheel");
+  await page.keyboard.press("ArrowRight");
+  await expect(wheel.locator("[role=radio]:focus")).not.toHaveAttribute(
+    "data-rb-wheel-node",
+    before as string,
+  );
+  // 方向键只**转移焦点**(顺带预览),不落定 —— 环还开着
+  await expect(wheel).toHaveCount(1);
+  await page.keyboard.press("Enter");
+  await expect(wheel).toHaveCount(0);
+  // 落定之后焦点回到那一枚贴纸上(否则键盘用户会被丢在文档开头)
+  await expect(dot).toBeFocused();
+});
+
+test("换款轮盘:滚一下就关掉(锚点是视口坐标,不跟着滚)", async ({ page, isMobile }) => {
+  test.skip(isMobile, "这一条走 `page.mouse`；触屏那条在「★ 触屏长按换款」里用手动派发的事件覆盖");
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  await ready(page, "/redblack");
+
+  const { dot } = await placeRedAndSettle(page);
+  await pressOpenWheel(page, dot);
+  const wheel = page.locator(".rb-wheel");
+  await expect(wheel).toHaveCount(1);
+
+  // ⚠ 用 `window.scrollBy` 而不是 `mouse.wheel`:WebKit 不支持 `mouse.wheel`(仓库既有结论)
+  await page.evaluate(() => window.scrollBy(0, 240));
+  await expect(wheel).toHaveCount(0);
+  // 关掉之后**不动 board**:这枚贴纸还在(滚动不该顺手把东西改掉)
+  await expect(dot).toHaveCount(1);
+});
+
+// 触屏那条 —— ⚠ Playwright **没有 long-press API**,所以这里手动派发带
+// `pointerType: "touch"` 的 pointer 事件。它们与真机触屏的差别只在 `touch-action`
+// 与浏览器的滚动去抖,而本用例走的那几条分支**只看 `pointerType`** —— 三个项目都能跑。
 test("★ 触屏长按换款:带一点点抖动也照样弹出轮盘,松手不关、点环外才关", async ({ page }) => {
   // ⚠ 用户 2026-10-05 报的是触屏这条路**根本走不通**(见 `PLAN-20261005183113`):
   //   ① 长按判定没有位移阈值 —— 按住半秒期间的一点点抖动就把它作废;
@@ -1811,6 +1943,26 @@ test("★ 触屏长按换款:带一点点抖动也照样弹出轮盘,松手不�
   await touch("pointerdown");
   // 蓄力进度环:按下去的**那一刻**就看得见 —— 它同时是「能长按」唯一看得见的提示
   await expect(dot).toHaveAttribute("data-rb-pressing", "true");
+  // ⚠ 光有 `data-rb-pressing` 只说明**状态**对了,证明不了**画面**对:环是 `::after` 画的,
+  //   `background` / `mask` 少写一层、或角度没注册成可动画的自定义属性,属性照样在、
+  //   而屏幕上什么都没有。所以这里直接读伪元素的计算样式(用户 2026-10-05 要的就是这一圈)。
+  const pressRing = (): Promise<{ background: string; mask: string; turn: number }> =>
+    dot.evaluate((node) => {
+      const style = getComputedStyle(node, "::after");
+      return {
+        background: style.getPropertyValue("background-image"),
+        mask: style.getPropertyValue("mask-image") || style.getPropertyValue("-webkit-mask-image"),
+        // 注册过的自定义属性给出的是**当前动画进度**;取不到就退化成 0
+        turn: Number.parseFloat(style.getPropertyValue("--rb-press-turn")) || 0,
+      };
+    });
+  const ring = await pressRing();
+  expect(ring.background).toContain("conic-gradient");
+  expect(ring.mask).toContain("radial-gradient");
+  // 进度**真的在跑**(而不是一圈静态底轨):注册过的 `@property` 加动画才会给出**非零角度**。
+  // ⚠ 用 `poll` 从 0 等它涨起来,别采样两次比大小 —— 环在 `PRESS_MS` 之后会被摘掉
+  //   (轮盘开出来了),再采样读到的是空值 0,那条判据会假红(实测)。
+  await expect.poll(async () => (await pressRing()).turn).toBeGreaterThan(0);
   // 5px < `DRAG_SLOP_TOUCH`(10px):这一步在改前会把长按计时器直接清掉,环永远不出来
   await touch("pointermove", 5, 5);
   // ⚠ 这里**不再**断言「此刻还没有环」—— 那是个对时序敏感的判据:`toHaveAttribute` 自己的轮询
@@ -1832,7 +1984,7 @@ test("★ 触屏长按换款:带一点点抖动也照样弹出轮盘,松手不�
   // ---- ④ 挪过阈值就是「拖」,不该再弹环 ----
   await touch("pointerdown");
   await touch("pointermove", -60, 0);
-  await page.waitForTimeout(700); // > `PRESS_MS`
+  await page.waitForTimeout(PRESS_MS + 200); // > `PRESS_MS`
   await expect(wheel).toHaveCount(0);
   await touch("pointerup");
 });
@@ -1884,82 +2036,5 @@ test("★ 触屏:环弹出后一动就关掉,且这一拖真的生效(「想拖�
   };
   expect(Math.abs(afterRel.x - target.x)).toBeLessThan(0.05);
   expect(Math.abs(afterRel.y - target.y)).toBeLessThan(0.05);
-});
-
-test("换款轮盘:Esc 关得掉;而「双击贴纸 = 收回」这条既有契约没被踩坏", async ({ page, isMobile }) => {
-  test.skip(isMobile, "悬停是鼠标入口；触屏走长按（见 PRESS_MS）");
-  await stubEmpty(page);
-  await stubComments(page, { items: [] });
-  await ready(page, "/redblack");
-
-  const { dot } = await placeRedAndSettle(page);
-  await dot.hover();
-  const wheel = page.locator(".rb-wheel");
-  await expect(wheel).toHaveCount(1);
-
-  await page.keyboard.press("Escape");
-  await expect(wheel).toHaveCount(0);
-
-  // ⚠ 这条是**回归守卫**:环是悬停弹出来的,而 Playwright 的 `dblclick()` 先 hover 再点,
-  //   所以「双击那枚贴纸」时环**必然开着**(而且第一下点击还会再开一次)——
-  //   若环把这两次点击吞掉,收回就没了。
-  await dot.hover();
-  await expect(wheel).toHaveCount(1);
-  await dot.dblclick();
-  await expect(dot).toHaveCount(0);
-  await expect(wheel).toHaveCount(0);
-});
-
-test("换款轮盘:键盘也能走完(聚焦弹出、方向键转、回车落定)", async ({ page, isMobile }) => {
-  // ⚠ 移动端的 WebKit **不做 Tab 焦点遍历**(实测按 Tab 焦点不动),所以「键盘走到这一枚」
-  //   这件事在那些项目里根本无法发生 —— 那是浏览器的行为差异,不是本页的缺陷。
-  test.skip(isMobile, "移动端浏览器不做 Tab 焦点遍历");
-  await stubEmpty(page);
-  await stubComments(page, { items: [] });
-  await ready(page, "/redblack");
-
-  const { dot } = await placeRedAndSettle(page);
-  // ⚠ 不能直接 `dot.focus()`:程序化聚焦**不匹配 `:focus-visible`**,而环正是靠这个判据
-  //   区分「键盘 Tab 过来」与「鼠标点了一下」的(后者要留给「收回」)。
-  //   所以先键盘移出、再键盘移回来 —— 这才是真的「键盘走到这一枚」。
-  await dot.focus();
-  await page.keyboard.press("Shift+Tab");
-  await page.keyboard.press("Tab");
-
-  const wheel = page.locator(".rb-wheel");
-  await expect(wheel).toHaveCount(1);
-  // 键盘打开时焦点被收进环里(鼠标悬停打开则**不能**抢焦点)
-  await expect(wheel.locator("[role=radio]:focus")).toHaveCount(1);
-
-  const before = await wheel.getAttribute("data-rb-wheel");
-  await page.keyboard.press("ArrowRight");
-  await expect(wheel.locator("[role=radio]:focus")).not.toHaveAttribute(
-    "data-rb-wheel-node",
-    before as string,
-  );
-  // 方向键只**转移焦点**(顺带预览),不落定 —— 环还开着
-  await expect(wheel).toHaveCount(1);
-  await page.keyboard.press("Enter");
-  await expect(wheel).toHaveCount(0);
-  // 落定之后焦点回到那一枚贴纸上(否则键盘用户会被丢在文档开头)
-  await expect(dot).toBeFocused();
-});
-
-test("换款轮盘:滚一下就关掉(锚点是视口坐标,不跟着滚)", async ({ page, isMobile }) => {
-  test.skip(isMobile, "悬停是鼠标入口；触屏走长按（见 PRESS_MS）");
-  await stubEmpty(page);
-  await stubComments(page, { items: [] });
-  await ready(page, "/redblack");
-
-  const { dot } = await placeRedAndSettle(page);
-  await dot.hover();
-  const wheel = page.locator(".rb-wheel");
-  await expect(wheel).toHaveCount(1);
-
-  // ⚠ 用 `window.scrollBy` 而不是 `mouse.wheel`:WebKit 不支持 `mouse.wheel`(仓库既有结论)
-  await page.evaluate(() => window.scrollBy(0, 240));
-  await expect(wheel).toHaveCount(0);
-  // 关掉之后**不动 board**:这枚贴纸还在(滚动不该顺手把东西改掉)
-  await expect(dot).toHaveCount(1);
 });
 
