@@ -66,6 +66,8 @@ export function StickerSkinWheel({
   onPointerLeave,
 }: StickerSkinWheelProps) {
   const nodes = useRef<Array<HTMLButtonElement | null>>([]);
+  /** 轮盘自己的根节点 —— 下面「点环外关闭」那条要拿它判断命中在不在环内。 */
+  const root = useRef<HTMLDivElement | null>(null);
   // 锚点只量一次（理由见文件头）；夹进视口也在这时算一次
   const [seat] = useState(() => clampAnchor(anchor.x, anchor.y));
 
@@ -84,6 +86,23 @@ export function StickerSkinWheel({
       window.removeEventListener("scroll", close, { capture: true });
       window.removeEventListener("resize", close);
     };
+  }, [onDismiss]);
+
+  // 点**环外任意处** → 关掉（2026-10-05）。
+  // ⚠ 这是触屏那条主要出口：触屏没有 hover、也没有 Escape，而「点别处就收起」是移动端
+  //   唯一的通用约定 —— 没有它，环只能靠滚动页面才关得掉（而滚动还会连带把页面挪走）。
+  //   ⚠ 同时也是「长按开了环、但我不想换」的那条退路（点自己那枚贴纸即可，它也在环外）。
+  // ⚠ 挂在 `pointerdown`（capture）而不是 `click`：要在页面别处的点击处理**之前**先关，
+  //   否则「点一下旁边那个按钮」会既关不掉环、又同时触发了别的动作。
+  // ⚠ 判「在不在环内」用 `root.contains`：节点是环的孩子，点节点不会误关。
+  useEffect(() => {
+    const onDown = (event: PointerEvent): void => {
+      const target = event.target as Node | null;
+      if (target && root.current?.contains(target)) return;
+      onDismiss();
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
   }, [onDismiss]);
 
   // Escape 关掉。
@@ -108,6 +127,7 @@ export function StickerSkinWheel({
 
   return createPortal(
     <div
+      ref={root}
       className="rb-wheel"
       role="radiogroup"
       aria-label="给这枚贴纸换一款"

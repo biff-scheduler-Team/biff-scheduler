@@ -360,6 +360,27 @@
   font-size: 12px;
 }
 
+/* 触屏专属的一句用法(2026-10-05,用户:「整个换贴纸样式的地方没有提示」)。
+ * ⚠ 桌面端 `display: none`:鼠标**悬停**自己那枚贴纸就能发现换款,不需要这句话;
+ *   而触屏没有 hover,长按是完全隐式的手势 —— 不写出来就真的没人知道。
+ * ⚠ 用媒体查询而不是 JS 判设备:`display: none` 的代价是零,而 JS 判断会让首帧与后续渲染
+ *   不一致(首屏拿不到 `matchMedia` 的那一档)。
+ * ⚠ `flex-basis: 100%` 与上面那条 `.rb-sort-hint` 同款:它要**独占一行**,
+ *   否则会挤在「重新排序」旁边,被读成又一个胶囊按钮。 */
+.rb-touch-tip {
+  display: none;
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (hover: none) {
+  .rb-touch-tip {
+    display: block;
+  }
+}
+
 /* ---------- 空榜引导(不再有示例贴纸,只留一句怎么开始) ---------- */
 
 .rb-hint {
@@ -976,6 +997,61 @@
   cursor: grabbing;
 }
 
+/* ---------- 触屏长按的「蓄力进度环」(2026-10-05) ----------
+ * 用户 2026-10-05：「整个换贴纸样式的地方没有提示」—— 触屏上没有 hover，换款唯一的手势是
+ * **长按**，而长按在界面上完全不可见。这一圈就是它的提示：按下去的**那一刻**就开始转，
+ * 转满一圈（`PRESS_MS`）就弹出轮盘；松手 / 划动即消失 —— 所以常态下一点噪音都不占。
+ *
+ * ⚠ 时长由 JS 从 `PRESS_MS` 写成 `--rb-press-ms`，样式表里**不写第二份**：
+ *   两处不一致的症状是「环转完了但还没开」或「还没转完就开了」，都只有肉眼看得出来。
+ * ⚠ 扇形进度靠 `conic-gradient` + `@property`（`background-image` 本身不可过渡，
+ *   不把角度注册成可动画的自定义属性，这一圈根本不会转）。
+ *   ⚠ `inherits: false`：它只是这一枚贴纸的动画变量，不该往下继承。
+ * ⚠ 它是**环**（`mask` 把中心掏空）：贴纸本体正是用户在看的预览，不能被盖住。
+ * ⚠ 画在 `::after` 而不是另加一个真元素：贴纸的子树有 E2E 断言守着
+ *   （「贴纸里没有别的浮层」），伪元素不进 DOM 树；顺带它也跟着 `--rb-tilt` 一起歪，正好像
+ *   套在贴纸上的一圈。 */
+@property --rb-press-turn {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.rb-dot[data-rb-pressing]::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  /* ⚠ 先隐形、隔一拍才显形（2026-10-05 用户反馈：「当时想拖动贴纸 就马上会触发换肤」）——
+   *   按下去的**第一瞬间**就闪出这圈，会让「其实是想拖」的人以为自己误触了换肤。
+   *   拖动的起手在 100ms 内就离开原位（那时这一圈还没显形，也就不会闪一下），
+   *   而真想长按的人本来就要按满 `PRESS_MS`，晚 120ms 出现几乎无感。 */
+  opacity: 0;
+  /* `0deg` 兜底：万一 `@property` 没生效（老引擎），至少还能画出一圈静态底环 */
+  background: conic-gradient(var(--brand) var(--rb-press-turn, 0deg), rgb(255 255 255 / 26%) 0);
+  mask: radial-gradient(circle, transparent calc(50% - 2px), #000 calc(50% - 2px));
+  animation:
+    rb-press-turn var(--rb-press-ms, 0ms) linear forwards,
+    rb-press-in 1ms linear 120ms forwards;
+  pointer-events: none;
+}
+
+@keyframes rb-press-turn {
+  from {
+    --rb-press-turn: 0deg;
+  }
+
+  to {
+    --rb-press-turn: 360deg;
+  }
+}
+
+@keyframes rb-press-in {
+  to {
+    opacity: 1;
+  }
+}
+
 /* 贴纸的**本体**:外形 + 底色 + 质感。`--rb-shape` 由 React 按贴纸 id 推导后写成内联变量
  * (`redblack.ts` 那一族:形状由 id 确定性推导,不入库)。
  * ⚠ 这里**只允许** `var(--rb-shape)`,不许出现任何写死的路径 ——
@@ -1177,6 +1253,10 @@
   /* ⚠ 44px 是**点击区**,不是贴纸的大小 —— 里面那枚小贴纸与真贴纸等大(见组件说明) */
   width: 44px;
   height: 44px;
+  /* ⚠ 在节点上按一下**不该滚动页面**(2026-10-05):轮盘监听 `scroll` 就自动关,
+   *   而手指按在节点上时页面跟着滚几像素,环当场被带走 —— 那是「选不中」的直接成因。
+   *   与 `.rb-dot` / `.rb-src` 是同一手法(它们也都挂了 `touch-action: none`)。 */
+  touch-action: none;
   display: grid;
   place-items: center;
   padding: 0;

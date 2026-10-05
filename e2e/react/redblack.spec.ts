@@ -1784,6 +1784,108 @@ test("换款轮盘:悬停弹出、悬停节点只是预览、点选才落定并�
     .toBe(other);
 });
 
+test("★ 触屏长按换款:带一点点抖动也照样弹出轮盘,松手不关、点环外才关", async ({ page }) => {
+  // ⚠ 用户 2026-10-05 报的是触屏这条路**根本走不通**(见 `PLAN-20261005183113`):
+  //   ① 长按判定没有位移阈值 —— 按住半秒期间的一点点抖动就把它作废;
+  //   ② 就算环出来了,一松手(`pointerleave`)就会被那条**鼠标**的关环逻辑收掉。
+  //   两条都只看 `pointerType`,与真机触屏 / `touch-action` 无关 —— 所以这里
+  //   **手动派发带 `pointerType: "touch"` 的 pointer 事件**,三个项目(含 desktop)都能跑这条判据。
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  await ready(page, "/redblack");
+
+  const { dot } = await placeRedAndSettle(page);
+  const box = (await dot.boundingBox())!;
+  const origin = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const touch = (type: string, dx = 0, dy = 0) =>
+    dot.dispatchEvent(type, {
+      pointerType: "touch",
+      pointerId: 7,
+      isPrimary: true,
+      clientX: origin.x + dx,
+      clientY: origin.y + dy,
+    });
+  const wheel = page.locator(".rb-wheel");
+
+  // ---- ① 小抖动不该作废长按(回归判据:改前 `onPointerMove` 是无条件作废的) ----
+  await touch("pointerdown");
+  // 蓄力进度环:按下去的**那一刻**就看得见 —— 它同时是「能长按」唯一看得见的提示
+  await expect(dot).toHaveAttribute("data-rb-pressing", "true");
+  // 5px < `DRAG_SLOP_TOUCH`(10px):这一步在改前会把长按计时器直接清掉,环永远不出来
+  await touch("pointermove", 5, 5);
+  // ⚠ 这里**不再**断言「此刻还没有环」—— 那是个对时序敏感的判据:`toHaveAttribute` 自己的轮询
+  //   就耗时不定,并发跑时可能已经越过 `PRESS_MS`(实测:全 spec 并发下偶发假红,单条 3/3 全绿)。
+  //   要守的那件事下面一条已经说清了:**那一抖没有把环作废**(改前它永远不成立)。
+  await expect(wheel).toHaveCount(1, { timeout: 3000 });
+
+  // ---- ② 松手不该关掉它(触屏没有 hover,「指针离开」在那里只等于抬手) ----
+  await touch("pointerup");
+  await expect(dot).not.toHaveAttribute("data-rb-pressing");
+  // ⚠ 等过 `WHEEL_GRACE_MS`(260ms):改前环会在这条宽限走完时消失,用户根本来不及点节点
+  await page.waitForTimeout(400);
+  await expect(wheel).toHaveCount(1);
+
+  // ---- ③ 点环外 → 关(触屏没有 Escape,这是那条唯一通用的退路) ----
+  await page.locator(".rb-sort-hint").click();
+  await expect(wheel).toHaveCount(0);
+
+  // ---- ④ 挪过阈值就是「拖」,不该再弹环 ----
+  await touch("pointerdown");
+  await touch("pointermove", -60, 0);
+  await page.waitForTimeout(700); // > `PRESS_MS`
+  await expect(wheel).toHaveCount(0);
+  await touch("pointerup");
+});
+
+test("★ 触屏:环弹出后一动就关掉,且这一拖真的生效(「想拖却弹出换肤」的回归)", async ({ page }) => {
+  // ⚠ 用户 2026-10-05 第二次反馈:「当时想拖动贴纸 就马上会触发换肤 这个逻辑感觉有点不对」。
+  //   拖的起手常常是「先按住停一下、再移」—— 那一停就超过 `PRESS_MS`,环先弹了出来;
+  //   而环弹出后没有任何东西把它取消。修法是**拖动优先**:环开着时位移一越过 `slop`,
+  //   就把环关掉、交给 `beginDrag`(见 `onPointerMove` 里那条 ★)。
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  await ready(page, "/redblack");
+
+  const { card, dot } = await placeRedAndSettle(page);
+  const box = (await dot.boundingBox())!;
+  const origin = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const touch = (type: string, at: { x: number; y: number }) =>
+    dot.dispatchEvent(type, {
+      pointerType: "touch",
+      pointerId: 9,
+      isPrimary: true,
+      clientX: at.x,
+      clientY: at.y,
+    });
+  const wheel = page.locator(".rb-wheel");
+
+  // ① 按住不动 → 环照常弹出来(上一轮修好的那条路不能被这次改坏)
+  await touch("pointerdown", origin);
+  await expect(wheel).toHaveCount(1, { timeout: 3000 });
+
+  // ② 环开着时继续移动(越过 `DRAG_SLOP_TOUCH` = 10px)→ 环**当场让位**
+  await touch("pointermove", { x: origin.x + 30, y: origin.y });
+  await expect(wheel).toHaveCount(0);
+
+  // ③ 而且这一拖**真的生效**:贴纸落到松手那一点(环不能把拖动吃掉)
+  const rect = (await card.locator(".rb-canvas").boundingBox())!;
+  const rel = { x: (origin.x - rect.x) / rect.width, y: (origin.y - rect.y) / rect.height };
+  const target = { x: rel.x < 0.5 ? 0.8 : 0.2, y: rel.y < 0.5 ? 0.8 : 0.2 };
+  const drop = { x: rect.x + rect.width * target.x, y: rect.y + rect.height * target.y };
+  await touch("pointermove", drop);
+  await touch("pointerup", drop);
+  await expect(wheel).toHaveCount(0);
+
+  const after = (await dot.boundingBox())!;
+  const settled = (await card.locator(".rb-canvas").boundingBox())!;
+  const afterRel = {
+    x: (after.x + after.width / 2 - settled.x) / settled.width,
+    y: (after.y + after.height / 2 - settled.y) / settled.height,
+  };
+  expect(Math.abs(afterRel.x - target.x)).toBeLessThan(0.05);
+  expect(Math.abs(afterRel.y - target.y)).toBeLessThan(0.05);
+});
+
 test("换款轮盘:Esc 关得掉;而「双击贴纸 = 收回」这条既有契约没被踩坏", async ({ page, isMobile }) => {
   test.skip(isMobile, "悬停是鼠标入口；触屏走长按（见 PRESS_MS）");
   await stubEmpty(page);
