@@ -52,6 +52,10 @@ typecheck / lint / 单测仍是**部署前**门禁。详见 §2。
   ⚠ `npm run specs:affected` 无参数时按 `origin/main...HEAD`(已提交差异)算,未提交的改动要用 `--files <path>`。
 - **CI / Cloudflare 红了先修再叠改动**(§8 红线 1);报告结果要**贴证据**(CI 链接 / 测试计数),别说「应该没问题」。
 - 若选择本地跑,则「测试通过 → push 之间代码必须冻结」—— 跑完又改了任何文件,那次结果即失效。
+- **交付口径**:§6 部署核对(asset hash 相同 + 自增字符串 + 阴性对照)完成,**即视为上线成功**。
+  `main` 上的全量 E2E 是**非阻塞的事后体检** —— 交付时**不写「等 CI 跑完」**(那会让人误以为它是瓶颈),
+  正确写法是「部署已核实(贴证据);`main` 全量 E2E 仍在跑,**非阻塞**」。它红了按 §8 红线 1 **优先修**,
+  但**不回滚**已上线版本、也**不改变**本次交付结论(完整版见 `DEVELOPMENT-STANDARDS.md` §2.4)。
 
 ## 3. 测试要求
 
@@ -77,8 +81,13 @@ typecheck / lint / 单测仍是**部署前**门禁。详见 §2。
   只留 `commit-msg`(校验本节格式,即时);**`pre-push` 已于 2026-09-16 删除** —— 它原来跑的 `verify:quick`
   在 Cloudflare 构建里**部署前**已经跑过一遍(§2),本地再跑只是让每次 push 多等 40 秒。
   安装脚本会连带**清理已下线的托管钩子**(只碰它自己装过的名字)。
-- **大改动走 PR**(完整版见 `DEVELOPMENT-STANDARDS.md` §4.5):默认仍直接 push main;**大规模重构 /
-  涉及 `apps/api` 或 D1 迁移 / 依赖升级**三类走 PR —— 换 Review 记录 + Verified 签名 + 「CI 在合并前跑」。
+- **哪些改动走 PR**(完整版见 `DEVELOPMENT-STANDARDS.md` §4.5):**先按 `docs/TEST-MAP.md` 判** ——
+  用 `node scripts/affected-specs.mjs --files <本轮改的路径…>` 查必跑 spec:
+  · **≥1 个业务 spec**(非仅 `smoke`)或命中 **`allOn`(全量)** → **走 PR**,拿「合并前 CI」;
+  · **仅 `smoke` / 无映射**(纯文档、内部重构且无 spec 覆盖)→ **直接 push main**。
+  另有**三类无条件走 PR**:大规模重构 / 跨视图改造、涉及 `apps/api` 或 D1 迁移、依赖升级。
+  ⚠ PR 买到的只是「受影响 spec 在**合并前**跑(Review 记录 + Verified 签名)」——
+  **它不等于「合并前跑过全量」**,也不能让全量在部署前跑完(§2 交付口径)。
   `prepare-cloudflare.mjs` 只在 `WORKERS_CI_BRANCH=main` 时迁移 + 部署,PR 分支天然不碰生产;
   merge 到 main 才部署,§2「推的时候直接推」不变。
 - **大重构前先打 checkpoint**(完整版见 §4.6):`chore(<scope>): checkpoint before <重构名>`,
