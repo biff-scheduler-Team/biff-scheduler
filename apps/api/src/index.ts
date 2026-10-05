@@ -5,7 +5,12 @@ import { database } from "./db";
 import { accountImport, appSession, festivalDocument, oauthPending } from "./db/schema";
 import { pickFilmKeysFromRecords, wantWeightFor } from "./want-stats";
 import { DEFAULT_EDITION, EDITIONS, isEdition } from "@biff/contracts/edition";
-import { LOOKUP_RATE_LIMIT, PING_RATE_LIMIT, createRateLimiter } from "./rate-limit";
+import {
+  FEEDBACK_WRITE_RATE_LIMIT,
+  LOOKUP_RATE_LIMIT,
+  PING_RATE_LIMIT,
+  createRateLimiter,
+} from "./rate-limit";
 import { readWantCounts, replaceContributorWants } from "./want-store";
 import {
   clampCommentLimit,
@@ -45,6 +50,7 @@ import { dailyMetricFamily, isDailyMetric, readDailySeries, readEarliestDay } fr
 import { auditContributions } from "./stat-audit";
 import { kstDayMinus } from "./day";
 import {
+  FEEDBACK_ANON_DISPLAY_NAME,
   normalizeFeedbackBody,
   writeAuthError,
 } from "./feedback";
@@ -131,13 +137,22 @@ const app = new Hono<AppEnv>();
 
 const pingLimiter = createRateLimiter(PING_RATE_LIMIT);
 const lookupLimiter = createRateLimiter(LOOKUP_RATE_LIMIT);
+/** 建议反馈的匿名写入口（2026-10-05，PLAN-20261005204202）：发帖与 reaction 各自分桶。 */
+const feedbackLimiter = createRateLimiter(FEEDBACK_WRITE_RATE_LIMIT);
 
-/** 限流中间件。键 = 路径 + 来源 IP（`cf-connecting-ip` 由 Cloudflare 注入，客户端改不了）。
+/** 限流中间件。键 = `<scope>` + 来源 IP（`cf-connecting-ip` 由 Cloudflare 注入，客户端改不了）。
  *  ⚠ 只是**第一道闸门**：计数器在 isolate 内存里，跨 isolate / 冷启动会重置，
- *    不能替代 CF 的 Rate Limiting Rules —— 边界详见 `rate-limit.ts` 文件头。 */
-function limited(limiter: ReturnType<typeof createRateLimiter>): MiddlewareHandler<AppEnv> {
+ *    不能替代 CF 的 Rate Limiting Rules —— 边界详见 `rate-limit.ts` 文件头。
+ *  ⚠ `scope` 缺省取 `c.req.path`；**路径里带动态段的路由必须显式传一个固定 scope** ——
+ *    否则 `/api/x/:id` 会把每个 id 各开一个额度桶，等于没限流（2026-10-05 自查时在
+ *    `POST /api/feedback/:id/reactions` 上发现的真实缺陷）。 */
+function limited(
+  limiter: ReturnType<typeof createRateLimiter>,
+  scope?: (c: Context<AppEnv>) => string,
+): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
-    const decision = limiter.check(`${c.req.path}\u0000${c.req.header("cf-connecting-ip") ?? "unknown"}`);
+    const bucket = scope ? scope(c) : c.req.path;
+    const decision = limiter.check(`${bucket}\u0000${c.req.header("cf-connecting-ip") ?? "unknown"}`);
     if (!decision.allowed) {
       c.header("Retry-After", String(decision.retryAfterSeconds));
       return c.json({ error: "RATE_LIMITED" }, 429);
@@ -159,6 +174,10 @@ function editionParam(raw: string | undefined): string | null {
  * 此前它会一路冒泡到 `onError` —— 于是 `/api/feedback`、`/api/discussions` 这类**纯公开**内容
  * 会因为「账号系统暂时连不上」而整页打不开（最坏还要等满 `REFRESH_WAIT_MS`）。
  * 公开内容不依赖会话，降级即可；只有 `requireIdentity` 那条路径才该让 503 冒泡。
+ *
+ * ⚠ 2026-10-05 起「建议反馈的**写**路径」（`PLAN-20261005204202`）也用它 —— 那里降级的含义是
+ *   「登录态读不出来 → 就按匿名写」：会落成一条匿名帖（而不是 503）。这是有意的取舍：
+ *   与读路径同一条口径，且用户至少没有白写一段话；代价是**上游抖动时登录用户可能发成匿名帖**。
  */
 async function optionalSession(c: Context<AppEnv>) {
   const config = configuration(c.env);
@@ -492,27 +511,104 @@ async function applyWantFromRecords(
   );
 }
 
+/* ---------------- 匿名身份（2026-10-05，PLAN-20261005204202） ----------------
+ * ★ **全站唯一一份**匿名身份口径（cookie 名、180 天、`anon:` 前缀 + hash）。
+ *   此前它在 5 个统计 ping 里被逐字复制了 5 遍（`film-vote-store.ts:580` 把这条欠账留过痕）；
+ *   「建议反馈」免登录写要走**同一枚** cookie —— 再抄第 6 遍就是红线 5，故一并抽到这里。
+ *   ⚠ `ANON_PREFIX` 的单一来源在 `film-vote-store.ts`（自查接口靠它判归属），这里只 import。 */
 
+/** 匿名贡献者标识 `anon:<hash>`。
+ *
+ *  - 写路径（默认 `create = true`）：没有 cookie 就**发一枚** 180 天的 cookie，返回新身份。
+ *  - 读路径（`create = false`）：只认本次请求带来的 cookie，没有就返回 `null`
+ *    —— 公开读端点一律不在 `GET` 上下发身份（与 `want-counts` / `film-comments` 同一条）。 */
+async function anonContributor(
+  c: Context<AppEnv>,
+  config: ReturnType<typeof configuration>,
+): Promise<string>;
+async function anonContributor(
+  c: Context<AppEnv>,
+  config: ReturnType<typeof configuration>,
+  create: false,
+): Promise<string | null>;
+async function anonContributor(
+  c: Context<AppEnv>,
+  config: ReturnType<typeof configuration>,
+  create = true,
+): Promise<string | null> {
+  let anon = getCookie(c, wantAnonCookie(config));
+  if (!anon) {
+    if (!create) return null;
+    anon = randomToken();
+    setCookie(c, wantAnonCookie(config), anon, cookieOptions(config, 180 * 86400));
+  }
+  return `${ANON_PREFIX}${await hash(anon)}`;
+}
 
+/** `anonContributor` 的**对偶操作**：登录后把这枚匿名 cookie 的贡献整份撤掉再删 cookie。
+ *  不清的话同一人会以「匿名 + 登录」被统计两次（判定与理由见
+ *  `screening-stats-store.ts::clearAnonContributions`）。
+ *  ⚠ 只在**已登录**分支调用。 */
+async function dropAnonContributor(
+  c: Context<AppEnv>,
+  config: ReturnType<typeof configuration>,
+  edition: string,
+): Promise<void> {
+  const anon = getCookie(c, wantAnonCookie(config));
+  if (!anon) return;
+  await clearAnonContributions(database(c.env.DB), edition, `${ANON_PREFIX}${await hash(anon)}`);
+  deleteCookie(c, wantAnonCookie(config), cookieOptions(config, 0));
+}
+
+/** 登录身份写给建议反馈的署名；上游抖动 / 昵称非法时退回匿名署名。
+ *  ⚠ 退回而不是报错：署名只是展示信息，为它把「建议没发出去」当掉不划算
+ *    （与红黑榜评语 `displayName` 可空是同一取向）。 */
+async function feedbackDisplayName(
+  c: Context<AppEnv>,
+  session: NonNullable<SessionLookup["session"]>,
+): Promise<string> {
+  const config = configuration(c.env);
+  try {
+    const outcome = await resolveIdentity(
+      c.env,
+      getCookie(c, sessionCookieName(config)),
+      c.req.header("cf-connecting-ip"),
+      session,
+    );
+    if ("failure" in outcome) return FEEDBACK_ANON_DISPLAY_NAME;
+    return normalizeDisplayName(outcome.profile.displayName) ?? FEEDBACK_ANON_DISPLAY_NAME;
+  } catch (error) {
+    console.warn("feedback_profile_degraded", error instanceof Error ? error.name : "UnknownError");
+    return FEEDBACK_ANON_DISPLAY_NAME;
+  }
+}
+
+/* ---------------- 建议反馈（2026-10-05 起**免登录可写**，PLAN-20261005204202） ----------------
+ * 读公开 → 写匿名：身份 = 有会话用账号 subject，无会话用全站那枚匿名 cookie 派生的
+ * `anon:<hash>`（与 5 个统计 ping 同一枚，见 `anonContributor`）。
+ * ⚠ 与场次讨论（仍 `requireIdentity`）**不再同形** —— 那边前端已整体下线，别照着旧注释抄。
+ * ⚠ 删除**仍要登录**：匿名帖因此作者本人也删不掉，已知欠账记在 PLAN 里。 */
 app.get("/api/feedback", async (c) => {
   // 公开内容：会话拿不到（或刷新失败）就按匿名返回，不因为账号系统抖动而整页打不开
   const session = await optionalSession(c);
+  const config = configuration(c.env);
   const result = await listFeedbackPosts(database(c.env.DB), {
     limit: parseFeedbackLimit(c.req.query("limit")),
     cursor: parseFeedbackCursor(c.req.query("cursor")),
-    mySubject: session?.row.subject ?? null,
+    // ⚠ 读路径**不**发新 cookie（`create: false`）：匿名者刷新后要能看到自己点过的反应
+    mySubject: session?.row.subject ?? (await anonContributor(c, config, false)),
   });
   return c.json(result);
 });
-app.post("/api/feedback", requireIdentity, async (c) => {
-  if (writeAuthError(c.get("session"))) return c.json({ error: "UNAUTHENTICATED" }, 401);
+app.post("/api/feedback", limited(feedbackLimiter), async (c) => {
+  const config = configuration(c.env);
+  const session = await optionalSession(c);
   const payload = await c.req.json().catch(() => null);
   const body = normalizeFeedbackBody(payload && typeof payload === "object" ? (payload as { body?: unknown }).body : null);
   if (!body) return c.json({ error: "INVALID_BODY" }, 422);
-  const profile = c.get("profile");
   const post = await createFeedbackPost(database(c.env.DB), {
-    subject: c.get("session").row.subject,
-    displayName: profile.displayName,
+    subject: session ? session.row.subject : await anonContributor(c, config),
+    displayName: session ? await feedbackDisplayName(c, session) : FEEDBACK_ANON_DISPLAY_NAME,
     body,
   });
   return c.json(post, 201);
@@ -525,14 +621,17 @@ app.delete("/api/feedback/:id", requireIdentity, async (c) => {
   if (result.status === "forbidden") return c.json({ error: "FORBIDDEN" }, 403);
   return c.json({ ok: true });
 });
-app.post("/api/feedback/:id/reactions", requireIdentity, async (c) => {
+// ⚠ 固定 scope:路径含 `:id`,用 `c.req.path` 会把每个帖子算成独立额度（等于没限流）
+app.post("/api/feedback/:id/reactions", limited(feedbackLimiter, () => "feedback:reactions"), async (c) => {
+  const config = configuration(c.env);
   const payload = await c.req.json().catch(() => null);
   const emoji = payload && typeof payload === "object" ? (payload as { emoji?: unknown }).emoji : null;
   if (typeof emoji !== "string" || !isReactionEmoji(emoji))
     return c.json({ error: "INVALID_EMOJI" }, 422);
+  const session = await optionalSession(c);
   const result = await toggleFeedbackReaction(database(c.env.DB), {
     postId: c.req.param("id"),
-    subject: c.get("session").row.subject,
+    subject: session ? session.row.subject : await anonContributor(c, config),
     emoji,
   });
   if (result.status === "missing") return c.json({ error: "NOT_FOUND" }, 404);
@@ -565,21 +664,11 @@ app.post("/api/stats/want-ping", limited(pingLimiter), async (c) => {
   if (session) {
     contributor = session.row.subject;
     weight = wantWeightFor(true);
-    const anon = getCookie(c, wantAnonCookie(config));
-    if (anon) {
-      // 两张贡献表都要清(见 clearAnonContributions):只清 want 的话,
-      // 同一人会以「匿名 0.75 + 登录 1.0」被同场观影人数算两次。
-      await clearAnonContributions(db, edition, `anon:${await hash(anon)}`);
-      deleteCookie(c, wantAnonCookie(config), cookieOptions(config, 0));
-    }
+    // 两张贡献表都要清（只清 want 的话，同一人会以「匿名 0.75 + 登录 1.0」被同场观影人数算两次）
+    await dropAnonContributor(c, config, edition);
   } else {
     weight = wantWeightFor(false);
-    let anon = getCookie(c, wantAnonCookie(config));
-    if (!anon) {
-      anon = randomToken();
-      setCookie(c, wantAnonCookie(config), anon, cookieOptions(config, 180 * 86400));
-    }
-    contributor = `anon:${await hash(anon)}`;
+    contributor = await anonContributor(c, config);
   }
   await replaceContributorWants(db, edition, contributor, weight, films);
   return c.json({ ok: true, weight, count: films.length });
@@ -698,24 +787,14 @@ app.post("/api/stats/film-votes-ping", limited(pingLimiter), async (c) => {
   let contributor: string;
   if (session) {
     contributor = session.row.subject;
-    const anon = getCookie(c, wantAnonCookie(config));
-    if (anon) {
-      // 与 want / screening 同一条:不清匿名行的话,同一人会以「匿名 + 登录」被算成两票
-      // (注释详见 screening-stats-store.ts::clearAnonContributions)
-      await clearAnonContributions(db, edition, `anon:${await hash(anon)}`);
-      deleteCookie(c, wantAnonCookie(config), cookieOptions(config, 0));
-    }
+    // 与 want / screening 同一条：不清匿名行的话，同一人会以「匿名 + 登录」被算成两票
+    await dropAnonContributor(c, config, edition);
   } else {
-    let anon = getCookie(c, wantAnonCookie(config));
-    if (!anon) {
-      anon = randomToken();
-      setCookie(c, wantAnonCookie(config), anon, cookieOptions(config, 180 * 86400));
-    }
-    contributor = `anon:${await hash(anon)}`;
+    contributor = await anonContributor(c, config);
   }
   // 「这一次带了评语吗」——**两条路径共用的判据**（整份替换看 `votes[].comment`，增量看 `ops[].comment`）。
-  // 昵称:反馈板 / 讨论区那两处直接取 `c.get("profile").displayName` —— 它们挂了 `requireIdentity`,
-  // 中间件**已经**替它们解析过身份。而这条 ping 必须支持匿名(口径 1),中间件不会替它解析,所以这里自己来。
+  // 昵称:这条 ping 必须支持匿名(口径 1),`requireIdentity` 中间件不会替它解析,所以这里自己来。
+  // (⚠ 2026-10-05 起「建议反馈」也已免登录写 —— 它同样自己解析,见 `feedbackDisplayName`)。
   // ⚠ 只在**这次真的带了评语**时解析:纯贴纸的上报(绝大多数)不该为它多一次上游往返。
   // ⚠ 未登录 / 解析失败 → `null`(前端显示「匿名观众」),**不阻塞写票** ——
   //   昵称是展示用的附加信息,为它把「贴纸没贴上去」当掉不划算。
@@ -1039,19 +1118,10 @@ app.post("/api/stats/screening-attendance-ping", limited(pingLimiter), async (c)
   if (session) {
     contributor = session.row.subject;
     weight = wantWeightFor(true);
-    const anon = getCookie(c, wantAnonCookie(config));
-    if (anon) {
-      await clearAnonContributions(db, edition, `anon:${await hash(anon)}`);
-      deleteCookie(c, wantAnonCookie(config), cookieOptions(config, 0));
-    }
+    await dropAnonContributor(c, config, edition);
   } else {
     weight = wantWeightFor(false);
-    let anon = getCookie(c, wantAnonCookie(config));
-    if (!anon) {
-      anon = randomToken();
-      setCookie(c, wantAnonCookie(config), anon, cookieOptions(config, 180 * 86400));
-    }
-    contributor = `anon:${await hash(anon)}`;
+    contributor = await anonContributor(c, config);
   }
   await replaceContributorScreenings(db, edition, contributor, weight, codes);
   return c.json({ ok: true, weight, count: codes.length });
@@ -1107,21 +1177,11 @@ app.post("/api/stats/ticket-results-ping", limited(pingLimiter), async (c) => {
   if (session) {
     contributor = session.row.subject;
     weight = wantWeightFor(true);
-    const anon = getCookie(c, wantAnonCookie(config));
-    if (anon) {
-      // 与 want / screening / film-votes 同一条:不清匿名行的话,同一人会以「匿名 + 登录」被算两次
-      // (注释详见 screening-stats-store.ts::clearAnonContributions)
-      await clearAnonContributions(db, edition, `anon:${await hash(anon)}`);
-      deleteCookie(c, wantAnonCookie(config), cookieOptions(config, 0));
-    }
+    // 与 want / screening / film-votes 同一条：不清匿名行的话，同一人会以「匿名 + 登录」被算两次
+    await dropAnonContributor(c, config, edition);
   } else {
     weight = wantWeightFor(false);
-    let anon = getCookie(c, wantAnonCookie(config));
-    if (!anon) {
-      anon = randomToken();
-      setCookie(c, wantAnonCookie(config), anon, cookieOptions(config, 180 * 86400));
-    }
-    contributor = `anon:${await hash(anon)}`;
+    contributor = await anonContributor(c, config);
   }
   // 归一化兜一层:zod 挡结构,这里挡「同一场发了两条」这类语义重复(以最后一条为准),
   // 并把 got+transfer 摘成独立的 transfer(见 ticket-stats.ts)
@@ -1184,19 +1244,10 @@ app.post("/api/stats/telemetry-ping", limited(pingLimiter), async (c) => {
   if (session) {
     contributor = session.row.subject;
     weight = wantWeightFor(true);
-    const anon = getCookie(c, wantAnonCookie(config));
-    if (anon) {
-      await clearAnonContributions(db, edition, `anon:${await hash(anon)}`);
-      deleteCookie(c, wantAnonCookie(config), cookieOptions(config, 0));
-    }
+    await dropAnonContributor(c, config, edition);
   } else {
     weight = wantWeightFor(false);
-    let anon = getCookie(c, wantAnonCookie(config));
-    if (!anon) {
-      anon = randomToken();
-      setCookie(c, wantAnonCookie(config), anon, cookieOptions(config, 180 * 86400));
-    }
-    contributor = `anon:${await hash(anon)}`;
+    contributor = await anonContributor(c, config);
   }
   const deltas = normalizeTelemetryEntries(events);
   await applyContributorTelemetry(db, edition, contributor, weight, deltas);

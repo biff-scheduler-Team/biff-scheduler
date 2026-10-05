@@ -9,6 +9,12 @@
 export const FEEDBACK_BODY_MIN = 1;
 export const FEEDBACK_BODY_MAX = 2000;
 
+/** 未登录留言的署名（2026-10-05 起免登录写，用户定「固定『匿名观众』」）。
+ *  ⚠ 与红黑榜评语的**前端**兜底文案是同一个名字（`FilmCommentsDialog.tsx` 的
+ *    `displayName ?? "匿名观众"`）：那处 `displayName` 为 `null`，这里落的是真实字符串
+ *    （`feedback_post.display_name` 是 `NOT NULL`）。改文案时两处一起改。 */
+export const FEEDBACK_ANON_DISPLAY_NAME = "匿名观众";
+
 /** trim 后长度须在 1–2000；非法返回 null。 */
 export function normalizeFeedbackBody(raw: unknown): string | null {
   if (typeof raw !== "string") return null;

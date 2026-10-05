@@ -69,3 +69,11 @@ export function createRateLimiter(rule: RateLimitRule): RateLimiter {
 export const PING_RATE_LIMIT: RateLimitRule = { windowMs: 60_000, max: 60 };
 /** 地点查询会打第三方日配额（Naver 25k / Kakao 100k），故单独收紧。 */
 export const LOOKUP_RATE_LIMIT: RateLimitRule = { windowMs: 60_000, max: 30 };
+/** 建议反馈的**写**入口（2026-10-05 起免登录，PLAN-20261005204202）。
+ *
+ *  ★ 为什么单独一条：匿名写**没有账号可封**，唯一的身份就是 IP；
+ *    而它又直接往 D1 落行（比统计 ping 更容易被灌）。`limited()` 按「路径 + IP」分桶，
+ *    故发帖与 reaction 各自计数，互不占用额度。
+ *  ⚠ 边界与其余限流一致（isolate 内存固定窗口，跨 isolate / 冷启动会重置），
+ *    不能替代 CF Rate Limiting Rules —— 见本文件头。 */
+export const FEEDBACK_WRITE_RATE_LIMIT: RateLimitRule = { windowMs: 60_000, max: 20 };

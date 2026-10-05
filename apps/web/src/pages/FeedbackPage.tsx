@@ -73,10 +73,8 @@ export function FeedbackPage() {
   };
 
   const submit = async () => {
-    if (!authed) {
-      requireLogin();
-      return;
-    }
+    // ⚠ 2026-10-05 起**免登录可发**（PLAN-20261005204202）：匿名由服务端那枚全站匿名 cookie 认，
+    //    前端不再有登录前置 —— 别再把它加回来。
     const body = draft.trim();
     if (!body) {
       ToastQueue.negative("请先写一点建议内容。");
@@ -100,6 +98,8 @@ export function FeedbackPage() {
       ToastQueue.positive("已发布");
     } catch (error) {
       if (error instanceof ApiFailure && error.status === 401) requireLogin();
+      else if (error instanceof ApiFailure && error.status === 429)
+        ToastQueue.negative("发布太频繁了，请稍后再试。");
       else ToastQueue.negative("发布失败，请稍后重试。");
     } finally {
       setSubmitting(false);
@@ -107,10 +107,7 @@ export function FeedbackPage() {
   };
 
   const toggle = async (postId: string, emoji: string) => {
-    if (!authed) {
-      requireLogin();
-      return;
-    }
+    // 同上：匿名也能点反应（服务端按匿名 cookie 认「这枚是不是我点的」）
     try {
       const result = (await (
         await api(`/api/feedback/${encodeURIComponent(postId)}/reactions`, {
@@ -131,6 +128,8 @@ export function FeedbackPage() {
       );
     } catch (error) {
       if (error instanceof ApiFailure && error.status === 401) requireLogin();
+      else if (error instanceof ApiFailure && error.status === 429)
+        ToastQueue.negative("点得太频繁了，请稍后再试。");
       else ToastQueue.negative("反应失败，请稍后重试。");
     }
   };
@@ -157,7 +156,9 @@ export function FeedbackPage() {
       <div className="panel-heading">
         <div>
           <h1>建议反馈</h1>
-          <p className="muted">任何人可读；登录后可发帖与反应。欢迎吐槽、许愿、报 bug。</p>
+          <p className="muted">
+            任何人可读，无需登录也能发帖与点反应（匿名显示为「匿名观众」）。欢迎吐槽、许愿、报 bug。
+          </p>
         </div>
       </div>
 
@@ -168,17 +169,13 @@ export function FeedbackPage() {
           onChange={setDraft}
           maxLength={2000}
           isDisabled={submitting}
-          placeholder={authed ? "说说你想改进的地方…" : "登录后即可发布建议"}
+          placeholder="说说你想改进的地方…"
         />
         <div className="feedback-composer-actions">
           <span className="muted feedback-char-count">{draft.trim().length}/2000</span>
-          {authed ? (
-            <Button variant="accent" onPress={() => void submit()} isDisabled={submitting}>
-              发布
-            </Button>
-          ) : (
-            <ActionButton onPress={requireLogin}>登录后发布</ActionButton>
-          )}
+          <Button variant="accent" onPress={() => void submit()} isDisabled={submitting}>
+            发布
+          </Button>
         </div>
       </div>
 
