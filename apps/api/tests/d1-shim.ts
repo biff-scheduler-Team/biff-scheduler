@@ -212,6 +212,15 @@ export function createStatSchema(sqlite: DatabaseSync): void {
       updated_at INTEGER NOT NULL,
       PRIMARY KEY(edition, film_key, skin, vote)
     );
+    -- 增量上报的幂等水位（2026-10-05，migrations/0015）
+    CREATE TABLE film_vote_sync (
+      edition TEXT NOT NULL,
+      contributor TEXT NOT NULL,
+      client_id TEXT NOT NULL,
+      last_seq INTEGER DEFAULT 0 NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(edition, contributor, client_id)
+    );
     CREATE TABLE screening_ticket_contribution (
       edition TEXT NOT NULL,
       code TEXT NOT NULL,

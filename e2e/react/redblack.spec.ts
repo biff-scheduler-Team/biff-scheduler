@@ -218,11 +218,11 @@ test("没标记「看过」时红 / 黑按钮是禁态,标记之后才放开", a
 });
 
 test("标记「看过」→ 贴一枚红:画布上立刻出现,并上报给服务端", async ({ page }) => {
-  const pings: Array<{ votes?: unknown }> = [];
+  const pings: Array<{ ops?: unknown }> = [];
   await page.route("**/api/stats/film-votes**", async (route) => {
     if (route.request().method() === "POST") {
-      pings.push(route.request().postDataJSON() as { votes?: unknown });
-      return route.fulfill({ json: { ok: true, count: 1 } });
+      pings.push(route.request().postDataJSON() as { ops?: unknown });
+      return route.fulfill({ json: { ok: true, count: 1, votes: {}, skins: {} } });
     }
     return route.fulfill({ json: { edition: "biff-2026", votes: {} } });
   });
@@ -240,13 +240,13 @@ test("标记「看过」→ 贴一枚红:画布上立刻出现,并上报给服�
   await expect(card.locator(".rb-dot--red")).toHaveCount(1);
   await expect(card.locator(".rb-canvas-hint")).toHaveCount(0);
 
-  // 上报是整份替换,载荷里就是「我贴出来的那几枚」
-  // ⚠ `comment` / `skin` 两个字段都必须**在**载荷里(2026-09-29):服务端靠
-  //   「这一份里有没有这个字段」分辨新版 / 旧版前端 —— 一条都没带时它一个字都不碰对应那一列
-  //   (老客户端一次普通上报不能静默清空用户写过的评语 / 选过的款)。所以省略字段是**错**的,`null` 是对的。
-  await expect.poll(() => pings.at(-1)?.votes ?? null, { timeout: 8000 }).toHaveLength(1);
-  const sent = (pings.at(-1)?.votes ?? []) as Array<Record<string, unknown>>;
-  expect(sent[0]).toMatchObject({ key, vote: "red", comment: null });
+  // 上报是**增量 op**（2026-10-05，PLAN-20261005182415 §C）：载荷里是「改动了什么」，
+  // 第一次调度（本机还没有任何 base）会把整面墙作为 `set` 发上去。
+  // ⚠ `comment` / `skin` 两个字段都必须**在** `set` op 里：服务端把它当成「这部片现在是这个状态」
+  //   整条覆盖 —— 省掉字段等于告诉它「这部片没有评语 / 没带款」，那不是用户的意思（他刚改的是颜色）。
+  await expect.poll(() => pings.at(-1)?.ops ?? null, { timeout: 8000 }).toHaveLength(1);
+  const sent = (pings.at(-1)?.ops ?? []) as Array<Record<string, unknown>>;
+  expect(sent[0]).toMatchObject({ op: "set", key, vote: "red", comment: null });
   // ⚠ **不能写死是哪一款**:刚贴下那枚的款由 id 推导(而 id 带随机后缀),
   //   这里只断言「字段在,且是契约层白名单里的一款」—— 写死会变成一条看运气的断言。
   expect("skin" in sent[0]).toBe(true);
@@ -550,11 +550,11 @@ test("讨论区:数字与卡片一致、按片读、只列写了评语的人、E
 //  ② **拖一下不能顺手收走** —— `pointerup` 之后浏览器还会补一次 `click`,
 //     不做区分的话「微调位置」会变成「撤销」。
 test("双击自己贴的那一枚才收回;单击什么都不做", async ({ page }) => {
-  const pings: Array<{ votes?: unknown }> = [];
+  const pings: Array<{ ops?: unknown }> = [];
   await page.route("**/api/stats/film-votes**", async (route) => {
     if (route.request().method() === "POST") {
-      pings.push(route.request().postDataJSON() as { votes?: unknown });
-      return route.fulfill({ json: { ok: true, count: 0 } });
+      pings.push(route.request().postDataJSON() as { ops?: unknown });
+      return route.fulfill({ json: { ok: true, count: 0, votes: {}, skins: {} } });
     }
     return route.fulfill({ json: { edition: "biff-2026", votes: {} } });
   });
@@ -587,8 +587,11 @@ test("双击自己贴的那一枚才收回;单击什么都不做", async ({ page
   await expect(card.locator(".rb-canvas-hint")).toHaveCount(1);
   await expect(page.locator(".rb-wheel")).toHaveCount(0);
   await expect(trayRed).not.toHaveAttribute("data-rb-spent");
-  // 上报是**整份替换**:收回之后服务端那份应当变成空表(否则服务端还替我留着那一票)
-  await expect.poll(() => pings.at(-1)?.votes ?? null, { timeout: 8000 }).toEqual([]);
+  // 上报是**增量 op**：收回之后发的是那条 `remove`（而不是「整份空表」——整份替换会把
+  // 别的设备的票一起删掉，那正是 §C 要修的东西）
+  await expect
+    .poll(() => pings.at(-1)?.ops ?? null, { timeout: 8000 })
+    .toEqual([{ op: "remove", key }]);
 });
 
 // 用户 2026-09-23:「收回贴纸之后 贴纸仍残留 然后过一段时间才刷新」。
@@ -1554,12 +1557,12 @@ test("讨论区:按游标翻页,翻完按钮消失", async ({ page }) => {
 test("在讨论区里写一条评语:ping 载荷里真的带了 comment 字段", async ({ page }) => {
   await stubEmpty(page);
   await stubComments(page, { items: [] });
-  const pings: Array<{ votes: Array<Record<string, unknown>> }> = [];
+  const pings: Array<{ ops: Array<Record<string, unknown>> }> = [];
   // ⚠ 注册在 `stubEmpty` **之后**:Playwright 后注册的路由优先,而
   //   `**/api/stats/film-votes**` 也匹配 `…-ping` —— 顺序反了这里就收不到载荷
   await page.route("**/api/stats/film-votes-ping", async (route) => {
-    pings.push(JSON.parse(route.request().postData() ?? "{}") as { votes: Array<Record<string, unknown>> });
-    await route.fulfill({ json: { ok: true, count: 1, votes: {} } });
+    pings.push(JSON.parse(route.request().postData() ?? "{}") as { ops: Array<Record<string, unknown>> });
+    await route.fulfill({ json: { ok: true, count: 1, votes: {}, skins: {} } });
   });
   await ready(page, "/redblack");
 
@@ -1582,17 +1585,22 @@ test("在讨论区里写一条评语:ping 载荷里真的带了 comment 字段",
   await expect
     .poll(
       () => {
-        const mineNow = pings.at(-1)?.votes.find((entry) => entry.key === key);
+        const mineNow = pings.at(-1)?.ops.find((op) => op.key === key);
         return mineNow?.comment ?? null;
       },
       { timeout: 8000 },
     )
     .toBe("拉片细节绝了");
-  const votes = pings.at(-1)!.votes;
-  const mine = votes.find((entry) => entry.key === key);
+  const ops = pings.at(-1)!.ops;
+  const mine = ops.find((op) => op.key === key);
   expect(mine?.comment).toBe("拉片细节绝了");
-  // ⚠ 每一条都必须带字段:一条都没有 = 服务端读成「旧版前端」,那一整份的评语一个字都不碰
-  for (const entry of votes) expect("comment" in entry).toBe(true);
+  // ⚠ 每一条 `set` op 都必须带字段：省掉 `comment` 等于告诉服务端「这部片现在没有评语」——
+  //   而 op 的语义是「整条覆盖」，不是「只改我提到的那几列」。（`remove` op 自然没有这个字段。）
+  for (const op of ops) {
+    if (op.op !== "set") continue;
+    expect("comment" in op).toBe(true);
+    expect("skin" in op).toBe(true);
+  }
 });
 
 test("评语接口 500:讨论区走空态,红黑榜照常可用(静默降级)", async ({ page }) => {
@@ -1712,11 +1720,11 @@ async function anotherSkin(wheel: Locator): Promise<string> {
 //   触屏的长按入口没有对应的 Playwright API(没有 long-press),所以那一条不在这里假装覆盖。
 test("换款轮盘:悬停弹出、悬停节点只是预览、点选才落定并随票上报", async ({ page, isMobile }) => {
   test.skip(isMobile, "悬停是鼠标入口；触屏走长按（见 PRESS_MS）");
-  const pings: Array<{ votes: Array<Record<string, unknown>> }> = [];
+  const pings: Array<{ ops: Array<Record<string, unknown>> }> = [];
   await page.route("**/api/stats/film-votes**", async (route) => {
     if (route.request().method() === "POST") {
-      pings.push(route.request().postDataJSON() as { votes: Array<Record<string, unknown>> });
-      return route.fulfill({ json: { ok: true, count: 1, votes: {} } });
+      pings.push(route.request().postDataJSON() as { ops: Array<Record<string, unknown>> });
+      return route.fulfill({ json: { ok: true, count: 1, votes: {}, skins: {} } });
     }
     return route.fulfill({ json: { edition: "biff-2026", votes: {} } });
   });
@@ -1772,7 +1780,7 @@ test("换款轮盘:悬停弹出、悬停节点只是预览、点选才落定并�
   await expect.poll(shape).not.toBe(before);
   // 落定之后才跟着票一起上报(服务端按款聚合,展板上的群点才画得出大家选了什么)
   await expect
-    .poll(() => (pings.at(-1)?.votes?.[0] as { skin?: string } | undefined)?.skin, { timeout: 8000 })
+    .poll(() => (pings.at(-1)?.ops?.[0] as { skin?: string } | undefined)?.skin, { timeout: 8000 })
     .toBe(other);
 });
 

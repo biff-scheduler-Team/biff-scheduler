@@ -134,6 +134,57 @@ export function normalizeSkin(value: unknown): StickerSkin | null {
   return isStickerSkin(value) ? value : null;
 }
 
+/* ---------------- 增量上报（2026-10-05，PLAN-20261005182415 §C） ----------------
+ * 由来：上报原来是**整份替换**（把「我这台机器上的全部票」发上来，服务端照单替换）。
+ * 它在多端 / 清缓存时会**删掉服务端已有的票**，而且载荷是一整份、失败就得整份重来。
+ * 改成「每个改动一条 op」之后：错的只是那一部片、部分载荷不再有破坏性、重放天然幂等。
+ *
+ * ⚠ 只有两种 op（**没有**「改色」这种第三类）：改色就是一次新的 `set`。
+ *    这一条正是「重放幂等」的来源 —— 把同一部片设成同一个状态，第二次是空差分。 */
+
+/** 一条意图。`set` 是**整条覆盖**（颜色 + 评语 + 款一起），`remove` 是撤掉那一票。 */
+export type VoteOp =
+  | { op: "set"; key: string; vote: FilmVote; comment?: unknown; skin?: unknown }
+  | { op: "remove"; key: string };
+
+/** 某位贡献者当前的「一整面墙」—— 三张表同源（都从贡献行读出来），所以一起流转。 */
+export interface VoteBoard {
+  votes: Map<string, FilmVote>;
+  /** filmKey → 评语（`null` = 没写） */
+  comments: Map<string, string | null>;
+  /** filmKey → 贴纸款（`null` = 没带款 / 旧票） */
+  skins: Map<string, StickerSkin | null>;
+}
+
+/** 一面墙 + 一批 op → **新的**一面墙（纯函数，不改入参）。
+ *
+ *  ⚠ 白名单在这里收口，与读侧同一条：空 key / 超长 key 直接丢（不猜）。
+ *  ⚠ 同一部片出现多条 op 时**以最后一条为准**（客户端会把同一部片的多次改动合并，但
+ *    合并出错的载荷不该把服务端写坏）。
+ *  ⚠ `set` 缺 `comment` / `skin` 字段时按 `null` 处理（=「这一票没评语 / 没带款」）——
+ *    与 `dedupeVotes` 那条「每条都带字段」是同一件事的两半：字段在不在决定「要不要碰那一列」，
+ *    而 op 是**明确要碰**的（用户刚改的就是这一票）。 */
+export function mergeVoteOps(board: VoteBoard, ops: readonly VoteOp[]): VoteBoard {
+  const votes = new Map(board.votes);
+  const comments = new Map(board.comments);
+  const skins = new Map(board.skins);
+  for (const op of ops) {
+    if (!op || typeof op.key !== "string") continue;
+    if (!op.key || op.key.length > MAX_FILM_KEY_LENGTH) continue;
+    if (op.op === "remove") {
+      votes.delete(op.key);
+      comments.delete(op.key);
+      skins.delete(op.key);
+      continue;
+    }
+    if (!isFilmVote(op.vote)) continue;
+    votes.set(op.key, op.vote);
+    comments.set(op.key, normalizeComment(op.comment));
+    skins.set(op.key, normalizeSkin(op.skin));
+  }
+  return { votes, comments, skins };
+}
+
 /** 库里按款聚合的一行。 */
 export interface SkinStatRow {
   film_key: string;

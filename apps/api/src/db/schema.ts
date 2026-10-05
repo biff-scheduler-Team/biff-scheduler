@@ -204,6 +204,28 @@ export const filmVoteSkinStat = sqliteTable("film_vote_skin_stat", {
   primaryKey({ columns: [table.edition, table.film_key, table.skin, table.vote] }),
 ]);
 
+/** 「这台设备报到第几批了」—— 增量上报的**幂等水位**（2026-10-05，PLAN-20261005182415 §C）。
+ *
+ *  ⚠ 主键带 `client_id`：`seq` 是**每台设备各数各的**（各自 1..N）。少了这一维，两台设备会用
+ *    同一个 `contributor` 互相把对方的 seq 当成「已落过的重放」跳过 —— 表现就是「我这台贴的票上不去」。
+ *  ⚠ 这里**没有任何票的内容**，只是一张水位表：写路径按 `ops` 合并出「目标状态」再交给
+ *    `writeVotesDiff`，本表只回答「这一批是不是已经落过了」。
+ *  ⚠ 水位只在**票写完之后**才推进（见 `applyVoteOps`）：中途失败时水位不动 ⇒ 客户端重发同一批 ⇒
+ *    因为每个 op 都是「把这部片设成某状态」，重放天然幂等。
+ *  ⚠ 只增不改：换浏览器 / 清缓存会留下孤儿行，无害（一行几十字节，也不含身份以外的信息）。 */
+export const filmVoteSync = sqliteTable("film_vote_sync", {
+  edition: text().notNull(),
+  contributor: text().notNull(),
+  /** 客户端生成的**设备标识**（落 `iffday.workspace.redblackclient.v1`，随机串）。
+   *  ⚠ 它不是身份：身份仍然是 `contributor`（匿名 cookie 的 hash / 账号 subject）。 */
+  client_id: text().notNull(),
+  /** 这台设备**已经落库**的最大批次号；`seq <= last_seq` 的批次一律跳过。 */
+  last_seq: integer().notNull().default(0),
+  updated_at: integer().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.edition, table.contributor, table.client_id] }),
+]);
+
 /** 抢票结果：每位贡献者「每场最终怎样了」。形状与 `screening_attendance_contribution` 同构
  *  （2026-09-20，抢票分析模块）—— 那边记「谁把这场排进行程」，这边记「谁最后抢到没有」。
  *  ⚠ `outcome` 是四值而不是三值：`got` + `via=transfer`（票是别人转的）被归一成独立的
