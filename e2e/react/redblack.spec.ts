@@ -1981,10 +1981,10 @@ test("★ 触屏长按换款:带一点点抖动也照样弹出轮盘,松手不�
   await page.locator(".rb-sort-hint").click();
   await expect(wheel).toHaveCount(0);
 
-  // ---- ④ 环开着时,抬手的**漂移**与补发的 `pointerleave` 都不该把环收掉 ----
-  // ⚠ 用户 2026-10-05:「长按后 一松手圆盘就消失了 应该选了皮肤才消失」。真机上按住半秒再抬手,
-  //   接触点必然带一点漂移(实测 14px)—— 所以「让位」的阈值(`WHEEL_YIELD_SLOP_TOUCH` = 24)
-  //   必须比它宽,否则环会被自己收掉。
+  // ---- ④ 环开着时的**移动** / 抬手 / 补发的 `pointerleave` 都不该把环收掉 ----
+  // ⚠ 用户 2026-10-05:「长按后 一松手圆盘就消失了 应该选了皮肤才消失」,随后又明确
+  //   「不选皮肤就圆环就不会消失」—— 所以环的出口只有「选皮肤 / 点环外 / 滚动 / Esc」;
+  //   位移(真机抬手实测能到 14px)与抬手补发的事件都不算。
   await touch("pointerdown");
   await expect(wheel).toHaveCount(1, { timeout: 3000 });
   await touch("pointermove", 14, 0);
@@ -2023,11 +2023,12 @@ test("★ 触屏长按换款:带一点点抖动也照样弹出轮盘,松手不�
   await touch("pointerup", drop.x - origin.x, drop.y - origin.y);
 });
 
-test("★ 触屏:环弹出后一动就关掉,且这一拖真的生效(「想拖却弹出换肤」的回归)", async ({ page }) => {
-  // ⚠ 用户 2026-10-05 第二次反馈:「当时想拖动贴纸 就马上会触发换肤 这个逻辑感觉有点不对」。
-  //   拖的起手常常是「先按住停一下、再移」—— 那一停就超过 `PRESS_MS`,环先弹了出来;
-  //   而环弹出后没有任何东西把它取消。修法是**拖动优先**:环开着时位移一越过 `slop`,
-  //   就把环关掉、交给 `beginDrag`(见 `onPointerMove` 里那条 ★)。
+test("★ 触屏:环弹出后照样拖得动贴纸,而环**不会**因此消失(「不选皮肤就不消失」)", async ({ page }) => {
+  // ⚠ 口径变更(2026-10-05,用户第三次反馈):「不选皮肤就圆环就不会消失」——
+  //   这条**撤销**了上一版按第二次反馈(「当时想拖动贴纸 就马上会触发换肤」)做的「拖动优先」
+  //   (环开着时位移一越过 `slop` 就让位)。两种口径互斥,以用户**最后一次**的为准:
+  //   环一旦开出来就留着,直到「选了皮肤 / 点环外 / 滚动 / Esc」;而拖动**照常生效**
+  //   (`beginDrag` 的监听挂在 `window` 上,与环没有关系)。
   await stubEmpty(page);
   await stubComments(page, { items: [] });
   await ready(page, "/redblack");
@@ -2045,22 +2046,24 @@ test("★ 触屏:环弹出后一动就关掉,且这一拖真的生效(「想拖�
     });
   const wheel = page.locator(".rb-wheel");
 
-  // ① 按住不动 → 环照常弹出来(上一轮修好的那条路不能被这次改坏)
+  // ① 按住不动 → 环照常弹出来(那条路不能被这次改坏)
   await touch("pointerdown", origin);
   await expect(wheel).toHaveCount(1, { timeout: 3000 });
 
-  // ② 环开着时继续移动(越过 `DRAG_SLOP_TOUCH` = 10px)→ 环**当场让位**
+  // ② 环开着时继续移动(越过 `DRAG_SLOP_TOUCH` = 10px)→ **环不动**
+  //    ⚠ 改前这里断的是 `toHaveCount(0)`(让位);现在反过来 —— 这正是本条要守的新口径。
   await touch("pointermove", { x: origin.x + 30, y: origin.y });
-  await expect(wheel).toHaveCount(0);
+  await expect(wheel).toHaveCount(1);
 
-  // ③ 而且这一拖**真的生效**:贴纸落到松手那一点(环不能把拖动吃掉)
+  // ③ 而这一拖**照样生效**:贴纸落到松手那一点(环既不为难拖拽,也不替用户做决定)
   const rect = (await card.locator(".rb-canvas").boundingBox())!;
   const rel = { x: (origin.x - rect.x) / rect.width, y: (origin.y - rect.y) / rect.height };
   const target = { x: rel.x < 0.5 ? 0.8 : 0.2, y: rel.y < 0.5 ? 0.8 : 0.2 };
   const drop = { x: rect.x + rect.width * target.x, y: rect.y + rect.height * target.y };
   await touch("pointermove", drop);
   await touch("pointerup", drop);
-  await expect(wheel).toHaveCount(0);
+  // 松手也不该收起它 —— 只有「选皮肤 / 点环外 / 滚动 / Esc」才是出口
+  await expect(wheel).toHaveCount(1);
 
   const after = (await dot.boundingBox())!;
   const settled = (await card.locator(".rb-canvas").boundingBox())!;
@@ -2070,5 +2073,9 @@ test("★ 触屏:环弹出后一动就关掉,且这一拖真的生效(「想拖�
   };
   expect(Math.abs(afterRel.x - target.x)).toBeLessThan(0.05);
   expect(Math.abs(afterRel.y - target.y)).toBeLessThan(0.05);
+
+  // ④ 出口仍然是有效的:点环外 → 关(触屏没有 Escape,这是那条通用退路)
+  await page.locator(".rb-sort-hint").click();
+  await expect(wheel).toHaveCount(0);
 });
 

@@ -203,19 +203,6 @@ const WHEEL_GRACE_MS = 260;
 const DRAG_SLOP_MOUSE = 8;
 const DRAG_SLOP_TOUCH = 10;
 
-/** 「环已经开着，位移多大才让位给拖拽」(px)。
- *
- *  ⚠ 它必须**明显大于** `DRAG_SLOP_*`：用户在真机上按住半秒再抬手，接触点必然带一点漂移
- *    （指腹摊开 / 手指滚一下），那是 10px 量级 —— 用拖拽阈值判「这是想拖」的话，
- *    环会在松手前后被自己收掉（用户 2026-10-05：「长按后 一松手圆盘就消失了」，
- *    实测 14px 的漂移就会让位）。
- *  ⚠ 真正想拖的人一动就是几十像素（`e2e` 那条「拖动优先」的用例给的是 30px），
- *    所以放大到 24 / 16 既留住「拖动优先」，又不误伤抬手漂移。
- *  ⚠ 与 `DRAG_SLOP_*` 同一处改动要小心：拖拽**起点**仍用原来那两个值（它有自己那条
- *    「跨片拖拽」用例的约束，见上面的说明），这里改的只是**环让位**的判据。 */
-const WHEEL_YIELD_SLOP_MOUSE = 16;
-const WHEEL_YIELD_SLOP_TOUCH = 24;
-
 interface RbCardProps {
   film: FilmNode;
   /** 是否标记过「看过」;`canPlace` = 标记过且这一部还没贴 */
@@ -1690,31 +1677,20 @@ const RbCard = memo(function RbCard({
               //   2026-10-05 之前这里是无条件置真 —— 按住半秒的一点点抖动就把长按作废了，
               //   于是「长按换款」在真机上根本走不通（用户报的正是这个）。
               if (pressMoved.current) return;
-              const touch = event.pointerType === "touch";
-              const dx = Math.abs(event.clientX - pressStart.current.x);
-              const dy = Math.abs(event.clientY - pressStart.current.y);
-
-              // ★ **拖动优先**（2026-10-05 用户第二次反馈：「当时想拖动贴纸 就马上会触发换肤」）：
-              //   人拖贴纸的起手常常是「先按住停一下、再移」—— 那一停就超过 `PRESS_MS`，环先弹了出来，
-              //   而环弹出后没有任何东西把它取消。所以：**环已经开着而用户又动起来了 → 把环关掉，
-              //   让 `beginDrag` 接管**。没有这一条，用户会看到环挂在「半天前量好的那个位置」上，
-              //   而贴纸已经被拖到别处。
-              //   ⚠ 这里的阈值是 `WHEEL_YIELD_SLOP_*`，**比拖拽起点宽**：环已经开出来了，说明用户
-              //     确实按满了半秒；此后抬手那一下的漂移（实测 14px）不该被读成「他想拖」——
-              //     用户 2026-10-05：「长按后 一松手圆盘就消失了 应该选了皮肤才消失」。
-              //     真想拖的人一动就是几十像素，所以放宽到 24 / 16 两边都不误伤。
-              if (wheelOpen) {
-                const yieldSlop = touch ? WHEEL_YIELD_SLOP_TOUCH : WHEEL_YIELD_SLOP_MOUSE;
-                if (dx <= yieldSlop && dy <= yieldSlop) return;
-                closeWheel();
-                pressMoved.current = true;
+              const slop = event.pointerType === "touch" ? DRAG_SLOP_TOUCH : DRAG_SLOP_MOUSE;
+              if (
+                Math.abs(event.clientX - pressStart.current.x) <= slop &&
+                Math.abs(event.clientY - pressStart.current.y) <= slop
+              ) {
                 return;
               }
-
-              // 环还没开：越过拖拽阈值就作废长按（这一轮是拖，由 `beginDrag` 接管）
-              const slop = touch ? DRAG_SLOP_TOUCH : DRAG_SLOP_MOUSE;
-              if (dx <= slop && dy <= slop) return;
-              // 挪过就不再是长按（是拖）—— 把计时器与进度环一起收掉，免得它半路又弹出来
+              // 挪过就不再是长按（是拖）—— 把计时器与进度环一起收掉，免得它半路又弹出来。
+              // ⚠ **环自己不因此关掉**（2026-10-05 用户第三次反馈：「不选皮肤就圆环就不会消失」）：
+              //   环一旦开出来就留着，直到「选了皮肤 / 点环外任意处 / 滚动 / Esc」——
+              //   拖动照常进行（`beginDrag` 的那套监听挂在 `window` 上，与这里无关）；
+              //   松手也不会关（触屏那条 `pointerleave` 走的是手势类型判据，见下面的说明）。
+              // ⚠ 这条**撤掉了**上一版按用户第二次反馈（「想拖却弹出换肤」）加的「拖动优先」：
+              //   两种口径互斥，以用户**最后一次**的为准。
               pressMoved.current = true;
               clearTimeout(pressTimer.current);
               setPressing(false);
