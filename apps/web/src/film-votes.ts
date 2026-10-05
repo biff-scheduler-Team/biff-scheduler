@@ -276,64 +276,33 @@ function normalizeSkin(value: unknown): StickerSkin | null {
   return isStickerSkin(value) ? value : null;
 }
 
-/** 把一份票发给服务端，返回它顺手回的全量（老服务端没这个字段 → `null`）。
+/* ---------------- 增量待发队列与退避重试（2026-10-05，PLAN-20261005182415 §A + §C） ----------------
+ * 两轮叠出来的东西，一起说清楚：
+ *   · §A 解决「上报只活在内存里」—— 关页 / 切后台（iOS 会挂起定时器、甚至回收标签页）/ 崩溃，
+ *     那一次上报就**从来没发生过**。所以「要发的东西」必须落盘、载入时先补发、失败退避重试。
+ *   · §C 解决「发的到底是什么」—— 原来是**整份替换**（把本机全部票发上去，服务端照单替换），
+ *     于是多端 / 清缓存会**删掉服务端已有的票**，失败还得整份重来。现在发的是**一批 op**
+ *     （每个改动一条、按影片合并）：错的只会是那一部片，部分载荷不再有破坏性，重放天然幂等。
  *
- * ⚠ 服务端是「**整份替换**」语义（`replaceContributorVotes`），所以超限时**不能**切成互不相交
- *   的块 —— 后一块会把前一块盖掉，等于只发了最后一块。这正是原来 `slice(0, MAX)` 的隐患：
- *   超出的票**永远不会**上报，而且是静默的。
- *   这里按**累积前缀**分批：第 k 批发 `[0, k × MAX)`，于是最后一批就是全量、服务端最终状态正确。
- *   代价是超限时多几个 RTT —— 而 `MAX_VOTES_PER_PING = 500` 已高于当前影片库规模（有排期的近
- *   300 部），这条路径平时走不到；它存在的意义是「万一走到，也不静默丢票」。
- * ⚠ 串行发送：并发写同一个 contributor 的行会互相覆盖，落库顺序无法保证。
- * ⚠ 空表也是合法输入（我撤回了全部票）—— 它发一条空数组，服务端据此清掉我的所有票。 */
-async function sendVotes(
-  list: readonly FilmVotePayload[],
-): Promise<{ votes: unknown; skins: unknown } | null> {
-  const total = list.length;
-  for (
-    let end = Math.min(MAX_VOTES_PER_PING, total);
-    ;
-    end = Math.min(end + MAX_VOTES_PER_PING, total)
-  ) {
-    const response = await fetch(PING_URL, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ edition: EDITION, votes: list.slice(0, end) }),
-      signal: timeoutSignal(12_000),
-    });
-    // ⚠ 抛**带种类的**错误（见 `FilmVotesPingRejectedError`）：视图层要靠它把
-    //   「服务端拒绝」与「网络不通」分开提示 —— 这一条正是 2026-09-30 那次
-    //   「提示说检查网络，其实是 422」的根因所在。
-    if (!response.ok) throw new FilmVotesPingRejectedError(response.status);
-    const body = (await response.json()) as { votes?: unknown; skins?: unknown };
-    if (end >= total) {
-      // ⚠ 响应里**没有 `votes`** 才是「老服务端」的信号（它压根不回全量）→ 必须回 `null`，
-      //   让调用方退回去 `loadFilmVotes(true)` 重拉一次。
-      //   加了 `skins` 之后不能图省事一律回对象 —— 那会把这一档悄悄吞掉，表现为
-      //   「上报成功了但数字停在旧值」，而且没有任何报错（这条由单测守着）。
-      if (!body.votes) return null;
-      // ⚠ 新服务端但还没上按款聚合那半边时 `skins` 缺席 → `undefined` →
-      //   `applyVotes` 把按款分布**清空**，群点退回「按 id 兜底」。那是**正确**的降级
-      //   （不知道就别装作知道），不是错误。
-      return { votes: body.votes, skins: body.skins };
-    }
-  }
-}
-
-/* ---------------- 待发队列与退避重试（2026-10-05，PLAN-20261005182415 §A） ----------------
- * 由来：上报原来**只活在一个 1200ms 的 `setTimeout` 闭包里** —— 关页 / 切后台（iOS 会挂起定时器，
- *   甚至把整个标签页回收掉）/ 崩溃，那一次上报就**从来没发生过**。而服务端是**整份替换**语义，
- *   「本地有、服务端没有」只能靠下一次票签名变化碰巧补上 —— 而拖动不改签名（`votesSignature`
- *   不含坐标），补不上。于是「偶发失败」在服务端看就是「这一票永远没上去」。
- * 这里把「要发的这一份票 + 它的序号」落到盘上，载入时先补发一次，失败再按 1s/2s/4s/8s… 退避重试。
+ * 盘上那一份（`LS_PENDING_FILM_VOTES`）四个字段：
+ *   · `clientId` —— 本机标识（服务端的水位按它分开记：两台设备各数各的 seq，不互相吞）；
+ *   · `seq`      —— **已经被服务端确认过**的最大批次号，发下一批时 +1；
+ *   · `base`     —— 上一次调度时的那面墙（= 队列里那些 op 全落地之后，服务端「应该」有的那份），
+ *                  用来算下一轮改了什么；
+ *   · `ops`      —— 还没被确认的意图（按影片合并：同一部片只留最后一条）。
  *
+ * ⚠ 键是 `...pending.v2`（§A 那版是 v1）：盘上结构变了 —— 按 §5「新 key + 一次性迁移 + 删旧 key」
+ *   的规矩换键，并在读的时候把 v1 删掉。**v1 里那份没发成功的票不会因此丢**：它本来就在本地 board 里，
+ *   而新键的 `base` 从**空**开始 ⇒ 下一次调度会把整面墙作为 `set` 发上去。这条同时也是
+ *   「换设备 / 清 cookie 之后本地有、服务端没有」的自愈路径。
  * ⚠ 键落在 `iffday.workspace.*` 而**不是** `biff.*`：`biff.` 前缀会被 `sync-data.ts::readWorkspace`
- *   收进账号文档（`local:biff.*`）、参与跨设备合并（可能弹出「同步冲突」）、也会进 `backup.ts`
- *   的备份快照。而这一份是**本浏览器、本身份**的临时待发状态 —— 不是用户数据，跨设备合并没有意义
+ *   收进账号文档（`local:biff.*`）、参与跨设备合并（可能弹出「同步冲突」）、也进 `backup.ts` 的备份
+ *   快照。而这一份是**本浏览器、本身份**的临时待发状态 —— 不是用户数据，跨设备合并没有意义
  *   （还会把别的设备那一份当成自己的意图发上去）。`iffday.workspace.*` 是既有的
  *   「本地专属、只写盘不上报」命名空间（见 `state.ts` 里那条说明）。 */
-export const LS_PENDING_FILM_VOTES = "iffday.workspace.redblackpending.v1";
+export const LS_PENDING_FILM_VOTES = "iffday.workspace.redblackpending.v2";
+/** §A 那一版的键（整份票）。载入时读一次就删 —— 留着只会让下一个人猜哪一份才是真的。 */
+const LS_PENDING_FILM_VOTES_V1 = "iffday.workspace.redblackpending.v1";
 
 /** `fetch(..., { keepalive: true })` 的 body 上限（字节）。超了就不发，见 `sendFilmVotesKeepalive`。 */
 export const KEEPALIVE_BODY_LIMIT = 64 * 1024;
@@ -360,21 +329,34 @@ export function shouldRetryPing(error: unknown): boolean {
   return error instanceof FilmVotesPingRejectedError ? error.status >= 500 : true;
 }
 
-/** 待发的那一份。*/
-interface PendingFilmVotes {
-  /** 单调递增的序号：**每次「用户改了票」都换一个新号**，用来丢弃落后的响应。 */
+/* ---------------- 一条 op（上行载荷，§C） ----------------
+ * ⚠ **只有两种**：`set`（把这部片设成某状态 —— 颜色 / 评语 / 款**一起**）与 `remove`（撤掉）。
+ *   没有「改色」这种第三类：改色就是一次新的 `set`。这一条正是**重放幂等**的来源
+ *   （把同一部片设成同一个状态，第二次是空差分），也是服务端水位能挡住乱序的前提。
+ * ⚠ `set` 里 `comment` / `skin` **必须显式带上**（没写评语时是 `null`）：服务端按「这一票现在
+ *   是什么状态」整条覆盖 —— 省掉字段等于告诉它「这部片现在没有评语」，那不是用户的意思。 */
+export type VoteOp =
+  | { op: "set"; key: string; vote: "red" | "black"; comment: string | null; skin: StickerSkin | null }
+  | { op: "remove"; key: string };
+
+/** 盘上（与内存里）那一份待发。 */
+interface PendingOps {
+  clientId: string;
+  /** **已经被服务端确认**的最大批次号；发下一批时 +1。 */
   seq: number;
-  votes: FilmVotePayload[];
+  /** 上一次调度时的那面墙。⚠ **空表是合法初值**（新装的设备服务端什么都没有）——
+   *  于是第一次调度会把整面墙作为 `set` 发上去（见文件头那条自愈说明）。 */
+  base: FilmVotePayload[];
+  /** 还没被确认的意图。 */
+  ops: VoteOp[];
   /** 服务端**拒绝过**这一份（4xx）→ 不再自动发（`shouldRetryPing` 那张口径的落点）。
    *  ⚠ 它**不落盘**：盘上那份只回答「要发什么」，「这一拍该不该发」是一次载入内的事 ——
    *    下次开页面重新判断一次（那时载荷可能已经被新版修好了）。
-   *  ⚠ 用户再动一次手就换新 `seq` → 这个标记自然失效，等于「载荷变了就再试一次」。 */
+   *  ⚠ 用户再动一次手就把它清掉，等于「载荷变了就再试一次」。 */
   blocked?: boolean;
 }
 
-let pending: PendingFilmVotes | null = null;
-/** 内存里的序号游标。载入时用盘上那份的号兜底（否则新一轮的号会比盘上那份还小）。 */
-let pendingSeq = 0;
+let pending: PendingOps | null = null;
 /** 已经被服务端确认应用过的最大 seq。比它旧的响应一律丢弃 —— 否则「旧响应」会把新状态盖回去
  *  （表现就是「刚收回的那枚贴纸又冒出来」）。 */
 let appliedSeq = 0;
@@ -384,15 +366,80 @@ let retryAttempt = 0;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 /** 生命周期监听只挂一次（`redblack.ts::pagehideBound` 同一手法）。 */
 let lifecycleBound = false;
+/** §A 那个旧键只清一次。 */
+let legacyPurged = false;
 
-/** 盘上那一份 → 白名单收口。
+/** 本机标识。⚠ 不用 `crypto.randomUUID()` 直接调：它在**非安全上下文**（http 预览 / 内嵌 WebView）
+ *  里不存在，而这条路径必须永远能生出一个 id —— 否则整条待发队列落不了盘。
+ *  ⚠ 它**不是**身份：身份是服务端那个匿名 cookie / 账号 subject（见服务端 `film_vote_sync` 的说明）。 */
+function newClientId(): string {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid) return uuid;
+  return `dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** 同一部片的「状态」是否一致（用来差分）。key 由调用方保证相同。 */
+function sameVote(left: FilmVotePayload, right: FilmVotePayload): boolean {
+  return left.vote === right.vote && left.comment === right.comment && left.skin === right.skin;
+}
+
+/** 差出「要让服务端从 `base` 变成 `board` 需要哪些 op」。
  *
- *  ⚠ **任一条不认识就整份丢弃**，而不是像读票数那样「丢掉那一条」：这里的每一跳都对应服务端
- *    的一次**整份替换**，丢掉一条 = 那一票被当成「用户撤回了」删掉 —— 是破坏性的。
- *    宁可这次不补发（用户下一次动手会重新落盘），也不要拿一份残缺的载荷去碰服务端。
- *  ⚠ `votes: []` 是**合法**的（用户撤回了全部票，服务端据此清空我这一份）——
- *    所以判据是「有没有一个合法的 `seq`」，不是「表里有没有票」。 */
-function readPending(): PendingFilmVotes | null {
+ *  ⚠ **只发改动过的那几部片** —— 这是 §C 相对 §A（每次都发整份）的全部价值：贴一枚贴纸的载荷
+ *    是**一条** op，而不是整个榜单。
+ *  ⚠ 判据是「与上一轮相比的内容」而不是「服务端真相」：没被确认的意图在 `ops` 里排着队，
+ *    所以这里只会**补齐差额**，不会因为「不确定服务端有没有」而重复发。
+ *  ⚠ 纯函数（可单测）：顺序按「新 board 的插入序 + 被删掉的 key」，同一部片不会出现两条。 */
+export function planVoteOps(
+  base: readonly FilmVotePayload[],
+  board: readonly FilmVotePayload[],
+): VoteOp[] {
+  const before = new Map(base.map((entry) => [entry.key, entry]));
+  const after = new Map(board.map((entry) => [entry.key, entry]));
+  const ops: VoteOp[] = [];
+  for (const [key, entry] of after) {
+    const old = before.get(key);
+    if (old && sameVote(old, entry)) continue; // 没变 → 不发
+    ops.push({ op: "set", key, vote: entry.vote, comment: entry.comment, skin: entry.skin });
+  }
+  for (const key of before.keys()) {
+    if (!after.has(key)) ops.push({ op: "remove", key });
+  }
+  return ops;
+}
+
+/** 新老意图合并（**同一部片只留最后一条**）。
+ *  ⚠ 必须按 key 合并：同一部片在一次失败的窗口里被连改三次，只该发最后那一条 —— 服务端要的是
+ *    「这部片现在是这个状态」，中间那两次没有意义（也正是载荷能塞进 keepalive 的原因）。 */
+export function coalesceOps(existing: readonly VoteOp[], fresh: readonly VoteOp[]): VoteOp[] {
+  const merged = new Map<string, VoteOp>();
+  for (const op of existing) merged.set(op.key, op);
+  for (const op of fresh) merged.set(op.key, op);
+  return [...merged.values()];
+}
+
+/** 一条 op 的白名单收口（盘上那份可能是上一版写的 / 被人手改过）。
+ *  ⚠ 与读票数那条**相反**：这里不「丢掉那一条」而是**整份丢弃** —— 丢一条 op = 用户那次改动
+ *    静默没了，而 `base` 还宣称它已经同步过，于是**永远补不回来**。整份丢掉则 `base` 归零，
+ *    下一次调度会把整面墙重发（自愈）。 */
+function parseOp(raw: unknown): VoteOp | null {
+  if (!raw || typeof raw !== "object") return null;
+  const op = raw as { op?: unknown; key?: unknown; vote?: unknown; comment?: unknown; skin?: unknown };
+  if (typeof op.key !== "string" || !op.key) return null;
+  if (op.op === "remove") return { op: "remove", key: op.key };
+  if (op.op !== "set") return null;
+  if (op.vote !== "red" && op.vote !== "black") return null;
+  return {
+    op: "set",
+    key: op.key,
+    vote: op.vote,
+    comment: typeof op.comment === "string" ? op.comment : null,
+    skin: isStickerSkin(op.skin) ? op.skin : null,
+  };
+}
+
+/** 盘上那一份 → 白名单收口（任一条不认识就整份丢弃，理由见 `parseOp`）。 */
+function readPending(): PendingOps | null {
   if (typeof localStorage === "undefined") return null; // node 环境的单测
   let raw: string | null;
   try {
@@ -402,23 +449,40 @@ function readPending(): PendingFilmVotes | null {
   }
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as { seq?: unknown; votes?: unknown };
-    if (typeof parsed?.seq !== "number" || !Number.isFinite(parsed.seq)) return null;
-    if (!Array.isArray(parsed.votes)) return null;
-    const votes: FilmVoteInput[] = [];
-    for (const item of parsed.votes) {
+    const parsed = JSON.parse(raw) as {
+      clientId?: unknown;
+      seq?: unknown;
+      base?: unknown;
+      ops?: unknown;
+    };
+    if (typeof parsed?.clientId !== "string" || !parsed.clientId) return null;
+    if (typeof parsed.seq !== "number" || !Number.isFinite(parsed.seq)) return null;
+    if (!Array.isArray(parsed.base) || !Array.isArray(parsed.ops)) return null;
+    const base: FilmVoteInput[] = [];
+    for (const item of parsed.base) {
       if (!item || typeof item !== "object") return null;
       const entry = item as { key?: unknown; vote?: unknown; comment?: unknown; skin?: unknown };
       if (typeof entry.key !== "string" || !entry.key) return null;
       if (entry.vote !== "red" && entry.vote !== "black") return null;
-      votes.push({
+      base.push({
         key: entry.key,
         vote: entry.vote,
         comment: typeof entry.comment === "string" ? entry.comment : null,
         skin: isStickerSkin(entry.skin) ? entry.skin : null,
       });
     }
-    return { seq: Math.max(0, Math.trunc(parsed.seq)), votes: dedupeVotes(votes) };
+    const ops: VoteOp[] = [];
+    for (const item of parsed.ops) {
+      const op = parseOp(item);
+      if (!op) return null;
+      ops.push(op);
+    }
+    return {
+      clientId: parsed.clientId,
+      seq: Math.max(0, Math.trunc(parsed.seq)),
+      base: dedupeVotes(base),
+      ops: coalesceOps([], ops),
+    };
   } catch {
     return null;
   }
@@ -426,44 +490,102 @@ function readPending(): PendingFilmVotes | null {
 
 /** 写盘 / 清盘。⚠ 失败一律吞掉（配额满 / 隐私模式）—— 退化成「只有内存里那一份」，
  *  与 `redblack.ts::saveStickers` 是同一条取舍：写不进去不该让上报本身失败。 */
-function writePending(next: PendingFilmVotes | null): void {
+function writePending(job: PendingOps | null): void {
   if (typeof localStorage === "undefined") return;
   try {
-    // ⚠ 只写 `{seq, votes}`（不带 `blocked`）：盘上那份要能被 `readPending` 的**白名单**完整收下，
-    //   多写一个只会落进 `undefined`/`null` 的争议里。见 `PendingFilmVotes::blocked` 的说明。
-    if (next) localStorage.setItem(LS_PENDING_FILM_VOTES, JSON.stringify({ seq: next.seq, votes: next.votes }));
-    else localStorage.removeItem(LS_PENDING_FILM_VOTES);
+    // ⚠ 只写这四个字段（不带 `blocked`）：盘上那份要能被 `readPending` 的白名单完整收下
+    if (job) {
+      localStorage.setItem(
+        LS_PENDING_FILM_VOTES,
+        JSON.stringify({ clientId: job.clientId, seq: job.seq, base: job.base, ops: job.ops }),
+      );
+    } else {
+      localStorage.removeItem(LS_PENDING_FILM_VOTES);
+    }
   } catch {
     /* 见上 */
   }
 }
 
-/** 一条**成功**响应 → 采纳。两条发送路径（正常 / keepalive）共用它。
+/** 删掉 §A 那个旧键（只在真正要读写待发状态时清一次）。 */
+function purgeLegacyPending(): void {
+  if (legacyPurged) return;
+  legacyPurged = true;
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.removeItem(LS_PENDING_FILM_VOTES_V1);
+  } catch {
+    /* 见 `writePending` */
+  }
+}
+
+function ensurePending(): PendingOps {
+  if (!pending) pending = { clientId: newClientId(), seq: 0, base: [], ops: [] };
+  return pending;
+}
+
+/** 一条成功响应里我们要的那两本账（两条发送路径共用这一处解析）。 */
+interface PingBody {
+  votes: unknown;
+  skins: unknown;
+}
+
+function parsePingBody(body: unknown): PingBody | null {
+  if (!body || typeof body !== "object") return null;
+  const parsed = body as { votes?: unknown; skins?: unknown; appliedSeq?: unknown };
+  // ⚠ 响应里**没有 `votes`** 才是「服务端还不认增量」的信号 → `null`，让调用方退回去重拉。
+  if (!parsed.votes) return null;
+  return { votes: parsed.votes, skins: parsed.skins };
+}
+
+/** 把**一片** op 发上去（一片 = 一条请求；超限时由 `flushFilmVotesPing` 切片，每片一个批次号）。
+ *  ⚠ 与 §A 那版「累积前缀」分批**正好相反**：op 是增量，发前缀等于丢掉后半截 —— 所以这里只发
+ *    传进来的这一片，剩下的下一片接着发。 */
+async function sendOpBatch(
+  ops: readonly VoteOp[],
+  clientId: string,
+  seq: number,
+): Promise<PingBody | null> {
+  const response = await fetch(PING_URL, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ edition: EDITION, ops, clientId, seq }),
+    signal: timeoutSignal(12_000),
+  });
+  // ⚠ 抛**带种类的**错误（见 `FilmVotesPingRejectedError`）：视图层要靠它把「服务端拒绝」与
+  //   「网络不通」分开提示 —— 这一条正是 2026-09-30 那次「提示说检查网络，其实是 422」的根因。
+  if (!response.ok) throw new FilmVotesPingRejectedError(response.status);
+  return parsePingBody(await response.json());
+}
+
+/** 一批被服务端确认之后要做的四件事（两条发送路径共用）。
  *
- *  ⚠ 序号守卫在这一处：这份载荷若已被更晚的一份取代（`job.seq < appliedSeq`），整条响应**丢弃**
- *    —— 既不 `adoptSyncedVotes` 也不 `applyVotes`。不然旧响应会把新状态盖回去：表现是
- *    「刚收回的贴纸又冒出来一枚」，而且要等下一次上报才自愈。
- *  ⚠ 抽成一处而不是两条路各写一遍：`appliedSeq` / `clearPending` / `adoptSyncedVotes` /
- *    `reportPingFailure` 这四件事**必须同进同退**，漏掉其中一件都只有「过一会儿才刷新」可察。 */
+ *  ⚠ `seq` 守卫：这份载荷若已被更晚的一份取代（`seq < appliedSeq`），整条响应**丢弃** ——
+ *    既不推水位、不采纳、也不用它的 counts 覆盖画面，否则「旧响应」会把新状态盖回去。
+ *  ⚠ 按**对象身份**移除已确认的 op（`new Set(batch)` + `filter`）：在途期间用户改了同一部片时，
+ *    队列里那条已经是**新对象**，这一批确认的只是旧值 —— 新那条必须留着继续发。
+ *  ⚠ 只有**队列见底**时才切「服务端已含我」的基准（`adoptSyncedVotes`）：`base` 是「队列里那些 op
+ *    全落地之后」的那面墙，切片还没发完时它比服务端真实状态**超前**，拿它当基准等于把还没上去的
+ *    票当成已确认（画布上就会把「我的」算成「别人的」）。 */
 function applyPingSuccess(
-  job: PendingFilmVotes,
-  raw: { votes: unknown; skins: unknown } | null,
-): FilmVoteCounts | Promise<FilmVoteCounts> | undefined {
-  if (job.seq < appliedSeq) return undefined; // 旧响应：丢弃
-  appliedSeq = job.seq;
-  clearPending(job.seq);
+  job: PendingOps,
+  batch: readonly VoteOp[],
+  seq: number,
+  raw: PingBody | null,
+): PingBody | null {
+  if (seq < appliedSeq) return null;
+  appliedSeq = seq;
+  job.seq = Math.max(job.seq, seq);
+  const confirmed = new Set(batch);
+  job.ops = job.ops.filter((op) => !confirmed.has(op));
+  if (job.ops.length === 0) adoptSyncedVotes(job.base);
+  writePending(job);
+  clearTimeout(retryTimer);
+  retryTimer = undefined;
   retryAttempt = 0;
-  // 服务端已收下这份票 → 它现在**含我**，扣减基准跟着切过去。
-  // ⚠ 顺序不能倒：先采纳（不广播）、再更新 counts（它内部那次 `emit` 会把新的 counts 与
-  //   新的 synced 一起送到页面），中间不留「服务端仍算我旧票」的那一帧。
-  // ⚠ `skins` 也必须在**同一拍**换成新的：两本账来自同一个响应体，分批换会让群点
-  //   短暂画在「新数字 + 旧分布」上 —— 那正是「群点比数字多/少一枚」的成因。
-  adoptSyncedVotes(job.votes);
   reportPingFailure(0, null);
-  // ⚠ 新服务端在响应里顺手回了全量 → 直接用，省掉「上报成功再 GET 一次」的那个 RTT；
-  //   老服务端（没这个字段）才退回去重拉。
-  if (raw === null) return loadFilmVotes(true);
-  return applyVotes(raw.votes, raw.skins);
+  return raw;
 }
 
 /** `pagehide` / 切后台那一刻的**最后一发**。
@@ -472,15 +594,20 @@ function applyPingSuccess(
  *  `visibilitychange(hidden)` 之后用户可能又切回来，这一发是能拿到结果的。
  *
  *  ⚠ 两条硬约束（PLAN §A）：① `keepalive` 的 body 上限是 64KB；
- *    ② 服务端是**整份替换** —— 所以**绝不能**在这里发分批前缀或截断载荷（那会把其余的票删掉）。
- *    任一不满足就**干脆不发**，留着 pending 下次开页面补。
- *  ⚠ 失败**不提示、不重试**（页面正在走，弹一个没人看的提示只会更糟）；`blocked` 的那一份干脆不发。 */
+ *    ② 一片 op 发不完（超过单批上限）时**干脆不发** —— keepalive 拿不到可靠响应，切片会丢后半截。
+ *    任一不满足就留着 pending 下次开页面补。 */
 export function sendFilmVotesKeepalive(): boolean {
   const job = pending;
-  if (!job || job.blocked || typeof window === "undefined") return false;
-  // 一份发不完（超过单次上限）→ 不发：分批的后一批会把前一批盖掉，而这条路是「最后一发」
-  if (job.votes.length > MAX_VOTES_PER_PING) return false;
-  const body = JSON.stringify({ edition: EDITION, votes: job.votes });
+  if (!job || job.blocked || job.ops.length === 0) return false;
+  if (typeof window === "undefined") return false;
+  if (job.ops.length > MAX_VOTES_PER_PING) return false;
+  const batch = job.ops;
+  // ⚠ 批次号**在发送这一刻就预支**（`++`），不能用 `job.seq + 1` 现算：keepalive 那一发与正常
+  //   那一发会同时在途，现算的话两批拿到**同一个号** ⇒ ① 服务端会把后到那批当成重放跳过，
+  //   ② 客户端的「旧响应丢弃」守卫（`seq < appliedSeq`）也判不出来 —— 旧响应会把新 counts 盖回去。
+  //   号有空洞无所谓：服务端的水位只在真正落库时前进。
+  const seq = (job.seq += 1);
+  const body = JSON.stringify({ edition: EDITION, ops: batch, clientId: job.clientId, seq });
   if (new TextEncoder().encode(body).length > KEEPALIVE_BODY_LIMIT) return false;
   try {
     void fetch(PING_URL, {
@@ -492,10 +619,8 @@ export function sendFilmVotesKeepalive(): boolean {
     })
       .then(async (response) => {
         if (!response.ok) throw new FilmVotesPingRejectedError(response.status);
-        const parsed = (await response.json()) as { votes?: unknown; skins?: unknown };
-        // ⚠ 与正常那条路**共用**同一个收尾（序号守卫在里面）：这条「更新的一份」若不用它的响应推进
-        //   `appliedSeq`，随后回来的**旧**响应就会把新数字盖回去。
-        applyPingSuccess(job, parsed.votes ? { votes: parsed.votes, skins: parsed.skins } : null);
+        const raw = applyPingSuccess(job, batch, seq, parsePingBody(await response.json()));
+        if (raw) await applyVotes(raw.votes, raw.skins);
       })
       .catch(() => undefined);
     return true;
@@ -503,16 +628,6 @@ export function sendFilmVotesKeepalive(): boolean {
     // 同步抛（例如 keepalive 配额被浏览器拒）→ 当作没发出去
     return false;
   }
-}
-
-/** 清掉待发（内存 + 盘），并且**只在 seq 对得上时**才清：
- *  在途期间用户又改了票（新 seq 已经写进 pending）时，不能把新的那一份一起清掉。 */
-function clearPending(seq: number): void {
-  if (pending?.seq !== seq) return;
-  pending = null;
-  writePending(null);
-  clearTimeout(retryTimer);
-  retryTimer = undefined;
 }
 
 function schedulePingRetry(): void {
@@ -524,32 +639,44 @@ function schedulePingRetry(): void {
   retryAttempt += 1;
 }
 
-/** 把当前待发的那一份**发出去**。
+/** 把待发队列**发出去**（一片；还有剩就接着发，见 `finally`）。
  *
  *  `keepalive: true` = 「页面正在走」那一发（见 `sendFilmVotesKeepalive`）：不等响应、不占在途位。
  *
- *  ⚠ 在途时**不发第二条**：两条并发写同一个 contributor 的落库顺序无法保证，而超限时
- *    `sendVotes` 是按**累积前缀**分批的 —— 顺序错了会把后一批的内容盖回去。
- *  ⚠ 服务端**拒绝过**这一份（4xx）就干脆不发：口径收在 `shouldRetryPing` 一处。 */
+ *  ⚠ 在途时**不发第二条**：两条并发写同一个 contributor 的落库顺序无法保证（水位能挡住乱序，
+ *    但没必要自己制造乱序）。
+ *  ⚠ 队列为空 / 服务端**拒绝过**这一份（4xx）就什么都不做。 */
 export function flushFilmVotesPing(options: { keepalive?: boolean } = {}): void {
   const job = pending;
-  if (!job || job.blocked) return;
+  if (!job || job.blocked || job.ops.length === 0) return;
   if (options.keepalive) {
     sendFilmVotesKeepalive();
     return;
   }
   if (inFlight) return;
+  const batch = job.ops.slice(0, MAX_VOTES_PER_PING);
+  // ⚠ 与 keepalive 那条同样**先预支号**（见那里的说明）：两条在途必须拿到不同的号
+  const seq = (job.seq += 1);
   inFlight = true;
-  void sendVotes(job.votes)
-    .then((raw) => applyPingSuccess(job, raw))
+  let confirmed = false;
+  void sendOpBatch(batch, job.clientId, seq)
+    .then((raw) => {
+      confirmed = true;
+      const applied = applyPingSuccess(job, batch, seq, raw);
+      // ⚠ 服务端在响应里顺手回了全量 → 直接用，省掉「上报成功再 GET 一次」的那个 RTT；
+      //   老服务端（不认增量、没这个字段）才退回去重拉。老服务端那条也会让上报变成 422 →
+      //   走「服务端拒绝」那条提示，不会静默。
+      if (applied) return applyVotes(applied.votes, applied.skins);
+      return loadFilmVotes(true);
+    })
     .catch((error: unknown) => {
       reportPingFailure(
         pingFailureStreak + 1,
         error instanceof FilmVotesPingRejectedError ? "rejected" : "offline",
       );
       if (!shouldRetryPing(error)) {
-        // 4xx：这一份不再自动发（用户再动一次手会换新 seq，等于「载荷变了就再试一次」；
-        // 换一次载入也会重新判断）。⚠ 标记只活在内存里，见 `PendingFilmVotes::blocked`。
+        // 4xx：这一份不再自动发（用户再动一次手会清掉这个标记，等于「载荷变了就再试一次」）。
+        // ⚠ 标记只活在内存里，见 `PendingOps::blocked`。
         job.blocked = true;
         return;
       }
@@ -557,10 +684,9 @@ export function flushFilmVotesPing(options: { keepalive?: boolean } = {}): void 
     })
     .finally(() => {
       inFlight = false;
-      // ⚠ 在途期间用户又改了票 → 立刻补发**最新**那一份。
-      //   判据必须是「比这一份更新」而不是「有 pending」：同一份失败时由退避计时器负责，
-      //   在这里无条件补发会变成死循环。
-      if (pending && pending.seq > job.seq) flushFilmVotesPing();
+      // ⚠ 只有在**这一次真的成功**、而队列还没见底时才接着发（切片 / 在途期间又改了票）。
+      //   失败时交给退避计时器 —— 在这里无条件补发会变成死循环。
+      if (confirmed && pending && pending.ops.length > 0) flushFilmVotesPing();
     });
 }
 
@@ -572,7 +698,7 @@ export function flushFilmVotesPing(options: { keepalive?: boolean } = {}): void 
 function bindPingLifecycle(): void {
   if (lifecycleBound || typeof window === "undefined") return;
   lifecycleBound = true;
-  /** 页面正在走 → 最后一发（不等响应、不清 pending）。 */
+  /** 页面正在走 → 最后一发（不等响应、不清队列）。 */
   const lastChance = () => {
     sendFilmVotesKeepalive();
   };
@@ -583,48 +709,48 @@ function bindPingLifecycle(): void {
       return;
     }
     // 回到前台 → 补一次。⚠ 这**不是**「重试」：切到后台会把 1200ms 的防抖定时器一起挂起，
-    //   所以「贴完就切走」那一份很可能**根本没发出去过**。
+    //   所以「贴完就切走」那一批很可能**根本没发出去过**。
     // ⚠ 只在「**没有人在等这次发送**」时才补（`retryTimer` 为空）：若退避计时器正等着，
     //   交给它就行 —— 否则每次前后台来回都插一发，把退避白白抵消掉。
     if (retryTimer === undefined) flushFilmVotesPing();
   });
 }
 
-/** 页面载入时把上一次没发成功的那一份补上。
+/** 页面载入时把上一次没发成功的那一批补上。
  *
- *  ⚠ 只在**盘上真有 pending** 时动作：没有就不能碰服务端 —— 本地为空多半只是「这台机器还没数据」
- *    （换设备 / 清过缓存），而服务端是整份替换，拿空榜上报会把服务端属于我的票清掉。
- *    这与 `RedBlackPage` 那条 `actedRef` 是同一条保护的两种入口。
- *  ⚠ 不走 1200ms 防抖：上一次已经防过了，而且用户正等着它上墙。 */
+ *  ⚠ 只在**盘上真有 ops** 时动作；队列为空就什么都不做（`base` 本来就是空的，见文件头那条自愈说明）。
+ *  ⚠ 不走 1200ms 防抖：上一次已经防过了，而且用户正等着它上墙。
+ *  ⚠ 顺手清掉 §A 那个旧键。 */
 export function resumePendingFilmVotes(): void {
+  purgeLegacyPending();
   const stored = readPending();
-  if (!stored) return;
-  if (!pending || stored.seq > pending.seq) {
-    pendingSeq = Math.max(pendingSeq, stored.seq);
-    pending = stored;
-  }
+  if (!pending && stored) pending = stored;
   bindPingLifecycle();
-  flushFilmVotesPing();
+  if (pending && pending.ops.length > 0) flushFilmVotesPing();
 }
 
-/** 上报我的投票。**发全量**（1200ms 防抖）—— 服务端按整份替换。
+/** 上报我的投票（**增量**：只发改动过的那几部片，见 `planVoteOps`）。
  *
- *  ⚠ 待发的那一份**同时落盘**（见上面那段说明）：关页 / 切后台 / 崩溃之后，`resumePendingFilmVotes`
- *    会在下一次载入时把它补上。所以「靠重发一次自愈」这句话现在真的成立 —— 原来它成立的前提是
+ *  ⚠ 待发的那一份**同时落盘**：关页 / 切后台 / 崩溃之后，`resumePendingFilmVotes` 会在下一次
+ *    载入时把它补上。所以「靠重发一次自愈」这句话现在真的成立 —— 原来它成立的前提是
  *    「用户还会再动一次手，而且这一页还活着」。
  *  ⚠ 用全局 `setTimeout` 而不是 `window.setTimeout`：与 `screening-counts.ts` 同一条理由
  *    （模块可能被跑在 node 环境里的单测引用）。
  *  ⚠ 载荷里的 `comment` / `skin` 由 `dedupeVotes` 统一补齐（**每条都带字段**），
- *    所以调用方哪怕只给 `{key, vote}` 也不会踩到「服务端当成旧版前端」那条坑。 */
+ *    所以调用方哪怕只给 `{key, vote}` 也不会把用户写过的评语 / 选过的款清掉。 */
 export function scheduleFilmVotesPing(votes: Iterable<FilmVoteInput>): void {
-  const list = dedupeVotes(votes);
+  const board = dedupeVotes(votes);
+  const job = ensurePending();
+  const fresh = planVoteOps(job.base, board);
+  job.base = board;
+  job.ops = coalesceOps(job.ops, fresh);
+  // 新载荷 → 重新允许自动发（4xx 那个标记只对「同一份载荷」有效）
+  job.blocked = false;
+  writePending(job);
   // 新意图作废旧的退避：用户又动了一次手，该按新载荷立刻发，而不是等上一轮退避走完
   clearTimeout(retryTimer);
   retryTimer = undefined;
   retryAttempt = 0;
-  pendingSeq += 1;
-  pending = { seq: pendingSeq, votes: list };
-  writePending(pending);
   bindPingLifecycle();
   clearTimeout(pingTimer);
   pingTimer = setTimeout(() => {
