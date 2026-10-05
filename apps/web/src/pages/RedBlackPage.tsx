@@ -89,6 +89,7 @@ import {
   peekFilmSkins,
   peekFilmVotes,
   peekSyncedVotes,
+  resumePendingFilmVotes,
   scheduleFilmVotesPing,
   type FilmSkinCounts,
   type FilmVoteCounts,
@@ -293,10 +294,13 @@ export function RedBlackPage() {
         //   是把人往错的方向带 —— 那次 422 事故里每一次上报都被拒,而提示一直在说网络,
         //   于是没人会往「载荷 / 版本对不上」上想。`rejected` 的措辞要留一句「一直这样请告诉我们」:
         //   那才是用户能把线索交回来的出口。
+        // ⚠ `offline` 那句 2026-10-05 改了措辞（PLAN-20261005182415 §A）：现在客户端会**自己**
+        //   退避重试、并把待发的那一份落盘，所以不该再叫用户「重试」—— 他要做的事只有一件：
+        //   别把页面关掉就走（关掉也没关系，下次开页面会补）。
         ToastQueue.negative(
           kind === "rejected"
             ? "贴纸没能同步到榜上：服务端拒绝了这次上报。稍后再试一次；一直这样请告诉我们。"
-            : "贴纸没能同步到榜上，请检查网络后重试。",
+            : "贴纸没能同步到榜上：网络不通，正在自动重试，恢复后会自动补上。",
           { timeout: 5000 },
         );
       }),
@@ -342,6 +346,13 @@ export function RedBlackPage() {
       setFilmSkins(peekFilmSkins());
       setSyncedVotes(peekSyncedVotes());
       setVotesSettled(true);
+      // 上一次没发成功的那一份**补发**（2026-10-05，PLAN-20261005182415 §A）：关页 / 切后台 /
+      // 崩溃时那次上报只活在定时器闭包里，盘上留着这一份就是为了在这儿补上。
+      // ⚠ 放在**读结算之后**：先让首屏拿到当前那份（可能已经含我），再补发 —— 反过来，
+      //   补发成功那次 `applyVotes` 的结果会被上面这几行 `set*` 用更旧的快照盖回去
+      //   （差值很小，但「刚贴的那枚又变回去」最刺眼）。
+      // ⚠ 没有 pending 时它是**空操作**（本地为空 ≠ 我撤票了，见 `resumePendingFilmVotes`）。
+      resumePendingFilmVotes();
     });
     return onFilmVotesChange(() => {
       setVotes(peekFilmVotes());

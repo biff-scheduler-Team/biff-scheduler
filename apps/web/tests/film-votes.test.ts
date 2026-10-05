@@ -173,7 +173,7 @@ describe("scheduleFilmVotesPing", () => {
 
   it("1200ms 防抖:窗口内多次调用只发一条,同一部片以最后一次为准", async () => {
     vi.resetModules();
-    const fetchMock = vi.fn(() => fail());
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => fail());
     vi.stubGlobal("fetch", fetchMock);
     const { scheduleFilmVotesPing } = await import("../src/film-votes");
 
@@ -374,7 +374,7 @@ describe("scheduleFilmVotesPing", () => {
 
   it("上报失败 → 不动「已同步」快照(本地保持乐观,下次成功时自愈)", async () => {
     vi.resetModules();
-    const fetchMock = vi.fn(() => fail());
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => fail());
     vi.stubGlobal("fetch", fetchMock);
     const { adoptSyncedVotes, peekSyncedVotes, scheduleFilmVotesPing } = await import(
       "../src/film-votes"
@@ -384,5 +384,402 @@ describe("scheduleFilmVotesPing", () => {
     scheduleFilmVotesPing([{ key: "b", vote: "black" }]);
     await vi.advanceTimersByTimeAsync(1200);
     expect(peekSyncedVotes()).toEqual({ a: { red: 1, black: 0 } });
+  });
+});
+
+/* ---------------- 待发队列 / 关页补发 / 退避重试（2026-10-05，PLAN-20261005182415 §A） ----------------
+ *
+ * 由来（每一条都对应一个服务端能观测到的丢票症状）：
+ *   · 上报原来只活在一个 1200ms 的 `setTimeout` 闭包里 —— 关页 / 切后台 / 崩溃就**从来没发出去**
+ *     （服务端：贡献表里根本没有这一票）；
+ *   · 失败之后不重试，只靠「下次票签名变了」碰巧自愈 —— 而拖动不改签名，补不上。
+ * 这几条测试钉的就是上面两件事：**那一份票必须留在盘上、必须有人把它发出去**。 */
+
+/** node 环境没有 localStorage；用手写的假实现（模块只在函数里读它，所以 stub 时机不敏感）。 */
+function fakeStorage(): Storage {
+  const map = new Map<string, string>();
+  return {
+    get length() {
+      return map.size;
+    },
+    key: (index: number) => [...map.keys()][index] ?? null,
+    getItem: (key: string) => map.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      map.set(key, value);
+    },
+    removeItem: (key: string) => {
+      map.delete(key);
+    },
+    clear: () => map.clear(),
+  } as Storage;
+}
+
+/** 可控的 fetch：把「第几次调用」的 resolver 攥在手里，用来造「在途时又改了票」这种时序。 */
+function deferredFetches() {
+  const resolvers: Array<(value: Response) => void> = [];
+  const mock = vi.fn(
+    () =>
+      new Promise<Response>((resolve) => {
+        resolvers.push(resolve);
+      }),
+  );
+  return { mock, resolvers };
+}
+
+describe("退避重试：序列与「哪些失败不该重试」", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    vi.resetModules();
+  });
+
+  it("退避序列是 1s → 2s → 4s → 8s → 16s → 30s(封顶)", async () => {
+    vi.resetModules();
+    const { pingRetryDelay } = await import("../src/film-votes");
+    expect([0, 1, 2, 3, 4, 5, 6].map(pingRetryDelay)).toEqual([
+      1000, 2000, 4000, 8000, 16000, 30000, 30000,
+    ]);
+  });
+
+  it("★ 失败后自己重试,而且 payload **逐字不变**（服务端是整份替换，不能越重试越少）", async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    let calls = 0;
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => {
+      calls += 1;
+      return calls <= 2 ? fail(500) : okJson({ ok: true, votes: {}, skins: {} });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { scheduleFilmVotesPing } = await import("../src/film-votes");
+
+    scheduleFilmVotesPing([{ key: "a", vote: "red" }]);
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1000); // 第 1 次退避
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(2000); // 第 2 次退避 → 这一次成功
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    // 成功之后不再重试
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    const bodies = fetchMock.mock.calls.map(([, init]) => String((init as RequestInit).body));
+    expect(new Set(bodies).size).toBe(1);
+  });
+
+  it("4xx 不重试（服务端拒绝是载荷 / 版本问题，重试一万次也不会好）", async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    const fetchMock = vi.fn(() => fail(422));
+    vi.stubGlobal("fetch", fetchMock);
+    const { scheduleFilmVotesPing } = await import("../src/film-votes");
+
+    scheduleFilmVotesPing([{ key: "a", vote: "red" }]);
+    await vi.advanceTimersByTimeAsync(1200);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  // ⚠ 断言的是**当前口径**（用户：4xx 一律不重试），而它有已知代价：**限流 429 也算 4xx**，
+  //   于是被限流的那一票只能等下一次票签名变化（或下次开页面的补发）才补上。
+  //   见 PLAN-20261005182415 §A 的「已知取舍」；判据收在 `shouldRetryPing` 一处。
+  it("（已知代价）429 也归在「不重试」里 —— 改它只需改 `shouldRetryPing` 一行", async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    const fetchMock = vi.fn(() => fail(429));
+    vi.stubGlobal("fetch", fetchMock);
+    const { scheduleFilmVotesPing, shouldRetryPing, FilmVotesPingRejectedError } = await import(
+      "../src/film-votes"
+    );
+
+    expect(shouldRetryPing(new FilmVotesPingRejectedError(429))).toBe(false);
+    expect(shouldRetryPing(new FilmVotesPingRejectedError(500))).toBe(true);
+    expect(shouldRetryPing(new Error("offline"))).toBe(true);
+
+    scheduleFilmVotesPing([{ key: "a", vote: "red" }]);
+    await vi.advanceTimersByTimeAsync(1200 + 120_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("待发队列：关页 / 切后台 / 崩溃都不丢", () => {
+  let storage: Storage;
+
+  beforeEach(() => {
+    storage = fakeStorage();
+    vi.stubGlobal("localStorage", storage);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    vi.resetModules();
+  });
+
+  it("★ 「要发的那一份」落盘（键在 `iffday.workspace.*` —— 不能被账号同步带走）", async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    vi.stubGlobal("fetch", vi.fn(() => fail()));
+    const { scheduleFilmVotesPing, LS_PENDING_FILM_VOTES } = await import("../src/film-votes");
+
+    expect(LS_PENDING_FILM_VOTES.startsWith("iffday.workspace.")).toBe(true);
+    scheduleFilmVotesPing([{ key: "a", vote: "red" }]);
+
+    const stored = JSON.parse(storage.getItem(LS_PENDING_FILM_VOTES)!);
+    expect(stored.seq).toBe(1);
+    expect(stored.votes).toEqual([{ key: "a", vote: "red", comment: null, skin: null }]);
+  });
+
+  it("★ 下一次载入先把它补发掉，成功后清盘（关了页面也补得上）", async () => {
+    // 第一次载入：改了票、落了盘，但页面在 1200ms 内就走了（上报从没发生）
+    vi.useFakeTimers();
+    vi.resetModules();
+    vi.stubGlobal("fetch", vi.fn(() => fail()));
+    const { scheduleFilmVotesPing, LS_PENDING_FILM_VOTES } = await import("../src/film-votes");
+    scheduleFilmVotesPing([{ key: "a", vote: "red" }]);
+    expect(storage.getItem(LS_PENDING_FILM_VOTES)).not.toBeNull();
+
+    // 第二次载入（等价于刷新 / 重开标签页）
+    vi.resetModules();
+    const fetchMock = vi.fn(() => okJson({ ok: true, votes: { a: { red: 3, black: 0 } }, skins: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+    const mod = await import("../src/film-votes");
+    mod.resumePendingFilmVotes();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      votes: [{ key: "a", vote: "red" }],
+    });
+    expect(storage.getItem(LS_PENDING_FILM_VOTES)).toBeNull();
+    expect(mod.peekSyncedVotes()).toEqual({ a: { red: 1, black: 0 } });
+
+    // ⚠ 序号要接着盘上那一份往下走：否则新一轮的 seq 会比盘上那份还小，
+    //   `seq` 守卫会把**更新的**响应当成旧的丢掉。
+    mod.scheduleFilmVotesPing([{ key: "b", vote: "black" }]);
+    expect(JSON.parse(storage.getItem(LS_PENDING_FILM_VOTES)!).seq).toBe(2);
+  });
+
+  it("盘上没有待发 → 载入时**什么都不做**（本地为空 ≠ 我撤票了，拿空榜上报会清掉服务端的票）", async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    const fetchMock = vi.fn(() => okJson({ votes: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+    const mod = await import("../src/film-votes");
+
+    mod.resumePendingFilmVotes();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("空表是**合法**的待发（我撤回了全部票，那一次也得补发）", async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) =>
+      okJson({ ok: true, votes: {}, skins: {} }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { resumePendingFilmVotes, LS_PENDING_FILM_VOTES } = await import("../src/film-votes");
+    storage.setItem(LS_PENDING_FILM_VOTES, JSON.stringify({ seq: 1, votes: [] }));
+
+    resumePendingFilmVotes();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(JSON.parse(String((fetchMock.mock.calls[0][1] as RequestInit).body)).votes).toEqual([]);
+  });
+
+  it("★ 盘上那一份认不全就**整份丢弃**（丢掉一条 = 把那一票当成「用户撤回了」，是破坏性的）", async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    const fetchMock = vi.fn(() => okJson({ ok: true, votes: {} }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { resumePendingFilmVotes, LS_PENDING_FILM_VOTES } = await import("../src/film-votes");
+
+    for (const raw of [
+      "not json",
+      JSON.stringify({ votes: [] }), // 没有 seq → 分不清「脏数据」与「我撤回了全部票」
+      JSON.stringify({ seq: 1, votes: "nope" }),
+      JSON.stringify({ seq: 1, votes: [{ key: "a", vote: "green" }] }),
+      JSON.stringify({ seq: 1, votes: [{ key: "", vote: "red" }] }),
+    ]) {
+      storage.setItem(LS_PENDING_FILM_VOTES, raw);
+      resumePendingFilmVotes();
+    }
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("关页那一发：keepalive 与它的两条硬约束", () => {
+  let storage: Storage;
+
+  beforeEach(() => {
+    storage = fakeStorage();
+    vi.stubGlobal("localStorage", storage);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    vi.resetModules();
+  });
+
+  it("★ `pagehide` 与 `visibilitychange(hidden)` 两个监听都挂上（少一个就有一整类场景不补发）", async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    const winHandlers = new Map<string, () => void>();
+    const docHandlers = new Map<string, () => void>();
+    const doc = {
+      visibilityState: "visible" as DocumentVisibilityState,
+      addEventListener: (type: string, listener: () => void) => docHandlers.set(type, listener),
+    };
+    vi.stubGlobal("window", {
+      addEventListener: (type: string, listener: () => void) => winHandlers.set(type, listener),
+    });
+    vi.stubGlobal("document", doc);
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => fail());
+    vi.stubGlobal("fetch", fetchMock);
+    const { scheduleFilmVotesPing } = await import("../src/film-votes");
+
+    scheduleFilmVotesPing([{ key: "a", vote: "red" }]);
+    fetchMock.mockClear();
+
+    // 切到后台（iOS 上切 App 走的是这条）→ keepalive 最后一发
+    doc.visibilityState = "hidden";
+    docHandlers.get("visibilitychange")!();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((fetchMock.mock.calls[0][1] as RequestInit).keepalive).toBe(true);
+
+    // 回到前台 → 再补一次（它可能压根没发出去过）。⚠ 这一发**不是** keepalive：
+    //   页面还活着，要拿得到响应才能清 pending。
+    doc.visibilityState = "visible";
+    docHandlers.get("visibilitychange")!();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((fetchMock.mock.calls[1][1] as RequestInit).keepalive).toBeUndefined();
+
+    // 关标签页 / 被系统回收 → 也发
+    winHandlers.get("pagehide")!();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect((fetchMock.mock.calls[2][1] as RequestInit).keepalive).toBe(true);
+  });
+
+  it("退避计时器正等着的时候，回到前台**不插队**（否则退避被白白抵消）", async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    const docHandlers = new Map<string, () => void>();
+    const doc = {
+      visibilityState: "hidden" as DocumentVisibilityState,
+      addEventListener: (type: string, listener: () => void) => docHandlers.set(type, listener),
+    };
+    vi.stubGlobal("window", { addEventListener: () => undefined });
+    vi.stubGlobal("document", doc);
+    const fetchMock = vi.fn(() => fail(500));
+    vi.stubGlobal("fetch", fetchMock);
+    const { scheduleFilmVotesPing } = await import("../src/film-votes");
+
+    scheduleFilmVotesPing([{ key: "a", vote: "red" }]);
+    await vi.advanceTimersByTimeAsync(1200); // 正常那一发失败 → 退避计时器已经挂上
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    fetchMock.mockClear();
+    doc.visibilityState = "visible";
+    docHandlers.get("visibilitychange")!();
+    expect(fetchMock).not.toHaveBeenCalled(); // 交给退避计时器，不插队
+
+    await vi.advanceTimersByTimeAsync(1000); // 退避到点 → 由它发
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("★ 载荷超过 64KB 时**不发**（整份替换语义下，截断载荷会把其余票删掉）", async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    vi.stubGlobal("window", { addEventListener: () => undefined });
+    vi.stubGlobal("document", { visibilityState: "visible", addEventListener: () => undefined });
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) => fail());
+    vi.stubGlobal("fetch", fetchMock);
+    const {
+      scheduleFilmVotesPing,
+      sendFilmVotesKeepalive,
+      KEEPALIVE_BODY_LIMIT,
+      MAX_VOTES_PER_PING,
+    } = await import("../src/film-votes");
+
+    // 500 部片 × 每条一大段评语 → 远超 64KB，但**没超**单次条数上限
+    scheduleFilmVotesPing(
+      Array.from({ length: MAX_VOTES_PER_PING }, (_, i) => ({
+        key: `f${i}`,
+        vote: "red" as const,
+        comment: "这是一段很长的评语".repeat(20),
+      })),
+    );
+    expect(KEEPALIVE_BODY_LIMIT).toBe(64 * 1024);
+    expect(sendFilmVotesKeepalive()).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    // ⚠ 没发出去 ≠ 丢掉：盘上那份还在，下次开页面照旧补发
+    expect(storage.length).toBeGreaterThan(0);
+
+    // 超过单次条数上限（一份发不完）→ 同样不发
+    scheduleFilmVotesPing(
+      Array.from({ length: MAX_VOTES_PER_PING + 1 }, (_, i) => ({ key: `g${i}`, vote: "red" as const })),
+    );
+    expect(sendFilmVotesKeepalive()).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("★ 在途时又改了票：旧响应被丢弃，不被它盖回去（「刚收回的贴纸又冒出来」）", async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    vi.stubGlobal("window", { addEventListener: () => undefined });
+    const doc = { visibilityState: "visible" as DocumentVisibilityState, addEventListener: () => undefined };
+    vi.stubGlobal("document", doc);
+    const { mock, resolvers } = deferredFetches();
+    vi.stubGlobal("fetch", mock);
+    const { scheduleFilmVotesPing, sendFilmVotesKeepalive, peekSyncedVotes, peekFilmVotes } =
+      await import("../src/film-votes");
+
+    // 第 1 份（seq 1）：发出去，挂在半空
+    scheduleFilmVotesPing([{ key: "a", vote: "red" }]);
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(resolvers).toHaveLength(1);
+
+    // 用户手快，又改了一次（seq 2）—— 它走 keepalive 那条路（不等响应、不占在途位）
+    scheduleFilmVotesPing([{ key: "a", vote: "black" }]);
+    expect(sendFilmVotesKeepalive()).toBe(true);
+    resolvers[1]({
+      ok: true,
+      json: async () => ({ ok: true, votes: { a: { red: 0, black: 9 } }, skins: {} }),
+    } as unknown as Response);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(peekSyncedVotes()).toEqual({ a: { red: 0, black: 1 } });
+    expect(peekFilmVotes()).toEqual({ a: { red: 0, black: 9 } });
+
+    // 现在**旧**那条（seq 1）才回来：它的 counts 更旧，必须整条丢弃
+    resolvers[0]({
+      ok: true,
+      json: async () => ({ ok: true, votes: { a: { red: 1, black: 0 } }, skins: {} }),
+    } as unknown as Response);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(peekSyncedVotes()).toEqual({ a: { red: 0, black: 1 } });
+    expect(peekFilmVotes()).toEqual({ a: { red: 0, black: 9 } });
+  });
+
+  it("失败那一发**不清盘**（拿不到响应就等于没确认，留着下次补）", async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    vi.stubGlobal("window", { addEventListener: () => undefined });
+    vi.stubGlobal("document", { visibilityState: "visible", addEventListener: () => undefined });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.reject(new Error("offline"))),
+    );
+    const { scheduleFilmVotesPing, sendFilmVotesKeepalive, LS_PENDING_FILM_VOTES } = await import(
+      "../src/film-votes"
+    );
+
+    scheduleFilmVotesPing([{ key: "a", vote: "red" }]);
+    expect(sendFilmVotesKeepalive()).toBe(true);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(storage.getItem(LS_PENDING_FILM_VOTES)).not.toBeNull();
   });
 });
