@@ -257,3 +257,38 @@
 @media (pointer: coarse) {
   .agenda-actions .date-strip.calendar-strip > button { min-height: 44px; }
 }
+
+/* ---------- 格子上的「去红黑榜」入口(2026-10-07,`PLAN-20261007230427`) ----------
+   只挂「我的行程 → 日程表」这一档(`ScheduleGantt` 的 `agenda`):排片表那档画的是全届排片,
+   给每一格加一个「去评分」既挤掉片名、又没有使用场景。
+   ⚠ 与 `.gantt-ticket-edit`(见 `components/ticket-info.css`)**同一套角标口径**:常显、30×30、
+     触屏放大到 44px。刻意**不做 hover 淡显** —— 触屏没有 hover,「常态隐身」等于功能不存在。
+   ⚠ 位置让开右上角的 ⓘ(`right: 0`)与票务入口(`right: 30px`),落在它们左侧。 */
+.gantt-redblack {
+  position: absolute;
+  top: 0;
+  right: 60px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 0 0 0 5px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+.gantt-redblack:hover {
+  color: var(--brand);
+}
+/* 触屏:入口本来就常显,这里只把尺寸放大到可点,并把落点继续往左让出票务入口的 44px */
+@media (pointer: coarse) {
+  .gantt-redblack {
+    width: 44px;
+    height: 44px;
+    right: 74px;
+  }
+}

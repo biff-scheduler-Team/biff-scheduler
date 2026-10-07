@@ -259,3 +259,30 @@ test("排片表点格子仍是即时的加入 / 移出，不弹确认", async ({
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(cell).toHaveAttribute("aria-pressed", "false");
 });
+
+// 每一格都带一个直达红黑榜的入口(2026-10-07,`PLAN-20261007230427`)。用户要的是
+// 「从这一场直接去贴贴纸」—— 原先只能回导航栏 → 红黑榜 → 再手打片名。
+// ⚠ 只在**行程那档**挂:排片表画的是全届排片,给它每一格加「去评分」既挤掉片名又没场景。
+test("日程表格子上的红黑榜入口带着这一场的片名跳到红黑榜", async ({ page }) => {
+  // 红黑榜要拉聚合票数;本用例不关心票,给一份空聚合(与 redblack.spec 同一种挡法)
+  await page.route("**/api/stats/film-votes**", (route) =>
+    route.fulfill({ json: { edition: "biff-2026", votes: {} } }),
+  );
+  await seed(page, { "biff.picks.v2": picks(mine) });
+  await ready(page, "/agenda");
+  const agenda = page.getByRole("region", { name: "我的行程", exact: true });
+
+  // ① 行程那档:两格各有一个入口
+  await expect(agenda.locator("[data-redblack-code]")).toHaveCount(mine.length);
+  const jump = agenda.locator('[data-redblack-code="008"]');
+  await expect(jump).toBeVisible();
+  // ② 排片表那档(`/agenda` 上渲染但 hidden)没有这个入口
+  await expect(page.locator('.schedule-column [data-redblack-code="008"]')).toHaveCount(0);
+
+  // ③ 点它 → 带着这一场的片名进红黑榜,榜单被 `q` 收成这一部
+  await jump.click();
+  await expect(page).toHaveURL(/\/redblack\?q=/);
+  expect(new URL(page.url()).searchParams.get("q")).toBeTruthy();
+  await expect(page.locator(".rb-card")).toHaveCount(1);
+  await expect(page.locator(`.rb-card[data-film-key="${keyOf("008")}"]`)).toHaveCount(1);
+});

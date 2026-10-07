@@ -4,6 +4,7 @@ import { TicketEditDialog } from "./TicketEditDialog";
 import { officialStills } from "../app/official-stills";
 import { highlightCodesFor, highlightedCode, setHighlight, subscribeHighlight } from "../app/highlight";
 import { Component, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useNavigate } from "react-router";
 import {
   ActionButton,
   Button,
@@ -272,6 +273,7 @@ export function ScheduleGantt({
   scope = "schedule",
 }: ScheduleGanttProps) {
   const agenda = scope === "agenda";
+  const navigate = useNavigate();
   const { cat, conflicts, codes } = useCatalog();
   const [filtersOpen, setFiltersOpen] = useState(false);
   // 待确认移除的那一场(只有行程档会写它,见 `AgendaRemoveDialog`)。
@@ -697,6 +699,38 @@ export function ScheduleGantt({
                             >
                               <path d="M2 7.5V5.5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2a2.5 2.5 0 0 0 0 5v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2a2.5 2.5 0 0 0 0-5Z" />
                               <path d="M11.5 4.5v11" strokeDasharray="2 2" />
+                            </svg>
+                          </button>
+                        )}
+                        {/* 去红黑榜(2026-10-07,`PLAN-20261007230427`):看完一场想贴一枚红 / 黑贴纸,
+                            原先只能回导航栏 → 红黑榜 → 再手打片名。带**这一场的片名**跳过去,红黑榜按 `q`
+                            过滤后只剩这一部(`searchFilm` 匹配 `FilmNode.title`,与本卡 `info.title` 同一
+                            口径 —— 都是 `bilingualTitle`)。
+                            ⚠ 与 `.gantt-ticket-edit` 一样是 `.gantt-film` 的**兄弟**:点它不会冒泡到
+                              「移出行程」那个按钮上,不存在误删场次的风险。 */}
+                        {agenda && (
+                          <button
+                            type="button"
+                            className="gantt-redblack"
+                            data-redblack-code={s.code}
+                            aria-label={`去红黑榜给《${info.title}》贴贴纸`}
+                            title={`到红黑榜给《${info.title}》贴一枚红 / 黑贴纸`}
+                            onClick={() =>
+                              navigate(`/redblack?q=${encodeURIComponent(info.title)}`)
+                            }
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 20 20"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              aria-hidden="true"
+                            >
+                              {/* 两枚重叠的圆 = 红 / 黑两张贴纸 */}
+                              <circle cx="8" cy="10" r="5.5" />
+                              <circle cx="12" cy="10" r="5.5" />
                             </svg>
                           </button>
                         )}
