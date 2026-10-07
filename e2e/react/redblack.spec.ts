@@ -1687,6 +1687,92 @@ test("评语接口 500:讨论区走空态,红黑榜照常可用(静默降级)", 
   await expect(card.locator(".rb-dot--red")).toHaveCount(1);
 });
 
+/* ---------------- 讨论区**总览**(2026-10-07,PLAN-20261007231522) ----------------
+ * 卡片上那枚「讨论区」只回答「这一部」;总览回答「**全站**」—— 两者共用同一个读接口,
+ * 差别只在**带不带 `filmKey`**。三条断言各自钉一件事:
+ *   ① 跨片读(不带 `filmKey`)—— 带了就退回「只问这一部」,而列表照样渲染得「看起来正常」;
+ *   ② 每行自己说清**是哪一部**(片名角标)—— 这是本弹层存在的理由;
+ *   ③ 点一行 → 关弹层 + 定位到那张卡(滚进视口 + 闪描边)。 */
+
+test("讨论区总览:跨片列出评语(每行带片名角标),点一行跳到那部卡片", async ({ page }) => {
+  await stubEmpty(page);
+  const keyA = keyOf("001");
+  const keyB = keyOf("008");
+  const queries: string[] = [];
+  await page.route("**/api/stats/film-comments**", (route) => {
+    queries.push(route.request().url());
+    return route.fulfill({
+      json: {
+        edition: "biff-2026",
+        items: [
+          { filmKey: keyA, vote: "red", comment: "第一部真好", displayName: "阿柴" },
+          { filmKey: keyB, vote: "black", comment: "第二部太闷", displayName: null },
+          // 反查不到片名(旧届残留 / 目录里没有的 key)→ 只能读、不能跳
+          { filmKey: "cat:__missing__", vote: "red", comment: "查不到片名", displayName: "路人" },
+        ],
+        nextCursor: null,
+      },
+    });
+  });
+  await ready(page, "/redblack");
+
+  await page.getByRole("button", { name: "打开讨论区总览" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("讨论区总览");
+  // ⚠ **跨片**读:`filmKey` 一旦带上,这里列的就只是那一部了 —— 而界面看起来完全一样
+  expect(queries.some((url) => !new URL(url).searchParams.has("filmKey"))).toBe(true);
+
+  // 每行**自己**说清是哪一部(片名角标);红 / 黑来源角标也照旧
+  const rows = dialog.locator(".rb-board-row");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0).locator(".rb-board-film")).toContainText(/^《.+》$/);
+  await expect(rows.nth(0).locator(".rb-talk-vote")).toHaveText("红");
+  await expect(rows.nth(1).locator(".rb-talk-vote")).toHaveText("黑");
+  // 两行的片名角标必须**不同**(否则「显示是哪个电影的」等于没做)
+  const filmA = await rows.nth(0).locator(".rb-board-film").textContent();
+  const filmB = await rows.nth(1).locator(".rb-board-film").textContent();
+  expect(filmA).not.toBe(filmB);
+  // 反查不到的行:退化成「未知影片」,且**不是**按钮(点了会滚到一张不存在的卡上)
+  await expect(rows.nth(2).locator(".rb-board-film")).toHaveText("《未知影片》");
+  await expect(dialog.getByRole("button", { name: /查不到片名/ })).toHaveCount(0);
+  // ⚠ 能跳的行,可访问名必须是**这行内容本身**(评语 + 片名 + 昵称)——
+  //   给它挂 `aria-label` 会把内容整个换掉,读屏就再也念不到评语了(动作改走 `title`)。
+  await expect(dialog.getByRole("button", { name: /第一部真好/ })).toHaveCount(1);
+
+  // 点第一行 → 关弹层 + 那张卡被定位到
+  await rows.nth(0).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const target = page.locator(`.rb-card[data-film-key="${keyA}"]`);
+  await expect(target).toBeInViewport();
+  // ⚠ 描边是**瞬时**的(3 次闪烁后就撤掉),所以只能 poll —— 直接 `toHaveClass` 会看运气
+  await expect
+    .poll(() => target.evaluate((node) => node.classList.contains("rb-card-located")))
+    .toBe(true);
+});
+
+test("讨论区总览:目标被搜索框挡住时,自动清掉过滤再定位", async ({ page }) => {
+  await stubEmpty(page);
+  const key = keyOf("008");
+  await stubComments(page, {
+    items: [{ filmKey: key, vote: "red", comment: "被藏起来的评语", displayName: null }],
+  });
+  // 先让搜索把所有卡都过滤掉 —— 此时那片根本没渲染,直接查 DOM 一定找不到
+  await ready(page, `/redblack?q=${encodeURIComponent("绝无此片")}`);
+  await expect(page.locator(".rb-card")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "打开讨论区总览" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.locator(".rb-board-row").first().click();
+
+  // 过滤被清掉 → 卡片回来了,并且被定位到
+  const target = page.locator(`.rb-card[data-film-key="${key}"]`);
+  await expect(target).toHaveCount(1);
+  await expect
+    .poll(() => target.evaluate((node) => node.classList.contains("rb-card-located")))
+    .toBe(true);
+});
+
 // 这条用例守的东西 2026-09-29 变了**:长按现在**确实**会弹东西出来 —— 换款轮盘。
 // 但它的另一半一个字没变,也仍然必须成立:**轮盘不在贴纸里、也不在卡片里**。
 // 所以判据从「聚焦什么都不弹」改成「弹了,但弹在别处」:

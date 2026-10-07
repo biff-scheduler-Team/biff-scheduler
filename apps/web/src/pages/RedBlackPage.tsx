@@ -115,6 +115,10 @@ const RedBlackShareDialog = lazy(() =>
 const LazyFilmCommentsDialog = lazy(() =>
   import("../components/FilmCommentsDialog").then((m) => ({ default: m.FilmCommentsDialog })),
 );
+/** 讨论区**总览**弹层（2026-10-07，PLAN-20261007231522）—— 与上面两个同一套懒加载理由。 */
+const LazyDiscussionBoardDialog = lazy(() =>
+  import("../components/DiscussionBoardDialog").then((m) => ({ default: m.DiscussionBoardDialog })),
+);
 
 const SORTS: Array<[SortMode, string]> = [
   ["total", "总数"],
@@ -158,6 +162,37 @@ const NUDGE_KEYS: Record<string, { dx: number; dy: number }> = {
  *    prop 引用一变就白重渲染一次,299 张卡一起白渲染正是本轮要修的那个卡顿(PLAN-20260922145815)。 */
 const EMPTY_COUNTS: StickerCounts = { total: 0, red: 0, black: 0 };
 const EMPTY_STICKERS: readonly Sticker[] = [];
+
+/** 讨论区总览里点一行 → 定位到那张卡时，描边闪多久 / 闪几次(ms)。
+ *  ⚠ 与 `ScheduleGantt.tsx::flashScreenings` **同拍**(1000 × 3)：两处表达的是同一件事
+ *    「这一格 / 这张卡被定位到了」，时长不一致会读成两种不同的反馈。 */
+const LOCATE_BLINK_MS = 1000;
+const LOCATE_BLINKS = 3;
+
+/** 正在闪的那些卡 —— 连点同一行时先取消上一次，避免两条动画叠在一起把描边闪成常亮。 */
+const locateAnimations = new WeakMap<HTMLElement, Animation>();
+
+/** 给一张卡**闪一次描边**，告诉用户「跳到这里了」。
+ *
+ *  ⚠ 只闪 `outline`，绝不动 opacity / 尺寸 —— 动 body 会被读成「这张卡自己在闪」，
+ *    而不是「它被定位到了」（`PLAN-20260917095517` 在排片表格子上记过同一条代价）。
+ *  ⚠ 颜色取**计算后的** `outline-color`：WAAPI 关键帧不收 `var()`，而 `.rb-card-located`
+ *    已经把 outline 解析成具体颜色 —— 亮 / 暗主题各取各的，这里再写一份品牌色就会写死。
+ *  ⚠ 动效敏感时留一圈**静态**描边（而不是整段跳过）：定位结果本身是信息，不该被省掉。 */
+function flashCard(node: HTMLElement): void {
+  locateAnimations.get(node)?.cancel();
+  node.classList.add("rb-card-located");
+  const ring = getComputedStyle(node).outlineColor;
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const animation = node.animate(
+    reduced
+      ? [{ outlineColor: ring }, { outlineColor: ring }]
+      : [{ outlineColor: "transparent" }, { outlineColor: ring }, { outlineColor: "transparent" }],
+    { duration: LOCATE_BLINK_MS, iterations: LOCATE_BLINKS },
+  );
+  locateAnimations.set(node, animation);
+  void animation.finished.then(() => node.classList.remove("rb-card-located"), () => {});
+}
 
 /** 「刚贴的那一枚」高亮多久(ms)。
  *  ⚠ 三个数必须**同拍**:`FRESH_MS` = `FRESH_BLINK_MS × FRESH_BLINKS`,否则会出现
@@ -260,7 +295,9 @@ interface RbCardProps {
 }
 
 export function RedBlackPage() {
-  const { films } = useCatalog();
+  // ⚠ `filmByKey` 用**目录那份全量映射**（别名避让下面那份「当前榜单」的局部同名映射）——
+  //   讨论区总览列的是全站评语，片名反查不能跟着页面的搜索词一起缩水。
+  const { films, filmByKey: allFilmByKey } = useCatalog();
   const { params, update } = useQuery();
   const query = params.get("q") ?? "";
   const mode = (params.get("sort") as SortMode | null) ?? "total";
@@ -476,6 +513,69 @@ export function RedBlackPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 同上
     [sorted, onlyMine, votesKey],
   );
+
+  /* ---------------- 讨论区**总览**（2026-10-07，PLAN-20261007231522） ----------------
+   * 卡片右上角那枚「讨论区」只回答「**这一部**」；总览回答「**全站**」。
+   * 两者共用同一个读接口，差别只在**带不带 `filmKey`** —— 口径见 `DiscussionBoardDialog` 文件头。 */
+  const [boardOpen, setBoardOpen] = useState(false);
+  const boardBtnRef = useRef<HTMLButtonElement | null>(null);
+  const boardWasOpenRef = useRef(false);
+  // 焦点归还(§5 硬约束):与卡片讨论区 / 分享图同一手法 —— 必须在弹层**真正卸载之后**
+  // 再夺回焦点(原因见下面 `talkWasOpenRef` 那段:WebKit 上点按钮不会让它获得焦点)。
+  useEffect(() => {
+    if (boardWasOpenRef.current && !boardOpen) boardBtnRef.current?.focus();
+    boardWasOpenRef.current = boardOpen;
+  }, [boardOpen]);
+
+  /** 总览里「能跳过去」的片子 —— 判据与榜单**同一处**(`boardFilms`:只列有排期的影片)。
+   *  ⚠ 评语可能属于一届里已经没有排期的目录片 / 旧届残留:那些行只能读、不能跳,
+   *    否则会把用户滚到一张根本不存在的卡上。 */
+  const boardKeys = useMemo(() => new Set(boardFilms(films).map((film) => film.key)), [films]);
+
+  /** 待定位的片子。⚠ 用 **ref** 而不是 state:它是「一次性意图」,不该参与渲染;
+   *  真正驱动重试的是下面那个 `locateTick`(见 `jumpToFilm` 的说明)。 */
+  const jumpTargetRef = useRef<string | null>(null);
+  const [locateTick, setLocateTick] = useState(0);
+  const pageRef = useRef<HTMLElement | null>(null);
+
+  /** 总览里点一行 → 关弹层 + 记下目标。
+   *  ⚠ 目标可能正被 `q` / `only=mine` **藏着**,而那两个过滤恰恰会让定位失败 ——
+   *    所以先清掉它们,再由下面那个 effect 落地(不在同一拍查 DOM:那一刻 React 还没提交,
+   *    查到的仍是过滤后的列表)。
+   *  ⚠ `locateTick` 只为保证「过滤本来就没开」时 effect 也一定跑一次(那是唯一由点击驱动的一轮)。 */
+  const jumpToFilm = useCallback(
+    (filmKey: string) => {
+      setBoardOpen(false);
+      jumpTargetRef.current = filmKey;
+      if (query || onlyMine) update({ q: null, only: null }, true);
+      setLocateTick((count) => count + 1);
+    },
+    [query, onlyMine, update],
+  );
+
+  /** 落地:滚进视口 + 闪描边。
+   *  ⚠ 查不到就**不**清 ref:清过滤那一拍可能还没提交,下一次提交(`visible` 换了引用)
+   *    会再跑一遍这里 —— 这一层重试正是「点了却没滚过去」那个 bug 的修法。
+   *    真的不在榜上(过滤已清干净还查不到,`boardKeys` 本该先挡住)才放弃,免得这个 ref
+   *    挂到下一次随便什么重排上,把页面莫名其妙滚走。 */
+  useEffect(() => {
+    const target = jumpTargetRef.current;
+    if (!target) return;
+    const node = pageRef.current?.querySelector<HTMLElement>(
+      `[data-film-key="${CSS.escape(target)}"]`,
+    );
+    if (!node) {
+      if (!query && !onlyMine) jumpTargetRef.current = null;
+      return;
+    }
+    jumpTargetRef.current = null;
+    node.scrollIntoView({
+      block: "center",
+      // 动效敏感:瞬移而不是平滑滚动(`prefers-reduced-motion` 管不到 `scrollIntoView`)
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
+    flashCard(node);
+  }, [locateTick, visible, query, onlyMine]);
   // 我自己那一份 —— 只用来控制「能不能贴 / 还能贴几枚」
   const tallies = useMemo(
     () => new Map(sorted.map((film) => [film.key, tallyOf(film.key, watched.has(film.key), board)])),
@@ -1058,7 +1158,7 @@ export function RedBlackPage() {
   );
 
   return (
-    <section className="rb-page" aria-label="红黑榜">
+    <section className="rb-page" aria-label="红黑榜" ref={pageRef}>
       <header className="rb-hero">
         <div className="rb-hero-text">
           <p className="rb-eyebrow">看过就贴</p>
@@ -1156,6 +1256,20 @@ export function RedBlackPage() {
         >
           {orderStale ? "有新贴纸 · 重新排序" : "重新排序"}
         </button>
+        {/* 讨论区**总入口**(2026-10-07,PLAN-20261007231522)—— 卡片上那枚只回答「这一部」,
+            想看全站谁给哪部写了什么,必须有一个跨片的入口。
+            ⚠ 文案与卡片上那枚**刻意不同**(「讨论区总览」vs「讨论区」):两处语义不同
+              (全站 / 单部),读屏与 E2E 也才分得开。
+            ⚠ 它是**弱按钮**,不给品牌色实底 —— 这一排里只有「生成分享图」是主操作。 */}
+        <button
+          ref={boardBtnRef}
+          type="button"
+          className="rb-board-btn"
+          aria-label="打开讨论区总览"
+          onClick={() => setBoardOpen(true)}
+        >
+          讨论区总览
+        </button>
         {/* 出图是这一排里唯一的主操作 —— 给品牌色实底。
             ⚠ 改版前它用 `--selected` / `--selected-line`(= #388452 绿),用户读成「绿色胶囊」,
               而绿色与红黑榜的红黑语义毫无关系(2026-09-29,PLAN-20260929172651 §2)。 */}
@@ -1252,6 +1366,20 @@ export function RedBlackPage() {
             site={{ total: totals.total, red: totals.red, black: totals.black }}
             mine={{ marked: totals.marked, placed: totals.placed, quota: totals.quota }}
             onDismiss={() => setShareOpen(false)}
+          />
+        </Suspense>
+      )}
+
+      {boardOpen && (
+        // ⚠ `Suspense` 写在条件**内部**:不打开时连边界都不挂,不多包一层没有内容的边界
+        <Suspense fallback={null}>
+          <LazyDiscussionBoardDialog
+            /* ⚠ 给**全量**片名映射(不是榜单当前过滤后那份):总览列的是全站评语 */
+            filmByKey={allFilmByKey}
+            /* 只有榜单上真有卡的片子才可跳(评语可能属于没有排期的目录片 / 旧届残留) */
+            boardKeys={boardKeys}
+            onJump={jumpToFilm}
+            onDismiss={() => setBoardOpen(false)}
           />
         </Suspense>
       )}

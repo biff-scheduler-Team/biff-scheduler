@@ -4,7 +4,10 @@
 //      ⚠ 2026-09-22 用户重排导航后末尾是「建议」,吃喝不再是最后一项(`PLAN-20260922102751`);② 清单渲染 + 三条地图链接的模板;
 //      ③ 搜索与分区筛选;④ 用户自己添加的店落本地键并出现在列表;
 //      ⑤ 地图数据源没配密钥时(503)**静默降级** —— Naver 那条仍是搜索链接,页面不报错;
-//      ⑥ 第二源 Naver 共享收藏夹并进来之后的呈现口径(`PLAN-20261005201040`)。
+//      ⑥ 第二源 Naver 共享收藏夹并进来之后的呈现口径(`PLAN-20261005201040`);
+//      ⑦ 「营业中」筛选(`PLAN-20261005205733`)—— 按釜山时间判定,只留**确定开着**的店。
+//         ⚠ 判定依赖「现在几点 + 今天星期几」,所以这两条用例必须先用 `page.clock.install`
+//           把时钟钉死;否则用例会在晚上或周末随机变红。
 //
 // ⚠ 所有用例都把 `/api/eats/lookup` 钉成 503:测试环境没有 Worker,
 //   不钉的话 40 家店会各自打一次真实请求,既慢又不确定。
@@ -192,6 +195,54 @@ test("添加心仪的店:落 biff.eats.v1 并出现在列表最前", async ({ pa
   await expect(page.locator(".eat-card").first()).not.toHaveClass(/eat-mine/);
   const after = JSON.parse((await storage(page))["biff.eats.v1"]) as unknown[];
   expect(after).toHaveLength(0);
+});
+
+// 2026-10-05 `PLAN-20261005205733`:「营业中」筛选。
+// 钉在 2026-10-06(周二)12:00(釜山)—— 这个时刻同时能验到「限星期」「午休前」「定日休息」三种口径。
+test("「营业中」只留确定开着的店,漏判的一律不进来", async ({ page }) => {
+  await lookupOff(page);
+  await page.clock.install({ time: new Date("2026-10-06T12:00:00+09:00") });
+  await ready(page, "/eats");
+  await expect(page.locator('[data-eat-id="halmae-gukbab"]')).toBeVisible();
+  const total = await page.locator(".eat-card").count();
+
+  await page.getByRole("button", { name: "营业中", exact: true }).click();
+  // 点选后 DOM 要再等一拍才提交(与分区筛选那条同一个坑),用会重试的 poll 等结果收敛
+  await expect.poll(() => page.locator(".eat-card").count()).toBeLessThan(total);
+  expect(new URL(page.url()).searchParams.get("open")).toBe("1");
+
+  // 10:00-19:00(周日休息)→ 周二中午开着;`24小时营业` → 开着
+  await expect(page.locator('[data-eat-id="halmae-gukbab"]')).toBeVisible();
+  await expect(page.locator('[data-eat-id="cu"]')).toBeVisible();
+  // 12:00-23:00,但这天(10/6)休息 → 不能出现
+  await expect(page.locator('[data-eat-id="kr-9e102d96"]')).toHaveCount(0);
+  // 12:30-21:30,中午 12:00 还没开门 → 不能出现
+  await expect(page.locator('[data-eat-id="kr-12406a66"]')).toHaveCount(0);
+  // 没写营业时间的(Naver 收藏夹那批)不算「确定开着」→ 不能出现
+  await expect(page.locator('[data-eat-id="bonoberry"]')).toHaveCount(0);
+
+  // 口径行要说清「以哪一刻为准」与「为什么结果变小了」—— 不写清楚用户会以为店没了
+  const hint = page.locator('[data-eats="open-hint"]');
+  await expect(hint).toContainText("按釜山时间 12:00 判断");
+  await expect(hint).toContainText(/另有 \d+ 家没有可用的营业时间/);
+
+  // 关掉开关回到全量(含被漏判的那些)
+  await page.getByRole("button", { name: "营业中", exact: true }).click();
+  await expect(page.locator(".eat-card")).toHaveCount(total);
+  expect(new URL(page.url()).searchParams.has("open")).toBe(false);
+});
+
+// 午休口径的机器验证:同一家店,只因为「现在几点」不同就该进出结果集。
+test("「营业中」认午休:15:00-17:00 休息的店在 16:00 被剔除", async ({ page }) => {
+  await lookupOff(page);
+  await page.clock.install({ time: new Date("2026-10-06T16:00:00+09:00") });
+  await ready(page, "/eats");
+  await page.getByRole("button", { name: "营业中", exact: true }).click();
+
+  // 没有午休的店照旧在结果里(阳性对照:结果集不是空的)
+  await expect(page.locator('[data-eat-id="halmae-gukbab"]')).toBeVisible();
+  // 11:00-21:00 · 15:00-17:00休息 → 16:00 落在午休里,不算营业中
+  await expect(page.locator('[data-eat-id="baeksojeong"]')).toHaveCount(0);
 });
 
 test("地图数据源已配置时,Naver 入口换成精确店铺页", async ({ page }) => {

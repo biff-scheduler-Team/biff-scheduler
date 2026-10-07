@@ -1831,3 +1831,75 @@
     padding: 16px 14px;
   }
 }
+
+/* ---------- 讨论区**总览**（2026-10-07，PLAN-20261007231522） ----------
+ * 卡片级那个弹层「只问这一部」，这里列的是**全站**评语 —— 于是每一行都必须自己说清
+ * 「这是哪一部」（用户原话：「能通过角标或者什么显示是哪个电影的」）。
+ * ⚠ 颜色一律走既有 token（`--brand` / `--line` / `--surface` / `--raised` / `--muted` / `--text`），
+ *   本文件之外不新增色值（AGENTS §5：token 是唯一色源）。 */
+
+/* 工具条上那枚**总入口**。⚠ 弱按钮（与 `.rb-filter` 同权、同形态），不给品牌色实底 ——
+ * 这一排里只有「生成分享图」是主操作。 */
+.rb-board-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.rb-board-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+/* 一行 = 一个可点区域。⚠ 外层 `<li>` 只负责列表语义与撑满格子，网格在里面那层 ——
+ * 否则「整行可点」与「vote 跨行」会被写成两套。 */
+.rb-board-li {
+  /* `.rb-talk-list` 是 grid：`li` 默认按内容宽，行按钮撑不满整格 */
+  display: grid;
+}
+
+/* 行本体。它可能是 `<button>`（能跳）或 `<div>`（片名反查不到 / 榜上没这张卡）。
+ * ⚠ button 的默认外观全部归零 —— 两种宿主必须长得**一模一样**。 */
+.rb-board-row {
+  width: 100%;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* ⚠ 总览的行是**三**行（片名 / 正文 / 昵称），而 `.rb-talk-vote` 那边跨 2 行
+ * —— 那是卡片级弹层的两行结构用的，这里必须覆盖，否则昵称会被挤到徽章下面那一列。 */
+.rb-board-row .rb-talk-vote {
+  grid-row: span 3;
+}
+
+.rb-board-row--static {
+  cursor: default;
+}
+
+/* 「是哪一部」的角标 —— 跨片列表里这是**唯一**的片名来源。
+ * ⚠ 长片名不换行 + 省略号：换行会把这一行顶高，整列节奏就散了。 */
+.rb-board-film {
+  align-self: start;
+  overflow: hidden;
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 总览里点一行 → 目标卡的一圈**定位描边**（WAAPI 只负责让它明暗起伏，见 `flashCard`）。
+ * ⚠ 与排片表的 `.schedule-located` 同一手法：**只闪 `outline`**，绝不动 opacity / 尺寸 ——
+ * 动 body 会被读成「这张卡自己在闪」，而不是「它被定位到了」（PLAN-20260917095517）。
+ * ⚠ `-3px`：卡与卡的间距只有 12–16px，往外扩会跟邻卡的描边糊在一起。 */
+.rb-card-located {
+  outline: 3px solid var(--brand);
+  outline-offset: -3px;
+}
