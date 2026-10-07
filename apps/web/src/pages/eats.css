@@ -15,6 +15,12 @@
   margin-bottom: 12px;
 }
 
+/* 「营业中」开关与两个 Picker 同排。Picker 是「标签 + 触发器」两行、开关只有一行,
+   `.inline-fields` 的 `align-items: flex-start` 会让开关飘在标签那一行 —— 贴底才和触发器齐平。 */
+.eats-controls .inline-fields > .eats-open-toggle {
+  align-self: flex-end;
+}
+
 .eats-list {
   list-style: none;
   margin: 0;

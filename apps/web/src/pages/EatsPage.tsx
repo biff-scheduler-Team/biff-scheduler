@@ -12,8 +12,10 @@
 //   两源合并:剧组同事整理的《BIFF吃喝》表格 + Naver 共享收藏夹《부산국제영화제 스태프 추천맛집》。
 //   用户自己加的店走 `biff.eats.v1`,默认只存本地;登录 IFFDAY 后随既有链路同步到自己那份。
 //
-// ★ 刻意**不自己算「现在是否营业」**:营业时间那列是原表的自由文本(含「15:00-17:00 休息」
-//   这类中文夹杂),本地解析必然错。宁可不显示,也不显示一个自己编的结论。
+// ★ 「营业中」筛选项(2026-10-05,`PLAN-20261005205733`):营业时间那列是原表的自由文本
+//   (含「15:00-17:00 休息」这类中文夹杂),所以判定**只认能确定的情形** —— 解析走
+//   `eats-hours.ts`,按釜山时间算,认不出来的写法一律 `unknown` 且**不进入筛选结果**。
+//   卡片上的营业时间照旧原样显示,页面对「是否营业」只在这一个开关打开时下结论。
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
@@ -29,6 +31,7 @@ import {
   TextArea,
   TextField,
   ToastQueue,
+  ToggleButton,
 } from "../components/spectrum";
 import { QuerySearchField } from "../components/QuerySearchField";
 import { useQuery } from "../app/hooks";
@@ -52,6 +55,7 @@ import {
   type EatSubmission,
   type PlaceHit,
 } from "../eats";
+import { kstClock, openStateAt } from "../eats-hours";
 import { safeExternalUrl } from "../util";
 import "./eats.css";
 
@@ -317,8 +321,18 @@ export function EatsPage() {
   const query = useDeferredValue(params.get("q") ?? "");
   const district = params.get("district") ?? "all";
   const menu = params.get("menu") ?? "all";
+  const openOnly = params.get("open") === "1";
 
-  const { rows, districts, menus } = useMemo(() => {
+  // 判定要用「现在」。开关没打开时不起心跳 —— 关着的开关不该让页面悄悄形变;
+  // 打开时才每分钟重取一次,好让跨过打烊 / 开门时刻的结果自己翻脸。
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    if (!openOnly) return;
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, [openOnly]);
+
+  const { rows, districts, menus, unconfirmed } = useMemo(() => {
     const shops = file?.shops ?? [];
     const all = [...subs.map(rowOfSubmission), ...shops.map(rowOfShop)];
     const districtCounts = new Map<string, number>();
@@ -328,16 +342,22 @@ export function EatsPage() {
       if (row.menu) menuCounts.set(row.menu, (menuCounts.get(row.menu) ?? 0) + 1);
     }
     const needle = query.trim().toLowerCase();
+    const candidates = all.filter(
+      (row) => (district === "all" || row.district === district) && (menu === "all" || row.menu === menu) && hit(row, needle),
+    );
+    // 「营业中」**只留确定开着的**:`unknown`(没写营业时间 / 写法认不出来 / 条款含节假日)
+    // 既不算开着也不算打烊,一律不进入结果 —— 见 `eats-hours.ts` 的口径。
+    const states = new Map(candidates.map((row) => [row.id, openStateAt(row.hours, now)]));
     return {
-      rows: all.filter(
-        (row) => (district === "all" || row.district === district) && (menu === "all" || row.menu === menu) && hit(row, needle),
-      ),
+      rows: openOnly ? candidates.filter((row) => states.get(row.id) === "open") : candidates,
       districts: [...districtCounts.keys()].sort(
         (a, b) => (districtCounts.get(b) ?? 0) - (districtCounts.get(a) ?? 0),
       ),
       menus: [...menuCounts.entries()].sort((a, b) => b[1] - a[1]).map(([key]) => key),
+      // 只报「没法确认」的,不报「确定打烊」的 —— 后者是筛选的本意,不是信息损失
+      unconfirmed: candidates.filter((row) => states.get(row.id) === "unknown").length,
     };
-  }, [file, subs, query, district, menu]);
+  }, [file, subs, query, district, menu, openOnly, now]);
 
   // 逐个查精确店铺页。**串行**是刻意的:40 家并发打上游没有意义(服务端本来就是逐条查),
   // 而且串行才能在第一个 503 之后立刻靠 `lookupDisabled()` 停下,不再白打 39 次。
@@ -419,8 +439,21 @@ export function EatsPage() {
               </PickerItem>
             ))}
           </Picker>
+          <ToggleButton
+            isSelected={openOnly}
+            UNSAFE_className="eats-open-toggle"
+            onChange={(selected) => update({ open: selected ? "1" : null })}
+          >
+            营业中
+          </ToggleButton>
         </div>
       </div>
+      {openOnly && (
+        <p className="eat-notice" data-eats="open-hint">
+          按釜山时间 {kstClock(now)} 判断，只列出现在确定开着的店。
+          {unconfirmed > 0 && `另有 ${unconfirmed} 家没有可用的营业时间，不在这个结果里。`}
+        </p>
+      )}
       {rows.length > 0 ? (
         <ul className="eats-list">
           {rows.map((row) => (
@@ -439,7 +472,11 @@ export function EatsPage() {
           ) : (
             <>
               <h2>没有匹配的店</h2>
-              <p>换个关键词或清掉筛选；也可以点上面的「添加心仪的店」把想去的记下来。</p>
+              <p>
+                {openOnly
+                  ? "现在没有确定开着的店；关掉「营业中」可以看全部。"
+                  : "换个关键词或清掉筛选；也可以点上面的「添加心仪的店」把想去的记下来。"}
+              </p>
             </>
           )}
         </div>
