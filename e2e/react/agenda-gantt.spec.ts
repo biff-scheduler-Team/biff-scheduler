@@ -81,6 +81,10 @@ test("时间重叠在我的两场之间画成连线，并给格子冲突配色",
 });
 
 test("日期条切单日，画布单列铺满（视图只剩日程表一档）", async ({ page }) => {
+  // ⚠ 钉死时钟（2026-10-07）：这一条问的是「默认落哪一天」，而落点与「今天」有关 ——
+  //   实测 10-07 当天落点从 10-06 变成 10-07（那天有两场），断言当场翻脸（Expected 1 / Received 2）。
+  //   不钉死就随真实日期飘，CI 会在影展期间的某一天突然红。
+  await page.clock.install({ time: new Date("2026-10-06T00:30:00+09:00") });
   await seed(page, { "biff.picks.v2": picks(["001", ...mine]) });
   await ready(page, "/agenda");
   const agenda = page.getByRole("region", { name: "我的行程", exact: true });
