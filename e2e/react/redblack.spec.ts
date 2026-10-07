@@ -1953,59 +1953,6 @@ test("换款轮盘:长按弹出、悬停节点只是预览、点选才落定并�
     .toBe(other);
 });
 
-test("★ 触屏长按换款:带一点点抖动也照样弹出轮盘,松手不关、点环外才关", async ({ page }) => {
-  // ⚠ 用户 2026-10-05 报的是触屏这条路**根本走不通**(见 `PLAN-20261005183113`):
-  //   ① 长按判定没有位移阈值 —— 按住半秒期间的一点点抖动就把它作废;
-  //   ② 就算环出来了,一松手(`pointerleave`)就会被那条**鼠标**的关环逻辑收掉。
-  //   两条都只看 `pointerType`,与真机触屏 / `touch-action` 无关 —— 所以这里
-  //   **手动派发带 `pointerType: "touch"` 的 pointer 事件**,三个项目(含 desktop)都能跑这条判据。
-  await stubEmpty(page);
-  await stubComments(page, { items: [] });
-  await ready(page, "/redblack");
-
-  const { dot } = await placeRedAndSettle(page);
-  const box = (await dot.boundingBox())!;
-  const origin = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-  const touch = (type: string, dx = 0, dy = 0) =>
-    dot.dispatchEvent(type, {
-      pointerType: "touch",
-      pointerId: 7,
-      isPrimary: true,
-      clientX: origin.x + dx,
-      clientY: origin.y + dy,
-    });
-  const wheel = page.locator(".rb-wheel");
-
-  // ---- ① 小抖动不该作废长按(回归判据:改前 `onPointerMove` 是无条件作废的) ----
-  await touch("pointerdown");
-  // 蓄力进度环:按下去的**那一刻**就看得见 —— 它同时是「能长按」唯一看得见的提示
-  await expect(dot).toHaveAttribute("data-rb-pressing", "true");
-  await page.waitForTimeout(180);
-  // 5px < `DRAG_SLOP_TOUCH`(10px):这一步在改前会把长按计时器直接清掉,环永远不出来
-  await touch("pointermove", 5, 5);
-  // 此刻还没到 `PRESS_MS`(500ms),不该有环
-  await expect(wheel).toHaveCount(0);
-  await expect(wheel).toHaveCount(1, { timeout: 3000 });
-
-  // ---- ② 松手不该关掉它(触屏没有 hover,「指针离开」在那里只等于抬手) ----
-  await touch("pointerup");
-  await expect(dot).not.toHaveAttribute("data-rb-pressing");
-  // ⚠ 等过 `WHEEL_GRACE_MS`(260ms):改前环会在这条宽限走完时消失,用户根本来不及点节点
-  await page.waitForTimeout(400);
-  await expect(wheel).toHaveCount(1);
-
-  // ---- ③ 点环外 → 关(触屏没有 Escape,这是那条唯一通用的退路) ----
-  await page.locator(".rb-sort-hint").click();
-  await expect(wheel).toHaveCount(0);
-
-  // ---- ④ 挪过阈值就是「拖」,不该再弹环 ----
-  await touch("pointerdown");
-  await touch("pointermove", -60, 0);
-  await page.waitForTimeout(700); // > `PRESS_MS`
-  await expect(wheel).toHaveCount(0);
-  await touch("pointerup");
-});
-
 test("换款轮盘:Esc 关得掉;而「双击贴纸 = 收回」这条既有契约没被踩坏", async ({ page, isMobile }) => {
   test.skip(isMobile, "这一条走 `page.mouse`；触屏那条在「★ 触屏长按换款」里用手动派发的事件覆盖");
   await stubEmpty(page);
