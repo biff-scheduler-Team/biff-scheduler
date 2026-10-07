@@ -636,6 +636,39 @@
   font-weight: 600;
 }
 
+/* 用户想点 / 拖还没解锁的贴纸时,这枚角标的**提示性脉冲**(2026-10-07,PLAN-20261007225916)。
+ * 平时它是安静的(近 300 张卡都常驻呼吸 = 噪音,2026-09-29 已因「重复灰字」收过一轮),
+ * 只在用户伸手的那一刻亮一下,把「入口在这儿」指出来。
+ * ⚠ 时长必须与组件里的 `MARK_NUDGE_MS` 同拍(0.6s × 2 = 1200ms)。
+ * ⚠ 借 `--brand-soft` 做扩散光环:它已在本文件里被用过,亮 / 暗主题各自有值。 */
+@keyframes rb-mark-nudge {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 var(--brand-soft);
+  }
+
+  50% {
+    transform: scale(1.35);
+    box-shadow: 0 0 0 7px var(--brand-soft);
+  }
+}
+
+.rb-mark--nudge {
+  z-index: 3;
+  border-style: solid;
+  border-color: var(--brand);
+  color: var(--brand);
+  animation: rb-mark-nudge 0.6s ease-in-out 2;
+}
+
+/* 动效敏感:去掉起伏,只留上面那圈实线描边与配色 —— 它本身已经足够「被点亮」 */
+@media (prefers-reduced-motion: reduce) {
+  .rb-mark--nudge {
+    animation: none;
+  }
+}
+
 /* 「生成分享图」—— 这一排里**唯一的主操作**(用户 2026-09-29:
  * 「将主要操作(如『生成分享图』)高亮突出,筛选切换保持统一的 Segmented Control 样式」)。
  * ⚠ 改版前它用 `--selected` / `--selected-line`(= #388452 绿):用户读作「绿色胶囊」,
@@ -728,6 +761,8 @@
 /* ---------- 待贴的两枚贴纸(点一下就落到右边) ---------- */
 
 .rb-tray {
+  /* ⚠ 未标记「看过」时那层拦截层(`.rb-tray-lock`)要相对它铺满,所以这里必须是定位祖先 */
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -737,6 +772,24 @@
   /* ⚠ 不再自带 `margin-top`:它是这一列的**最后一项**,与上面那几段的距离由 `.rb-card-info`
      的 `space-between` 统一分配(自带 margin 会让这一条缝比其他几条宽,又回到「不齐」)。 */
   margin-top: 0;
+}
+
+/* 未标记「看过」时盖在暂存区上的**拦截层**(2026-10-07,PLAN-20261007225916)。
+ * 两枚按钮仍是真 `disabled`(2026-09-29 口径,E2E 守着),但用户的手会先落到这一层 ——
+ * 它把「想点 / 想拖」翻成一句指向「标记看过」的提示(见组件里的 `nudgeMark`)。
+ * ⚠ 必须**透明且没有可点的手感**:它只是把手势接住,不能让这两枚从「碰不动」变成「看着能点」——
+ *   那是 2026-09-29 明确否掉的假出口。 */
+.rb-tray-lock {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  cursor: not-allowed;
+  /* ⚠ 与 `.rb-src` 同一手法:按在它上面不该顺带滚动页面 */
+  touch-action: none;
 }
 
 /* 「这枚要回到这儿」(2026-09-23,PLAN-20260923110401):拖着**已经贴着的那一枚**出界时,

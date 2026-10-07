@@ -245,6 +245,38 @@ test("没标记「看过」时红 / 黑按钮是禁态,标记之后才放开", a
   await expect(black).toBeDisabled();
 });
 
+// 未标记「看过」时,伸手去点 / 拖那两枚被锁住的贴纸 → 把「标记看过」指出来
+// (2026-10-07,PLAN-20261007225916)。按钮本身仍是**真 `disabled`**(上一条用例守着),
+// 手势落在**拦截层** `.rb-tray-lock` 上;它要给出两样东西:
+//   ① 一句提示(落在 `role=alertdialog` 的提示条里);② 那枚角标拿到 `rb-mark--nudge`(脉冲一下指路)。
+test("没标记「看过」时想点贴纸:提示「标记看过」并点亮那枚角标", async ({ page }) => {
+  await stubEmpty(page);
+  await ready(page, "/redblack");
+
+  const card = page.locator(`.rb-card[data-film-key="${keyOf("008")}"]`);
+  const lock = card.locator(".rb-tray-lock");
+  await expect(lock).toHaveCount(1);
+  await expect(card.locator(".rb-mark")).not.toHaveClass(/rb-mark--nudge/);
+
+  // 真机手势是**按下**那一刻被接住的(「想拖」也一样)—— `click()` 会先派发 pointerdown
+  await lock.click();
+  await expect(page.locator("[role=alertdialog]")).toContainText(/标记「看过」/);
+  await expect(card.locator(".rb-mark--nudge")).toHaveCount(1);
+
+  // 键盘那条:未标记时那两枚 `disabled` 不可聚焦,而拦截层可;
+  // `Enter` 派发的 `click` 带 `detail = 0`,走 `onLockedClick`(防与上面那次弹两遍)
+  await quiet(page);
+  await lock.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("[role=alertdialog]")).toContainText(/标记「看过」/);
+
+  // 标记「看过」→ 拦截层撤掉,入口开放(它只**解释**,不替用户做决定)
+  await quiet(page);
+  await card.getByRole("button", { name: /^标记《/ }).click();
+  await expect(card.locator(".rb-tray-lock")).toHaveCount(0);
+  await expect(card.getByRole("button", { name: /贴红贴纸/ })).toBeEnabled();
+});
+
 test("标记「看过」→ 贴一枚红:画布上立刻出现,并上报给服务端", async ({ page }) => {
   const pings: Array<{ ops?: unknown }> = [];
   await page.route("**/api/stats/film-votes**", async (route) => {

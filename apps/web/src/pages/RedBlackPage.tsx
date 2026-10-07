@@ -26,6 +26,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 // 皮肤的中文名走契约层（与上报载荷同一个白名单），不在页面里另写一份
@@ -166,6 +167,11 @@ const EMPTY_STICKERS: readonly Sticker[] = [];
 const FRESH_MS = 2400;
 const FRESH_BLINK_MS = 800;
 const FRESH_BLINKS = 3;
+
+/** 用户试图点 / 拖那两枚**还没解锁**的贴纸时，让「标记看过」角标脉冲多久(ms)。
+ *  ⚠ 必须与 CSS 里 `rb-mark-nudge` 的 `animation-duration × iteration-count`(0.6s × 2)**同拍**，
+ *    否则会出现「动画早停了、提示类还挂着」的半截状态（与 `FRESH_MS` 那条约束同一类）。 */
+const MARK_NUDGE_MS = 1200;
 
 /** 落地动效时长(ms)。
  *  ⚠ 380ms 取的是「拟物/实体感」那一档(300–500ms)—— 比常规微交互(150–250ms)长,
@@ -1290,6 +1296,10 @@ const RbCard = memo(function RbCard({
   // 「我贴的那一枚」的 DOM 引用 —— 它是**唯一**能做动效的贴纸:群点是 canvas 上画出来的像素,
   // 没有独立元素(何况「别人的贴纸」本来也不该有个体身份,2026-09-22 拉平口径)
   const freshRef = useRef<HTMLButtonElement | null>(null);
+  // 「标记看过」那枚角标 —— 用户想点 / 拖未解锁的贴纸时，脉冲它来指路（见 `nudgeMark`）。
+  // 也用它当**提示类的清理出口**：卡片卸载 / 重渲染都不该留着半截动画
+  const markRef = useRef<HTMLButtonElement | null>(null);
+  const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const mine = countsOf(placed);
   // 「别人的贴纸」= 修正过的全站票数 − 我自己那几枚(口径在 `redblack.ts::othersOf`,分享图同用)。
   // ⚠ 传进来的 `counts` 已由页面 `reconcile`(扣掉「服务端已确认含我」的那份、加回我当前的票),
@@ -1494,6 +1504,50 @@ const RbCard = memo(function RbCard({
     );
   }, [fresh, myStickers]);
 
+  /** 用户伸手想点 / 拖那两枚**还没解锁**的贴纸时的**唯一出口**(2026-10-07)。
+   *
+   *  背景:未标记「看过」时它们是**真 `disabled`**(2026-09-29,PLAN-20260929172651 §4),
+   *  点下去什么都不发生 —— 而「标记看过」只是海报左下角一枚 22px 的「＋」角标,太安静,
+   *  用户读到的只是「点了没反应」。这一下就把入口指出来:弹一句 + 让角标脉冲。
+   *
+   *  ⚠ **不改按钮的禁用形态**:拦截层只接住手势(见 JSX),那两枚照样 0.38 的灰、
+   *    `not-allowed` 的光标 —— 保住「不要看着能点、点了被拒的假出口」那条口径。
+   *  ⚠ 用直接改 DOM 的类、不走 React state:这类**瞬时**反馈在本页一律如此
+   *    (见 `beginDrag` / `setOut`),否则一次单卡重渲染只换来一个 1.2s 的脉冲。
+   *  ⚠ 连点只延长、不重启动画:重启动画要读一次 `offsetWidth` 强制回流,收益只是一个
+   *    「再来一下」的手感 —— 不值得为它引入一次布局抖动。 */
+  const nudgeMark = useCallback(() => {
+    const mark = markRef.current;
+    mark?.classList.add("rb-mark--nudge");
+    clearTimeout(nudgeTimerRef.current);
+    nudgeTimerRef.current = setTimeout(() => {
+      markRef.current?.classList.remove("rb-mark--nudge");
+    }, MARK_NUDGE_MS);
+    ToastQueue.neutral(`先点《${film.zh}》海报左下角的「＋」标记「看过」，就能贴了。`, {
+      timeout: 4000,
+    });
+  }, [film.zh]);
+  useEffect(() => () => clearTimeout(nudgeTimerRef.current), []);
+
+  /** 拦截层的指针入口:按下即提示(不必等松手)——「想拖」也在这一刻被接住。
+   *  ⚠ `preventDefault()` 只为压掉「按住拖时顺带选中文字」,不拦 click(键盘那条走下面)。 */
+  const onLockedDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      nudgeMark();
+    },
+    [nudgeMark],
+  );
+  /** 键盘入口:`Enter` / 空格派发的 `click` 与程序化 `.click()` 的 `detail` 恒为 0,
+   *  指针来的那一次 `detail ≥ 1` —— 它已经在 `onLockedDown` 里提示过,这里放行以免弹两遍
+   *  (判据与 `takeBackByTap` / `placeByTap` 同一套)。 */
+  const onLockedClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>) => {
+      if (event.detail === 0) nudgeMark();
+    },
+    [nudgeMark],
+  );
+
   return (
     <article
       ref={cardRef}
@@ -1531,6 +1585,7 @@ const RbCard = memo(function RbCard({
               ⚠ 画布里的提示「标记「看过」即可贴」仍在原地指路，所以「找不到入口」的风险有兜底。 */}
           <button
             type="button"
+            ref={markRef}
             className="rb-mark"
             aria-pressed={marked}
             aria-label={`${marked ? "取消标记" : "标记"}《${film.zh}》看过`}
@@ -1576,6 +1631,23 @@ const RbCard = memo(function RbCard({
           aria-label={`《${film.zh}》的贴纸暂存区`}
           title={marked ? undefined : "先点「标记看过」，就能贴了"}
         >
+          {/* 未标记时的**拦截层**(2026-10-07,PLAN-20261007225916):两枚按钮是真 `disabled`,
+              手势进不去 —— 而「碰下去什么都不发生」正是用户读到的「点了没反应」。
+              这一层盖在它们上面,把「想点 / 想拖」翻成一句指向「标记看过」的提示,顺手脉冲那枚角标。
+              ⚠ 它**不改变按钮的禁用形态**(那两枚照样 0.38 的灰):保住 2026-09-29
+                「不要看着能点、点了被拒的假出口」那条口径 —— 拦截层自己是透明的,没有可点的手感。
+              ⚠ 它同时是**键盘**的入口:未标记时那两枚 `disabled` 不可聚焦,而拦截层可,
+                `Enter` / 空格走 `onLockedClick`(`detail === 0` 那一支)。 */}
+          {!marked && (
+            <button
+              type="button"
+              className="rb-tray-lock"
+              aria-label={`先标记《${film.zh}》看过，才能贴贴纸`}
+              title="先点「标记看过」，就能贴了"
+              onPointerDown={onLockedDown}
+              onClick={onLockedClick}
+            />
+          )}
           <button
             type="button"
             className="rb-src rb-src--red"
