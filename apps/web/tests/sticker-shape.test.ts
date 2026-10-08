@@ -27,6 +27,30 @@ function numbersIn(d: string): number[] {
   return (d.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
 }
 
+/** 取出 path `d` 里**每一段的终点**(`M` / `L` 就是那对数字,`C` 取最后那对)。
+ *  与 `sticker-shape.ts::ringArea` 同一个近似口径(曲线段按直线算)—— 这里能这么算,
+ *  是因为顶点环的终点恰好就是那些顶点。 */
+function ringPoints(d: string): Array<{ x: number; y: number }> {
+  const out: Array<{ x: number; y: number }> = [];
+  for (const match of d.matchAll(/([MLC])((?:\s*-?\d+(?:\.\d+)?)+)/g)) {
+    const nums = numbersIn(match[2]);
+    out.push({ x: nums[nums.length - 2], y: nums[nums.length - 1] });
+  }
+  return out;
+}
+
+/** 顶点环的近似面积(鞋带公式) */
+function ringArea(d: string): number {
+  const points = ringPoints(d);
+  let sum = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    sum += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(sum) / 2;
+}
+
 describe("形状的几何", () => {
   it("每个形状都闭合、且坐标落在设计盒内", () => {
     for (const shape of ALL_SHAPES) {
@@ -43,6 +67,22 @@ describe("形状的几何", () => {
 
   it("形状之间确实长得不一样（不能是同一份路径换了名字）", () => {
     expect(new Set(ALL_SHAPES.map((shape) => shapePath(shape))).size).toBe(ALL_SHAPES.length);
+  });
+
+  // ★ 2026-10-08 用户「统一一下贴纸大小」:三款轮廓在同一个 32 设计盒里的**视觉占位**必须一致 ——
+  //   归一前实测 票根 470 / 胶片齿孔 463 / 胶片残片 280,并排看就是「残片小一圈」。
+  //   ⚠ 面积用顶点环近似(与实现同一口径):`stub` 那几个平滑顶点真路径是曲线,这里按直线算 ——
+  //     近似值本身不必准,准的是「三款互相一致」。
+  //   ⚠ 这条同时守着「归一后的顶点没被顶出设计盒」的反面:目标面积一旦大于某款放得下的上限,
+  //     那款就会被放大到越界,上一条用例(坐标 ≤ SHAPE_BOX)会先红。
+  it("★ 三款轮廓的视觉面积一致(用户口径:并排看大小要一样)", () => {
+    const areas = ALL_SHAPES.map((shape) => ringArea(shapePath(shape)));
+    for (const area of areas) {
+      expect(Math.abs(area - areas[0]) / areas[0]).toBeLessThan(0.02);
+    }
+    // 顺带钉住量级:归一后应落在三者原始面积的均值附近(约 404)
+    expect(areas[0]).toBeGreaterThan(380);
+    expect(areas[0]).toBeLessThan(430);
   });
 
   it("`shapePath` 传 size 会等比换算坐标，而不是另描一份路径", () => {

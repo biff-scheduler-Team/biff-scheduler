@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import type { PickRow } from "../src/ics";
 import { buildPosterModel, posterHeight } from "../src/poster";
+import { MAX_PIXELS, MAX_SIDE, posterPixels } from "../src/poster-brush";
 import type { Mapping } from "../src/types";
 import { catalog, show } from "./helpers";
 
@@ -145,5 +146,45 @@ describe("posterHeight", () => {
     expect(Object.hasOwn(r, "rank")).toBe(false);
     expect(Object.hasOwn(r, "alts")).toBe(false);
     expect(Object.hasOwn(r, "altOf")).toBe(false);
+  });
+});
+
+// 出图倍率(2026-10-08,用户「分享图需要高清一点,因为加上了海报」)。
+// 两条分享图(行程图 / 红黑榜)共用 `poster-brush.ts` 这一处 —— 所以本组断言也在守红黑榜那张。
+// 旧写法是「2 或 1」二选一:面积一超上限就**直接掉回 1×**,而红黑榜三榜 TOP10 + 「我贴过的」
+// 十几行本来就超 —— 海报缩略图只剩 59px 物理宽,加上海报后糊得最明显。
+describe("出图倍率:按面积用满安全像素", () => {
+  it("短图仍是 2×(不为了连续值把短图一起降下来)", () => {
+    const px = posterPixels(1080, 1000);
+    expect(px.scale).toBe(2);
+    expect([px.width, px.height]).toEqual([2160, 2000]);
+  });
+
+  it("★ 长图取到安全上限的连续倍率,而不是掉回 1×", () => {
+    // 红黑榜分享图的实测量级(三榜 TOP10 + 「我贴过的」十几行:5400 / 6900 逻辑高)
+    for (const height of [5400, 6900]) {
+      const px = posterPixels(1080, height);
+      expect(px.scale).toBeGreaterThan(1);
+      expect(px.scale).toBeLessThanOrEqual(2);
+      expect(px.width).toBeGreaterThan(1080); // 旧的「2 或 1」二选一在这里正好给 1080
+      expect(px.width * px.height).toBeLessThanOrEqual(MAX_PIXELS);
+      expect(Math.max(px.width, px.height)).toBeLessThanOrEqual(MAX_SIDE);
+    }
+  });
+
+  it("极端长的图仍然按 1× 出(下限不跌破 1,与旧写法同一条)", () => {
+    // ⚠ 诚实记录:这一档**即使 1× 也已经越过面积上限**(1080 × 30000 = 32.4M > 16M),
+    //   没有任何倍率能同时满足两条上限 —— 与旧写法一样取 1×,不为了迁就上限把图缩糊。
+    const px = posterPixels(1080, 30000);
+    expect(px.scale).toBe(1);
+    expect([px.width, px.height]).toEqual([1080, 30000]);
+  });
+
+  it("倍率与像素同源:取整只发生在 `posterPixels` 里,且一律向下", () => {
+    const px = posterPixels(1080, 6900);
+    expect(px.width).toBe(Math.floor(1080 * px.scale));
+    expect(px.height).toBe(Math.floor(6900 * px.scale));
+    // 贴着面积上限时不能因为取整被顶破(四舍五入会在这一档越线)
+    expect(px.width * px.height).toBeLessThanOrEqual(MAX_PIXELS);
   });
 });

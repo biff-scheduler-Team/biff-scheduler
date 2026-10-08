@@ -1,7 +1,8 @@
 /**
  * 「生成分享图」弹层(2026-09-22)。
  *
- * 红黑榜的对外成品:三个榜(总数 / 红 / 黑)各 TOP10 + **我贴过的全部**(不限条数)+ 底部署名。
+ * 红黑榜的对外成品:三个榜(总数 / 红 / 黑)各 TOP10 + **我贴过的全部**(不限条数)
+ * + 每行左侧的**影片海报缩略图**(2026-10-08,对齐「看片计划海报」的行内缩略图)+ 底部署名。
  * 模型与绘制在 `redblack-poster.ts`(纯逻辑、可单测);这里只管弹层、勾选、预览画布与复制 / 下载。
  *
  * ⚠ a11y 不自造:`role=dialog` / aria-modal / focus trap / Esc 全部由 S2 的 `Dialog` 提供(§5);
@@ -17,7 +18,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FilmNode } from "../app/model";
 import { download } from "../app/download";
-import { POSTER_W, posterBlob, posterScale } from "../poster-brush";
+import { loadPosterImages, POSTER_W, posterBlob, posterPixels } from "../poster-brush";
 import {
   allSections,
   buildRbPosterModel,
@@ -102,10 +103,18 @@ export function RedBlackShareDialog({
     [snapshot],
   );
   const hasContent = model.boards.length > 0 || model.myRows.length > 0;
+  // 模型里带海报的行数(缺图行不算)。画布手绘没有 DOM 可断言,与 `PosterPreview` 的
+  // `data-export-codes` 同一手法:给 E2E 一个「图里真的带了海报」的锚点。
+  const posterCount = useMemo(
+    () =>
+      [...model.boards.flatMap((b) => b.rows), ...model.myRows].filter((row) => row.poster).length,
+    [model],
+  );
   // 出图尺寸随勾选**当场**变:几节几行直接决定高度,所以勾什么就报什么(用户 2026-09-22:
-  // 「提示一下选择不同的分享模块后图片分别的大小是多少」)。倍数走 `posterScale`,与实际出图同一处判断。
+  // 「提示一下选择不同的分享模块后图片分别的大小是多少」)。尺寸与倍率都走 `posterPixels` ——
+  // 与实际出图**同一处判断**(⚠ 倍率自 2026-10-08 起是连续值,直接乘会印出 `1566.0000000000002`)。
   const logicalHeight = rbPosterHeight(model);
-  const scale = posterScale(POSTER_W, logicalHeight);
+  const px = posterPixels(POSTER_W, logicalHeight);
 
   useEffect(() => {
     const element = canvas.current;
@@ -113,7 +122,14 @@ export function RedBlackShareDialog({
     let canceled = false;
     void (async () => {
       try {
-        drawRbPoster(element, model);
+        // 海报缩略图与行程图共用同一份加载语义(`poster-brush.ts::loadPosterImages`):
+        // 缺图 / 加载失败都会被静默跳过,绘制层对那一行改画占位块。
+        const rows = [...model.boards.flatMap((b) => b.rows), ...model.myRows];
+        const images = await loadPosterImages(
+          rows.flatMap((row) => (row.poster ? [row.poster] : [])),
+        );
+        if (canceled) return;
+        drawRbPoster(element, model, images);
         const next = await posterBlob(element);
         if (canceled) return;
         if (!next) throw new Error("empty canvas");
@@ -156,9 +172,9 @@ export function RedBlackShareDialog({
           <p className="rb-share-size" role="status">
             这张长图：
             <strong>
-              {POSTER_W * scale} × {logicalHeight * scale}
+              {px.width} × {px.height}
             </strong>{" "}
-            px · {scale}× 出图
+            px · {Math.round(px.scale * 100) / 100}× 出图
             {blob ? ` · PNG 约 ${(blob.size / 1048576).toFixed(1)} MB` : ""}
           </p>
           {!blob && !error && <p role="status">正在生成图片…</p>}
@@ -177,6 +193,7 @@ export function RedBlackShareDialog({
             className="rb-share-preview"
             hidden={!blob}
             aria-label="红黑榜分享图片预览"
+            data-poster-count={posterCount}
           />
         </Content>
         <ButtonGroup>

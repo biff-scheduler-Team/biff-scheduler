@@ -15,20 +15,59 @@
 export const POSTER_W = 1080;
 /** 超采样倍率:逻辑 1px = 2 物理像素(视网膜屏上文字与描边不糊)。 */
 export const SCALE = 2;
-/** 长图退档阈值(逻辑高)—— 画布**单边上限 32767**,超过就回 1×。
- *  ⚠ `toBlob` 超限时**静默出空图**(不抛错,最难查),所以宁可降清晰度也不能让画布过界。 */
-export const SCALE_DOWN_H = 8000;
+/** 画布**单边**上限(物理像素)—— 浏览器硬限 32767,超了 `toBlob` 静默出空图(不抛错,最难查)。
+ *  ⚠ 2026-10-08 起它不再以「逻辑高超过 8000 就回 1×」那种**一刀切**的形式出现(那会把很长的图
+ *    直接砍到 1×),而是并进 `posterScale` 的连续倍率里一起算。 */
+export const MAX_SIDE = 32767;
 /** 画布**面积**上限(物理像素)—— 除了单边 32767,还有一条没人踩过就想不到的:
  *  **iOS Safari 的单张画布面积上限约 16.7M px**,超了同样**静默出空图**。
  *  取 16M 留一点余量(保守取值)。⚠ 这条是 2026-09-22 加「红黑榜分享图」时才补的:
  *  1080×2 = 2160 宽,只要逻辑高超过 ~3700(约 20 场),2× 就已经越线 ——
- *  而 `SCALE_DOWN_H = 8000` 拦不住它,于是「长行程的分享图在 iPhone 上是一张空图」。 */
+ *  而当时那条「逻辑高 8000 回 1×」拦不住它,于是「长行程的分享图在 iPhone 上是一张空图」。 */
 export const MAX_PIXELS = 16_000_000;
 
-/** 按图的大小决定超采样倍率。宁可糊一点,也不能让整张图变成空的。 */
+/** 按图的大小决定超采样倍率 —— 在两条硬上限内**取到最大的那个倍率**,而不是在 2× / 1× 之间二选一。
+ *
+ * ⚠ 为什么必须是连续值(2026-10-08,用户「分享图需要高清一点,因为加上了海报」):
+ *   红黑榜分享图三榜各 TOP10 + 「我贴过的」十几行 ≈ 6900 逻辑高,2× 要 2160×13800 ≈ **29.8M px**,
+ *   远超 16M —— 旧写法于是**直接掉回 1×**,海报缩略图只剩 59px 物理宽,加上海报后糊得最明显。
+ *   按面积反算能取到 √(16M / 1080×6900) ≈ **1.45×**(物理宽 1566,海报约 86px),
+ *   而两条上限一个都不越 —— 这是「更清楚」与「不越界出空图」之间唯一不赌机型的写法。
+ * ⚠ 下限是 1:倍率小于 1 只会让图变小变糊,不如老实按原尺寸出。
+ *   **代价写明**:逻辑高超过约 3 万时(≈285 行,190 场那种量级),即使 1× 本身也已经越过 16M 面积
+ *   上限 —— 那一档没有解,只能与旧写法一样按 1× 出。这不是本函数新引入的洞,如实记着。
+ * ⚠ **不要**改成「先按 2× 出、失败再回退」:iOS 超限是**静默出空图**(既抛不出错,也拿不到
+ *   可判定的失败信号),没有可靠的回落触发点。 */
 export function posterScale(logicalWidth: number, logicalHeight: number): number {
-  if (logicalHeight > SCALE_DOWN_H) return 1;
-  return logicalWidth * logicalHeight * SCALE * SCALE <= MAX_PIXELS ? SCALE : 1;
+  const width = Math.max(1, logicalWidth);
+  const height = Math.max(1, logicalHeight);
+  const safe = Math.min(
+    SCALE,
+    Math.sqrt(MAX_PIXELS / (width * height)),
+    MAX_SIDE / Math.max(width, height),
+  );
+  return Math.max(1, safe);
+}
+
+/** 逻辑尺寸 → 画布的**物理像素**与倍率。
+ *
+ * ⚠ 取整只允许在这一处:画布尺寸、绘制用的变换、以及界面上那句「这张长图 W × H px」必须同源 ——
+ *   倍率现在是连续值(见 `posterScale`),三处各写一次取整迟早对不上。
+ * ⚠ 取整一律**向下**:两条上限是「越了就是空图」那种硬约束,四舍五入会把恰好贴着上限的图顶破
+ *   (实测 1080×6900 四舍五入后 1583 × 10111 = 16.01M > 16M)。
+ * ⚠ 绘制那侧**不要**直接用浮点 `scale` 做 `ctx.scale`:画布宽高取了整,直接用浮点倍率会在
+ *   右下角留下一条不足 1px 的透明缝(深底图上就是一条亮线)。用 `width / logicalWidth`
+ *   这两个比值当变换,内容就正好铺满。 */
+export function posterPixels(
+  logicalWidth: number,
+  logicalHeight: number,
+): { width: number; height: number; scale: number } {
+  const scale = posterScale(logicalWidth, logicalHeight);
+  return {
+    scale,
+    width: Math.floor(logicalWidth * scale),
+    height: Math.floor(logicalHeight * scale),
+  };
 }
 
 /** 左右内距 */
@@ -121,4 +160,28 @@ export function drawRule(ctx: CanvasRenderingContext2D, y: number, w: number): v
 /** 画布 → PNG Blob(`toBlob` 回调式,包一层 Promise)。 */
 export function posterBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
   return new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/png"));
+}
+
+/** 加载分享图要用的影片海报 —— **失败即静默跳过**(缺图走占位块,不能让一张图挂掉整张海报)。
+ *  同源图片不会污染画布,`toBlob` 依旧可用。
+ *
+ *  ⚠ 从 `poster.ts` 迁来这里(2026-10-08):红黑榜分享图也开始画海报缩略图,两张图必须共用
+ *    同一份加载语义(§5 口径单一来源)。
+ *  ⚠ import 期不碰 DOM —— 只在**调用时**才 `new Image()`,所以本模块仍可被 node 单测安全 import。 */
+export function loadPosterImages(urls: string[]): Promise<Map<string, HTMLImageElement>> {
+  const out = new Map<string, HTMLImageElement>();
+  const tasks = [...new Set(urls)].map(
+    (u) =>
+      new Promise<void>((resolve) => {
+        const img = new Image();
+        img.decoding = "async";
+        img.onload = () => {
+          out.set(u, img);
+          resolve();
+        };
+        img.onerror = () => resolve();
+        img.src = u;
+      }),
+  );
+  return Promise.all(tasks).then(() => out);
 }

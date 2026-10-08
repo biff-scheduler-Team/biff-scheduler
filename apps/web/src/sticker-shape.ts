@@ -18,6 +18,9 @@
  * ⚠ **坐标是绝对坐标(0..`SHAPE_BOX`),不随尺寸缩放** —— 这是 `clip-path: path()` 的硬约束。
  *   需要别的尺寸时**不要重描路径**,走 `shapePath(shape, size)`:它按比例换算所有数字。
  *
+ * ⚠ 2026-10-08 起顶点表分两层:`BASE_VERTICES`(手描的原始坐标)与 `VERTICES`(按**视觉面积**
+ *   归一后的结果,见文件里那一节)。要改形状改**上面那层**,不要绕过归一直接改结果。
+ *
  * ⚠ 纯函数 + 常量表,**import 期不碰 DOM**:可被 node 单测直接 import。
  */
 
@@ -173,8 +176,8 @@ function scrapVertices(): Vertex[] {
   return out;
 }
 
-/** 形状 → 顶点环。⚠ 只在这里登记一次,`shapePath` 与单测都读它。 */
-const VERTICES: Record<StickerShape, readonly Vertex[]> = {
+/** 三款轮廓的**原始**顶点环(未归一)—— 只在这里登记一次;下面 `VERTICES` 是它按面积归一的结果。 */
+const BASE_VERTICES: Record<StickerShape, readonly Vertex[]> = {
   stub: stubVertices(),
   sprocket: sprocketVertices(),
   scrap: scrapVertices(),
@@ -183,6 +186,55 @@ const VERTICES: Record<StickerShape, readonly Vertex[]> = {
 /** 全部形状。⚠ 2026-09-29 起**不再按颜色分子集**：红黑共用同一套皮肤，只差底色
  *  （用户原话「只是红色跟黑色的区别」）。「哪个形状配哪款皮肤」在 `sticker-skin.ts`。 */
 export const ALL_SHAPES: readonly StickerShape[] = ["stub", "sprocket", "scrap"];
+
+/* ---------------- 视觉面积归一(2026-10-08,用户「统一一下贴纸大小」) ----------------
+ *
+ * 问题:三款轮廓各描各的坐标,**同一个 32 设计盒里的占位差很多** ——
+ *   实测顶点环面积 票根 **470** / 胶片齿孔 **463** / 胶片残片 **280**,
+ *   并排看就是「票根和齿孔挺大,残片小一圈」(用户原话)。
+ *
+ * 做法:**按面积**把它们缩到同一个值(`VISUAL_AREA`),而不是按包围盒 ——
+ *   残片是根斜窄条,包围盒对齐之后**看上去**仍比方形小,那正是当前的问题本身。
+ *   ⚠ 目标取三款**原始面积的平均值**:票根 / 齿孔只缩 7%,残片放大 20%,都在肉眼难察的范围。
+ *   ⚠ 目标必须 ≤ 「三款里最大可放大面积」(残片只放得下约 409,因为再大顶点就顶出设计盒)——
+ *     这条由 `sticker-shape.test.ts` 那条「坐标落在设计盒内」机械守着,超了会直接红。
+ *   ⚠ 归一**不改形状的相对比例**(只有一个等比系数),所以「形状只有一处实现」不受影响。
+ */
+
+/** 顶点环的**近似面积**(鞋带公式)。
+ *  ⚠ 它对曲线段是不精确的:`stub` 那几个非尖角顶点在真路径里是三次贝塞尔,这里按直线算。
+ *    但三款用的是**同一个**近似,所以「三者互相一致」这个结论不受影响 —— 它本来也只服务于
+ *    「并排看一样大」这一件事,不是几何真值。 */
+function ringArea(vertices: readonly Vertex[]): number {
+  let sum = 0;
+  for (let i = 0; i < vertices.length; i += 1) {
+    const a = vertices[i];
+    const b = vertices[(i + 1) % vertices.length];
+    sum += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(sum) / 2;
+}
+
+/** 绕设计盒中心等比缩放一个顶点环(`sharp` 标记原样带走 —— 它决定直角还是曲线转场,与尺寸无关)。 */
+function scaleRing(vertices: readonly Vertex[], factor: number): Vertex[] {
+  const center = SHAPE_BOX / 2;
+  return vertices.map((vertex) => ({
+    ...vertex,
+    x: center + (vertex.x - center) * factor,
+    y: center + (vertex.y - center) * factor,
+  }));
+}
+
+/** 三款轮廓统一到的视觉面积 —— 三款**原始**面积的均值(470 / 463 / 280 → 约 404)。 */
+const VISUAL_AREA =
+  ALL_SHAPES.reduce((sum, shape) => sum + ringArea(BASE_VERTICES[shape]), 0) / ALL_SHAPES.length;
+
+/** 形状 → 顶点环(已按 `VISUAL_AREA` 归一)。⚠ 只在这里登记一次,`shapePath` 与单测都读它。 */
+const VERTICES: Record<StickerShape, readonly Vertex[]> = {
+  stub: scaleRing(BASE_VERTICES.stub, Math.sqrt(VISUAL_AREA / ringArea(BASE_VERTICES.stub))),
+  sprocket: scaleRing(BASE_VERTICES.sprocket, Math.sqrt(VISUAL_AREA / ringArea(BASE_VERTICES.sprocket))),
+  scrap: scaleRing(BASE_VERTICES.scrap, Math.sqrt(VISUAL_AREA / ringArea(BASE_VERTICES.scrap))),
+};
 
 /** 形状 → 该形状的 SVG path `d`(默认按 `SHAPE_BOX` 原尺寸)。
  *
