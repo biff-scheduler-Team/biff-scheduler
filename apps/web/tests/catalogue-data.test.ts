@@ -170,25 +170,6 @@ describe("影片介绍页字段(官网片目页不印)", () => {
   });
 });
 
-describe("排期更新日志产物(changelog.json)", () => {
-  const changelog = JSON.parse(read("public/changelog.json")) as {
-    schedule_generated_at: string;
-    added: unknown[];
-    changed: unknown[];
-  };
-  const schedule = JSON.parse(read("public/schedule.json")) as {
-    festival: { generated_at?: string };
-  };
-
-  it("版本号与排期自身的生成时间一致(前端拿它当版本比对)", () => {
-    expect(changelog.schedule_generated_at).toBe(schedule.festival.generated_at);
-  });
-
-  it("本次确实记录了册子并入带来的新增与变化", () => {
-    expect(changelog.added.length).toBeGreaterThan(0);
-    expect(changelog.changed.length).toBeGreaterThan(0);
-  });
-});
 
 describe("票务补充字段", () => {
   it("票亭表 8 处(含南浦洞 MEGABOX 4F),且每处都有运营期", () => {

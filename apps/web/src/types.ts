@@ -364,57 +364,6 @@ export interface TicketServiceDesk {
   notes: string[];
 }
 
-/* ---------------- 排期数据更新日志 ----------------
- * 静态产物 `public/changelog.json`(`tools/build_changelog.py`,对比「上一个已发布版本」与当前排期)。
- * 前端只持有一版排期,**算不出「上一版长什么样」** —— 差异必须在构建期算好、产物化。
- * 文件缺失 / 解析失败一律静默降级(与 `extras.ts` 同口径),绝不阻塞主流程。 */
-
-/** 一处字段变化(`from` / `to` 已是给用户看的文本,如 `120` / `有`) */
-export interface ChangelogFieldChange {
-  key: string;
-  /** 中文标签(如 `片长` / `场次标记`)—— 由工具产出,前端不再自建映射表 */
-  label: string;
-  from: string;
-  to: string;
-}
-
-/** 一场「我行程里的场次」的信息变化 */
-export interface ChangelogChanged {
-  code: string;
-  title_en: string;
-  title_zh: string;
-  date: string;
-  venue_display: string;
-  fields: ChangelogFieldChange[];
-}
-
-/** 一条新增场次 —— 排期契约的**子集**(够展示与「加入行程」用,不搬整条 `Screening`)。
- *  字段与 `Screening` 同名同义,故可直接喂给 `util.ts::filmNodeKey()` 判身份。 */
-export interface ChangelogAdded {
-  code: string;
-  title_en: string;
-  title_zh?: string;
-  title_kr?: string;
-  date: string;
-  start_time: string;
-  end_time: string;
-  duration_min: number;
-  venue_id: string;
-  venue_display: string;
-  is_gv: boolean;
-  tags?: string[];
-  rating?: RatingKey;
-  subs?: SubsKey[];
-}
-
-export interface ChangelogFile {
-  generated_at: string;
-  /** **版本号** —— 前端拿它跟本地已确认版本(`biff.dataver.v1`)比 */
-  schedule_generated_at: string;
-  base_schedule_generated_at?: string;
-  added: ChangelogAdded[];
-  changed: ChangelogChanged[];
-}
 
 /** 一处 BIFF 票务亭的运营口径(官网售票页「BIFF Ticket Box Place & Operating Hours」表)。
  *  `open` / `close` 可能是具体时刻(`8:30`),也可能是相对表述(官网原文,如

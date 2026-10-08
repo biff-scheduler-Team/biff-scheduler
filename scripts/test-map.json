@@ -16,7 +16,6 @@
     "apps/web/public/venues.json",
     "apps/web/public/films.json",
     "apps/web/public/festival-extras.json",
-    "apps/web/public/changelog.json",
     "apps/web/public/pni.json"
   ],
   "rules": [
@@ -329,21 +328,6 @@
       ]
     },
     {
-      "id": "data-update",
-      "note": "排期数据更新提示（顶栏入口 / changelog 产物 / 与我选片的相关性 / 排进行程）",
-      "paths": [
-        "apps/web/src/components/ChangelogDialog.tsx",
-        "apps/web/src/changelog.ts",
-        "apps/web/src/app/store.tsx",
-        "apps/web/public/changelog.json",
-        "apps/web/src/actions-copy.ts",
-        "tools/build_changelog.py"
-      ],
-      "specs": [
-        "data-update"
-      ]
-    },
-    {
       "id": "rush-analysis",
       "note": "数据分析页（2026-09-20 精简为两组：群体行为与口碑〔可按影片/场次筛选想看人数〕+ 我的观影画像/影片分析；图表层从 recharts 换成 ECharts —— 换库关在 components/charts/ 一层里，`data-chart`/`data-points` 契约未变；vite.config.ts 决定图表独立 chunk，main.tsx 决定本页是否懒加载，改它们都要跑）",
       "paths": [
@@ -393,8 +377,7 @@
         "tools/merge_schedule.py"
       ],
       "specs": [
-        "settings-pni",
-        "data-update"
+        "settings-pni"
       ]
     },
     {

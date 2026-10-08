@@ -319,11 +319,9 @@ def main() -> int:
     log("SANITY", f"每日场次: {dict(sorted(per_day.items()))}")
     log("SANITY", f"场馆场次: {dict(Counter(s['venue_id'] for s in merged).most_common())}")
 
-    # 幂等重放**不前进版本号**:`festival.generated_at` 是**数据版本** —— 前端拿
-    # `changelog.json` 里那个同名字段比对「用户已确认过的那一版」。重跑一次却没产生任何
-    # 场次差异时翻新版本号,会让每个用户都看到一条「数据已更新」的假提示,而 changelog 侧
-    # 又算不出差异(两版逐条相同)→ 产物自相矛盾,`apps/web/tests/catalogue-data.test.ts` 会红。
-    # 判据只看 `screenings`(note 是文案,改了照写)。
+    # 幂等重放**不前进版本号**:`festival.generated_at` 是**数据版本**,客户端与缓存据此
+    # 判断「排期是否换版」。重跑一次却没产生任何场次差异时翻新版本号,会白刷一次缓存、
+    # 把「已更新」的假信号传出去。判据只看 `screenings`(note 是文案,改了照写)。
     generated_at = datetime.now().astimezone().isoformat(timespec="seconds")
     if Path(args.out).exists():
         prev = load_json(args.out)

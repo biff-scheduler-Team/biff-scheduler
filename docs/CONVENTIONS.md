@@ -1056,25 +1056,12 @@
   —— 依旧**禁止**退回 `X<页><序>`。
   ⚠ 解析 2026 册子必须 `--year 2026 --month 10`(第 31 届档期 = 10/06–10/15,册子只印日号 6..15;传 9 会整批错位)。
   ⚠ `merge_schedule.py` 在「合并结果与现有产物逐条相同」时**沿用原 `generated_at`** —— 幂等重放不刷版本号,
-  否则 `changelog.json` 的版本号与排期对不上(`catalogue-data.test.ts` 会红)。
+  否则产物会在没有任何实际变化时「看起来更新了」。
   口径(逐条都有理由,不靠猜):**骨架 = 官网**(活数据:改时间 / 加场 / `title_zh`);
   册子只补「官网完全没有的场次」+ 册页号;共有 code 一律保留官网值,只有
   `CATALOGUE_WINS_DURATION` 里**显式登记**的例外取册子(002 / 731–735:官网无详情页 → 120′ 兜底,
   册子印了真实片长);`tags` 取**并集**(特性是叠加语义);`title_en` 差异保留官网(册子会被排版拆行/加注)。
   同一场次两源编号不同时按「日期+时间+归一化片名+场馆」去重(实测 BAFA 毕展 = 册子 `X1601` / 官网 `X01`)。
-- **排期更新日志 = 独立产物 `apps/web/public/changelog.json`**(2026-09-14,`PLAN-20260914192552`):
-  `tools/build_changelog.py` 对比「上一个已发布版本」(默认 `git:HEAD`)与当前 `schedule.json`。
-  为什么必须产物化:**前端只持有一版排期,「上一版长什么样」已经不在客户端** —— 差异只能在构建期算。
-  三条口径:
-  ① **只记用户可见且影响行程的字段** —— `date`/`start_time`/`end_time`/`duration_min`/`venue_display`/
-  `is_gv`/`rating`/`subs`/`tags`;**不记 `venue_id`**(`br`→`bt` 是内部改名,`venue_display` 未动,
-  记了就是 10 条用户看不见的噪声)、**不记 `page`/`title_kr`**(那是「信息补全」不是「排期变了」,
-  725 + 35 条会把真正的 9 条淹没);
-  ② **版本号 = `schedule.json::festival.generated_at`**,前端与本地已确认版本(`biff.dataver.v1`)比对;
-  ③ **「我选过的影片」判身份走 `util.ts::filmNodeKey()`**(官网英文名 → 中文名 → 原始片名三条路),
-  按片名字符串直接比会漏掉后两条,表现为「明明选了这部片,却说没有新排期」。
-  前端:`src/changelog.ts`(加载 + `changelogHighlights()` 纯函数,缺文件静默降级)+
-  顶栏 `DataUpdateButton` / `ChangelogDialog`;**有内容且未确认才出现,不自动弹窗、不做逐场红点**。
 - **2026 册子版面与 2025 的 6 处差异**(`tools/extract_schedule.py` 已适配,别再按 2025 改回去):
   ① 图例新增 `L8`(不登记会把 L8 整列并进 L7,实测 22 场);② `BT` 从 BIFF Theatre 变成
   **Roof Theater**;③ META 的**片长会被 PDF 拆成两段**(`'1'`+`'20’'` / `'80'`+`'’'`)→

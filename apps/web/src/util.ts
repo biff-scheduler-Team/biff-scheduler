@@ -198,7 +198,7 @@ export function groupByDate<T>(list: T[], dateOf: (x: T) => string): [string, T[
  *  `biff.picks.v2` 里已选的记录**静默失配**(用户只看到「选好的场次不见了」)。
  *  守卫:title_zh 缺失时不做空值相等匹配(否则会与「两个片名都为空」的目录条目假命中);两片名皆缺则退回 code。 */
 /** `filmNodeKey()` 判身份只用这三项 —— 参数类型按**结构最小化**:
- *  `changelog.ts` 只有新增场次的子集字段(没有整条 `Screening`),但它同样要按
+ *  调用方可能只带子集字段(如新增场次,没有整条 `Screening`),但它同样要按
  *  全站唯一身份口径判「这是不是同一部片」。放宽参数类型 = 口径仍然只有一处实现。 */
 export type FilmIdentity = Pick<Screening, "code"> & Partial<Pick<Screening, "title_en" | "title_zh">>;
 

@@ -37,7 +37,6 @@ import {
   TicketLabel,
 } from "../components/InfoDialogs";
 import { UpdateBanner } from "../components/UpdateBanner";
-import { DataUpdateButton } from "../components/ChangelogDialog";
 import { SchedulePage } from "../pages/SchedulePage";
 import { navSearch } from "./nav-query";
 import { CatalogProvider, hydrateStorage, useCatalog } from "./store";
@@ -219,7 +218,6 @@ function Shell() {
           <RouterLink to="/legacy/" reloadDocument className="version-link">
             回到旧版
           </RouterLink>
-          <DataUpdateButton />
           {/* 「重叠 N」是**冲突提示**,不是导航:当前行程里有 N 处时间重叠,点进去处理。
               ⚠ 2026-09-29 用户:「『重叠 4』按钮与灰色胶囊样式(如『回到旧版』、『数据更新』)
                 混在一起」—— 它原来和那两个中性链接同一副面孔,分不出「这是提醒」还是「这是入口」。
