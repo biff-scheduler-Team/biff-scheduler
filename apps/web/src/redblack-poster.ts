@@ -25,7 +25,7 @@ import {
   drawRule,
   fitText,
   posterFont as font,
-  posterScale,
+  posterPixels,
   roundRectPath,
 } from "./poster-brush";
 import { glyphPath, glyphPlacement, type StickerGlyph } from "./sticker-glyph";
@@ -94,6 +94,10 @@ export interface RbPosterRow {
   stickers: RbPosterSticker[];
   /** 我那一枚在 `stickers` 里的下标(绘制时加一圈亮边);没贴过 = -1 */
   mineIndex: number;
+  /** 影片海报相对路径 —— 目录里有才带(缺图是常态,250 部里 174 部有)。
+   *  ⚠ 与页面卡片 / 「看片计划海报」同一条来源(`FilmNode.poster`);缺图时**不编一个**路径,
+   *    绘制层据此走占位块。 */
+  poster?: string;
 }
 
 export interface RbPosterBoard {
@@ -225,6 +229,8 @@ function toRow(
     mine: mySticker?.type ?? null,
     stickers,
     mineIndex,
+    // 与页面卡片 / 「看片计划海报」同一条来源;缺图时留 `undefined`,绘制层据此走占位块
+    poster: film.poster,
   };
 }
 
@@ -313,6 +319,22 @@ const COL_GAP = 28;
  *    一变,这张图上的中心图标也会跟着变(14px 贴上从 7.7px 缩到 6.44px)——见那边的说明。
  *  ⚠ 它只是**尺寸**,形状仍然是 `sticker-shape.ts` 那一份(经 `shapePath(shape, size)` 等比换算)。 */
 const FIELD_STICKER = 14;
+
+/** 行内海报缩略图 —— 与「看片计划海报」的行内缩略图同一视觉语言(左图右文)。
+ *  尺寸跟着**本图的行高**走:高与右侧贴纸区齐(`FIELD_H`),宽按海报常见的 2:3 取整。
+ *  ⚠ 这是**独立**的尺寸口径,不与 `poster.ts` 的 `THUMB_W` / `THUMB_H` 联动 —— 两张图的行高本就
+ *    不同(那边 168、这边 104),强行共用只会两边都不对。 */
+const THUMB_W = 59;
+const THUMB_H = FIELD_H;
+const THUMB_R = 10;
+/** 行内海报与「名次 / 我贴的那一色」列之间的间距 */
+const THUMB_GAP = 18;
+/** 名次 / 色标列的宽度 —— 文字统一从它右边(`TITLE_X`)起排 */
+const MARK_W = 64;
+/** 名次 / 色标起点(行内海报右侧) */
+const MARK_X = PAD + THUMB_W + THUMB_GAP;
+/** 片名 / 英文名 / 红黑数的起点 */
+const TITLE_X = MARK_X + MARK_W;
 
 /** 分享图总高(逻辑像素,含上下品牌红条)—— 行数决定高度,故必须与 `drawRbPoster` 同源。
  *  ⚠ 两处各算一份必然出现「算出来 3000 高、实际画了 3200」,而画布是按它设的 →
@@ -434,20 +456,70 @@ function drawField(ctx: CanvasRenderingContext2D, row: RbPosterRow, x: number, t
       ctx.stroke(body);
     }
     if (i === row.mineIndex) {
-      // 我那一枚:一圈亮边 —— 与「我贴过的」那一节左侧的圆点同一个含义(这是我的票)
-      ctx.strokeStyle = C.ink;
-      ctx.lineWidth = 1.6;
+      // 我那一枚:一圈琥珀描边 —— 与「我贴过的」那一节左侧的色标同一个含义(这是我的票)。
+      // ⚠ 2026-10-08(用户「有一些贴纸有白底,导致分享出来不好看」):原本是 `C.ink`(近白),
+      //   深底海报上那圈白被读成「这枚贴纸自带白底」,而不是「这是我贴的」。改用海报自己的
+      //   强调色 `note`(琥珀):红贴 / 黑贴上都够对比,又不会被读成白底。
+      //   ⚠ 仍然**不是**「去掉标记」—— 用户 2026-09-23 明确要求自己那枚始终找得到
+      //   (页面那圈常驻纸白边就是为它加的),去掉等于丢信息,不是修缺陷。
+      ctx.strokeStyle = C.note;
+      ctx.lineWidth = 1.2;
       ctx.stroke(body);
     }
     // 中心微图标:与页面上是同一族图形(同样由款决定),墨色用深底海报专属的那一档。
     // ⚠ 2026-10-05：金棕榈下线后不再有「恒为金」的那一款，墨色只剩 `C.stickerInk` 一档。
+    // ⚠ 2026-10-08:**先裁到轮廓内再印**,与 `sticker-sprite.ts` 的第 ⑤ 步同一手法 ——
+    //   胶片残片那种窄条比图标矮,不裁的话图标会从贴纸两侧探出去(真机上就是两撮白边)。
+    ctx.save();
+    ctx.clip(body);
     drawStickerIcon(ctx, skinSpec(s.skin).glyph, FIELD_STICKER, C.stickerInk);
+    ctx.restore();
     ctx.restore();
   });
   ctx.restore();
 }
 
-/** 一行(**两列**)——左列:名次 / 我贴的那一色 + 片名(中英)+ 红黑数;右列:**贴纸区**。
+/** **行内海报缩略图**(最左那一列):目录里有图就圆角裁切画上,缺图走中性占位块 + 居中片名首字。
+ *
+ *  ⚠ 与「看片计划海报」同一条来源(`FilmNode.poster`)、同一份加载语义
+ *    (`poster-brush.ts::loadPosterImages`,失败即跳过),所以同一部片在两图上是同款缩略图。
+ *  ⚠ 占位块**不留空洞**但也不写放映代码:红黑榜的行里没有 CODE 这个概念 —— 一个纯色空块读起来
+ *    像 bug,片名首字足以认出是哪一部(与行程图用 CODE 占位是同一个目的)。
+ *  ⚠ 同源图片不会污染画布,`toBlob` 依旧可用。 */
+function drawThumb(
+  ctx: CanvasRenderingContext2D,
+  row: RbPosterRow,
+  top: number,
+  images: ReadonlyMap<string, HTMLImageElement>,
+): void {
+  // 垂直居中于本行(与右侧贴纸区同一条对齐:行高 104 − 图高 88 = 上下各 8)
+  const y = top + (ROW_H - THUMB_H) / 2;
+  const img = row.poster ? images.get(row.poster) : undefined;
+  if (img) {
+    ctx.save();
+    roundRectPath(ctx, PAD, y, THUMB_W, THUMB_H, THUMB_R);
+    ctx.clip();
+    ctx.drawImage(img, PAD, y, THUMB_W, THUMB_H);
+    ctx.restore();
+    return;
+  }
+  ctx.fillStyle = C.card;
+  roundRectPath(ctx, PAD, y, THUMB_W, THUMB_H, THUMB_R);
+  ctx.fill();
+  ctx.strokeStyle = C.line;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  const head = row.title.trim().charAt(0);
+  if (head) {
+    ctx.font = font(24, 700);
+    ctx.fillStyle = C.muted;
+    ctx.textAlign = "center";
+    ctx.fillText(head, PAD + THUMB_W / 2, y + THUMB_H / 2 + 8);
+    ctx.textAlign = "left";
+  }
+}
+
+/** 一行(**三列**)——左列:**行内海报**;中列:名次 / 我贴的那一色 + 片名(中英)+ 红黑数;右列:**贴纸区**。
  *  版式与页面卡片同源(`.rb-card` = 左文字 + 右画布),读的人不用重新学一套。 */
 function drawRow(
   ctx: CanvasRenderingContext2D,
@@ -455,6 +527,7 @@ function drawRow(
   rank: number,
   top: number,
   withMine: boolean,
+  images: ReadonlyMap<string, HTMLImageElement>,
 ): void {
   // 文字列的右边界 = 贴纸区左边再让出 COL_GAP(片名截断长度由它决定)
   const textRight = POSTER_W - PAD - FIELD_W - COL_GAP;
@@ -474,7 +547,7 @@ function drawRow(
     const body = stickerBody(skinSpec(mineSkin).shape, size);
     ctx.save();
     // 与片名那一行**视觉居中对齐**(基线往上约 9px 是字身中心,而不是整行居中)
-    ctx.translate(PAD, textBase - 9 - size / 2);
+    ctx.translate(MARK_X, textBase - 9 - size / 2);
     ctx.fillStyle = isRed ? C.red : C.stickerBlack;
     ctx.fill(body);
     if (!isRed) {
@@ -484,16 +557,21 @@ function drawRow(
       ctx.stroke(body);
     }
     if (mineSticker) {
+      // ⚠ 同样**先裁到轮廓内**再印图标(理由见 `drawField` 里那段):窄条轮廓比图标矮,
+      //   不裁的话图标会从贴纸两侧探出去
+      ctx.save();
+      ctx.clip(body);
       drawStickerIcon(ctx, skinSpec(mineSkin).glyph, size, C.stickerInk);
+      ctx.restore();
     }
     ctx.restore();
   } else {
     ctx.font = font(28, 700);
     ctx.fillStyle = rank <= 3 ? C.red2 : C.muted;
-    ctx.fillText(`${rank}`.padStart(2, "0"), PAD, textBase);
+    ctx.fillText(`${rank}`.padStart(2, "0"), MARK_X, textBase);
   }
 
-  const titleX = PAD + 64;
+  const titleX = TITLE_X;
   const titleW = textRight - titleX;
   ctx.font = font(29, 600);
   ctx.fillStyle = C.ink;
@@ -506,6 +584,7 @@ function drawRow(
   // 红黑数落在第三行:右列让出了 360px,再挤在片名右边就会把片名压短
   drawCounts(ctx, row, titleX, textBase + 54);
 
+  drawThumb(ctx, row, top, images);
   drawField(ctx, row, POSTER_W - PAD - FIELD_W, top + FIELD_TOP);
 }
 
@@ -582,16 +661,25 @@ function drawHeader(ctx: CanvasRenderingContext2D, model: RbPosterModel): void {
   );
 }
 
-/** 把模型画到给定画布上(画布尺寸由本函数按模型设好,调用方不必预先设)。 */
-export function drawRbPoster(canvas: HTMLCanvasElement, model: RbPosterModel): void {
+/** 把模型画到给定画布上(画布尺寸由本函数按模型设好,调用方不必预先设)。
+ *
+ *  `images` = 已经加载好的影片海报(`url` → 图),由调用方先跑 `poster-brush.ts::loadPosterImages`;
+ *  **加载失败 / 缺图的那些 url 不在表里** —— 绘制层对这一行走占位块,不报错、不留空洞。 */
+export function drawRbPoster(
+  canvas: HTMLCanvasElement,
+  model: RbPosterModel,
+  images: ReadonlyMap<string, HTMLImageElement>,
+): void {
   const h = rbPosterHeight(model);
-  const scale = posterScale(POSTER_W, h);
+  const px = posterPixels(POSTER_W, h);
   // ⚠ 写 width/height 会**清空画布并重置 transform**,两者必须成对
-  canvas.width = POSTER_W * scale;
-  canvas.height = h * scale;
+  canvas.width = px.width;
+  canvas.height = px.height;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-  ctx.scale(scale, scale);
+  // ⚠ 变换用「物理像素 / 逻辑尺寸」而不是那个浮点倍率:画布尺寸是取过整的,直接 `scale(倍率)`
+  //    会在右下角留下一条不足 1px 的透明缝(深底图上就是一条亮线)
+  ctx.scale(px.width / POSTER_W, px.height / h);
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
 
@@ -607,7 +695,7 @@ export function drawRbPoster(canvas: HTMLCanvasElement, model: RbPosterModel): v
     drawSection(ctx, b.label, b.hint, y);
     y += SECTION_H;
     b.rows.forEach((row, i) => {
-      drawRow(ctx, row, i + 1, y, false);
+      drawRow(ctx, row, i + 1, y, false, images);
       y += ROW_H;
     });
   }
@@ -617,7 +705,7 @@ export function drawRbPoster(canvas: HTMLCanvasElement, model: RbPosterModel): v
     drawSection(ctx, model.myTitle, model.myHint, y);
     y += SECTION_H;
     model.myRows.forEach((row, i) => {
-      drawRow(ctx, row, i + 1, y, true);
+      drawRow(ctx, row, i + 1, y, true, images);
       y += ROW_H;
     });
   }

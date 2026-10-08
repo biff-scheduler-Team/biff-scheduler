@@ -1368,6 +1368,13 @@ test("生成分享图:三榜各 TOP10、我贴过的全部、底部署名", asyn
   // 出图是异步的(画完才 toBlob),这里等按钮出来即代表图已生成
   await expect(dialog.getByRole("button", { name: "下载 PNG 图片" })).toBeVisible();
 
+  // 每行左侧带影片海报缩略图(2026-10-08)。画布手绘没有 DOM 可断,所以读锚点属性 ——
+  // 目录里多数影片有海报,这张图里必须**真的**带了图(而不是整张图都在画占位块)。
+  await expect(dialog.locator(".rb-share-preview")).toHaveAttribute(
+    "data-poster-count",
+    /^[1-9]\d*$/,
+  );
+
   const painted = await paintedTexts(page);
   // 头部 + 三榜标签 + 我的那一节 + 署名:逐项都要画出来
   for (const needle of [
@@ -1435,9 +1442,11 @@ test("生成分享图:可以只分享部分榜单,一节都不勾时下载停用
     return { width: Number(matched![1]), height: Number(matched![2]) };
   };
   const full = await sizeOf();
-  // ⚠ 只断宽度是 1080 / 2160 两种之一:倍数由 `posterScale` 按画布**面积**决定
-  //   (这份 stub 只有 2 部有票 → 图短 → 走 2×),别把某个具体倍数写死
-  expect([1080, 2160]).toContain(full.width);
+  // ⚠ 只断宽度落在 [1080, 2160] 之间:倍数由 `posterScale` 按**面积**反算,自 2026-10-08 起是
+  //   连续值而不是「2 或 1」二选一(这份 stub 只有 2 部有票 → 图短 → 仍是 2×),
+  //   别把某个具体倍数写死
+  expect(full.width).toBeGreaterThanOrEqual(1080);
+  expect(full.width).toBeLessThanOrEqual(2160);
 
   // ⚠ RAC 的复选框:真正的 `<input>` 是**视觉隐藏**的,直接 `uncheck()` 会被上层样式 div
   //   挡掉(`intercepts pointer events`)—— 按用户的做法点**标签文字**(与 `schedule-toolbar` 同手法),

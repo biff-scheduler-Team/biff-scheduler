@@ -40,11 +40,13 @@ import {
   drawRule,
   fitText,
   posterFont as font,
-  posterScale,
+  posterPixels,
   roundRectPath,
 } from "./poster-brush";
 
-export { posterBlob, POSTER_W } from "./poster-brush";
+// ⚠ `loadPosterImages` 也在这里(2026-10-08 迁到 `poster-brush.ts`):红黑榜分享图也要画海报缩略图,
+//   两张图共用同一份「失败即静默跳过」的加载语义(§5 口径单一来源)。对本文件的调用方仍从这里 import。
+export { loadPosterImages, posterBlob, POSTER_W } from "./poster-brush";
 import type { PickRow } from "./ics";
 import { gvMark, orderedPickRows, shareSummary } from "./share";
 
@@ -293,12 +295,13 @@ export function drawPoster(
   images: Map<string, HTMLImageElement>
 ): void {
   const h = posterHeight(model);
-  const scale = posterScale(POSTER_W, h);
-  canvas.width = POSTER_W * scale;
-  canvas.height = h * scale;
+  const px = posterPixels(POSTER_W, h);
+  canvas.width = px.width;
+  canvas.height = px.height;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-  ctx.scale(scale, scale);
+  // ⚠ 变换用「物理像素 / 逻辑尺寸」而不是那个浮点倍率(理由见 `poster-brush.ts::posterPixels`)
+  ctx.scale(px.width / POSTER_W, px.height / h);
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
 
@@ -366,22 +369,3 @@ export function drawPoster(
   ctx.textAlign = "left";
 }
 
-/** 加载海报缩略图 —— **失败即静默跳过**(缺图走占位块,不能让一张图挂掉整张海报)。
- *  同源图片不会污染画布,`toBlob` 依旧可用。 */
-export function loadPosterImages(urls: string[]): Promise<Map<string, HTMLImageElement>> {
-  const out = new Map<string, HTMLImageElement>();
-  const tasks = [...new Set(urls)].map(
-    (u) =>
-      new Promise<void>((resolve) => {
-        const img = new Image();
-        img.decoding = "async";
-        img.onload = () => {
-          out.set(u, img);
-          resolve();
-        };
-        img.onerror = () => resolve();
-        img.src = u;
-      })
-  );
-  return Promise.all(tasks).then(() => out);
-}

@@ -19,7 +19,7 @@ import type { CrowdCounts, StickerBoard } from "../src/redblack";
 import { show } from "./helpers";
 
 /** 最小有排期的 FilmNode(`boardFilms` 只要求 `shows.length > 0`) */
-function film(key: string, zh = key, en = ""): FilmNode {
+function film(key: string, zh = key, en = "", poster?: string): FilmNode {
   return {
     key,
     title: zh,
@@ -29,6 +29,7 @@ function film(key: string, zh = key, en = ""): FilmNode {
     meta: "",
     cats: [],
     shows: [show({ code: key })],
+    poster,
   };
 }
 
@@ -327,5 +328,34 @@ describe("rbPosterHeight:与绘制同源", () => {
     expect(rbPosterHeight(empty)).toBeLessThan(rbPosterHeight(withBoard));
     // 空榜只剩头部与页脚,但仍然是一张完整的图(不是 0 高)
     expect(rbPosterHeight(empty)).toBeGreaterThan(0);
+  });
+});
+
+describe("rbPosterRow:行内海报缩略图(2026-10-08)", () => {
+  it("目录里有海报就带出来 —— 三榜与「我贴过的」是同一份来源,不另立一套", () => {
+    const model = buildRbPosterModel(
+      input({
+        films: [film("a", "甲", "", "/posters/a.jpg"), film("b", "乙")],
+        crowd: crowd({ a: [3, 0], b: [2, 0] }),
+        board: boardOf({ a: "red" }),
+      }),
+    );
+    const rowA = model.boards[0].rows.find((r) => r.key === "a")!;
+    const rowB = model.boards[0].rows.find((r) => r.key === "b")!;
+    expect(rowA.poster).toBe("/posters/a.jpg");
+    // 缺图是常态(250 部里 174 部有):没有就**不编一个**路径出来,绘制层据此走占位块
+    expect(rowB.poster).toBeUndefined();
+    expect(model.myRows.find((r) => r.key === "a")!.poster).toBe("/posters/a.jpg");
+  });
+
+  it("海报**不改变行高**:有没有图高度一模一样(缺图走占位块,而不是不留位)", () => {
+    const withArt = buildRbPosterModel(
+      input({ films: [film("a", "甲", "", "/posters/a.jpg")], crowd: crowd({ a: [1, 0] }) }),
+    );
+    const without = buildRbPosterModel(
+      input({ films: [film("a", "甲")], crowd: crowd({ a: [1, 0] }) }),
+    );
+    // ⚠ 行高是绘制与 `rbPosterHeight` 的共用自变量:带图改高度就会两处错位、静默裁图
+    expect(rbPosterHeight(withArt)).toBe(rbPosterHeight(without));
   });
 });
