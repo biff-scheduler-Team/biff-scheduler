@@ -88,7 +88,7 @@ function Shell() {
   //   漏加会让分析页被渲染进浮动面板布局(而不是整页)。
   //   (2026-09-23 起 `admin` 也在这张名单里 —— 管理后台同样是整页布局。)
   const fullPage =
-    /^\/(library|feedback|rush-analysis|redblack|eats|admin|guest)(?:\/|$)/.test(location.pathname) ||
+    /^\/(library|feedback|rush-analysis|redblack|eats|admin|guest|general)(?:\/|$)/.test(location.pathname) ||
     (viewingRoute && !panelOpen);
   // 查询串**口径唯一来源** = `app/nav-query.ts`:同名 key 不跨页(`q` 在影片库 / 红黑榜 / 吃喝
   // 各有一份语义),只有排片表的 `date` / `hour` 跟着走。原先这里只剔掉 `quick` 就整条搬过去,
@@ -181,6 +181,7 @@ function Shell() {
     ["/picks", "我的选片"],
     ["/agenda", "我的行程"],
     ["/guest", "GUEST 查票"],
+    ["/general", "普通票查票"],
     // 下面四项的顺序是用户 2026-09-22 指定的(`PLAN-20260922102751`);「抢票」页也在这一轮下线,
     // 导航不再有它(原来它夹在「我的行程」与「建议」之间)。
     // 「红黑榜」是**观影之后**的动作(2026-09-16,`PLAN-20260916102339`),原先排末尾,现上移。

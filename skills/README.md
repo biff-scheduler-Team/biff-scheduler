@@ -16,6 +16,7 @@
 ## 怎么用
 
 GUEST 查票的交互验收使用 `e2e/react/guest.spec.ts`：覆盖目录影片资料、筛选、未开放日期和失败恢复；API 边界测试位于 `apps/api/tests/guest.test.ts`。
+该 spec 同时覆盖 `/general` 普通票查票、WEB/GUEST 渠道切换隔离，以及想看人数（正数、零、未知）；沿用无头 DOM 断言，不依靠截图。
 
 - **人**：直接打开对应 `SKILL.md` —— 里面有完整步骤、可复制的 CLI 命令与陷阱清单。
 - **AI 助手**：把 `skills/<name>/SKILL.md` 作为上下文交给它，或依据 frontmatter 的 `description` 触发。

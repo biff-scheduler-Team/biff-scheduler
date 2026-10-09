@@ -1,14 +1,25 @@
 import { GUEST_NOTE, GUEST_STATUS_LABELS, type GuestResult } from "@biff/contracts/guest";
 import { useEffect, useState } from "react";
-import { Outlet } from "react-router";
+import { Link, Outlet } from "react-router";
 import { api, ApiFailure } from "../account-sync";
 import { useCatalog } from "../app/store";
 import { ActionButton, Checkbox, SearchField } from "../components/spectrum";
 import { ScreeningCard } from "../components/ScreeningCard";
-import { filmInfoOf } from "../util";
+import { filmInfoOf, filmNodeKey } from "../util";
+import { wantCountLabel } from "../actions-copy";
+import { hasWantCounts, loadWantCounts, onWantCountsChange, peekWantCounts } from "../want-counts";
 import "./guest.css";
 
 export function GuestPage() {
+  return <TicketAvailabilityPage channel="guest" />;
+}
+
+export function GeneralPage() {
+  return <TicketAvailabilityPage channel="general" />;
+}
+
+function TicketAvailabilityPage({ channel }: { channel: "guest" | "general" }) {
+  const label = channel === "guest" ? "GUEST" : "普通票";
   const { cat } = useCatalog();
   const [date, setDate] = useState("");
   const [revision, setRevision] = useState(0);
@@ -17,6 +28,14 @@ export function GuestPage() {
   const [result, setResult] = useState<GuestResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [wantCounts, setWantCounts] = useState(peekWantCounts);
+
+  useEffect(() => {
+    let active = true;
+    void loadWantCounts().then((counts) => { if (active) setWantCounts({ ...counts }); });
+    const stop = onWantCountsChange(() => setWantCounts({ ...peekWantCounts() }));
+    return () => { active = false; stop(); };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -27,12 +46,12 @@ export function GuestPage() {
     setError("");
     void (async () => {
       try {
-        const response = await api(`/api/guest${date ? `?date=${encodeURIComponent(date)}` : ""}`, { signal: controller.signal });
+        const response = await api(`/api/${channel}${date ? `?date=${encodeURIComponent(date)}` : ""}`, { signal: controller.signal });
         const data = await response.json() as GuestResult;
         if (active) setResult(data);
       } catch (cause) {
         if (active) setError(cause instanceof ApiFailure && cause.status === 429
-          ? "查询太频繁，请稍后刷新。" : "GUEST 查询失败，余量未知。请稍后刷新重试。");
+          ? "查询太频繁，请稍后刷新。" : `${label} 查询失败，余量未知。请稍后刷新重试。`);
       } finally {
         clearTimeout(timeout);
         if (active) setLoading(false);
@@ -40,7 +59,7 @@ export function GuestPage() {
     })();
     // 切换日期或离开页面后，旧请求不能覆盖新日期的数据。
     return () => { active = false; clearTimeout(timeout); controller.abort(); };
-  }, [date, revision]);
+  }, [channel, label, date, revision]);
 
   const needle = query.trim().toLocaleLowerCase();
   const rows = (result?.screenings ?? []).map((row) => {
@@ -48,17 +67,19 @@ export function GuestPage() {
     // 仅在日期和时刻也匹配时使用本地双语片名，避免同编号跨届或跨日误配。
     const matched = screening && screening.date === row.date && screening.start_time.slice(0, 5) === row.time ? screening : undefined;
     const title = matched ? filmInfoOf(cat, matched).title : row.title;
-    return { ...row, title, screening: matched };
+    const wantCount = matched && hasWantCounts() ? wantCounts[filmNodeKey(cat, matched)] ?? 0 : null;
+    return { ...row, title, screening: matched, wantCount };
   }).filter((row) => (!onlyAvailable || row.status === "available") &&
     (!needle || [row.title, row.code, row.filmId, row.venue, row.hall].join(" ").toLocaleLowerCase().includes(needle)));
 
   return (
     <section className="panel guest-page" aria-labelledby="guest-heading">
       <div className="panel-heading">
-        <div><h1 id="guest-heading">GUEST 查票</h1><p>官方嘉宾渠道余票 · 韩国时间</p></div>
+        <div><h1 id="guest-heading">{label} 查票</h1><p>官方{channel === "guest" ? "嘉宾" : "普通票 WEB"}渠道余票 · 韩国时间</p></div>
         <ActionButton isDisabled={loading} onPress={() => setRevision((value) => value + 1)}>刷新余票</ActionButton>
       </div>
-      <p className="guest-note">{GUEST_NOTE} 场次卡中的票价为普通票价，不代表嘉宾换票费用。</p>
+      <nav aria-label="查票渠道"><Link to="/general">普通票查票</Link>{" · "}<Link to="/guest">GUEST 查票</Link></nav>
+      <p className="guest-note">{channel === "guest" ? `${GUEST_NOTE} 场次卡中的票价为普通票价，不代表嘉宾换票费用。` : "官方 WEB 普通票列表余量，仅供查询；不锁座、不创建订单。列表有票不代表具体座位已核验，实际余票与票价以官方购票页为准。"}</p>
       <div className="guest-controls">
         <label className="guest-date">查询日期<input type="date" value={date || result?.date || ""} onChange={(event) => setDate(event.target.value)} /></label>
         <SearchField label="片名、场次编号或影片 ID" value={query} onChange={setQuery} />
@@ -70,14 +91,16 @@ export function GuestPage() {
           <ActionButton key={day} isDisabled={day === result.date} onPress={() => setDate(day)}>{day}</ActionButton>) : <span>暂无</span>}
       </div>}
       <div role="status" aria-live="polite" className="guest-summary">
-        {loading ? "正在查询 GUEST 余票…" : result ? `${rows.length} 场 · ${result.date} · ${new Date(result.checkedAt).toLocaleTimeString("zh-CN", { timeZone: "Asia/Seoul", hour12: false })} 更新` : ""}
+        {loading ? `正在查询 ${label} 余票…` : result ? `${rows.length} 场 · ${result.date} · ${new Date(result.checkedAt).toLocaleTimeString("zh-CN", { timeZone: "Asia/Seoul", hour12: false })} 更新` : ""}
       </div>
       {error && <p role="alert">{error}</p>}
-      {result && !result.dateOpen && <p className="empty-state">该日期 GUEST 尚未开放查询，余量未知。</p>}
-      {result?.dateOpen && !rows.length && <p className="empty-state">没有符合筛选条件的 GUEST 场次。</p>}
-      {rows.length > 0 && <ul className="guest-list" aria-label="GUEST 场次">
-        {rows.map((row) => <li key={`${row.date}-${row.code}`} data-guest-code={row.code}>
-          <div className="guest-stock"><strong>GUEST {row.remaining === null ? "余量未知" : `${row.remaining} 张`}</strong><span>{GUEST_STATUS_LABELS[row.status]}</span></div>
+      {result && !result.dateOpen && <p className="empty-state">该日期 {label} 尚未开放查询，余量未知。</p>}
+      {result?.dateOpen && !rows.length && <p className="empty-state">没有符合筛选条件的 {label} 场次。</p>}
+      {rows.length > 0 && <ul className="guest-list" aria-label={`${label} 场次`}>
+        {rows.map((row) => <li key={`${row.date}-${row.code}`} data-guest-code={channel === "guest" ? row.code : undefined} data-general-code={channel === "general" ? row.code : undefined}>
+          <div className="guest-stock"><strong>{label} {row.remaining === null ? "余量未知" : `${row.remaining} 张`}</strong><span>{GUEST_STATUS_LABELS[row.status]}</span>
+            <span className="want-count" data-want-count={row.wantCount ?? undefined} title="本站影片级想看人数，不是该场购票人数">{row.wantCount === null ? "想看人数未知" : wantCountLabel(row.wantCount)}</span>
+          </div>
           {row.screening ? <ScreeningCard screening={row.screening} pickable={false} /> :
             <div className="guest-unmatched"><h3>{row.title || "片名未知"}</h3><p>{row.time} · #{row.code} · {row.venue} · {row.hall}</p><p>本地目录未匹配到该场次，显示官方信息。</p></div>}
           <small className="guest-film-id">官方影片 ID {row.filmId}</small>

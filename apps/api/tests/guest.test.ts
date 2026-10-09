@@ -12,6 +12,26 @@ const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("GUEST 官方库存", () => {
+  it("普通票路由只查询 WEB 库存并保留数量，不读取 GUEST", async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(json({ dateList: [{ sdStartDt: date }] }))
+      .mockResolvedValueOnce(json({ prodList: [{ ...item, remainSeat: 27 }] }));
+    vi.stubGlobal("fetch", fetcher);
+    const response = await app.request(`http://localhost/api/general?date=${date}`, {}, env);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(await response.json()).toMatchObject({ screenings: [{ remaining: 27 }] });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    for (const [url] of fetcher.mock.calls) expect(new URL(url).searchParams.get("chnlCd")).toBe("WEB");
+  });
+  it("普通票坏日期不请求上游，故障返回普通票错误而非零库存", async () => {
+    const fetcher = vi.fn().mockRejectedValue(new Error("timeout"));
+    vi.stubGlobal("fetch", fetcher);
+    expect((await app.request("http://localhost/api/general?date=2026-02-30", {}, env)).status).toBe(400);
+    expect(fetcher).not.toHaveBeenCalled();
+    const response = await app.request(`http://localhost/api/general?date=${date}`, {}, env);
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({ error: "GENERAL_UPSTREAM_FAILED" });
+  });
   it.each([null, undefined, "", -1, "garbage", true, 1.5])("未知库存 %s 不转换为零", (remainSeat) => {
     expect(guestScreening({ ...item, remainSeat }, date, now)).toMatchObject({ remaining: null, status: "unknown" });
   });

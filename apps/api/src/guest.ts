@@ -38,9 +38,9 @@ export function guestScreening(value: unknown, date: string, now: number): Guest
 }
 
 /** 仅允许固定官方只读端点；不转发访问者 Cookie，也不跟随跳转到其它主机。 */
-async function official(path: string, params: Record<string, string>, fetcher: typeof fetch): Promise<Record<string, unknown>> {
+async function official(path: string, params: Record<string, string>, fetcher: typeof fetch, channel: "GUEST" | "WEB"): Promise<Record<string, unknown>> {
   const url = new URL(path, API);
-  url.search = new URLSearchParams({ chnlCd: "GUEST", partnerId: "BIFF", ...params }).toString();
+  url.search = new URLSearchParams({ chnlCd: channel, partnerId: "BIFF", ...params }).toString();
   const response = await fetcher(url.toString(), {
     headers: { Accept: "application/json", Referer: "https://biff.maketicket.co.kr/" },
     // Workers 不实现 error 模式；manual 配合下方非 2xx 拒绝，仍然不会跟随跳转。
@@ -53,8 +53,13 @@ async function official(path: string, params: Record<string, string>, fetcher: t
 }
 
 export async function readGuest(date: string, fetcher: typeof fetch = fetch, now = Date.now()): Promise<GuestResult> {
+  return readTickets(date, "GUEST", fetcher, now);
+}
+
+/** 两个渠道共用解析规则，但开放日期和库存必须来自各自的官方渠道。 */
+export async function readTickets(date: string, channel: "GUEST" | "WEB", fetcher: typeof fetch = fetch, now = Date.now()): Promise<GuestResult> {
   guestDate.parse(date);
-  const dates = await official("rsAvailDateList", {}, fetcher);
+  const dates = await official("rsAvailDateList", {}, fetcher, channel);
   const entries = z.array(z.object({ sdStartDt: z.string() })).parse(dates.dateList);
   const availableDates = [...new Set(entries.map((item) => {
     const raw = item.sdStartDt;
@@ -63,7 +68,7 @@ export async function readGuest(date: string, fetcher: typeof fetch = fetch, now
   const dateOpen = availableDates.includes(date);
   let screenings: GuestScreening[] = [];
   if (dateOpen) {
-    const listing = await official("prodList", { langCd: "en", perfDate: date.replace(/-/g, "") }, fetcher);
+    const listing = await official("prodList", { langCd: "en", perfDate: date.replace(/-/g, "") }, fetcher, channel);
     const rows = z.array(z.unknown()).parse(listing.prodList);
     screenings = rows.map((item) => guestScreening(item, date, now))
       .filter((item): item is GuestScreening => item !== null)

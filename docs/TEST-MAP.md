@@ -26,7 +26,7 @@ npx playwright test -c playwright.react.config.ts \
 <!-- BEGIN GENERATED:test-map -->
 | 改动路径(前缀) | 必跑 spec |
 |---|---|
-| `apps/web/src/pages/GuestPage.tsx`<br>`apps/web/src/pages/guest.css`<br>`apps/api/src/guest.ts`<br>`packages/contracts/src/guest.ts` | `guest` |
+| `apps/web/src/pages/GuestPage.tsx`<br>`apps/web/src/pages/guest.css`<br>`apps/web/src/want-counts.ts`<br>`apps/api/src/guest.ts`<br>`packages/contracts/src/guest.ts` | `guest` |
 | `apps/web/src/pages/SchedulePage.tsx`<br>`apps/web/src/pages/schedule-parity.css`<br>`apps/web/src/components/ScheduleGantt.tsx`<br>`apps/web/src/app/vertical-schedule.ts`<br>`apps/web/src/grid.ts` | `parity-schedule` · `vertical-schedule` · `time-axis` · `night-axis` · `schedule-size` · `schedule-toolbar` · `combined-screenings` · `badge-tooltip` · `agenda-gantt` |
 | `apps/web/src/pages/AgendaPage.tsx`<br>`apps/web/src/pages/agenda-parity.css`<br>`apps/web/src/plans.ts`<br>`apps/web/src/timeline.ts` | `parity-agenda` · `agenda-gantt` · `review-schedule` · `combined-screenings` |
 | `apps/web/src/pages/LibraryPage.tsx`<br>`apps/web/src/actions-copy.ts` | `parity-library` · `review-library` · `screening-popover` · `want-counts` |

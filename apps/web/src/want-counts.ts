@@ -26,6 +26,11 @@ export function peekWantCounts(): Record<string, number> {
   return cache ?? Object.create(null);
 }
 
+/** 区分成功加载后的零人数与请求失败，查票页不能把未知热度写成零。 */
+export function hasWantCounts(): boolean {
+  return cache !== null;
+}
+
 export async function loadWantCounts(force = false): Promise<Record<string, number>> {
   if (cache && !force) return cache;
   if (loading && !force) return loading;

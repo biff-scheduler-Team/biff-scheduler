@@ -4,6 +4,8 @@
 
 GUEST 查票（`/guest`，PLAN-20261009150124）：scheduler API 直连官方 GUEST 开放日期和当日库存，使用既有请求限流；不转发用户凭据。`remaining: null` 为未知，不等同售罄。页面按编号、日期和时间精确关联目录，复用 `ScreeningCard` / `FilmDialog`；卡片普通票价不代表嘉宾换票费用。
 
+普通票查票（`/general`，PLAN-20261009152341）：共用上述流程，两个官方请求均使用 WEB 渠道，绝不回退 GUEST 库存。两页展示 `want-counts` 的站内影片级想看人数，沿用 `filmNodeKey` 和 `wantCountLabel`；成功加载后的缺省计数为 0，未加载/失败且无缓存或目录未匹配时显示未知。仅查询，不锁座、不下单。
+
 > 从 `.workbuddy/memory/MEMORY.md` 拆出(该文件有 3,000 字上限)。**改代码前先读这份**。
 > 关联 SKILL:仓库内 **`.codebuddy/skills/biff-catalogue-pdf-to-schedule/`**(PDF→JSON)、
 > 用户级 `parallel-agent-safe-commit`(并行提交)、`web-ui-headless-interaction-qa`(无头交互验收)、

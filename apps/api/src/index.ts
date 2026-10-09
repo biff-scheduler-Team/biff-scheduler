@@ -49,7 +49,7 @@ import {
 import { dailyMetricFamily, isDailyMetric, readDailySeries, readEarliestDay } from "./stat-daily";
 import { auditContributions } from "./stat-audit";
 import { kstDay, kstDayMinus } from "./day";
-import { guestDate, readGuest } from "./guest";
+import { guestDate, readTickets } from "./guest";
 import {
   FEEDBACK_ANON_DISPLAY_NAME,
   normalizeFeedbackBody,
@@ -248,13 +248,16 @@ app.get("/api/health", async (c) => {
   await database(c.env.DB).get(sql`SELECT 1`);
   return c.json({ status: "ok" });
 });
-app.get("/api/guest", limited(lookupLimiter), async (c) => {
+for (const [path, channel, error] of [
+  ["/api/guest", "GUEST", "GUEST_UPSTREAM_FAILED"],
+  ["/api/general", "WEB", "GENERAL_UPSTREAM_FAILED"],
+] as const) app.get(path, limited(lookupLimiter), async (c) => {
   const date = guestDate.safeParse(c.req.query("date") ?? kstDay(Date.now()));
   if (!date.success) return c.json({ error: "INVALID_DATE" }, 400);
   try {
-    return c.json(await readGuest(date.data));
+    return c.json(await readTickets(date.data, channel));
   } catch {
-    return c.json({ error: "GUEST_UPSTREAM_FAILED" }, 502);
+    return c.json({ error }, 502);
   }
 });
 app.get("/api/auth/login", async (c) => {

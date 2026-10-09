@@ -21,8 +21,8 @@
   "rules": [
     {
       "id": "guest",
-      "note": "官方 GUEST 余票、目录场次资料与独立查询页",
-      "paths": ["apps/web/src/pages/GuestPage.tsx", "apps/web/src/pages/guest.css", "apps/api/src/guest.ts", "packages/contracts/src/guest.ts"],
+      "note": "官方 GUEST/WEB 余票、目录场次资料、想看人数与独立查询页",
+      "paths": ["apps/web/src/pages/GuestPage.tsx", "apps/web/src/pages/guest.css", "apps/web/src/want-counts.ts", "apps/api/src/guest.ts", "packages/contracts/src/guest.ts"],
       "specs": ["guest"]
     },
     {
