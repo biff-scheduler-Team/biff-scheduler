@@ -2,6 +2,8 @@
 
 # biff-scheduler 工程约定
 
+GUEST 查票（`/guest`，PLAN-20261009150124）：scheduler API 直连官方 GUEST 开放日期和当日库存，使用既有请求限流；不转发用户凭据。`remaining: null` 为未知，不等同售罄。页面按编号、日期和时间精确关联目录，复用 `ScreeningCard` / `FilmDialog`；卡片普通票价不代表嘉宾换票费用。
+
 > 从 `.workbuddy/memory/MEMORY.md` 拆出(该文件有 3,000 字上限)。**改代码前先读这份**。
 > 关联 SKILL:仓库内 **`.codebuddy/skills/biff-catalogue-pdf-to-schedule/`**(PDF→JSON)、
 > 用户级 `parallel-agent-safe-commit`(并行提交)、`web-ui-headless-interaction-qa`(无头交互验收)、

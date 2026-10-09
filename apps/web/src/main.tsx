@@ -66,6 +66,7 @@ const router = createBrowserRouter([
         lazy: async () => ({ Component: (await import("./pages/AdminPage")).AdminPage }),
       },
       { path: "eats", element: <EatsPage /> },
+      { path: "guest", lazy: async () => ({ Component: (await import("./pages/GuestPage")).GuestPage }), children: filmRoute() },
       { path: "feedback", element: <FeedbackPage /> },
       {
         path: "*",

@@ -1,0 +1,13 @@
+.guest-page { min-width: 0; }
+.guest-page .panel-heading { align-items: flex-start; }
+.guest-note, .guest-summary, .guest-film-id { color: var(--muted); }
+.guest-controls, .guest-dates { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 16px 0; }
+.guest-date { display: flex; flex-direction: column; gap: 6px; }
+.guest-date input { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+.guest-list { list-style: none; padding: 0; display: grid; gap: 16px; }
+.guest-list > li { min-width: 0; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+.guest-stock { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.guest-film-id { display: block; margin-top: 8px; }
+@media (max-width: 768px) {
+  .guest-controls { align-items: stretch; flex-direction: column; }
+}

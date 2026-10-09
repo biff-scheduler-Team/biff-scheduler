@@ -15,6 +15,8 @@
 
 ## 怎么用
 
+GUEST 查票的交互验收使用 `e2e/react/guest.spec.ts`：覆盖目录影片资料、筛选、未开放日期和失败恢复；API 边界测试位于 `apps/api/tests/guest.test.ts`。
+
 - **人**：直接打开对应 `SKILL.md` —— 里面有完整步骤、可复制的 CLI 命令与陷阱清单。
 - **AI 助手**：把 `skills/<name>/SKILL.md` 作为上下文交给它，或依据 frontmatter 的 `description` 触发。
 - **本机自动加载**：IDE 的 skill 自动加载只认用户级目录（本机为 `~/.workbuddy/skills/`）。

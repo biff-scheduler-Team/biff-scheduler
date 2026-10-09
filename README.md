@@ -1,5 +1,7 @@
 # BIFF Scheduler · 釜山电影节排片工具
 
+`/guest` 提供 GUEST 嘉宾余票查询：scheduler 服务端直接读取官方开放日期与库存，页面复用现有场次卡、海报、双语片名、GV/字幕和影片详情。可按日期、片名、场次、影片 ID 筛选，仅查询，不购票。GUEST 与学生 Cinephile badge 的配额关系未确认；未知或失败不会显示为零。
+
 
 新版界面位于 `apps/web/src`，开发命令仍是 `npm run dev`。桌面和手机共用纵向时间轴，顶部提供独立选片与行程页面，右下角浮动面板用于快速查看。原有 localStorage 格式和 IFFDAY 账号同步均保留。新版浏览器测试使用 `npm run test:e2e:react`，原账号联调测试继续使用 `npm run test:e2e`。
 

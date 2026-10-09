@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./guest": "./src/guest.ts",
     "./account": "./src/account.ts",
     "./canonical": "./src/canonical.ts",
     "./edition": "./src/edition.ts",

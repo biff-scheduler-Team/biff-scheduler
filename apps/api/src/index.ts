@@ -48,7 +48,8 @@ import {
 } from "./admin-read";
 import { dailyMetricFamily, isDailyMetric, readDailySeries, readEarliestDay } from "./stat-daily";
 import { auditContributions } from "./stat-audit";
-import { kstDayMinus } from "./day";
+import { kstDay, kstDayMinus } from "./day";
+import { guestDate, readGuest } from "./guest";
 import {
   FEEDBACK_ANON_DISPLAY_NAME,
   normalizeFeedbackBody,
@@ -246,6 +247,15 @@ app.use("/api/*", async (c, next) => {
 app.get("/api/health", async (c) => {
   await database(c.env.DB).get(sql`SELECT 1`);
   return c.json({ status: "ok" });
+});
+app.get("/api/guest", limited(lookupLimiter), async (c) => {
+  const date = guestDate.safeParse(c.req.query("date") ?? kstDay(Date.now()));
+  if (!date.success) return c.json({ error: "INVALID_DATE" }, 400);
+  try {
+    return c.json(await readGuest(date.data));
+  } catch {
+    return c.json({ error: "GUEST_UPSTREAM_FAILED" }, 502);
+  }
 });
 app.get("/api/auth/login", async (c) => {
   // 登录流程的预算见 `oauth.ts::AUTH_FLOW_TIMEOUT_MS`(与刷新链路那 3 秒刻意分开:

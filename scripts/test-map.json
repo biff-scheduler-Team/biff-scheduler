@@ -20,6 +20,12 @@
   ],
   "rules": [
     {
+      "id": "guest",
+      "note": "官方 GUEST 余票、目录场次资料与独立查询页",
+      "paths": ["apps/web/src/pages/GuestPage.tsx", "apps/web/src/pages/guest.css", "apps/api/src/guest.ts", "packages/contracts/src/guest.ts"],
+      "specs": ["guest"]
+    },
+    {
       "id": "schedule-grid",
       "note": "排片表二维网格(甘特)/ 时间轴 / 影厅列 / 缩放 / 小时筛选；`ScheduleGantt` / `vertical-schedule` 是排片表与「我的行程 → 日程表」共用的那一份甘特，故行程侧 spec 也挂在这里",
       "paths": [
