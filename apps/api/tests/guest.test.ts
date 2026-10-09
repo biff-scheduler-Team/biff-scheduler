@@ -42,7 +42,7 @@ describe("GUEST 官方库存", () => {
       expect(new URL(url).searchParams.get("chnlCd")).toBe("GUEST");
       expect(options.method).toBeUndefined();
       expect(new Headers(options.headers).has("Cookie")).toBe(false);
-      expect(options.redirect).toBe("error");
+      expect(options.redirect).toBe("manual");
     }
   });
   it("官方错误及畸形列表均失败，不伪装成售罄", async () => {
@@ -51,6 +51,12 @@ describe("GUEST 官方库存", () => {
     }
     const fetcher = vi.fn().mockResolvedValueOnce(json({ dateList: [{ sdStartDt: date }] })).mockResolvedValueOnce(json({ prodList: [null] }));
     await expect(readGuest(date, fetcher, now)).rejects.toThrow();
+  });
+  it("使用 Workers 支持的手动重定向且拒绝 302，不访问跳转目标", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 302, headers: { Location: "https://example.invalid/" } }));
+    await expect(readGuest(date, fetcher, now)).rejects.toThrow("GUEST_UPSTREAM_FAILED");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0][1].redirect).toBe("manual");
   });
   it("路由免登录、拒绝坏日期，并将上游故障转成 502", async () => {
     const fetcher = vi.fn().mockResolvedValue(json({ dateList: [] }));

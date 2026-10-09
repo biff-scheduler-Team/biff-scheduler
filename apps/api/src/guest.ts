@@ -43,7 +43,8 @@ async function official(path: string, params: Record<string, string>, fetcher: t
   url.search = new URLSearchParams({ chnlCd: "GUEST", partnerId: "BIFF", ...params }).toString();
   const response = await fetcher(url.toString(), {
     headers: { Accept: "application/json", Referer: "https://biff.maketicket.co.kr/" },
-    redirect: "error", signal: AbortSignal.timeout(12_000),
+    // Workers 不实现 error 模式；manual 配合下方非 2xx 拒绝，仍然不会跟随跳转。
+    redirect: "manual", signal: AbortSignal.timeout(12_000),
   });
   if (!response.ok) throw new Error("GUEST_UPSTREAM_FAILED");
   const data = record.parse(await response.json());
