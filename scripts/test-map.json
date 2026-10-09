@@ -22,7 +22,7 @@
     {
       "id": "guest",
       "note": "官方 GUEST/WEB 余票、目录场次资料、想看人数与独立查询页",
-      "paths": ["apps/web/src/pages/GuestPage.tsx", "apps/web/src/pages/guest.css", "apps/web/src/want-counts.ts", "apps/api/src/guest.ts", "packages/contracts/src/guest.ts"],
+      "paths": ["apps/web/src/pages/GuestPage.tsx", "apps/web/src/pages/guest.css", "apps/web/src/want-counts.ts", "apps/api/src/guest.ts", "apps/api/src/ticket-snapshots.ts", "packages/contracts/src/guest.ts"],
       "specs": ["guest"]
     },
     {

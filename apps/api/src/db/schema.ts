@@ -1,5 +1,31 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+
+/** 官方公开库存快照；日期为空用于记录 WEB 日期发现失败或暂无开放日期。 */
+export const ticketSnapshot = sqliteTable("ticket_snapshot", {
+  id: text().primaryKey().notNull(),
+  channel: text().notNull(),
+  date: text().notNull(),
+  captured_at: integer().notNull(),
+  scheduled_at: integer(),
+  source: text().notNull(),
+  status: text().notNull(),
+  payload: text(),
+  error: text(),
+}, (table) => [
+  index("ticket_snapshot_lookup").on(table.channel, table.date, table.captured_at, table.id),
+  uniqueIndex("ticket_snapshot_scheduled").on(table.channel, table.date, table.scheduled_at),
+  check("ticket_snapshot_channel", sql`${table.channel} IN ('GUEST', 'WEB')`),
+  check("ticket_snapshot_source", sql`${table.source} IN ('scheduled', 'manual')`),
+  check("ticket_snapshot_status", sql`${table.status} IN ('ok', 'error')`),
+  check("ticket_snapshot_json", sql`${table.payload} IS NULL OR json_valid(${table.payload})`),
+]);
+
+export const ticketCollectionRun = sqliteTable("ticket_collection_run", {
+  scheduled_at: integer().primaryKey().notNull(),
+  started_at: integer().notNull(),
+  finished_at: integer(),
+});
 
 // 持久化的列名与默认值要与最初的 0001_account.sql 保持兼容。
 export const oauthPending = sqliteTable("oauth_pending", {

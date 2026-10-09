@@ -5,6 +5,8 @@
   "main": "src/worker.ts",
   "compatibility_date": "2026-09-12",
   "compatibility_flags": ["nodejs_compat"],
+  // UTC 23 点对应韩国次日 08 点；三段不重叠，08:30 后恢复五分钟采集。
+  "triggers": { "crons": ["*/5 0-22 * * *", "0-30 23 * * *", "35-55/5 23 * * *"] },
   "vars": {
     "APP_ENV": "production",
     // biff.iff.day 是迁移目标,已登记进白名单与账号系统的回调,但自定义域名尚未挂到本 Worker,

@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DatabaseSync } from "node:sqlite";
+import snapshotMigration from "../migrations/0016_ticket_snapshots.sql?raw";
+import { createD1 } from "./d1-shim";
 import app from "../src/index";
 import { guestScreening, readGuest } from "../src/guest";
 
@@ -9,7 +12,15 @@ const item = { sdCode: "222", prodSeq: 3000001823, sdDate: "2026.10.09 (Fri)", s
 const env = { APP_ENV: "local", APP_ORIGIN: "http://localhost", IFFDAY_ORIGIN: "http://127.0.0.1",
   OIDC_CLIENT_ID: "fixture", OIDC_CLIENT_SECRET: "x".repeat(32), SESSION_SECRET: "x".repeat(32) } as unknown as Env;
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
-afterEach(() => vi.unstubAllGlobals());
+let sqlite: DatabaseSync;
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(now);
+  sqlite = new DatabaseSync(":memory:");
+  sqlite.exec(snapshotMigration);
+  env.DB = createD1(sqlite);
+});
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); sqlite.close(); });
 
 describe("GUEST 官方库存", () => {
   it("普通票路由只查询 WEB 库存并保留数量，不读取 GUEST", async () => {
@@ -30,7 +41,7 @@ describe("GUEST 官方库存", () => {
     expect(fetcher).not.toHaveBeenCalled();
     const response = await app.request(`http://localhost/api/general?date=${date}`, {}, env);
     expect(response.status).toBe(502);
-    expect(await response.json()).toEqual({ error: "GENERAL_UPSTREAM_FAILED" });
+    expect(await response.json()).toMatchObject({ error: "GENERAL_UPSTREAM_FAILED", saved: true });
   });
   it.each([null, undefined, "", -1, "garbage", true, 1.5])("未知库存 %s 不转换为零", (remainSeat) => {
     expect(guestScreening({ ...item, remainSeat }, date, now)).toMatchObject({ remaining: null, status: "unknown" });
@@ -87,6 +98,26 @@ describe("GUEST 官方库存", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     fetcher.mockRejectedValue(new Error("timeout"));
-    expect((await app.request(`http://localhost/api/guest?date=${date}`, {}, env)).status).toBe(502);
+    expect((await app.request(`http://localhost/api/guest?date=${date}&refresh=1`, {}, env)).status).toBe(502);
+  });
+  it("读保存结果不重复请求，手动刷新追加快照且 GUEST 仅今天明天", async () => {
+    const fetcher = vi.fn(async () => json({ dateList: [] }));
+    vi.stubGlobal("fetch", fetcher);
+    const first = await app.request(`http://localhost/api/guest?date=${date}`, {}, env);
+    expect(first.status).toBe(200);
+    expect(await first.json()).toMatchObject({ queryDates: [date, "2026-10-10"], snapshot: { source: "manual" } });
+    await app.request(`http://localhost/api/guest?date=${date}`, {}, env);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect((await app.request(`http://localhost/api/guest?date=${date}&refresh=1`, {}, env)).status).toBe(200);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(sqlite.prepare("SELECT count(*) AS n FROM ticket_snapshot").get()).toMatchObject({ n: 2 });
+    expect((await app.request("http://localhost/api/guest?date=2026-10-11", {}, env)).status).toBe(400);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+  it("保存失败返回 503，不宣称已保存", async () => {
+    sqlite.exec("DROP TABLE ticket_snapshot");
+    const response = await app.request(`http://localhost/api/general?date=${date}`, {}, env);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "SNAPSHOT_STORAGE_FAILED" });
   });
 });

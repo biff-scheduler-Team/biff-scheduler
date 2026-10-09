@@ -73,3 +73,39 @@ test("想看统计失败不伪装成零，也不阻断普通票查询", async ({
   await expect(page.locator("[data-general-code='222'] .want-count")).toHaveText("想看人数未知");
   await expect(page.locator("[data-want-count]")).toHaveCount(0);
 });
+
+test("最新快照显示保存时间，后台提示存在而页面没有历史入口", async ({ page }) => {
+  await page.clock.install();
+  const urls: string[] = [];
+  await page.route("**/api/general**", (route) => {
+    urls.push(route.request().url());
+    return route.fulfill({ json: { ...fixture, checkedAt: new Date().toISOString(), snapshot: {
+      id: "snapshot-fixture", capturedAt: new Date().toISOString(), source: "scheduled", status: "ok",
+    } } });
+  });
+  await ready(page, "/general");
+  await expect(page.getByText(/已保存 · 后台定时采集/)).toBeVisible();
+  await expect(page.getByText(/后台每 5 分钟采集并保存快照/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /历史/ })).toHaveCount(0);
+  expect(new URL(urls[0]).searchParams.has("refresh")).toBe(false);
+  await page.getByRole("button", { name: "刷新余票" }).click();
+  await expect.poll(() => urls.some(url => new URL(url).searchParams.get("refresh") === "1")).toBe(true);
+  await page.clock.fastForward(60_000);
+  await expect.poll(() => urls.length).toBeGreaterThan(2);
+  expect(new URL(urls.at(-1)!).searchParams.has("refresh")).toBe(false);
+});
+
+test("GUEST 只有韩国当天和次日快捷日期", async ({ page }) => {
+  await page.route("**/api/guest**", (route) => route.fulfill({ json: fixture }));
+  await ready(page, "/guest");
+  const shortcuts = page.locator('.guest-dates button');
+  await expect(shortcuts).toHaveCount(2);
+  const input = page.locator('input[type="date"]');
+  const minimum = await input.getAttribute("min");
+  const maximum = await input.getAttribute("max");
+  expect(minimum).toBeTruthy();
+  expect(maximum).toBeTruthy();
+  expect(Date.parse(maximum!) - Date.parse(minimum!)).toBe(86_400_000);
+  await expect(shortcuts.first()).toHaveText(minimum!);
+  await expect(shortcuts.last()).toHaveText(maximum!);
+});

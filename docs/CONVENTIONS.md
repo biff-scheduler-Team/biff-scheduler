@@ -6,6 +6,8 @@ GUEST 查票（`/guest`，PLAN-20261009150124）：scheduler API 直连官方 GU
 
 普通票查票（`/general`，PLAN-20261009152341）：共用上述流程，两个官方请求均使用 WEB 渠道，绝不回退 GUEST 库存。两页展示 `want-counts` 的站内影片级想看人数，沿用 `filmNodeKey` 和 `wantCountLabel`；成功加载后的缺省计数为 0，未加载/失败且无缓存或目录未匹配时显示未知。仅查询，不锁座、不下单。
 
+查票快照（同 PLAN 修订 2/3）：韩国时间 08:00–08:30（含端点）每分钟，其余每 5 分钟；GUEST 仅当天/次日，WEB 所有官方开放日期。`ticket_snapshot` 只追加，不覆盖/自动删除；失败保存 `status=error,payload=null`，未开放保存成功的空列表。WEB 日期发现失败或暂无日期时 `date=''` 保存该轮发现结果。`ticket_collection_run` 按调度分钟抢占，五分钟超时允许重试，已落库的日期不重复采集。页面默认读取最新快照，无快照才首次采集；`refresh=1` 强制查询并保存，不回退旧成功掩盖最新失败。页面每分钟读取已保存结果，显示保存时间/较早数据提示，不展示历史列表。无公网调度触发接口。
+
 > 从 `.workbuddy/memory/MEMORY.md` 拆出(该文件有 3,000 字上限)。**改代码前先读这份**。
 > 关联 SKILL:仓库内 **`.codebuddy/skills/biff-catalogue-pdf-to-schedule/`**(PDF→JSON)、
 > 用户级 `parallel-agent-safe-commit`(并行提交)、`web-ui-headless-interaction-qa`(无头交互验收)、

@@ -59,12 +59,21 @@ export async function readGuest(date: string, fetcher: typeof fetch = fetch, now
 /** 两个渠道共用解析规则，但开放日期和库存必须来自各自的官方渠道。 */
 export async function readTickets(date: string, channel: "GUEST" | "WEB", fetcher: typeof fetch = fetch, now = Date.now()): Promise<GuestResult> {
   guestDate.parse(date);
+  return readTicketDate(date, channel, await readTicketDates(channel, fetcher), fetcher, now);
+}
+
+export async function readTicketDates(channel: "GUEST" | "WEB", fetcher: typeof fetch = fetch): Promise<string[]> {
   const dates = await official("rsAvailDateList", {}, fetcher, channel);
-  const entries = z.array(z.object({ sdStartDt: z.string() })).parse(dates.dateList);
-  const availableDates = [...new Set(entries.map((item) => {
+  const entries = z.array(z.object({ sdStartDt: z.string() })).max(32).parse(dates.dateList);
+  return [...new Set(entries.map((item) => {
     const raw = item.sdStartDt;
     return guestDate.parse(/^\d{8}$/.test(raw) ? `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6)}` : raw);
   }))].sort();
+}
+
+/** 定时采集复用同一轮日期列表，避免每个放映日重复请求官方日期接口。 */
+export async function readTicketDate(date: string, channel: "GUEST" | "WEB", availableDates: string[], fetcher: typeof fetch = fetch, now = Date.now()): Promise<GuestResult> {
+  guestDate.parse(date);
   const dateOpen = availableDates.includes(date);
   let screenings: GuestScreening[] = [];
   if (dateOpen) {

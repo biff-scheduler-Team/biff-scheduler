@@ -49,7 +49,8 @@ import {
 import { dailyMetricFamily, isDailyMetric, readDailySeries, readEarliestDay } from "./stat-daily";
 import { auditContributions } from "./stat-audit";
 import { kstDay, kstDayMinus } from "./day";
-import { guestDate, readTickets } from "./guest";
+import { guestDate } from "./guest";
+import { captureTicketDate, findTicketSnapshot, guestQueryDates, snapshotResult } from "./ticket-snapshots";
 import {
   FEEDBACK_ANON_DISPLAY_NAME,
   normalizeFeedbackBody,
@@ -254,10 +255,16 @@ for (const [path, channel, error] of [
 ] as const) app.get(path, limited(lookupLimiter), async (c) => {
   const date = guestDate.safeParse(c.req.query("date") ?? kstDay(Date.now()));
   if (!date.success) return c.json({ error: "INVALID_DATE" }, 400);
+  if (channel === "GUEST" && !guestQueryDates(Date.now()).includes(date.data)) return c.json({ error: "GUEST_DATE_OUT_OF_RANGE" }, 400);
   try {
-    return c.json(await readTickets(date.data, channel));
+    const cached = c.req.query("refresh") === "1" ? null : await findTicketSnapshot(c.env.DB, channel, date.data);
+    const row = cached ?? await captureTicketDate(c.env.DB, channel, date.data);
+    const result = snapshotResult(row);
+    if (!result) return c.json({ error, checkedAt: new Date(row.captured_at).toISOString(), saved: true }, 502);
+    if (channel === "GUEST") result.queryDates = guestQueryDates(Date.now());
+    return c.json(result);
   } catch {
-    return c.json({ error }, 502);
+    return c.json({ error: "SNAPSHOT_STORAGE_FAILED" }, 503);
   }
 });
 app.get("/api/auth/login", async (c) => {

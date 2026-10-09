@@ -18,6 +18,15 @@ export interface GuestResult {
   dateOpen: boolean;
   checkedAt: string;
   screenings: GuestScreening[];
+  queryDates?: string[];
+  snapshot?: TicketSnapshotInfo;
+}
+
+export interface TicketSnapshotInfo {
+  id: string;
+  capturedAt: string;
+  source: "scheduled" | "manual";
+  status: "ok" | "error";
 }
 
 export const GUEST_NOTE = "GUEST 为官方嘉宾渠道参考余量，尚未确认学生 Cinephile badge 共用此配额；需线下换票。";
