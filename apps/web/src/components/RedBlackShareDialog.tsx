@@ -63,6 +63,9 @@ interface RedBlackShareDialogProps {
   board: StickerBoard;
   /** 与页面 hero 同一份数字(传进来而不是重算 —— 图里的数必须与页面上看到的一字不差) */
   site: { total: number; red: number; black: number };
+  /** 评分先验（全站红占比）—— 页面那份，与卡片右上角评分**同一个数**
+   *  （口径见 `redblack.ts::priorOf` / `redblack-poster.ts::RbPosterInput.priorRate`） */
+  priorRate: number;
   mine: { marked: number; placed: number; quota: number };
   onDismiss: () => void;
 }
@@ -74,6 +77,7 @@ export function RedBlackShareDialog({
   syncedFaces,
   board,
   site,
+  priorRate,
   mine,
   onDismiss,
 }: RedBlackShareDialogProps) {
@@ -89,6 +93,7 @@ export function RedBlackShareDialog({
     syncedFaces,
     board,
     site,
+    priorRate,
     mine,
     today: new Date(),
   }));
@@ -149,7 +154,7 @@ export function RedBlackShareDialog({
         <Heading slot="title">红黑榜分享图</Heading>
         <Content>
           <p className="rb-share-lede">
-            总数榜 / 红榜 / 黑榜各取前 {TOP_N}；我贴过的全部列出，不限条数。
+            红榜 / 黑榜各取前 {TOP_N}；我贴过的全部列出，不限条数。
           </p>
           {/* 每一节都能单独勾掉:榜单是「全站看法」,不是每个人都愿意全发出去 */}
           <CheckboxGroup

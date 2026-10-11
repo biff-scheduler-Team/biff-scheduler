@@ -111,8 +111,9 @@ export function mergeVoteBoards(
   return { merged, moved, alreadyHad, conflicts };
 }
 
-/** 红黑榜评分 = 红票占比折算成 0–10 分（一位小数）；一票没有时 `null`（不显示，而不是 0）。
- *  ⚠ 与前端 `redblack.ts::scoreOf` 同口径 —— 前端算的是「含我自己那一票」的合并计数。 */
+/** 红黑榜**占比分** = 红票占比折算成 0–10 分（一位小数）；一票没有时 `null`（不显示，而不是 0）。
+ *  ⚠ 2026-10-12 起，前端榜单已改用**加权分**（`redblack.ts::scoreOf`，贝叶斯收缩抗小样本，
+ *    PLAN-20261011235624）—— 本函数是那之前的**占比**口径，当前仓库已无调用点，保留仅供参考。 */
 export function voteScore(counts: VoteCounts): number | null {
   const total = counts.red + counts.black;
   if (total <= 0) return null;

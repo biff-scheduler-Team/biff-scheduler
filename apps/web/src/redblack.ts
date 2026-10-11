@@ -43,7 +43,12 @@ export interface Sticker {
 /** 影片 key → 已贴贴纸(每种颜色最多 `MAX_PER_COLOR` 枚) */
 export type StickerBoard = Map<string, Sticker[]>;
 
-export type SortMode = "total" | "red" | "black";
+/** 榜单档位（2026-10-12 起**只留两榜**，PLAN-20261011235624）：
+ *  · `red` = **红榜** —— 按评分从高到低（红的占比越高越靠前）；
+ *  · `black` = **黑榜** —— 按**同一个评分**从低到高（红占比越低 = 黑占比越高越靠前）。
+ *  ⚠ 原来的 `total`（总数榜）已撤：评分口径下 `red/total` 与 `black/total` 互为倒数，
+ *    两榜是同一份名单「正着看 / 倒着看」，再留一个按票数排的第三档等于让总数榜与红榜逐字重复。 */
+export type SortMode = "red" | "black";
 
 /** 当前结构(v2)。**独立键**:v1 是「槽位 + 一部一枚」的旧模型,互相不兼容。 */
 export const LS_REDBLACK = "biff.redblack.v2";
@@ -376,35 +381,93 @@ export function tallyOf(filmKey: string, marked: boolean, board: StickerBoard): 
   return { ...counts, marked, canPlace, quota: canPlace ? 1 : 0 };
 }
 
-/** 红黑榜评分 = **红贴纸占比**,折算成 0–10 分(一位小数)。
- *  全红 = 10(看过的都满意)、全黑 = 0(全是雷)、一枚都没贴 = `null`(不显示,而不是 0)。
- *  ⚠ 分母只算**已贴**的贴纸:标记了但还没贴的是「待表态」,不是态度,不该拉低分数。 */
-export function scoreOf(counts: StickerCounts): number | null {
+/** 加权分里先验的**票数权重**（贝叶斯收缩的 `m`）。
+ *
+ *  ⚠ 取 `5` 是「温和」档：全站某片票数到 10 时先验只剩不到 1/3 的权重，票多的片基本按真实
+ *    红占比走。调**大** → 更向全站平均收缩（冷门片更难冒头）；调**小** → 更接近纯占比，
+ *    「1 红 0 黑 = 10 分」那种一票封顶就会回来。 */
+export const PRIOR_VOTES = 5;
+
+/** 全站红占比 —— 加权分里的先验 `C`。
+ *  ⚠ 一票都没有时取**中性 0.5**（谁也没表态，不预设整个站偏爱红色）。 */
+export function priorOf(crowd: CrowdCounts): number {
+  let red = 0;
+  let total = 0;
+  for (const counts of crowd.values()) {
+    red += counts.red;
+    total += counts.total;
+  }
+  return total > 0 ? red / total : 0.5;
+}
+
+/** 红黑榜评分 = **加权红占比**，折算成 0–10 分（一位小数）。
+ *
+ *  公式 `WR = (red + m·C) / (total + m)`：`m` = `PRIOR_VOTES`、`C` = 全站红占比
+ *  （IMDB Top 250 的加权评分同一手法）。它的作用是**抗小样本**——
+ *  纯占比下「1 红 0 黑」= 10.0 会压过「47 红 3 黑」= 9.4 的口碑片；加权后两者分别是
+ *  8.3 与 9.3（C = 0.8 时），口碑片正确胜出。
+ *
+ *  全红仍是最高的那一种（票多时趋近 10），全黑趋近 0；一枚都没贴 = `null`（显示成「—」）。
+ *  ⚠ 分母只算**已贴**的贴纸：标记了但还没贴的是「待表态」，不是态度，不该拉低分数。 */
+export function scoreOf(counts: StickerCounts, priorRate: number): number | null {
   if (!counts.total) return null;
-  return Math.round((counts.red / counts.total) * 100) / 10;
+  const prior = Number.isFinite(priorRate) ? Math.min(1, Math.max(0, priorRate)) : 0.5;
+  const weighted = (counts.red + PRIOR_VOTES * prior) / (counts.total + PRIOR_VOTES);
+  return Math.round(weighted * 100) / 10;
 }
 
 /* ---------------- 排序 ----------------
- * 三档全部**降序**;并列时保序 —— 所以「一枚贴纸都没有」时结果就是传入顺序
- * (影片库默认顺序:目录序 → 中文名),不引入随机,用户刷新看到的排布是稳定的。 */
+ * 两档都看**评分**（红榜降序 / 黑榜升序）；同分按票数降序，再并列保序 —— 所以「一枚贴纸
+ * 都没有」时结果就是传入顺序（影片库默认顺序：目录序 → 中文名），不引入随机，刷新稳定。
+ * ⚠ 同分那一层不是可选项：评分只有一位小数，票少时同分很常见，没有它就等于把名次交给目录序。 */
 
-/** 某一档排序**看的是哪个数**(总数 / 红 / 黑)。
- *  ⚠ 单独导出而不是埋在 `sortByCounts` 里:分享图要按同一指标**筛掉「该榜为 0」的片**
- *    (黑榜里放一堆「黑 0」毫无意义),两处各写一份必然会漂移。 */
-export function sortMetric(counts: StickerCounts | undefined, mode: SortMode): number {
-  if (!counts) return 0;
-  return mode === "red" ? counts.red : mode === "black" ? counts.black : counts.total;
+/** 某一档的**入榜门槛**：该榜那一色至少有一票（红榜看红票、黑榜看黑票）。
+ *  ⚠ 单独导出而不是埋在排序里：分享图要用它**筛掉「该榜为 0」的片**
+ *    （黑榜里列一堆「黑 0」毫无意义），两处各写一份必然会漂移。
+ *  ⚠ 门槛**不是**「评分 > 0」：一部全红的片评分很高，按升序照样会出现在黑榜末尾 —— 那就是错的。 */
+export function boardHasVotes(counts: StickerCounts | undefined, mode: SortMode): boolean {
+  if (!counts) return false;
+  return mode === "red" ? counts.red > 0 : counts.black > 0;
 }
 
-/** 榜单排序按**全体计数**走(红黑榜是大家贴的,排名当然看大家贴了多少) */
-export function sortByCounts<T extends { key: string }>(
+/** 榜单排序：按评分（红榜降序 / 黑榜升序），同分按票数降序，再并列保序。 */
+export function sortByScore<T extends { key: string }>(
   films: readonly T[],
   counts: CrowdCounts,
   mode: SortMode,
+  priorRate: number,
 ): T[] {
+  const totalOf = (key: string): number => counts.get(key)?.total ?? 0;
+  const scoreAt = (key: string): number | null => {
+    const countsForFilm = counts.get(key);
+    return countsForFilm ? scoreOf(countsForFilm, priorRate) : null;
+  };
+  const tieBreak = (a: { film: T; index: number }, b: { film: T; index: number }): number =>
+    totalOf(b.film.key) - totalOf(a.film.key) || a.index - b.index;
+  return films
+    .map((film, index) => ({ film, index, score: scoreAt(film.key) }))
+    .sort((a, b) => {
+      // 无票（`scoreOf` 给 `null`）一律排**最后** —— 两档都一样，所以先处理它
+      if (a.score === null || b.score === null) {
+        if (a.score === b.score) return tieBreak(a, b);
+        return a.score === null ? 1 : -1;
+      }
+      if (a.score !== b.score) return mode === "red" ? b.score - a.score : a.score - b.score;
+      return tieBreak(a, b);
+    })
+    .map((entry) => entry.film);
+}
+
+/** 「我贴过的」那一节的排序：按**全站总数**降序，并列保序。
+ *  ⚠ 它不是榜单而是清单（「贴了多少列多少」），所以**不**跟着榜单改成评分口径。 */
+export function sortByTotal<T extends { key: string }>(films: readonly T[], counts: CrowdCounts): T[] {
   return films
     .map((film, index) => ({ film, index }))
-    .sort((a, b) => sortMetric(counts.get(b.film.key), mode) - sortMetric(counts.get(a.film.key), mode) || a.index - b.index)
+    .sort(
+      (a, b) =>
+        (counts.get(b.film.key)?.total ?? 0) - (counts.get(a.film.key)?.total ?? 0) ||
+        a.index - b.index,
+    )
     .map((entry) => entry.film);
 }
 

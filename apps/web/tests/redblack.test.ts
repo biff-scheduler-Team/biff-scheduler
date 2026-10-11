@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { FilmNode } from "../src/app/model";
 import {
   boardFilms,
+  boardHasVotes,
   clampSpot,
   countsOf,
   countsSignature,
@@ -27,6 +28,8 @@ import {
   moveSticker,
   othersOf,
   placeSticker,
+  priorOf,
+  PRIOR_VOTES,
   purgeDemoLeavings,
   reconcile,
   reskinSticker,
@@ -36,7 +39,8 @@ import {
   scheduleSaveStickers,
   scoreOf,
   setStickerComment,
-  sortByCounts,
+  sortByScore,
+  sortByTotal,
   spotOf,
   takeSticker,
   tallyOf,
@@ -187,45 +191,93 @@ describe("配额:标记「看过」才发,一部一枚", () => {
   });
 });
 
-// 红黑榜评分 = 红贴纸占比折算成 0–10 分(用户 2026-09-16:「通过红黑榜贴纸数量做一个评分」)。
-describe("scoreOf:红黑榜评分", () => {
-  it("全红 = 10 分,全黑 = 0 分", () => {
-    expect(scoreOf({ total: 4, red: 4, black: 0 })).toBe(10);
-    expect(scoreOf({ total: 4, red: 0, black: 4 })).toBe(0);
+// 红黑榜评分 = **加权**红占比折算成 0–10 分(2026-10-12,PLAN-20261011235624)。
+// 为什么不再是纯占比:纯占比下「1 红 0 黑」= 10.0 会压过「47 红 3 黑」= 9.4 的口碑片 —— 一票封顶。
+describe("scoreOf:红黑榜评分(加权红占比)", () => {
+  it("票足够多时趋近真实红占比(天花板 / 地板由**先验**决定)", () => {
+    // 全站都投红（C = 1）时全红才是**恰好** 10；先验中性时它收敛到 9.9
+    expect(scoreOf({ total: 400, red: 400, black: 0 }, 1)).toBe(10);
+    expect(scoreOf({ total: 400, red: 400, black: 0 }, 0.5)).toBe(9.9);
+    expect(scoreOf({ total: 400, red: 0, black: 400 }, 0)).toBe(0);
+    expect(scoreOf({ total: 400, red: 0, black: 400 }, 0.5)).toBe(0.1);
   });
 
-  it("按红占比折算,保留一位小数", () => {
-    expect(scoreOf({ total: 3, red: 2, black: 1 })).toBe(6.7);
-    expect(scoreOf({ total: 2, red: 1, black: 1 })).toBe(5);
+  it("票少时向**先验**收缩:1 红 0 黑 拿不到 10 分,票多的口碑片反而更高", () => {
+    // C = 0.8、m = 5 → (1 + 5×0.8) / (1 + 5) = 0.833… → 8.3
+    expect(scoreOf({ total: 1, red: 1, black: 0 }, 0.8)).toBe(8.3);
+    // 47 红 3 黑 → (47 + 4) / 55 = 0.927… → 9.3（旧口径下它只有 9.4 而 1 票封顶是 10.0）
+    expect(scoreOf({ total: 50, red: 47, black: 3 }, 0.8)).toBe(9.3);
+  });
+
+  it("公式逐字:(red + PRIOR_VOTES × C) / (total + PRIOR_VOTES)", () => {
+    expect(PRIOR_VOTES).toBe(5);
+    // 3 红 2 黑,C = 0.6 → (3 + 3) / 10 = 6.0
+    expect(scoreOf({ total: 5, red: 3, black: 2 }, 0.6)).toBe(6);
+  });
+
+  it("先验非法(NaN / 越界)夹回 [0, 1]", () => {
+    const counts = { total: 5, red: 5, black: 0 };
+    expect(scoreOf(counts, Number.NaN)).toBe(scoreOf(counts, 0.5));
+    expect(scoreOf(counts, 2)).toBe(scoreOf(counts, 1));
+    expect(scoreOf(counts, -1)).toBe(scoreOf(counts, 0));
   });
 
   it("一枚都没贴 → null(显示成「—」,而不是 0 分)", () => {
-    expect(scoreOf({ total: 0, red: 0, black: 0 })).toBeNull();
+    expect(scoreOf({ total: 0, red: 0, black: 0 }, 0.5)).toBeNull();
   });
 });
 
-// 排序按**全体票数**(服务端聚合)走:红黑榜是大家贴出来的榜,排名自然看大家贴了多少。
-describe("排序:三档降序,并列保序", () => {
-  const crowd: CrowdCounts = new Map([
-    ["a", { total: 1, red: 0, black: 1 }],
-    ["b", { total: 1, red: 1, black: 0 }],
-  ]);
+describe("priorOf:全站红占比(加权分里的先验 C)", () => {
+  it("整份票数里红票的占比", () => {
+    const crowd: CrowdCounts = new Map([
+      ["a", { total: 3, red: 3, black: 0 }],
+      ["b", { total: 1, red: 0, black: 1 }],
+    ]);
+    expect(priorOf(crowd)).toBe(0.75);
+  });
+
+  it("一票都没有 → 中性 0.5(不预设全站偏爱红色)", () => {
+    expect(priorOf(new Map())).toBe(0.5);
+  });
+});
+
+describe("boardHasVotes:入榜门槛(该榜那一色至少一票)", () => {
+  it("红榜看红票 / 黑榜看黑票 —— 全红的片不该进黑榜", () => {
+    const allRed = { total: 3, red: 3, black: 0 };
+    const allBlack = { total: 2, red: 0, black: 2 };
+    expect(boardHasVotes(allRed, "red")).toBe(true);
+    expect(boardHasVotes(allRed, "black")).toBe(false);
+    expect(boardHasVotes(allBlack, "red")).toBe(false);
+    expect(boardHasVotes(allBlack, "black")).toBe(true);
+    expect(boardHasVotes(undefined, "red")).toBe(false);
+  });
+});
+
+// 排序按**评分**走(用户 2026-10-12:「红榜以及黑榜 要按评分来算 而不是单纯按数量来算」)。
+describe("排序:红榜评分降序 / 黑榜评分升序", () => {
   const films = ["a", "b", "c", "d"].map((key) => ({ key }));
+  const crowd: CrowdCounts = new Map([
+    ["a", { total: 5, red: 4, black: 1 }], // C = 0.8 → 8.0 分
+    ["b", { total: 1, red: 1, black: 0 }], // → 8.3 分
+    ["c", { total: 3, red: 0, black: 3 }], // → 5.0 分
+  ]);
 
-  it("按总数降序(有票的排前面,并列保序)", () => {
-    expect(sortByCounts(films, crowd, "total").map((f) => f.key)).toEqual(["a", "b", "c", "d"]);
+  it("红榜:评分高的在前(无票的 d 排最后)", () => {
+    expect(sortByScore(films, crowd, "red", 0.8).map((f) => f.key)).toEqual(["b", "a", "c", "d"]);
   });
 
-  it("红榜:红票在前", () => {
-    expect(sortByCounts(films, crowd, "red").map((f) => f.key)).toEqual(["b", "a", "c", "d"]);
+  it("黑榜:同一个评分升序(红占比越低越靠前)", () => {
+    expect(sortByScore(films, crowd, "black", 0.8).map((f) => f.key)).toEqual(["c", "a", "b", "d"]);
   });
 
-  it("黑榜:黑票在前", () => {
-    expect(sortByCounts(films, crowd, "black").map((f) => f.key)).toEqual(["a", "b", "c", "d"]);
-  });
-
-  it("一票都没有 → 原顺序不变(即影片库默认顺序)", () => {
-    expect(sortByCounts(films, new Map(), "total").map((f) => f.key)).toEqual([
+  it("一票都没有 → 两档都排最后,内部保序(影片库默认顺序)", () => {
+    expect(sortByScore(films, new Map(), "red", 0.5).map((f) => f.key)).toEqual([
+      "a",
+      "b",
+      "c",
+      "d",
+    ]);
+    expect(sortByScore(films, new Map(), "black", 0.5).map((f) => f.key)).toEqual([
       "a",
       "b",
       "c",
@@ -233,15 +285,30 @@ describe("排序:三档降序,并列保序", () => {
     ]);
   });
 
-  it("多票时按票数降序,且三档各按自己的维度", () => {
-    const more: CrowdCounts = new Map([
-      ["a", { total: 5, red: 4, black: 1 }],
-      ["b", { total: 3, red: 1, black: 2 }],
-      ["c", { total: 8, red: 0, black: 8 }],
+  it("同分按票数降序(评分只到一位小数,大票量时同分很常见)", () => {
+    // C = 0.8 下这两个都是 8.3 分 → 票多的 b 排前面
+    const tie: CrowdCounts = new Map([
+      ["a", { total: 120, red: 100, black: 20 }],
+      ["b", { total: 240, red: 200, black: 40 }],
     ]);
-    expect(sortByCounts(films, more, "total").map((f) => f.key)).toEqual(["c", "a", "b", "d"]);
-    expect(sortByCounts(films, more, "red").map((f) => f.key)).toEqual(["a", "b", "c", "d"]);
-    expect(sortByCounts(films, more, "black").map((f) => f.key)).toEqual(["c", "b", "a", "d"]);
+    expect([scoreOf(tie.get("a")!, 0.8), scoreOf(tie.get("b")!, 0.8)]).toEqual([8.3, 8.3]);
+    const tied = ["a", "b"].map((key) => ({ key }));
+    expect(sortByScore(tied, tie, "red", 0.8).map((f) => f.key)).toEqual(["b", "a"]);
+    expect(sortByScore(tied, tie, "black", 0.8).map((f) => f.key)).toEqual(["b", "a"]);
+  });
+});
+
+describe("sortByTotal:「我贴过的」是清单,仍按全站总数降序", () => {
+  it("票多的在前,无票的排最后", () => {
+    const crowd: CrowdCounts = new Map([
+      ["a", { total: 1, red: 1, black: 0 }],
+      ["b", { total: 5, red: 0, black: 5 }],
+    ]);
+    expect(sortByTotal(["a", "b", "c"].map((key) => ({ key })), crowd).map((f) => f.key)).toEqual([
+      "b",
+      "a",
+      "c",
+    ]);
   });
 });
 

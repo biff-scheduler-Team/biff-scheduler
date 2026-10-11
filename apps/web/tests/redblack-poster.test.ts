@@ -52,15 +52,14 @@ function input(over: Partial<RbPosterInput> = {}): RbPosterInput {
 const boardOf = (entries: Record<string, "red" | "black">): StickerBoard =>
   new Map(Object.entries(entries).map(([k, type]) => [k, [{ id: `s-${k}`, type, posX: 0.5, posY: 0.5 }]]));
 
-describe("buildRbPosterModel:三个榜各 TOP10,判据与页面同口径", () => {
-  it("总数榜按红 + 黑、红榜按红、黑榜按黑 —— 三榜各排各的", () => {
+describe("buildRbPosterModel:两个榜各 TOP10,判据与页面同口径", () => {
+  it("红榜按评分从高到低、黑榜从低到高 —— 两榜都看评分(2026-10-12 撤了总数榜)", () => {
     const films = [film("a", "甲"), film("b", "乙"), film("c", "丙")];
     const c = crowd({ a: [9, 1], b: [1, 9], c: [5, 5] });
     const model = buildRbPosterModel(input({ films, crowd: c }));
 
     const byLabel = new Map(model.boards.map((b) => [b.label, b.rows.map((r) => r.key)]));
-    // 总数:a=10 与 c=10 并列 → 按目录序稳定(a 在 c 前);b=10 也是 10!三者同分 → 全按目录序
-    expect(byLabel.get("总数榜")).toEqual(["a", "b", "c"]);
+    // C = 0.5、m = 5：a = (9 + 2.5)/15 = 7.7、c = 5.0、b = (1 + 2.5)/15 = 2.3
     expect(byLabel.get("红榜")).toEqual(["a", "c", "b"]);
     expect(byLabel.get("黑榜")).toEqual(["b", "c", "a"]);
   });
@@ -70,12 +69,32 @@ describe("buildRbPosterModel:三个榜各 TOP10,判据与页面同口径", () =>
     const c = crowd(Object.fromEntries(films.map((f, i) => [f.key, [14 - i, 0] as [number, number]])));
     const model = buildRbPosterModel(input({ films, crowd: c }));
 
-    const total = model.boards.find((b) => b.mode === "total")!;
-    expect(total.rows).toHaveLength(TOP_N);
-    expect(total.label).toBe("总数榜");
-    expect(total.hint).toBe("按红 + 黑贴纸数");
-    expect(total.rows[0].key).toBe("f0");
-    expect(model.boards.find((b) => b.mode === "red")!.hint).toBe("按红贴纸数");
+    // 全是红票 → 黑榜那一色一票都没有，整节不出现
+    expect(model.boards.map((b) => b.mode)).toEqual(["red"]);
+    const red = model.boards[0];
+    expect(red.rows).toHaveLength(TOP_N);
+    expect(red.label).toBe("红榜");
+    expect(red.hint).toBe("按评分从高到低");
+    // 全站全是红票 → 每部评分都是 10.0，名次由**票数**定：f0 票最多，排第一
+    expect(red.rows[0].key).toBe("f0");
+    expect(red.rows[0].score).toBe(10);
+  });
+
+  it("每行带**评分**（与页面卡片角标同一处实现）", () => {
+    const films = [film("a"), film("b")];
+    const model = buildRbPosterModel(input({ films, crowd: crowd({ a: [9, 1], b: [0, 4] }), priorRate: 0.5 }));
+    const scores = new Map(model.boards.flatMap((b) => b.rows.map((r) => [r.key, r.score])));
+    // a = (9 + 2.5)/15 = 7.7；b = (0 + 2.5)/9 = 2.8
+    expect(scores.get("a")).toBe(7.7);
+    expect(scores.get("b")).toBe(2.8);
+  });
+
+  it("priorRate 传进来就用它（页面那份），不传才按 crowd 现算", () => {
+    const films = [film("a")];
+    const c = crowd({ a: [1, 1] });
+    // C = 1 → (1 + 5)/7 = 8.6；按 crowd 现算 C = 0.5 → (1 + 2.5)/7 = 5.0
+    expect(buildRbPosterModel(input({ films, crowd: c, priorRate: 1 })).boards[0].rows[0].score).toBe(8.6);
+    expect(buildRbPosterModel(input({ films, crowd: c })).boards[0].rows[0].score).toBe(5);
   });
 
   it("没票的片不进榜(写着一部 0 红 0 黑的片没有意义)", () => {
@@ -83,17 +102,17 @@ describe("buildRbPosterModel:三个榜各 TOP10,判据与页面同口径", () =>
     const model = buildRbPosterModel(input({ films, crowd: crowd({ a: [1, 0], b: [0, 1] }) }));
     const keys = model.boards.flatMap((b) => b.rows.map((r) => r.key));
     expect(keys).not.toContain("silent");
-    expect(model.boards.find((b) => b.mode === "total")!.rows).toHaveLength(2);
+    expect(model.boards.find((b) => b.mode === "red")!.rows).toHaveLength(1);
   });
 
-  it("一个榜都没有票 → 该榜整节不出现(不留空节)", () => {
+  it("某一榜那一色一票都没有 → 该榜整节不出现(不留空节)", () => {
     const films = [film("a"), film("b")];
     // 只有红票 → 黑榜是空的
     const model = buildRbPosterModel(input({ films, crowd: crowd({ a: [3, 0], b: [1, 0] }) }));
-    expect(model.boards.map((b) => b.mode)).toEqual(["total", "red"]);
+    expect(model.boards.map((b) => b.mode)).toEqual(["red"]);
   });
 
-  it("完全空榜 → 三节都不出现(绘制层会给一句空态)", () => {
+  it("完全空榜 → 两节都不出现(绘制层会给一句空态)", () => {
     const model = buildRbPosterModel(input({ films: [film("a")] }));
     expect(model.boards).toEqual([]);
     expect(model.myRows).toEqual([]);
@@ -132,7 +151,7 @@ describe("buildRbPosterModel:我贴过的那一节", () => {
     ]);
   });
 
-  it("按全站总数降序(= 页面默认档同口径),并列按目录序", () => {
+  it("按全站总数降序(它是清单不是榜,不跟榜单改成评分口径),并列按目录序", () => {
     const films = [film("a"), film("b"), film("c")];
     const model = buildRbPosterModel(
       input({
@@ -269,12 +288,12 @@ describe("buildRbPosterModel:分享哪些节由用户勾选", () => {
     expect(model.boards.map((b) => b.mode)).toEqual(["red"]);
     expect(model.myRows).toEqual([]);
     // 渲染顺序**按固定档位序**,不随勾选顺序变
-    const both = buildRbPosterModel(input({ films, crowd: c, board, sections: sections("black", "total") }));
-    expect(both.boards.map((b) => b.mode)).toEqual(["total", "black"]);
+    const both = buildRbPosterModel(input({ films, crowd: c, board, sections: sections("black", "red") }));
+    expect(both.boards.map((b) => b.mode)).toEqual(["red", "black"]);
   });
 
   it("不勾「我贴过的」→ 那一节不出现,但标题里的条数照旧(不变成 0 部)", () => {
-    const model = buildRbPosterModel(input({ films, crowd: c, board, sections: sections("total") }));
+    const model = buildRbPosterModel(input({ films, crowd: c, board, sections: sections("red") }));
     expect(model.myRows).toEqual([]);
     expect(model.myCount).toBe(2);
     expect(model.myTitle).toBe("我贴过的 2 部");
@@ -291,7 +310,7 @@ describe("buildRbPosterModel:分享哪些节由用户勾选", () => {
 
   it("不传 sections = 全选(默认给全,「少给」才需要动作)", () => {
     const model = buildRbPosterModel(input({ films, crowd: c, board }));
-    expect(model.boards.map((b) => b.mode)).toEqual(["total", "red", "black"]);
+    expect(model.boards.map((b) => b.mode)).toEqual(["red", "black"]);
     expect(model.myRows).toHaveLength(2);
   });
 
@@ -304,8 +323,8 @@ describe("buildRbPosterModel:分享哪些节由用户勾选", () => {
 describe("rbPosterHeight:与绘制同源", () => {
   const ONE_ROW = ROW_H;
 
-  it("「我贴过的」多一行 → 高度正好多一行(且两边的三榜完全一样)", () => {
-    // base:b 没有票 → 三榜只由 a 组成;但 b 我贴过 → 只在「我贴过的」多一行
+  it("「我贴过的」多一行 → 高度正好多一行(且两边的榜单完全一样)", () => {
+    // base:b 没有票 → 两榜只由 a 组成;但 b 我贴过 → 只在「我贴过的」多一行
     const base = buildRbPosterModel(
       input({ films: [film("a"), film("b")], crowd: crowd({ a: [1, 0] }), board: boardOf({ a: "red" }) }),
     );
@@ -316,11 +335,11 @@ describe("rbPosterHeight:与绘制同源", () => {
         board: boardOf({ a: "red", b: "black" }),
       }),
     );
-    expect(plus.boards).toEqual(base.boards); // 三榜一字未变,只有我的那一节多一行
+    expect(plus.boards).toEqual(base.boards); // 两榜一字未变,只有我的那一节多一行
     expect(rbPosterHeight(plus) - rbPosterHeight(base)).toBe(ONE_ROW);
   });
 
-  it("空榜不留高度:没有三榜节 / 没有我的那一节时更矮", () => {
+  it("空榜不留高度:没有榜单节 / 没有我的那一节时更矮", () => {
     const empty = buildRbPosterModel(input({ films: [film("a")] }));
     const withBoard = buildRbPosterModel(
       input({ films: [film("a")], crowd: crowd({ a: [1, 0] }), board: boardOf({ a: "red" }) }),
@@ -332,7 +351,7 @@ describe("rbPosterHeight:与绘制同源", () => {
 });
 
 describe("rbPosterRow:行内海报缩略图(2026-10-08)", () => {
-  it("目录里有海报就带出来 —— 三榜与「我贴过的」是同一份来源,不另立一套", () => {
+  it("目录里有海报就带出来 —— 榜单与「我贴过的」是同一份来源,不另立一套", () => {
     const model = buildRbPosterModel(
       input({
         films: [film("a", "甲", "", "/posters/a.jpg"), film("b", "乙")],

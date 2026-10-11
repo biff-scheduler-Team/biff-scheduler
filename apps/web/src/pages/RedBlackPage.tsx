@@ -58,6 +58,7 @@ import {
   othersOf,
   othersSkins,
   placeSticker,
+  priorOf,
   purgeDemoLeavings,
   reconcile,
   reskinSticker,
@@ -68,7 +69,7 @@ import {
   scoreOf,
   setStickerComment,
   skinsSignature,
-  sortByCounts,
+  sortByScore,
   takeSticker,
   tallyOf,
   tiltOf,
@@ -120,8 +121,10 @@ const LazyDiscussionBoardDialog = lazy(() =>
   import("../components/DiscussionBoardDialog").then((m) => ({ default: m.DiscussionBoardDialog })),
 );
 
+/** 榜单档位（2026-10-12 起**只留两榜**，PLAN-20261011235624）。
+ *  ⚠ 「总数」已撤：两榜都按**评分**排（红榜从高到低 / 黑榜从低到高），而评分口径下
+ *    `red/total` 与 `black/total` 互为倒数 —— 再留一个按票数排的第三档，只会与红榜逐字重复。 */
 const SORTS: Array<[SortMode, string]> = [
-  ["total", "总数"],
   ["red", "红榜"],
   ["black", "黑榜"],
 ];
@@ -255,6 +258,9 @@ interface RbCardProps {
    *  ⚠ 不要直接传服务端那份原始 counts:那样在「我刚收回、服务端还没撤」的窗口里,
    *    卡片内的 `othersOf` 会把我那一票当成别人的票画出来(用户 2026-09-23 报的「仍残留」)。 */
   counts: StickerCounts;
+  /** 评分先验（全站红占比）—— 海报右上角那个加权分要用它（`redblack.ts::scoreOf`）。
+   *  ⚠ 与页面 / 分享图**共用页面那一个数**：各算一份会让同一屏里的两处评分对不上。 */
+  priorRate: number;
   /** 这一部**按款**的票数（服务端聚合，2026-09-29）。稀疏：没有款数据的片是 `undefined`。
    *  ⚠ 与 `counts` 不同，它**原样来自服务端**（**含我自己那一枚** —— 服务端不知道谁是「我」），
    *    所以用之前必须在卡片内 `othersSkins` 扣掉；页面那层不替它做 `reconcile`。
@@ -300,7 +306,8 @@ export function RedBlackPage() {
   const { films, filmByKey: allFilmByKey } = useCatalog();
   const { params, update } = useQuery();
   const query = params.get("q") ?? "";
-  const mode = (params.get("sort") as SortMode | null) ?? "total";
+  // ⚠ 老的 `?sort=total`（总数榜已撤）与任何非法值都落回**红榜** —— 不报错、不给空页（2026-10-12）
+  const mode: SortMode = params.get("sort") === "black" ? "black" : "red";
   // 「只看我贴过」——**独立参数**(与 `sort` 正交:排序是给全站排名次,筛选是换一个视野)。
   // 塞进 `sort` 会与「顺序冻结 / 重新排序」那套机制纠缠,得不偿失。
   const onlyMine = params.get("only") === "mine";
@@ -424,6 +431,10 @@ export function RedBlackPage() {
     });
   }, []);
   const crowd: CrowdCounts = useMemo(() => crowdOf(votes), [votes]);
+  /** 评分先验 = **全站红占比**（`redblack.ts::priorOf`），加权分公式里的 `C`。
+   *  ⚠ 页面卡片与分享图**共用这一份**（分享图由 `RedBlackShareDialog` 显式传入，不自己再算）——
+   *    各算一份的话，同一屏里卡片角标与分享图行会因为基准不同而差一位小数。 */
+  const priorRate = useMemo(() => priorOf(crowd), [crowd]);
   /** 服务端已确认含我的那份票,与 `crowd` 同形状(每片恒 1 枚) */
   const syncedCrowd: CrowdCounts = useMemo(() => crowdOf(syncedVotes), [syncedVotes]);
   /** 重排触发器 —— 每 +1 就重排一次(见下面 `sorted` 的依赖)。
@@ -431,7 +442,7 @@ export function RedBlackPage() {
   const [sortTick, setSortTick] = useState(0);
   // 票数是**异步**到的,而榜单在它到达之前就排过一次序了 —— 那一次把每部都判成 0 分(并列),
   // 稳定排序于是原样返回 `boardFilms(films)`,也就是**影片库目录序**。结果就是默认档写着
-  // 「按贴纸总数从高到低」,首屏给的却是目录序(用户 2026-09-22:「好像既不是总数 也不是红数」)。
+  // 「按评分从高到低」,首屏给的却是目录序(用户 2026-09-22:「好像既不是总数 也不是红数」)。
   // 所以票数一结算就**自动补排一次**(仅此一次),之后照旧冻结(2026-09-16 用户:「跳动很频繁」)。
   // ⚠ 用户已经动过手就**跳过**:在读到一半时整页重排等于把人顶走 —— 那种情况下
   //   「有新贴纸 · 重新排序」本来就亮着,交给他自己点。
@@ -500,8 +511,8 @@ export function RedBlackPage() {
   const orderRef = useRef(orderKey);
   const sorted = useMemo(() => {
     orderRef.current = orderKey;
-    return sortByCounts(candidates, crowd, mode);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 故意不依赖 crowd / orderKey,见上面的注释
+    return sortByScore(candidates, crowd, mode, priorRate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 故意不依赖 crowd / orderKey / priorRate,见上面的注释
   }, [candidates, mode, sortTick]);
   const orderStale = orderRef.current !== orderKey;
   // 「只看我贴过」**只在渲染时过滤**,不并进 `candidates`:
@@ -1219,7 +1230,8 @@ export function RedBlackPage() {
       <div className="rb-controls">
         {/* ⚠ 文案按用户 2026-09-29 的建议收短(`label` 是同一句话的长版本,留给读屏) */}
         <QuerySearchField label="搜索影片或场次编号" placeholder="搜索影片 / 场次编号" />
-        {/* 排序:三档互斥 → **一个**分段控件(Segmented Control),不再是三个各自带边框的胶囊。
+        {/* 排序:两档互斥（2026-10-12 撤了「总数」）→ **一个**分段控件(Segmented Control),
+            不再是几个各自带边框的胶囊。
             ⚠ `role=group` + `aria-pressed` 一个都不能少:分段控件只是视觉形态,语义上它仍是
               「一组互斥选项」(用户 2026-09-29:「筛选切换(总数、红榜、黑榜)保持统一的分段控件样式」)。 */}
         <div className="rb-seg" role="group" aria-label="榜单排序">
@@ -1229,7 +1241,7 @@ export function RedBlackPage() {
               type="button"
               className="rb-seg-btn"
               aria-pressed={mode === value}
-              onClick={() => update({ sort: value === "total" ? null : value }, true)}
+              onClick={() => update({ sort: value === "red" ? null : value }, true)}
             >
               {label}
             </button>
@@ -1285,8 +1297,8 @@ export function RedBlackPage() {
             原来它贴在「重新排序」右侧,两者视觉上连成一个组,被读成「一个奇怪的胶囊按钮」——
             而它根本不是按钮(用户 2026-09-29)。 */}
         <p className="rb-sort-hint">
-          {mode === "total" ? "按贴纸总数" : mode === "red" ? "按红贴纸数" : "按黑贴纸数"}
-          从高到低；贴纸变化不会打乱当前顺序
+          {mode === "red" ? "按评分从高到低" : "按评分从低到高"}
+          ；评分 = 红票占比按全站平均加权（票少的会向平均收缩）；贴纸变化不会打乱当前顺序
         </p>
         {/* 换款入口的一句用法 —— 鼠标与触屏**都是长按**（2026-10-05），而长按在界面上完全
             不可见：不写出来就真的没人知道（用户 2026-10-05 报的正是「整个换贴纸的地方没有提示」）。
@@ -1329,6 +1341,7 @@ export function RedBlackPage() {
                 /* ⚠ 直接传 `board.get(...)` 的结果(可能 undefined),不要 `?? []` —— 那会每次造新数组,memo 失效 */
                 placed={board.get(film.key)}
                 counts={filmCounts.get(film.key)!}
+                priorRate={priorRate}
                 skins={filmSkinsByKey.get(film.key)}
                 syncedFace={syncedFaceByKey.get(film.key)}
                 fresh={freshKeys.has(film.key)}
@@ -1364,6 +1377,8 @@ export function RedBlackPage() {
             syncedFaces={syncedFaceByKey}
             board={board}
             site={{ total: totals.total, red: totals.red, black: totals.black }}
+            /* 评分先验与页面卡片**同一个数**：分享图上每一行的评分必须与卡片角标逐字一致 */
+            priorRate={priorRate}
             mine={{ marked: totals.marked, placed: totals.placed, quota: totals.quota }}
             onDismiss={() => setShareOpen(false)}
           />
@@ -1406,6 +1421,7 @@ const RbCard = memo(function RbCard({
   canPlace,
   placed,
   counts,
+  priorRate,
   skins,
   syncedFace,
   fresh,
@@ -1433,8 +1449,8 @@ const RbCard = memo(function RbCard({
   // ⚠ 传进来的 `counts` 已由页面 `reconcile`(扣掉「服务端已确认含我」的那份、加回我当前的票),
   //   所以这里减掉 `mine` 得到的正是「服务端 counts − 服务端那份里的我」—— 撤票那一拍就少一枚。
   const others = othersOf(counts, mine);
-  // 这一部**自己的**评分(红票占比折算 0–10);还没有人贴过 → null(显示成「—」)
-  const filmScore = scoreOf(counts);
+  // 这一部**自己的**评分(加权红占比折算 0–10);还没有人贴过 → null(显示成「—」)
+  const filmScore = scoreOf(counts, priorRate);
 
   const myStickers = placed ?? EMPTY_STICKERS;
   // 「别人的贴纸**各是什么款**」= 服务端按款分布 − **服务端已确认的**我那一枚
@@ -1700,7 +1716,7 @@ const RbCard = memo(function RbCard({
           )}
           <span
             className="rb-poster-score"
-            title="这部片的红票占比折算成 0–10 分；还没有人贴时是「—」"
+            title="红黑榜评分：红票占比按全站平均加权（票少会向平均收缩），折算成 0–10 分；还没有人贴时是「—」"
             aria-label={`评分 ${filmScore === null ? "还没有" : filmScore.toFixed(1)}`}
           >
             {filmScore === null ? "—" : filmScore.toFixed(1)}

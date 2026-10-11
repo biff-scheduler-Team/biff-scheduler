@@ -4,9 +4,10 @@
 //   可被 node 单测直接 import(所以日历 / 日期都靠注入,不读系统时钟)。
 //   弹层 / 剪贴板 / 下载 = `components/RedBlackShareDialog.tsx`。
 //
-// ★ 三类内容,一次说清(用户 2026-09-22 定):
-//   ① **总数榜 / 红榜 / 黑榜 各 TOP10** —— 判据**逐字复用页面那三个档位**(`redblack.ts::sortByCounts`),
+// ★ 三类内容,一次说清(用户 2026-09-22 定;2026-10-12 起**总数榜已撤**,只留两榜):
+//   ① **红榜 / 黑榜 各 TOP10** —— 判据**逐字复用页面那两个档位**(`redblack.ts::sortByScore`),
 //      不另立一套排名规则:分享图上看到的顺序必须与页面上点同档位时看到的一致。
+//      两榜都按**评分**(加权红占比,见 `redblack.ts::scoreOf`),红榜从高到低、黑榜从低到高。
 //   ② **我贴过的** —— **不限条数**(贴了多少列多少),每行给「我贴的那一色 + 全站红黑数」。
 //   ③ 底部署名:网站 + 作者。
 //
@@ -35,12 +36,15 @@ import { FALLBACK_SKIN, resolveSkin, skinSpec, type StickerSkin } from "./sticke
 import { dateInfo } from "./util";
 import {
   boardFilms,
+  boardHasVotes,
   countsOf,
   crowdStickers,
   othersOf,
   othersSkins,
-  sortByCounts,
-  sortMetric,
+  priorOf,
+  scoreOf,
+  sortByScore,
+  sortByTotal,
   tiltOf,
   type CrowdCounts,
   type FilmSkinCounts,
@@ -87,6 +91,10 @@ export interface RbPosterRow {
   /** 全站红 / 黑票数 */
   red: number;
   black: number;
+  /** 这一部的**评分**（加权红占比 ×10，一位小数）—— 与页面卡片角标**同一处实现**
+   *  (`redblack.ts::scoreOf`)。
+   *  ⚠ 榜单**按它排**，行里也印它：只印红黑数的话，读图的人看不出「为什么这部排在前面」。 */
+  score: number | null;
   /** 我贴的那一色;没贴过 = null */
   mine: "red" | "black" | null;
   /** 这一行要摊出来的**全部**贴纸(别人的 + 我那一枚)。
@@ -102,9 +110,9 @@ export interface RbPosterRow {
 
 export interface RbPosterBoard {
   mode: SortMode;
-  /** 「总数榜」/「红榜」/「黑榜」 */
+  /** 「红榜」/「黑榜」 */
   label: string;
-  /** 口径说明,例如「按红贴纸数」 */
+  /** 口径说明,例如「按评分从高到低」 */
   hint: string;
   rows: RbPosterRow[];
 }
@@ -147,6 +155,10 @@ export interface RbPosterInput {
   site: { total: number; red: number; black: number };
   /** 页面 hero 那份「我的」统计 */
   mine: { marked: number; placed: number; quota: number };
+  /** 评分先验（全站红占比）—— 权衡「票少 × 评分」的那个 `C`（`redblack.ts::priorOf`）。
+   *  ⚠ **页面把它算好传进来**（`RedBlackPage` 的 `priorRate`），好让分享图行的评分与页面卡片角标
+   *    逐字一致；不传时退回按 `crowd` 现算，单测与最小调用方不必自己造这个数。 */
+  priorRate?: number;
   /** 出图日期 —— **注入**而不是读时钟:否则单测断不了文案 */
   today: Date;
   /** 要分享哪几节(用户勾选)。**不传 = 全选** —— 分享图默认给全,是「少给」才需要动作 */
@@ -154,15 +166,14 @@ export interface RbPosterInput {
 }
 
 const BOARDS: ReadonlyArray<{ mode: SortMode; label: string; hint: string }> = [
-  { mode: "total", label: "总数榜", hint: "按红 + 黑贴纸数" },
-  { mode: "red", label: "红榜", hint: "按红贴纸数" },
-  { mode: "black", label: "黑榜", hint: "按黑贴纸数" },
+  { mode: "red", label: "红榜", hint: "按评分从高到低" },
+  { mode: "black", label: "黑榜", hint: "按评分从低到高" },
 ];
 
 /** 长图里**可以单独勾掉**的节。
- *  为什么要有这个:榜单是「全站看法」,不是每个人都愿意把三榜全发出去
+ *  为什么要有这个:榜单是「全站看法」,不是每个人都愿意把两榜全发出去
  *  (2026-09-22 用户:「分享的时候 选一下需要分享的长图内容吧 有的人不想所有的榜单都分享」)。
- *  ⚠ 顺序 = 渲染顺序,不随勾选顺序变(先总数 / 红 / 黑,「我贴过的」收尾)。 */
+ *  ⚠ 顺序 = 渲染顺序,不随勾选顺序变(先红 / 黑,「我贴过的」收尾)。 */
 export type RbPosterSection = SortMode | "mine";
 
 /** 可勾选的节 —— 榜的名字**只写 `BOARDS` 那一份**(别在这里再抄一遍)。 */
@@ -200,6 +211,7 @@ function toRow(
   board: StickerBoard,
   skins: FilmSkinCounts,
   syncedFaces: ReadonlyMap<string, SyncedStickerFace>,
+  priorRate: number,
 ): RbPosterRow {
   const counts: StickerCounts = crowd.get(film.key) ?? { total: 0, red: 0, black: 0 };
   const placed = board.get(film.key) ?? [];
@@ -226,6 +238,7 @@ function toRow(
     en: film.en && film.en !== film.zh ? film.en : "",
     red: counts.red,
     black: counts.black,
+    score: scoreOf(counts, priorRate),
     mine: mySticker?.type ?? null,
     stickers,
     mineIndex,
@@ -240,39 +253,43 @@ const NO_SYNCED_FACES: ReadonlyMap<string, SyncedStickerFace> = new Map();
 /**
  * 构建分享图模型。
  *
- * ⚠ 两条**展示**规则(不是排名规则,故不写在 `sortByCounts` 里):
- *  ① **该榜指标为 0 的片不进该榜** —— 黑榜里列一堆「黑 0」毫无意义;票不够 10 部时榜就短一些。
- *     ⚠ 按**每榜各自的指标**筛(`redblack.ts::sortMetric`),不是笼统的「有没有票」:
- *       只看「总数大于 0」的话,一部 3 红 0 黑 的片会照样出现在黑榜里。
- *  ② 三榜都取**前 `TOP_N`**;「我贴过的」那一节**不截断**。
+ * ⚠ 两条**展示**规则(不是排名规则,故不写在 `sortByScore` 里):
+ *  ① **该榜那一色一票都没有的片不进该榜** —— 黑榜里列一堆「黑 0」毫无意义;票不够 10 部时榜就短一些。
+ *     ⚠ 按**每榜各自的颜色**筛(`redblack.ts::boardHasVotes`),不是笼统的「有没有票」,
+ *       也**不是**「评分 > 0」:只看「总数大于 0」的话,一部 3 红 0 黑 的片会照样出现在黑榜里。
+ *  ② 两榜都取**前 `TOP_N`**;「我贴过的」那一节**不截断**。
  */
 export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
   const { films, crowd, board, skins = {}, syncedFaces = NO_SYNCED_FACES, site, mine, today } = input;
   const picked = input.sections ?? allSections();
   const candidates = boardFilms(films);
+  // 评分先验：优先用页面算好的那份（这样分享图行与卡片角标逐字一致）；没传才按**整份影片库**的
+  // 票数现算 —— 只看当前榜单那几部的话，先验会随榜单长短变，同一张图里的两榜也会用上不同基准。
+  const priorRate = input.priorRate ?? priorOf(crowd);
 
   // 勾掉的榜**连算都不算**(不是算完再藏起来):少一节就该少一节的开销
   const boards: RbPosterBoard[] = BOARDS.filter((entry) => picked.has(entry.mode))
     .map((entry) => {
-      const rows = sortByCounts(
-        candidates.filter((film) => sortMetric(crowd.get(film.key), entry.mode) > 0),
+      const rows = sortByScore(
+        candidates.filter((film) => boardHasVotes(crowd.get(film.key), entry.mode)),
         crowd,
         entry.mode,
+        priorRate,
       )
         .slice(0, TOP_N)
-        .map((film) => toRow(film, crowd, board, skins, syncedFaces));
+        .map((film) => toRow(film, crowd, board, skins, syncedFaces, priorRate));
       return { ...entry, rows };
     })
     .filter((entry) => entry.rows.length > 0);
 
-  // 我贴过的:按**全站总数**降序(与页面默认档同口径),并列按目录序 —— `sortByCounts` 自带稳定序
-  const placedFilms = sortByCounts(
+  // 我贴过的:按**全站总数**降序,并列按目录序 —— `sortByTotal` 自带稳定序。
+  // ⚠ 它是清单不是榜，所以不跟榜单一起改成评分口径。
+  const placedFilms = sortByTotal(
     candidates.filter((film) => (board.get(film.key)?.length ?? 0) > 0),
     crowd,
-    "total",
   );
   const myRows = picked.has("mine")
-    ? placedFilms.map((film) => toRow(film, crowd, board, skins, syncedFaces))
+    ? placedFilms.map((film) => toRow(film, crowd, board, skins, syncedFaces, priorRate))
     : [];
 
   return {
@@ -304,7 +321,7 @@ const SECTION_H = 96;
 /** 一行的高度 —— **两列**:左边文字(片名 / 英文名 / 红黑数),右边一块**专门的贴纸区**。
  *  ⚠ 导出给单测用:高度是绘制的自变量,写死数字的断言会在改版式时静默失效。 */
 export const ROW_H = 104;
-/** 三榜的空档(「我贴过的」那一节之前留白多一点) */
+/** 两榜的空档(「我贴过的」那一节之前留白多一点) */
 const BLOCK_GAP = 32;
 /** 右侧贴纸区:宽度 / 高度 / 相对行顶的上边距 —— 行高 104 减去上下各 8
  *  (⚠ 宽度是从文字列手里让出来的:片名要截断的长度直接由它决定) */
@@ -348,15 +365,16 @@ export function rbPosterHeight(model: RbPosterModel): number {
 
 /* ---------------- 绘制 ---------------- */
 
-/** 「红 N · 黑 N」—— 分段上色,故逐段画(整串一个颜色就丢了红黑的可读性)。 */
+/** 一行里的第三行:**评分 +「红 N · 黑 N」**,分段上色(整串一个颜色就丢了红黑的可读性)。
+ *  ⚠ 评分排在最前 —— 榜单**按它排**,只印红黑数的话读图的人看不出「为什么这部在前面」。
+ *    还没有人贴过时是 `null`(榜单里不会有这种行,但「我贴过的」那一节可能有),那一档只印红黑数。 */
 function drawCounts(ctx: CanvasRenderingContext2D, row: RbPosterRow, x: number, baseline: number): void {
+  const segs: Array<[string, string]> = [];
+  if (row.score !== null) {
+    segs.push([`${row.score.toFixed(1)} 分`, C.ink], [" · ", C.muted]);
+  }
+  segs.push(["红 ", C.muted], [`${row.red}`, C.red2], [" · 黑 ", C.muted], [`${row.black}`, C.ink2]);
   ctx.font = font(24, 600);
-  const segs: Array<[string, string]> = [
-    ["红 ", C.muted],
-    [`${row.red}`, C.red2],
-    [" · 黑 ", C.muted],
-    [`${row.black}`, C.ink2],
-  ];
   let cx = x;
   for (const [text, color] of segs) {
     ctx.fillStyle = color;
