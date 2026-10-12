@@ -587,11 +587,14 @@ export function RedBlackPage() {
     });
     flashCard(node);
   }, [locateTick, visible, query, onlyMine]);
-  // 我自己那一份 —— 只用来控制「能不能贴 / 还能贴几枚」
+  // 我自己那一份 —— 只用来控制「能不能贴 / 还能贴几枚」。
+  // ⚠ 口径是**整份榜单**(`boardKeys`)而**不是** `sorted`:后者已经被搜索词过滤过,
+  //   而 hero 上「标记看过 / 已贴 / 还能贴」三个数是**我的全局**小字 —— 输一个场次编号
+  //   就跟着缩水是错的(用户 2026-10-12 报的「搜索后总览数字会变化」,同一个根因)。
   const tallies = useMemo(
-    () => new Map(sorted.map((film) => [film.key, tallyOf(film.key, watched.has(film.key), board)])),
+    () => new Map([...boardKeys].map((key) => [key, tallyOf(key, watched.has(key), board)])),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `tallyOf` 只读票(条数与颜色),与坐标无关
-    [sorted, watched, votesKey],
+    [boardKeys, watched, votesKey],
   );
   // 「以本地视角修正过的全站票数」——卡片 / hero / 分享图共用这一份(`redblack.ts::reconcile`)。
   // ⚠ 换基准的理由就是那条用户反馈(「收回贴纸之后 贴纸仍残留」):服务端要等防抖上报 + 重拉
@@ -671,14 +674,20 @@ export function RedBlackPage() {
     }
     // 「全站」那份:hero 的大字。`total` 还兼作「榜是不是空的」的判据。
     // ⚠ 评分**不是**看全站 —— 评分是**每部各自的**(见卡片里的 `filmScore`)。
+    // ⚠ 累加的是 `boardKeys`(整份榜单)而**不是** `filmCounts`(只有当前搜索命中的那几部):
+    //   `filmCounts` 派生自 `sorted`,输一个场次编号就会让这里的「全站」跟着缩水
+    //   (用户 2026-10-12 报的正是「424 枚贴纸 红 289 · 黑 135」一搜就变)。
+    //   与分享图用全量 `reconciledCrowd` 是同一条口径 —— 搜索只该缩减栅格,不动总览。
     let red = 0;
     let black = 0;
-    for (const counts of filmCounts.values()) {
+    for (const key of boardKeys) {
+      const counts = reconciledCrowd.get(key);
+      if (!counts) continue;
       red += counts.red;
       black += counts.black;
     }
     return { marked, placed, quota, red, black, total: red + black };
-  }, [tallies, filmCounts]);
+  }, [tallies, boardKeys, reconciledCrowd]);
 
   // 落点处理要按 key 反查影片(提示里要片名、贴纸要挂到它上面),先按当前榜单建索引
   const filmByKey = useMemo(
