@@ -214,6 +214,35 @@ test("榜单铺出去重后的影片,同一部只出现一次,且能按场次 co
   await expect(page.locator(`.rb-card[data-film-key="${target}"]`)).toBeVisible();
 });
 
+// hero 上那行「全站」数字是**整份榜单**的口径,不该被搜索词牵动
+// (用户 2026-10-12 报:「输入编号搜索后 总览上面的这个数字会变化」)。
+// 根因:`totals` 的全站红 / 黑原来是从 `filmCounts` 累加的,而 `filmCounts` 只覆盖当前
+//   **搜索命中**的那几部 —— 一搜,「424 枚贴纸 红 289 · 黑 135」就跟着缩水。
+// 判据取「搜索前后逐字相同」,而不是某个固定数:搜索只该缩减栅格,总览一个字都不许变。
+test("按场次编号搜索时,hero 的全站总览数字不变", async ({ page }) => {
+  const a = keyOf("008");
+  const b = keyOf("033");
+  await stubVotes(page, { [a]: { red: 3, black: 2 }, [b]: { red: 1, black: 4 } });
+  await ready(page, "/redblack");
+
+  const global = page.locator(".rb-global");
+  const num = global.locator(".rb-global-num");
+  // ⚠ `.rb-global-split` 是 `.rb-global` 的**兄弟**(同挂在 `.rb-stat-card` 下),不是后代
+  const split = page.locator(".rb-global-split");
+  // 3 + 2 + 1 + 4 = 10,红 4 / 黑 6
+  await expect(num).toHaveText("10");
+  await expect(split).toHaveText("红 4 · 黑 6");
+
+  const total = await page.locator(".rb-card").count();
+  await page.getByRole("searchbox").fill("008");
+  // ⚠ 搜索词是 200ms 合并提交的(见上一条用例)—— 必须等过滤**真的生效**再断言,
+  //   否则这条会「在还没过滤时就通过」而永远绿。
+  await expect.poll(() => page.locator(".rb-card").count()).toBeLessThan(total);
+
+  await expect(num).toHaveText("10");
+  await expect(split).toHaveText("红 4 · 黑 6");
+});
+
 // 未标记「看过」时红 / 黑按钮是**真 `disabled`**(2026-09-29,PLAN-20260929172651 §4)。
 // 用户要的是「查看 → 标记看过 → 选红黑」这条**单向流**:过去按钮只是 CSS 置灰、点了仍进得去,
 // 弹一句「先标记看过」——那是个「看着能点、点了被拒」的假出口。
