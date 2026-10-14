@@ -112,9 +112,13 @@ describe("festival-extras 与官网口径对齐", () => {
   });
 
   it("折扣年龄口径 = 1961 年及以前出生（官网票务页；newsletter 的 1960 不采）", () => {
-    const src = read("src/components/InfoDialogs.tsx");
-    expect(src).toContain("1961 年及以前出生");
-    expect(src).not.toContain("1961 年前出生");
+    // ⚠ 2026-10-14：这句中文文案原本**只**印在「购票信息」弹层里（`InfoDialogs.tsx::TicketDialog`
+    //   的「折扣 −₩…：65 岁以上（1961 年及以前出生）/ 残障 / 退伍军人」那一行）。该弹层随顶部
+    //   「票务」横幅整条下线（`PLAN-20261014164359`，用户「整条全删」），源码侧已经**没有字可扫** ——
+    //   所以这条守卫改在**数据层**：官网票务页写的是 `born in 1961 or earlier`，newsletter 的 1960 不采。
+    const raw = read("public/festival-extras.json");
+    expect(raw).toContain("born in 1961 or earlier");
+    expect(raw).not.toContain("born in 1960 or earlier");
   });
 });
 
