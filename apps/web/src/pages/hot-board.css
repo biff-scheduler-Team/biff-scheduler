@@ -101,113 +101,39 @@
   font-variant-numeric: tabular-nums;
 }
 
-.hb-lede {
-  max-width: 52ch;
-  margin: 0;
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.6;
-}
-
-/* 口径注脚：与上面的正文分开，避免被读成同一句话 */
-.hb-note {
-  display: block;
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
+/* 出图那条工具行。⚠ 2026-10-14 起左边那排档位（`.hb-modes`）连同它的 `.hb-mode` /
+   `.hb-hint` / 刊头说明（`.hb-lede` / `.hb-note`）一并删掉 —— 用户：「不需要 热门影片 /
+   正在升温 / 全部影片，还有上面的解释文字」。所以这条现在只剩「生成分享图」一颗按钮，
+   用 `margin-left: auto` 单独把它留在右侧（原先靠 `space-between` 与档位分居两端）。 */
 .hb-controls {
   display: flex;
   align-items: flex-end;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 16px;
   flex-wrap: wrap;
   margin-top: 4px;
 }
 
-/* 榜单切换：编辑式的**文字条 + 下划线**，刻意不做成又一组胶囊 ——
-   页面上那一排「热门榜 / 红榜 / 黑榜」已经是胶囊，同一种形态出现两次会读不出层级 */
-.hb-modes {
-  display: inline-flex;
-  gap: 22px;
-}
-
-.hb-mode {
-  padding: 4px 0 8px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: var(--muted);
-  font-size: 15px;
-  cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
-}
-
-.hb-mode:hover {
-  color: var(--text);
-}
-
-.hb-mode[aria-selected="true"] {
-  border-bottom-color: var(--brand);
-  color: var(--text);
-  font-weight: 600;
-}
-
-.hb-hint {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-/* ---------------- 单元筛选（一条安静的细筛选带） ---------------- */
-
+/* ---------------- 单元筛选（下拉） ----------------
+ *
+ * ⚠ 2026-10-14 用户：「热门影片的单元还是没有通过下拉筛选」。原先这里是**一排
+ *   `aria-pressed` 按钮**（`.hb-unit-btn` 那条筛选带）—— 22 个单元在窄屏会折成好几行，
+ *   而且它根本不是下拉。现在换成 S2 `Picker`（与影片库的「单元」、本页分享图弹层同一支），
+ *   所以这一节只剩外层留白：控件自身的观感由 Spectrum 负责，不在这里再描一遍。
+ */
 .hb-units {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
   margin-top: 6px;
-}
-
-.hb-unit-btn {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 4px 0;
-  border: 0;
-  border-bottom: 1px solid transparent;
-  background: transparent;
-  color: var(--muted);
-  font-size: 12.5px;
-  cursor: pointer;
-  transition: color 0.12s ease, border-color 0.12s ease;
-}
-
-.hb-unit-btn:hover {
-  color: var(--text);
-}
-
-.hb-unit-btn[aria-pressed="true"] {
-  border-bottom-color: var(--brand);
-  color: var(--brand);
-  font-weight: 600;
-}
-
-.hb-unit-btn small {
-  color: var(--muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.hb-unit-btn[aria-pressed="true"] small {
-  color: var(--brand);
 }
 
 /* ---------------- 榜首（#01 主视觉） ---------------- */
 
+/* ⚠ 2026-10-14 用户：「第一名了海报有点大 把整个页面都占满了」——
+   原先海报吃掉左栏 44%（宽屏 ≈ 600px 宽 / 900px 高），一屏只剩它一个。
+   改成**定宽一栏**（280px → 高 420px，仍是 2:3），既保住「榜首是主视觉」，
+   又把首屏还给海报墙。⚠ 别再写回百分比：宽屏下它会随视口一起胀。 */
 .hb-lead {
   display: grid;
-  grid-template-columns: minmax(280px, 44%) minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   gap: 36px;
   align-items: start;
   padding-bottom: 28px;
@@ -232,7 +158,8 @@
   object-fit: contain;
 }
 
-/* 缺图占位：统一底色 + 片名首字（**不生成假海报**） */
+/* 缺图占位：统一底色 + 片名首字（**不生成假海报**）。
+   ⚠ 字号跟着上面那次缩版一起收（64px 是给 600px 宽的海报框定的）。 */
 .hb-lead-empty {
   display: flex;
   align-items: center;
@@ -240,7 +167,7 @@
   width: 100%;
   height: 100%;
   color: var(--muted);
-  font-size: 64px;
+  font-size: 40px;
   font-weight: 700;
 }
 
@@ -657,8 +584,10 @@
     gap: 20px;
   }
 
+  /* 纵排时海报仍然**封顶 280px**（与宽屏那一栏同宽）——不再让它在手机上撑满屏宽：
+     用户 2026-10-14 的反馈是「海报有点大 把整个页面都占满了」，手机上撑满只会更明显 */
   .hb-lead-media {
-    max-width: 320px;
+    max-width: 280px;
   }
 
   .hb-lead-title {
@@ -697,16 +626,11 @@
   .hb-veil {
     display: none;
   }
-
-  .hb-lead-media {
-    max-width: none;
-  }
 }
 
 @media (pointer: coarse) {
   /* 触控目标下限 44px（与 redblack-parity.css 同一条口径 —— 电影节现场主要用手机） */
   .board-tab,
-  .hb-unit-btn,
   .hb-share-btn {
     min-height: 44px;
   }
@@ -718,8 +642,6 @@
   .hb-frame-img,
   .hb-veil,
   .hb-hover,
-  .hb-mode,
-  .hb-unit-btn,
   .hb-share-btn,
   .hb-lead-cta,
   .hb-more-btn {

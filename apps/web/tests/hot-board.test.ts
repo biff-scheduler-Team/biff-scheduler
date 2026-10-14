@@ -1,7 +1,8 @@
-// 「热门榜」纯逻辑单测（2026-10-14，PLAN-20261014150805 修订 1 / 2）。
+// 「热门榜」纯逻辑单测（2026-10-14，PLAN-20261014150805 修订 1 / 2；同日再修订为单一榜单）。
 //
 // 覆盖点：① 排序口径（想看降序、同数按片名）—— 与 `RushCrowdPanel` 共用同一支比较器；
-//   ② 无信号影片不入榜（want = 0 且零票）；
+//   ② **全部影片都在榜上**（2026-10-14 用户：「全部默认就是全部影片的想看人数就行」），
+//     想看 0 的只是排在末尾，不再被筛掉；
 //   ③ 口碑评分**逐字复用** `redblack.ts::scoreOf`（这里断言与它相等，而不是硬编码数字）；
 //   ④ 脏值夹成非负整数；⑤ 分组：组内保持排序、组间按想看合计降序。
 
@@ -56,10 +57,12 @@ describe("compareByWant", () => {
 });
 
 describe("buildHotRows", () => {
-  it("只收有信号的影片：want = 0 且零票的不进榜", () => {
+  it("★ 回归：没有信号的影片**也在榜上**，只是排在末尾（原先它会被筛掉）", () => {
     const films = [film("cat:a", "A", "Test Unit"), film("cat:b", "B", "Test Unit")];
     const rows = buildHotRows(films, { "cat:a": 7 }, new Map(), PRIOR);
-    expect(rows.map((r) => r.key)).toEqual(["cat:a"]);
+    // b 想看 0、也一票没有 —— 2026-10-14 起榜单是「本届全部影片」，它照样在
+    expect(rows.map((r) => r.key)).toEqual(["cat:a", "cat:b"]);
+    expect(rows[1].want).toBe(0);
   });
 
   it("排序是「想看降序」：票多的片也不会插到想看少的片前面", () => {
@@ -73,11 +76,11 @@ describe("buildHotRows", () => {
       { "cat:a": 3, "cat:b": 9 },
       // a 有 80 枚贴纸（全场最多）却只有 3 人想看；b 只有 9 人想看但没票 ——
       // 榜单按**想看**排，所以 a 不能因为票多而插到 b 前面。
-      // c 零想看零票 → 不入榜（所以期望里没有它）。
+      // c 零想看零票 → 在榜上，但排在最末（想看 0 一律靠后）。
       crowd([["cat:a", { red: 40, black: 40 }]]),
       PRIOR,
     );
-    expect(rows.map((r) => r.key)).toEqual(["cat:b", "cat:a"]);
+    expect(rows.map((r) => r.key)).toEqual(["cat:b", "cat:a", "cat:c"]);
   });
 
   it("口碑评分与 redblack.ts::scoreOf 逐字一致；一票没有 = null", () => {
@@ -188,36 +191,27 @@ describe("groupByUnit", () => {
   });
 });
 
-describe("三档榜单（PLAN-20261014162246）", () => {
+describe("单一榜单：本届全部影片，按想看降序（2026-10-14 用户拍板，撤掉三档）", () => {
   const films = [film("cat:a", "A", "甲单元"), film("cat:b", "B", "甲单元"), film("cat:c", "C", "甲单元")];
 
-  it("want 档（默认）：有信号才进榜 + 想看降序 —— 与加档位之前逐字一致", () => {
+  it("★ 回归：全部影片都在榜上，想看 0 的排最后（原先它们被「有没有信号」筛掉了）", () => {
     const rows = buildHotRows(films, { "cat:a": 5, "cat:b": 9 }, new Map(), PRIOR);
-    expect(rows.map((r) => r.key)).toEqual(["cat:b", "cat:a"]);
-    // c 没有任何信号 → 不进榜
-    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.key)).toEqual(["cat:b", "cat:a", "cat:c"]);
+    expect(rows.map((r) => r.want)).toEqual([9, 5, 0]);
   });
 
-  it("rising 档：只留今日有新增的片，按新增降序；新增相同看累计想看", () => {
-    const rows = buildHotRows(films, { "cat:a": 1, "cat:b": 9, "cat:c": 40 }, new Map(), PRIOR, {
-      mode: "rising",
-      rising: { "cat:a": 3, "cat:b": 3, "cat:c": 0 },
+  it("同数按片名（与 `compareByWant` 同一支比较器，不另立一套）", () => {
+    const rows = buildHotRows(films, { "cat:a": 5, "cat:b": 5, "cat:c": 5 }, new Map(), PRIOR);
+    expect(rows.map((r) => r.title)).toEqual(["A", "B", "C"]);
+  });
+
+  it("名次变化照样算（日账本只喂 ▲▼，不参与排序）", () => {
+    const rows = buildHotRows(films, { "cat:a": 10, "cat:b": 12 }, new Map(), PRIOR, {
+      rising: { "cat:b": 6 },
     });
-    // c 今天没人新增 → 不进「正在升温」，哪怕它累计想看 40（那是「最受关注」的事）
-    expect(rows.map((r) => r.key)).toEqual(["cat:b", "cat:a"]);
-    expect(rows.map((r) => r.rising)).toEqual([3, 3]);
-  });
-
-  it("rising 档：全站今天没人新增 → 空数组（界面据此给空态，**不补零行**）", () => {
-    const rows = buildHotRows(films, { "cat:a": 5 }, new Map(), PRIOR, { mode: "rising", rising: {} });
-    expect(rows).toEqual([]);
-  });
-
-  it("all 档：全量、目录序，不筛也不按热度重排", () => {
-    const rows = buildHotRows(films, { "cat:b": 9 }, new Map(), PRIOR, { mode: "all" });
-    // a / c 一部想看都没有，也照样在「全部影片」里，且保持**目录序**
-    expect(rows.map((r) => r.key)).toEqual(["cat:a", "cat:b", "cat:c"]);
-    expect(rows.map((r) => r.want)).toEqual([0, 9, 0]);
+    // 排序仍是**想看降序**（b 今天 12），不是按今日新增排
+    expect(rows.map((r) => r.key)).toEqual(["cat:b", "cat:a", "cat:c"]);
+    expect(rows.map((r) => r.rankDelta)).toEqual([1, -1, null]);
   });
 });
 
@@ -245,14 +239,16 @@ describe("名次变化：由日账本反推昨日累计（不是另存一份快�
     expect(rows.map((r) => r.rankDelta)).toEqual([0, 0]);
   });
 
-  it("其余档位不算名次变化（那一档的名次不是这份榜单的主线）", () => {
-    const rising = buildHotRows(films, { "cat:a": 10, "cat:b": 12 }, new Map(), PRIOR, {
-      mode: "rising",
-      rising: { "cat:b": 6 },
-    });
-    expect(rising.every((r) => r.rankDelta === null)).toBe(true);
-    const all = buildHotRows(films, { "cat:a": 10 }, new Map(), PRIOR, { mode: "all" });
-    expect(all.every((r) => r.rankDelta === null)).toBe(true);
+  it("想看 0 的片在榜上，但**不算名次**（两次排名都把它排除，于是保持 null）", () => {
+    const rows = buildHotRows(
+      [...films, film("cat:z", "Z", "U")],
+      { "cat:a": 10, "cat:b": 4 },
+      new Map(),
+      PRIOR,
+      { rising: { "cat:a": 2 } },
+    );
+    expect(rows.map((r) => r.key)).toEqual(["cat:a", "cat:b", "cat:z"]);
+    expect(rows.map((r) => r.rankDelta)).toEqual([0, 0, null]);
   });
 });
 

@@ -9,7 +9,7 @@
  *   · **hover**：`scale(1.03)` + 亮度变化 + 底部渐变遮罩 + 信息淡入，**纯 CSS**（见 `hot-board.css`）。
  *
  * ★ 分层的边界（与 `hot-board.ts` 的纯逻辑分开，业务规则不进模板）：
- *   · 排序 / 三档 / 名次变化 = `hot-board.ts`（纯函数、可单测）；
+ *   · 排序 / 名次变化 = `hot-board.ts`（纯函数、可单测）；
  *   · 「今日新增想看」 = `want-trend.ts`（服务端日账本，口径见该文件）；
  *   · 本文件只管**取数 + 编排 + 交互**。
  *
@@ -28,18 +28,12 @@ import type { FilmNode } from "../app/model";
 import { useFilmNavigation } from "../app/film-navigation";
 import { useCatalog } from "../app/store";
 import { loadFilmVotes, onFilmVotesChange, peekFilmVotes } from "../film-votes";
-import {
-  buildHotRows,
-  groupByUnit,
-  hotTotals,
-  HOT_MODES,
-  type HotMode,
-  type HotRow,
-} from "../hot-board";
+import { buildHotRows, groupByUnit, hotTotals, type HotRow } from "../hot-board";
 import { crowdOf, priorOf } from "../redblack";
 import { catMetaLine } from "../util";
 import { loadWantCounts, onWantCountsChange, peekWantCounts } from "../want-counts";
 import { loadWantTrend, onWantTrendChange, peekWantTrend, type WantTrend } from "../want-trend";
+import { Picker, PickerItem } from "./spectrum";
 
 /** 分享图弹层**按需加载**（与 `RedBlackPage` 那三个弹层同一手法）：
  *  它一条链上带着 `hot-poster.ts`（整张 canvas 的模型 + 绘制），而进榜单页的人多数不会点
@@ -72,26 +66,24 @@ function useLiveCounters(): number {
   return revision;
 }
 
-/** 今日新增（日账本）。返回 `state` 是为了让界面能分开「还没读到」「读失败」「今天真没人新增」。 */
-function useWantTrend(): { trend: WantTrend | null; failed: boolean } {
+/** 今日新增（日账本）。⚠ 榜单上**只有名次变化（▲▼）读它** —— 它不参与排序；
+ *  读不到就整份不画 ▲▼（`hot-board.ts::applyRankDeltas` 的口径），界面上不再有别的出口。 */
+function useWantTrend(): WantTrend | null {
   const [trend, setTrend] = useState<WantTrend | null>(() => peekWantTrend());
-  const [failed, setFailed] = useState(false);
   useEffect(() => {
     let alive = true;
     const stop = onWantTrendChange(() => {
       if (alive) setTrend(peekWantTrend());
     });
     void loadWantTrend().then((value) => {
-      if (!alive) return;
-      setTrend(value);
-      setFailed(value === null);
+      if (alive) setTrend(value);
     });
     return () => {
       alive = false;
       stop();
     };
   }, []);
-  return { trend, failed };
+  return trend;
 }
 
 /** 卡片副行：**原名优先，其次年份**（需求：仅在数据存在时展示）。
@@ -180,21 +172,21 @@ export function HotBoardPanel() {
   const revision = useLiveCounters();
   const wants = useMemo(() => peekWantCounts(), [revision]);
   const votes = useMemo(() => peekFilmVotes(), [revision]);
-  const { trend, failed: trendFailed } = useWantTrend();
+  const trend = useWantTrend();
   const crowd = useMemo(() => crowdOf(votes), [votes]);
   const priorRate = useMemo(() => priorOf(crowd), [crowd]);
   const open = useFilmNavigation();
 
-  /** 榜单档位。默认「最受关注」（就是原先的热门榜口径）。 */
-  const [mode, setMode] = useState<HotMode>("want");
   /** 选中的单元键；空串 = 全部单元 */
   const [unitId, setUnitId] = useState("");
   /** 海报墙渲染到第几张（「显示更多」） */
   const [limit, setLimit] = useState(GRID_STEP);
 
+  // ⚠ 榜单**只有一份**（本届全部影片按想看降序，见 `hot-board.ts` 文件头）——没有「档位」这个状态。
+  //   日账本（`trend`）只喂名次变化（▲▼），不改排序、也不在界面上另外露一个数。
   const rows = useMemo(
-    () => buildHotRows(films, wants, crowd, priorRate, { mode, rising: trend?.deltas }),
-    [films, wants, crowd, priorRate, mode, trend],
+    () => buildHotRows(films, wants, crowd, priorRate, { rising: trend?.deltas }),
+    [films, wants, crowd, priorRate, trend],
   );
   const units = useMemo(() => groupByUnit(rows), [rows]);
   const shown = useMemo(
@@ -204,11 +196,6 @@ export function HotBoardPanel() {
     [rows, unitId],
   );
   const totals = useMemo(() => hotTotals(shown), [shown]);
-  /** 今日新增合计（只在「正在升温」档露出来，其余档不显示这个数 —— 免得被读成热度） */
-  const risingTotal = useMemo(
-    () => shown.reduce((sum, row) => sum + row.rising, 0),
-    [shown],
-  );
 
   /** 影片 key → 影片节点：榜首与卡片都要读目录里的原名 / 年份 / 简介 / 单元行。 */
   const byKey = useMemo(() => new Map(films.map((film) => [film.key, film])), [films]);
@@ -221,14 +208,9 @@ export function HotBoardPanel() {
   const leadFilm = lead ? byKey.get(lead.key) : undefined;
   const leadCat = leadFilm?.cats[0];
   const leadSynopsis = leadCat?.catalogue?.synopsis_en || leadCat?.catalogue?.synopsis_ko || "";
-  const currentMode = HOT_MODES.find((entry) => entry.id === mode) ?? HOT_MODES[0];
 
-  // 换档 / 换单元 = 换一份榜单：海报墙回到首屏那么长（否则在「全部影片」里点了显示更多，
-  // 切到别的档会接着铺几百张）
-  const pickMode = (next: HotMode) => {
-    setMode(next);
-    setLimit(GRID_STEP);
-  };
+  // 换单元 = 换一份榜单：海报墙回到首屏那么长（否则在全量榜上点了显示更多，
+  // 切到某个单元会接着铺下去）
   const pickUnit = (next: string) => {
     setUnitId(next);
     setLimit(GRID_STEP);
@@ -245,55 +227,30 @@ export function HotBoardPanel() {
     shareWasOpenRef.current = shareOpen;
   }, [shareOpen]);
 
-  /** 空态文案：**分开说清是哪一种空**（没数据 / 数据缺口 / 换个单元），别都写成一句话 —— */
-  const emptyText = (() => {
-    if (unitId) return "这个单元还没有人标记想看 —— 换个单元试试。";
-    if (mode === "rising" && !trend) {
-      return trendFailed
-        ? "读不到逐日数据 —— 这一档按服务端的日账本统计，接口暂时不可用，稍后再看。"
-        : "正在读取今日新增…";
-    }
-    if (mode === "rising") {
-      return `${trend?.toDay ?? "今天"}（KST）还没有人新增想看 —— 这一档按「今日新增」排序，明天再来看看。`;
-    }
-    if (mode === "all") return "本届还没有影片数据。";
-    return "还没有人标记想看 —— 去影片页点一下「想看」吧。";
-  })();
+  /** 空态文案。⚠ 榜单**不再按「有没有信号」筛**（见 `hot-board.ts`：全部影片一律在榜），
+   *  所以只剩两种空：目录里真的没有影片，或选中的单元里没有影片。 */
+  const emptyText = unitId
+    ? "这个单元还没有影片 —— 换个单元试试。"
+    : "本届还没有影片数据。";
 
   return (
     <section className="hb-panel" aria-label="热门影片排行榜">
-      {/* 刊头：字体层级 + 留白，只印真实数据（当前这份榜单的条数 / 想看合计） */}
+      {/* 刊头：字体层级 + 留白，只印真实数据（当前这份榜单的条数 / 想看合计）。
+          ⚠ 2026-10-14 用户：「不需要 热门影片 / 正在升温 / 全部影片，还有上面的解释文字」——
+           所以这里**既没有档位切换、也没有口径说明段**，标题下直接就是「篇幅 + 出图 + 单元」。 */}
       <header className="hb-masthead">
         <p className="hb-kicker">MOST ANTICIPATED FILMS</p>
         <div className="hb-masthead-row">
           <h1 className="hb-title">热门影片</h1>
           <p className="hb-count" data-hot-films={totals.films} data-hot-want={totals.want}>
             {totals.films} 部影片 · {totals.want.toLocaleString("zh-CN")} 人想看
-            {mode === "rising" && trend ? ` · 今日 +${risingTotal.toLocaleString("zh-CN")}` : ""}
           </p>
         </div>
-        <p className="hb-lede">
-          发现本届电影节最受关注的作品。<span className="hb-note">想看是映前意愿，不是购票人数。</span>
-        </p>
 
         <div className="hb-controls">
-          <nav className="hb-modes" role="tablist" aria-label="榜单切换">
-            {HOT_MODES.map((entry) => (
-              <button
-                key={entry.id}
-                type="button"
-                role="tab"
-                className="hb-mode"
-                data-hot-mode={entry.id}
-                aria-selected={mode === entry.id}
-                onClick={() => pickMode(entry.id)}
-              >
-                {entry.label}
-              </button>
-            ))}
-          </nav>
           {/* 出 PNG 的出口 —— 用户 2026-10-14：「只要出 PNG，我自己上传」。
-              图里不带任何应用 UI，是给公众号直接用的成品。 */}
+              图里不带任何应用 UI，是给公众号直接用的成品。
+              ⚠ 原先这行左边还挂着那排档位（`.hb-modes`），现已删；CSS 用 `flex-end` 把按钮留在右侧。 */}
           <div className="hb-toolbar">
             <button
               ref={shareBtnRef}
@@ -305,36 +262,31 @@ export function HotBoardPanel() {
             </button>
           </div>
         </div>
-        <p className="hb-hint">
-          {currentMode.hint}
-          {mode === "rising" && trend ? ` · ${trend.fromDay} 起（KST 日账本）` : ""}
-        </p>
 
-        {/* 单元筛选：22 个单元都有一行（实测每个都有想看数据），所以不折叠、不隐藏。
-            形态是一条安静的细筛选带 —— 不与上面那排档位抢视线。 */}
-        <div className="hb-units" role="group" aria-label="按单元筛选">
-          <button
-            type="button"
-            className="hb-unit-btn"
-            data-hot-unit=""
-            aria-pressed={unitId === ""}
-            onClick={() => pickUnit("")}
+        {/* 单元筛选：**下拉**。
+            ⚠ 2026-10-14 用户：「热门影片的单元还是没有通过下拉筛选」—— 之前这里是一排
+              `aria-pressed` 按钮（长的筛选带），它在窄屏会折成好几行、也**不是下拉**。
+              换成 S2 `Picker`：全站「互斥选项挑一个」只有这一种写法（`FilterBar` 的
+              「场次类型」、影片库的「单元」，以及本页分享图弹层都是它），选项文案与它们
+              逐字同口径（`单元名，N 部` —— 印的是**影片数**，不是想看合计）。
+            ⚠ `PickerItem` 的 id 必须是**非空字符串**，而「全部」在 state 里是空串 ——
+              所以这里 `unitId || "all"` 做一次映射（`unitKey` 永不为空，见 `units.ts`）。 */}
+        <div className="hb-units">
+          <Picker
+            label="单元"
+            value={unitId || "all"}
+            onChange={(value) => {
+              const next = String(value);
+              pickUnit(next === "all" ? "" : next);
+            }}
           >
-            全部单元
-          </button>
-          {units.map((unit) => (
-            <button
-              key={unit.id || "__none"}
-              type="button"
-              className="hb-unit-btn"
-              data-hot-unit={unit.id}
-              aria-pressed={unitId === unit.id}
-              onClick={() => pickUnit(unit.id)}
-            >
-              {unit.name}
-              <small>{unit.want.toLocaleString("zh-CN")}</small>
-            </button>
-          ))}
+            <PickerItem id="all">全部单元</PickerItem>
+            {units.map((unit) => (
+              <PickerItem id={unit.id} key={unit.id}>
+                {`${unit.name}，${unit.rows.length} 部`}
+              </PickerItem>
+            ))}
+          </Picker>
         </div>
       </header>
 
@@ -354,7 +306,7 @@ export function HotBoardPanel() {
               )}
             </div>
             <div className="hb-lead-body">
-              <p className="hb-lead-tag">TOP 01 · {currentMode.label}</p>
+              <p className="hb-lead-tag">TOP 01</p>
               <p className="hb-lead-rank" aria-hidden="true">
                 #01
               </p>

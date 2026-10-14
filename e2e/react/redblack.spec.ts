@@ -2288,10 +2288,13 @@ test("榜单页：默认落在热门榜；切到红榜后贴纸墙出现、热�
   await expect(page.locator('[data-board-tab="hot"]')).toHaveAttribute("aria-selected", "true");
   await expect(page.locator(".hb-panel")).toHaveCount(1);
   await expect(page.locator(".rb-page")).toHaveCount(0);
-  // 没有任何想看 / 票 → 榜单走空态，而不是画一串 0（榜首主视觉与海报墙都不该出现）
-  await expect(page.locator(".hb-lead")).toHaveCount(0);
-  await expect(page.locator(".hb-grid")).toHaveCount(0);
-  await expect(page.locator(".hb-panel .empty-state")).toHaveCount(1);
+  // ⚠ 2026-10-14 起热门榜是「本届**全部影片**按想看降序」（`hot-board.ts`，用户：「全部默认
+  //   就是全部影片的想看人数就行」）——**没有想看数据也照样出榜**（每部想看 0，榜首 = 目录序第一部），
+  //   所以这里**不该**是空态；空态只在目录里真的没有影片时才出现。想看合计如实印 0，不编数。
+  await expect(page.locator(".hb-lead")).toHaveCount(1);
+  await expect(page.locator(".hb-grid")).toHaveCount(1);
+  await expect(page.locator(".hb-panel .empty-state")).toHaveCount(0);
+  await expect(page.locator(".hb-count")).toHaveAttribute("data-hot-want", "0");
 
   // ② 切红榜：贴纸墙出现，热门榜卸载
   await page.locator('[data-board-tab="red"]').click();
@@ -2322,18 +2325,24 @@ test("榜单页：想看数据到达后榜单**真的渲染出来**（回归 · 
   await expect(lead).toHaveAttribute("data-hot-row", "cat:f001");
   await expect(lead.locator(".hb-lead-want")).toContainText("120");
   const cards = page.locator(".hb-card");
-  await expect(cards).toHaveCount(1);
   await expect(cards.first()).toHaveAttribute("data-hot-row", "cat:f002");
   await expect(cards.first().locator(".hb-cap-want")).toContainText("30");
-  // 只看得到有想看的这两部 —— 一票没有的片不该出现在热门榜上
+  // ⚠ 海报墙 = **本届全部影片减去榜首那一部**（2026-10-14 起不按「有没有信号」筛）——
+  //   所以行数跟着目录规模走，而不是「只有 1 部有想看所以只剩 1 张」
+  const films = Number(await page.locator(".hb-count").getAttribute("data-hot-films"));
+  expect(films).toBeGreaterThan(2);
+  await expect(cards).toHaveCount(Math.min(films - 1, 24));
+  // 一票没有的片排在最后（想看 0），但**仍然在榜** —— 页面不该退回空态
   await expect(page.locator(".hb-panel .empty-state")).toHaveCount(0);
 });
 
-test("榜单页：单元分组的键已归一，且「头部说 N 部」与列表行数同源", async ({ page }) => {
+test("榜单页：单元筛选是下拉，且键已归一、「头部说 N 部」与列表行数同源", async ({ page }) => {
   // ⚠ 这条守的是 2026-10-14 **打开浏览器才发现**的两个真 bug：
-  //   ① 单元按钮/下拉里出现 4 个一模一样的「…年度亚洲电影人奖 · 杨紫琼专题」（按**原串**分组）；
+  //   ① 单元下拉里出现 4 个一模一样的「…年度亚洲电影人奖 · 杨紫琼专题」（按**原串**分组）；
   //   ② 同一单元两套数（头部说 N 部、列表少几行）。
   //   两者都只在「有数据」的前提下才现形 —— 拿空数据是抓不到的。
+  // ⚠ 2026-10-14 用户：「热门影片的单元还是没有通过下拉筛选」—— 所以这里**先断言形态**：
+  //   选项必须挂在一个 `role=listbox` 里（点按钮才出现），而不是页面上常驻的一排按钮。
   await stubEmpty(page);
   await stubComments(page, { items: [] });
   const keys = [
@@ -2347,15 +2356,21 @@ test("榜单页：单元分组的键已归一，且「头部说 N 部」与列�
   await ready(page, "/redblack");
   await expect.poll(() => page.locator(".hb-card").count()).toBeGreaterThan(20);
 
-  // ① 单元按钮不重名 —— 同义写法已归一到同一个键
-  const labels = (await page.locator(".hb-unit-btn").allInnerTexts()).map((t) => t.trim());
-  expect(labels.length).toBeGreaterThan(5);
-  expect(new Set(labels).size).toBe(labels.length);
+  // ① 下拉：点开刊头那支「单元」，选项在 listbox 里；选项文案 = 「单元名，N 部」
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+  await page.getByRole("button", { name: /单元/ }).click();
+  await expect(page.getByRole("listbox")).toBeVisible();
+  const labels = (await page.getByRole("option").allInnerTexts()).map((t) => t.trim());
+  expect(labels[0]).toBe("全部单元");
+  const names = labels.slice(1).map((t) => t.replace(/[，,]\s*\d+\s*部$/, "").trim());
+  // 选项不重名 —— 同义写法已归一到同一个键
+  expect(names.length).toBeGreaterThan(5);
+  expect(new Set(names).size).toBe(names.length);
 
-  // ② 头的计数与版面同源：点进某个单元后，「N 部影片」必须等于
-  //    榜首（1 部）+ 海报墙（首屏最多 GRID_STEP = 24 张）
-  const button = page.locator(".hb-unit-btn").first();
-  await button.click();
+  // ② 头的计数与版面同源：选中某个**真实单元**（第 1 项恒是「全部单元」）后，
+  //    「N 部影片」必须等于 榜首（1 部）+ 海报墙（首屏最多 GRID_STEP = 24 张）
+  await page.getByRole("option").nth(1).click();
+  await expect(page.getByRole("listbox")).toHaveCount(0);
   const filmsOf = async () => Number((await page.locator(".hb-count").getAttribute("data-hot-films")) ?? -1);
   await expect.poll(filmsOf).toBeGreaterThan(0);
   const films = await filmsOf();
@@ -2530,14 +2545,15 @@ test("红黑榜分享图：可以只讲一个单元，也可以关头尾", async
   expect((await shareSize(dialog)).height).toBeLessThan(five.height);
 });
 
-/* ★ 「热门影片」编辑式排行榜（2026-10-14，PLAN-20261014162246）
+/* ★ 「热门影片」编辑式排行榜（2026-10-14，PLAN-20261014162246；同日修订为**单一榜单**）
  *
  * 这一组守的是**版式与交互**，不是排序（排序在 `apps/web/tests/hot-board.test.ts` 里断）。
- * 重点三处：① 三档真的换数据；② 榜首是主视觉且点得开详情；③ hover 是**纯 CSS 的渐进揭示**，
- * 不动版面、不吃点击，且在触屏 / 减少动态效果下都不掉信息。
+ * 重点三处：① 只有一份榜 —— 本届全部影片按想看降序；② 榜首是主视觉且点得开详情；
+ * ③ hover 是**纯 CSS 的渐进揭示**，不动版面、不吃点击，且在触屏 / 减少动态效果下都不掉信息。
  */
 
-/** 「正在升温」的数据源（服务端日账本的按影片增量）。 */
+/** 日账本（服务端「某天起的按影片增量」）。
+ *  ⚠ 2026-10-14 起它**只喂名次变化（▲▼）**：「正在升温」那一档已撤，日账本不再决定排序。 */
 async function stubTrend(page: Page, deltas: Record<string, number>) {
   await page.route("**/api/stats/want-trend**", (route) =>
     route.fulfill({
@@ -2546,7 +2562,7 @@ async function stubTrend(page: Page, deltas: Record<string, number>) {
   );
 }
 
-test("热门影片：三档榜单各自真的换数据（最受关注 / 正在升温 / 全部影片）", async ({ page }) => {
+test("热门影片：只有一份榜单 —— 本届全部影片按想看降序，且没有档位 / 说明文字", async ({ page }) => {
   await stubEmpty(page);
   await stubComments(page, { items: [] });
   await page.route("**/api/stats/want-counts**", (route) =>
@@ -2555,19 +2571,15 @@ test("热门影片：三档榜单各自真的换数据（最受关注 / 正在�
   await stubTrend(page, { "cat:f003": 9, "cat:f001": 2 });
   await ready(page, "/redblack");
 
-  // ① 最受关注：按想看降序 → 120 的那部是榜首
-  await expect(page.locator('[data-hot-mode="want"]')).toHaveAttribute("aria-selected", "true");
+  // 用户 2026-10-14：「不需要 热门影片 / 正在升温 / 全部影片 还有上面的解释文字」
+  await expect(page.locator(".hb-mode")).toHaveCount(0);
+  await expect(page.locator(".hb-hint")).toHaveCount(0);
+  await expect(page.locator(".hb-lede")).toHaveCount(0);
+
+  // 榜首 = 想看最多的那部（日账本今天给 f003 的增量最大，但它**不参与排序**）
   await expect(page.locator(".hb-lead")).toHaveAttribute("data-hot-row", "cat:f001");
 
-  // ② 正在升温：按**今日新增**降序 → f003（今天 +9）顶到榜首，f002（今天没新增）整条出局
-  await page.locator('[data-hot-mode="rising"]').click();
-  await expect(page.locator('[data-hot-mode="rising"]')).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator(".hb-lead")).toHaveAttribute("data-hot-row", "cat:f003");
-  await expect(page.locator(".hb-card")).toHaveCount(1);
-  await expect(page.locator(".hb-card")).toHaveAttribute("data-hot-row", "cat:f001");
-
-  // ③ 全部影片：不管有没有人想看，目录里的片全在（stub 只给了 3 部有想看）
-  await page.locator('[data-hot-mode="all"]').click();
+  // 「全部影片」：不管有没有人想看，目录里的片全在（stub 只给了 3 部有想看）
   const films = Number(await page.locator(".hb-count").getAttribute("data-hot-films"));
   expect(films).toBeGreaterThan(3);
   await expect(page.locator(".hb-card")).toHaveCount(Math.min(films - 1, 24));
@@ -2575,7 +2587,7 @@ test("热门影片：三档榜单各自真的换数据（最受关注 / 正在�
   await expect(page.locator(".hb-more-btn")).toContainText(`还有 ${films - 1 - 24} 部`);
 });
 
-test("热门影片：今日没人新增时「正在升温」给明确空态，名次变化也不伪造", async ({ page }) => {
+test("热门影片：账本为空时不伪造名次变化（一枚 ▲▼ 都不画）", async ({ page }) => {
   await stubEmpty(page);
   await stubComments(page, { items: [] });
   await page.route("**/api/stats/want-counts**", (route) =>
@@ -2584,14 +2596,7 @@ test("热门影片：今日没人新增时「正在升温」给明确空态，�
   await stubTrend(page, {});
   await ready(page, "/redblack");
 
-  await page.locator('[data-hot-mode="rising"]').click();
-  const empty = page.locator(".hb-panel .empty-state");
-  await expect(empty).toContainText("今日新增");
-  await expect(page.locator(".hb-lead")).toHaveCount(0);
-  await expect(page.locator(".hb-grid")).toHaveCount(0);
-
-  // 「最受关注」照常有内容；而账本为空 → 昨日名次**算不出** → 一枚 ▲▼ 都不画
-  await page.locator('[data-hot-mode="want"]').click();
+  // 榜单照常有内容；而账本为空 → 每部片昨日累计 == 今日累计 → 名次没动 → 一枚 ▲▼ 都不画
   await expect(page.locator(".hb-lead")).toHaveCount(1);
   await expect(page.locator(".hb-trend")).toHaveCount(0);
 });
