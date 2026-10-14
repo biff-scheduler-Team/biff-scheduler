@@ -32,7 +32,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FilmNode } from "../app/model";
-import { introOf } from "../intros";
 import {
   axisVote,
   deckSignature,
@@ -43,7 +42,7 @@ import {
   voteStateLabel,
   type SwipeAxis,
 } from "../quick-vote";
-import type { StickerCounts, StickerType } from "../redblack";
+import type { StickerType } from "../redblack";
 import { Button, ButtonGroup, Content, Dialog, DialogContainer, Heading } from "./spectrum";
 import "./quick-vote.css";
 
@@ -136,8 +135,6 @@ interface QuickVoteDeckProps {
   voteOf: (key: string) => StickerType | undefined;
   /** 影片 key → **已经处理过没有**（投过红黑 / 跳过过）—— 只在**一轮开始时**读一次，见文件头。 */
   handledOf: (key: string) => boolean;
-  /** 影片 key → 这一部的全站票数（卡片上要显示「红 x · 黑 y」） */
-  countsOf: (key: string) => StickerCounts;
   /** 一次表态（红 / 黑）。**跳过不调它** —— 见文件头。 */
   onVote: (key: string, intent: StickerType) => void;
   /** 撤销一次表态：把这一部恢复到 `before`（`undefined` = 把那枚贴纸撤掉）。 */
@@ -154,7 +151,6 @@ export function QuickVoteDeck({
   fromAgenda,
   voteOf,
   handledOf,
-  countsOf,
   onVote,
   onRestore,
   onSkip,
@@ -353,13 +349,15 @@ export function QuickVoteDeck({
     setHistory([]);
   };
 
+  /** 卡片上的**唯一**内容（2026-10-14 起文字层已整层删掉，见下面那段注释）。
+   *  ⚠ `alt` 必须是片名：卡片上不再有别的字，这是读屏用户唯一的来源。
+   *  ⚠ 没有海报时兜底画**完整片名**（不是首字母）—— 那张卡上没有别的东西了。
+   *    背后那叠 `.qv-ghost` 复用同一个渲染，但它外层 `aria-hidden`，不会重复朗读。 */
   const posterOf = (film: FilmNode) =>
     film.poster ? (
-      <img className="qv-poster" src={film.poster} alt="" draggable={false} />
+      <img className="qv-poster" src={film.poster} alt={film.zh} draggable={false} />
     ) : (
-      <span className="qv-poster qv-poster--none" aria-hidden="true">
-        {film.zh.slice(0, 1)}
-      </span>
+      <span className="qv-poster qv-poster--none">{film.zh}</span>
     );
 
   return (
@@ -547,30 +545,16 @@ export function QuickVoteDeck({
                     >
                       跳过
                     </span>
-                    <div className="qv-caption">
-                      <p className="qv-title">{card.title}</p>
-                      {card.en && card.en !== card.zh && <p className="qv-en">{card.en}</p>}
-                      {/* 元信息行：**复用 `FilmNode.meta`**（单元 · 国家 · 年份 · 导演，口径在
-                          `util.ts::filmInfoOf`）—— 卡片上不另拼一份，否则必与影片库 / 行程分叉。 */}
-                      {card.meta && <p className="qv-meta">{card.meta}</p>}
-                      <p className="qv-sub">
-                        {card.shows.length
-                          ? `${card.shows.length} 场 · ${card.shows[0].date} ${card.shows[0].start_time} 起${
-                              card.shows[0].duration_min ? ` · ${card.shows[0].duration_min} 分钟` : ""
-                            }`
-                          : "目录片 · 暂无排期"}
-                      </p>
-                      <p className="qv-counts">
-                        全站 红 {countsOf(card.key).red} · 黑 {countsOf(card.key).black}
-                        {" · "}
-                        <strong data-qv-mine={deckStateOf(voteOf(card.key))}>{voteStateLabel(voteOf(card.key))}</strong>
-                      </p>
-                      {/* 简短介绍取自现有豆瓣产物（`intros.ts::introOf`）—— **不引第二份数据**。
-                          没拉到 / 没这条映射时整段不渲染，而不是画一句「暂无简介」。 */}
-                      {introOf(card.map?.subject_id) ? (
-                        <p className="qv-intro">{introOf(card.map?.subject_id)}</p>
-                      ) : null}
-                    </div>
+                    {/* ⚠ 2026-10-14（用户：「海报上的信息太多了 …… 最好只保留纯海报」）：
+                        卡片上**只剩海报本身** —— 原来压在底部的片名 / 英文名 / 元信息 / 场次 /
+                        票数 / 简介整层删掉。理由：这一屏的用途是「看海报、凭直觉划一下」，
+                        七八行字会把海报挤成一张小图，而现场观众认片靠的正是海报本身
+                        （那上面本来就印着片名）。
+                        ⚠ 删掉文字层之后，「这是哪一部」只剩海报一条通道，所以有两处必须跟着改：
+                          ① `posterOf` 的 `alt` 从 `""` 改成片名（读屏用户的唯一来源）；
+                          ② 没有海报时兜底画**完整片名**而不是首字母（否则那张卡就是一片空白）。
+                        ⚠ 票数（`data-qv-mine`）随之从卡片上消失 —— 它本来只是个参照；
+                          要核对某部落在哪一档，退出弹层看榜单更直接（那里的卡片信息是全的）。 */}
                     <span className="qv-progress" data-qv-progress={progress.toFixed(2)} aria-hidden="true" />
                   </div>
                 </div>

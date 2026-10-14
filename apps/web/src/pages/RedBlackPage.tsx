@@ -1012,7 +1012,6 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
           fromAgenda={deck.fromAgenda}
           voteOf={voteOf}
           handledOf={handledOf}
-          countsOf={(key) => filmCounts.get(key) ?? EMPTY_COUNTS}
           onVote={vote}
           onRestore={restoreVote}
           onSkip={markSkipped}

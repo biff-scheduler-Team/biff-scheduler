@@ -1510,9 +1510,7 @@ test("卡片上的「红 / 黑」按钮直接投票：点一下随机落一枚�
  *    而本文件里那些 stub 并不提供它（卡片会停在「正在取热门榜的候选…」）。 */
 const deckSeed = { "biff.picks.v2": legacyData["biff.picks.v2"] };
 
-test("快速投票：不拖动也能看出左右是什么 —— 常驻方向图例与「不喜欢 / 喜欢」按钮", async ({
-  page,
-}) => {
+test("快速投票：不拖动也能看出左右是什么，且卡片上只剩海报", async ({ page }) => {
   await stubEmpty(page);
   await seed(page, deckSeed);
   await ready(page, "/redblack?sort=red&vote=1");
@@ -1528,6 +1526,15 @@ test("快速投票：不拖动也能看出左右是什么 —— 常驻方向图
   // ② 三枚按钮把方向与语义一起写出来（「黑 / 红」是榜单术语，新用户读不出方向）
   await expect(page.getByRole("button", { name: "不喜欢（投黑榜）" })).toBeVisible();
   await expect(page.getByRole("button", { name: "喜欢（投红榜）" })).toBeVisible();
+
+  // ③ 卡片上只剩海报（2026-10-14 用户：「海报上的信息太多了 …… 最好只保留纯海报」）。
+  //    ⚠ 逐条钉住那六块文字，而不是断言整块 `.qv-caption` 不存在 —— 后者只能证明「容器没了」，
+  //      证明不了「没人把其中某一行挪到别处又加回来」。
+  const card = page.locator(".qv-card");
+  for (const gone of ["qv-caption", "qv-title", "qv-en", "qv-meta", "qv-sub", "qv-counts", "qv-intro"]) {
+    await expect(card.locator(`.${gone}`)).toHaveCount(0);
+  }
+  await expect(card.locator(".qv-poster")).toHaveCount(1);
 });
 
 test("快速投票：投完出现「已投红榜 · 撤回」，撤回后那一票被撤掉", async ({ page }) => {
@@ -1558,8 +1565,11 @@ test("快速投票：投完出现「已投红榜 · 撤回」，撤回后那一�
   await page.locator(".qv-undo").click();
 
   await expect(page.locator(".qv-card")).toHaveAttribute("data-qv-key", first!);
-  await expect(page.locator('.qv [data-qv-mine="undecided"]')).toBeVisible();
   await expect(page.locator(".qv-undo-idle")).toHaveText("划错了可以撤回");
+  // ④ 那一票**真的**从票板上撤掉了 —— 卡片上已经没有票数可看了（2026-10-14「只保留纯海报」），
+  //    所以直接读票板本身。⚠ 这是比看数字更硬的判据：数字只是渲染，票板才是那本账。
+  const board = await page.evaluate(() => localStorage.getItem("biff.redblack.v2") ?? "");
+  expect(board).not.toContain(first!);
 });
 
 test("快速投票：矮屏（390 × 667）里卡片不再顶满一屏 —— 海报高度受视口约束", async ({ page }) => {

@@ -100,58 +100,26 @@
   -webkit-user-drag: none;
 }
 
-/* 没有海报的目录片：一条空底色 + 首字，别让卡片塌成 0 高 */
+/* 没有海报的目录片：一条空底色 + **完整片名**。
+ * ⚠ 2026-10-14 之前这里只画**首字**（那时卡片底部还有一行片名兜着）；
+ *   现在文字层整层删掉了，只画首字母等于给用户一张空白卡 —— 所以改成整条片名，长名自己折行。 */
 .qv-poster--none {
   display: grid;
   place-items: center;
+  padding: 16px;
   background: linear-gradient(160deg, var(--raised), var(--line));
   color: var(--text);
-  font-size: 40px;
+  font-size: 18px;
   font-weight: 600;
-  opacity: 0.55;
-}
-
-.qv-caption {
-  position: absolute;
-  inset: auto 0 0 0;
-  padding: 12px 12px 12px;
-  color: #fff;
-  max-height: 74%;
-  overflow: hidden;
-  /* 海报本身颜色不可控，所以这层压暗是硬需求（不是装饰） */
-  background: linear-gradient(to top, rgb(0 0 0 / 88%) 40%, rgb(0 0 0 / 70%) 72%, rgb(0 0 0 / 0%));
-}
-
-.qv-title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.qv-en,
-.qv-meta,
-.qv-sub,
-.qv-counts,
-.qv-intro {
-  margin: 3px 0 0;
-  font-size: 12px;
   line-height: 1.5;
-  opacity: 0.88;
+  text-align: center;
+  opacity: 0.85;
 }
 
-/* 简介是这一块里唯一「可读的一段话」，给它略宽的呼吸与更低的对比，
-   好与上面那几行机读信息（元信息 / 场次 / 计数）在字色上分开 */
-.qv-intro {
-  margin-top: 6px;
-  font-size: 12px;
-  opacity: 0.72;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  /* 卡片高度固定，简介只留 3 行 —— 超出由 `overflow: hidden` 裁掉，不做折叠交互 */
-  -webkit-line-clamp: 3;
-  overflow: hidden;
-}
+/* ⚠ 2026-10-14：`.qv-caption` 整层（片名 / 英文名 / 元信息 / 场次 / 票数 / 简介）已删掉 ——
+ *   用户原话「海报上的信息太多了 …… 最好只保留纯海报」。卡片上现在只剩海报本身，
+ *   所以那几条字号 / 压暗渐变 / 3 行 clamp 的规则跟着一起删，不留死规则（§5）。
+ *   「这是哪一部」改由海报与它的 `alt` 承担，见 `QuickVoteDeck.tsx::posterOf`。 */
 
 /* ---------------- 拖动中的两枚标记 ----------------
  * 「加入红榜 / 加入黑榜」：**强度跟着拖动距离走**（透明度由组件内联给）。
@@ -530,11 +498,4 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  /* 窄屏不渲染简介（2026-10-14，PLAN-20261014205414）：卡片被 `38vh` 收小之后，
-     caption 里**最长**的那一段会把「红 N · 黑 N」挤出可视区（caption 是 `overflow: hidden`，
-     被裁掉的正是底部）。手机上认片靠海报 + 片名 + 场次，简介属于「在电脑上看」的那一层。
-     ⚠ 用 CSS 而不是在组件里判视口：组件不该知道屏幕多大，而这一条纯是版式取舍。 */
-  .qv-intro {
-    display: none;
-  }
 }
