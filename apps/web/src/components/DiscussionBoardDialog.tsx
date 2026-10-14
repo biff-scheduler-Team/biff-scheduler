@@ -29,9 +29,9 @@ import { Button, ButtonGroup, Content, Dialog, DialogContainer, Heading } from "
 interface DiscussionBoardDialogProps {
   /** **全量**片名反查（`useCatalog().filmByKey`）—— 不受页面搜索 / 筛选影响 */
   filmByKey: Map<string, FilmNode>;
-  /** 榜单上**真的有卡**的那些片 key（`redblack.ts::boardFilms` 的口径）。
-   *  ⚠ 评语可能属于一届里已经**没有排期**的目录片（或旧届残留）：那些行只能读、不能跳 ——
-   *    点了会滚到一个根本不存在的卡片上，那比「不能点」更让人困惑。 */
+  /** 榜单上**真的有卡**的那些片 key（`redblack.ts::boardFilms` 的口径：合集已拆成成员片）。
+   *  ⚠ 评语可能属于一届里已经**没有排期**的目录片（或旧届残留），也可能属于**已被拆掉的合集**：
+   *    那些行只能读、不能跳 —— 点了会滚到一个根本不存在的卡片上，那比「不能点」更让人困惑。 */
   boardKeys: ReadonlySet<string>;
   /** 点一行 → 跳到该片卡片（关弹层 / 滚动 / 高亮由调用方负责） */
   onJump: (filmKey: string) => void;

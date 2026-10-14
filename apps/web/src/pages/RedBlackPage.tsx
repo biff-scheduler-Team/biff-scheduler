@@ -40,7 +40,6 @@ import { StickerFace } from "../components/StickerFace";
 import { StickerSkinWheel } from "../components/StickerSkinWheel";
 
 import type { FilmNode } from "../app/model";
-import { searchFilm } from "../app/model";
 import { useQuery } from "../app/hooks";
 import { useCatalog } from "../app/store";
 import {
@@ -67,6 +66,7 @@ import {
   saveWatched,
   scheduleSaveStickers,
   scoreOf,
+  searchBoardFilm,
   setStickerComment,
   skinsSignature,
   sortByScore,
@@ -441,7 +441,8 @@ export function RedBlackPage() {
    *  声明在这里而不是紧跟 `sorted`,是因为「票数落定后自动补排一次」也要用它。 */
   const [sortTick, setSortTick] = useState(0);
   // 票数是**异步**到的,而榜单在它到达之前就排过一次序了 —— 那一次把每部都判成 0 分(并列),
-  // 稳定排序于是原样返回 `boardFilms(films)`,也就是**影片库目录序**。结果就是默认档写着
+  // 稳定排序于是原样返回 `boardFilms(films)`,也就是**影片库目录序**(2026-10-14 起合集卡换成
+  // 了它的成员片,成员片本身仍在目录序里 —— 见 `PLAN-20261014112444`)。结果就是默认档写着
   // 「按评分从高到低」,首屏给的却是目录序(用户 2026-09-22:「好像既不是总数 也不是红数」)。
   // 所以票数一结算就**自动补排一次**(仅此一次),之后照旧冻结(2026-09-16 用户:「跳动很频繁」)。
   // ⚠ 用户已经动过手就**跳过**:在读到一半时整页重排等于把人顶走 —— 那种情况下
@@ -496,8 +497,11 @@ export function RedBlackPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 故意不依赖 board,见上一行
   }, [votesKey]);
 
+  // ⚠ 搜索走 `redblack.ts::searchBoardFilm`(不是 `app/model.ts::searchFilm` 直接上):
+  //   榜单上的合集已被 `boardFilms` 拆成成员片,而成员片自己 `shows` 为空 ——
+  //   不认「所属合集场次」的话,「搜 062」会一张都不剩(见 `PLAN-20261014112444`)。
   const candidates = useMemo(
-    () => boardFilms(films).filter((film) => searchFilm(film, query)),
+    () => boardFilms(films).filter((film) => searchBoardFilm(film, query)),
     [films, query],
   );
   // ⚠ **顺序不跟票数走**(用户反馈「跳动很频繁」)。按数量降序时,别人贴一枚就让那张卡跳到榜首、
@@ -538,7 +542,7 @@ export function RedBlackPage() {
     boardWasOpenRef.current = boardOpen;
   }, [boardOpen]);
 
-  /** 总览里「能跳过去」的片子 —— 判据与榜单**同一处**(`boardFilms`:只列有排期的影片)。
+  /** 总览里「能跳过去」的片子 —— 判据与榜单**同一处**(`boardFilms`:合集拆成成员片)。
    *  ⚠ 评语可能属于一届里已经没有排期的目录片 / 旧届残留:那些行只能读、不能跳,
    *    否则会把用户滚到一张根本不存在的卡上。 */
   const boardKeys = useMemo(() => new Set(boardFilms(films).map((film) => film.key)), [films]);

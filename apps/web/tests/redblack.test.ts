@@ -38,6 +38,7 @@ import {
   saveWatched,
   scheduleSaveStickers,
   scoreOf,
+  searchBoardFilm,
   setStickerComment,
   sortByScore,
   sortByTotal,
@@ -79,7 +80,7 @@ const LS_WATCHED = "biff.redblack.watched.v1";
 const LS_SEEN = "biff.redblack.seen.v1";
 
 /** 最小 FilmNode:只填被测函数真正读的字段 */
-function film(key: string, shows: FilmNode["shows"] = []): FilmNode {
+function film(key: string, shows: FilmNode["shows"] = [], block?: FilmNode["block"]): FilmNode {
   return {
     key,
     title: key,
@@ -89,6 +90,7 @@ function film(key: string, shows: FilmNode["shows"] = []): FilmNode {
     meta: "",
     cats: [],
     shows,
+    block,
   };
 }
 
@@ -788,11 +790,90 @@ describe("v1 → v2 迁移", () => {
   });
 });
 
-describe("boardFilms:只列有排期的影片", () => {
+describe("boardFilms:榜单影片候选", () => {
   it("无排期的目录片不入榜(连场次都没有,谈不上看过没看过)", () => {
     const withShows = film("a", [show({ code: "001" })]);
     const noShows = film("b", []);
     expect(boardFilms([withShows, noShows]).map((f) => f.key)).toEqual(["a"]);
+  });
+
+  // 合集场次拆成成员片(2026-10-14,PLAN-20261014112444):用户「搜 062 出现的是
+  // 'Asian Short Film Competition 1',我希望出现的是『她说』」—— 合集卡不再占位。
+  describe("合集场次拆成成员片", () => {
+    const program = show({
+      code: "062",
+      title_en: "Asian Short Film Competition 1",
+      midnight_members: ["She Said", "Downwind"],
+    });
+    const programNode = film("sched:asian short film competition 1", [program]);
+    /** 成员片 = 纯目录片:只有 `block` 指向所属合集场次,自己没有 `shows` */
+    const sheSaid = { ...film("cat:f228", [], program), zh: "她说", en: "She Said" };
+    const downwind = { ...film("cat:f221", [], program), zh: "Downwind", en: "Downwind" };
+
+    it("合集卡不占位,改由成员片各占一张(保持 films 里的出现顺序)", () => {
+      expect(boardFilms([programNode, sheSaid, downwind]).map((f) => f.key)).toEqual([
+        "cat:f228",
+        "cat:f221",
+      ]);
+    });
+
+    it("同一合集排了多场,成员片也只在榜上出现一次", () => {
+      const second = show({
+        code: "326",
+        title_en: "Asian Short Film Competition 1",
+        midnight_members: ["She Said", "Downwind"],
+      });
+      expect(
+        boardFilms([film("sched:asian short film competition 1", [program, second]), sheSaid, downwind]).map(
+          (f) => f.key,
+        ),
+      ).toEqual(["cat:f228", "cat:f221"]);
+    });
+
+    it("成员片自己就有场次的合集(午夜联映)原样保留 —— 那些片在榜上已有落脚点", () => {
+      const midnight = film("sched:midnight passion 1", [
+        show({ code: "075", title_en: "Midnight Passion 1", midnight_members: ["Sapiens"] }),
+      ]);
+      expect(boardFilms([midnight]).map((f) => f.key)).toEqual(["sched:midnight passion 1"]);
+    });
+
+    it("成员解析不全的合集原样保留(宁可少拆,也不能拆出一张空洞)", () => {
+      // 官方名单 2 部,目录里只找到 1 部
+      const onlyOne = { ...film("cat:x", [], program) };
+      expect(boardFilms([programNode, onlyOne]).map((f) => f.key)).toEqual([
+        "sched:asian short film competition 1",
+      ]);
+    });
+  });
+});
+
+describe("searchBoardFilm:榜单搜索", () => {
+  const program = show({
+    code: "062",
+    title_en: "Asian Short Film Competition 1",
+    title_zh: "",
+    midnight_members: ["She Said"],
+  });
+  // ⚠ `searchFilm` 读的是双语拼好的 `title`(不是 `zh` / `en` 各自),夹具必须一起给
+  const sheSaid = { ...film("cat:f228", [], program), title: "She Said · 她说", zh: "她说", en: "She Said" };
+
+  it("成员片认「所属合集场次」的编号与片名", () => {
+    expect(searchBoardFilm(sheSaid, "062")).toBe(true);
+    expect(searchBoardFilm(sheSaid, "asian short film")).toBe(true);
+  });
+
+  it("影片自身字段照旧(searchFilm 那一段)", () => {
+    expect(searchBoardFilm(sheSaid, "她说")).toBe(true);
+    expect(searchBoardFilm(sheSaid, "She Said")).toBe(true);
+  });
+
+  it("没挂在合集上的片不受影响", () => {
+    expect(searchBoardFilm(film("cat:f001", []), "062")).toBe(false);
+  });
+
+  it("空搜索词恒命中(与 searchFilm 同一条)", () => {
+    expect(searchBoardFilm(sheSaid, "  ")).toBe(true);
+    expect(searchBoardFilm(film("cat:f001", []), "")).toBe(true);
   });
 });
 

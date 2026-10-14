@@ -214,6 +214,27 @@ test("榜单铺出去重后的影片,同一部只出现一次,且能按场次 co
   await expect(page.locator(`.rb-card[data-film-key="${target}"]`)).toBeVisible();
 });
 
+// 合集场次拆成成员片(2026-10-14,PLAN-20261014112444)。
+// 用户原话:「我在红黑榜搜索 062 …出现的是 'Asian Short Film Competition 1',
+//   我希望出现的是和影片库一样是『她说』」—— `062` 是「Asian Short Film Competition 1」
+//   这个短片竞赛合集场次的编号(一张票连看 5 部),那 5 部此前在榜上既搜不到也贴不了票。
+test("搜合集场次编号 062 → 出现的是 5 部成员片(含《她说》),不再是一张合集卡", async ({ page }) => {
+  await stubEmpty(page);
+  await ready(page, "/redblack");
+
+  await page.getByRole("searchbox").fill("062");
+  // ⚠ 搜索词是 200ms 合并提交的(见上一条用例)—— 先断**数量**,否则「还没过滤时就通过」会假绿:
+  //   成员片本来就在整份榜单里,`toBeVisible()` 在过滤前也成立。
+  await expect(page.locator(".rb-card")).toHaveCount(5);
+  const sheSaid = page.locator('.rb-card[data-film-key="cat:f228"]');
+  await expect(sheSaid).toBeVisible();
+  await expect(sheSaid.locator(".rb-title")).toHaveText("她说");
+  // 合集卡本身已不在榜上(它被拆成了那 5 张)
+  await expect(
+    page.locator('.rb-card[data-film-key="sched:asian short film competition 1"]'),
+  ).toHaveCount(0);
+});
+
 // hero 上那行「全站」数字是**整份榜单**的口径,不该被搜索词牵动
 // (用户 2026-10-12 报:「输入编号搜索后 总览上面的这个数字会变化」)。
 // 根因:`totals` 的全站红 / 黑原来是从 `filmCounts` 累加的,而 `filmCounts` 只覆盖当前
