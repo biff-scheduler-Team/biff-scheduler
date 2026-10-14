@@ -606,10 +606,6 @@ export function QuickVoteDeck({
                     <span className="qv-undo-idle">划错了可以撤回</span>
                   )}
                 </div>
-                <p className="qv-help">
-                  左滑 = 不喜欢（黑榜）· 右滑 = 喜欢（红榜）· 上滑跳过（跳过不会改动已有的评价）。键盘：← →
-                  评价，空格跳过，Cmd/Ctrl + Z 撤回。
-                </p>
               </>
             )}
           </div>

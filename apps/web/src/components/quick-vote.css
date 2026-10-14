@@ -346,15 +346,6 @@
   border-color: var(--brand);
 }
 
-.qv-help {
-  margin: 0;
-  font-size: 12px;
-  text-align: center;
-  color: var(--text);
-  opacity: 0.6;
-  max-width: 360px;
-}
-
 /* ---------------- 空态 / 总结页 ---------------- */
 
 .qv-empty {
@@ -484,14 +475,8 @@
  * ⚠ 为什么不把主规则的 `36vh` 直接写小：`982px` 高的桌面上 `36vh = 353px > 320px`，
  *   桌面卡片恰好只受 `320px` 约束（逐像素不变）—— 系数一旦低于 `33vh`，桌面就会跟着缩水。
  *   矮屏这一档用 media query 单独收，桌面那侧就动不到。
- * ⚠ 两件事一起做：卡片从 `36vh` 收到 `32vh`，同时**说明行让位** ——
- *   它讲的三件事（左滑 / 右滑 / 上滑）常驻图例已经逐字说了，多出来的只有键盘快捷键，
- *   而那在手机上本来就没有键盘可敲。实测 390 × 667：不收这两处，最后一行要滚才够得着。 */
+ * （2026-10-15：底部那段键盘 / 手势说明文字已整段删除，常驻图例已把三个方向说全。） */
 @media (max-height: 700px) {
-  .qv-help {
-    display: none;
-  }
-
   .qv-stage {
     width: min(78vw, 320px, 32vh);
   }
@@ -510,9 +495,50 @@
     width: min(64vw, 320px, 26dvh);
   }
 
+  /* ⚠ 不许折行：320 宽时三段（左滑 / 上滑 / 右滑）折成两行，白白多占 18px */
   .qv-legend {
     font-size: 11px;
+    gap: 6px;
+    white-space: nowrap;
+    letter-spacing: 0;
+  }
+
+  /* 三枚按钮不许折行（2026-10-15 实测：390 宽时「不喜欢」折成「不喜 / 欢」、按钮高 65px，
+   * 白白吃掉 32px，把撤回条挤出弹层的可滚区）。三等分一行、字号收到 13px、内边距收紧。
+   * ⚠ 选择器权重 (0,1,1) 高于 S2 的原子类 (0,1,0) 且它们在 @layer 里，无需 !important。 */
+  .qv-actions {
+    display: grid;
+    grid-template-columns: 1.15fr 0.8fr 1.15fr;
     gap: 8px;
+    width: 100%;
+  }
+
+  .qv-actions button,
+  .qv-actions button * {
+    white-space: nowrap;
+  }
+
+  .qv-actions button {
+    min-inline-size: 0;
+    inline-size: 100%;
+    padding-inline: 6px;
+    font-size: 13px;
+  }
+}
+
+/* 超矮手机（浏览器工具栏吃掉后可视高 ≤ 600px，如 375 × 553）：海报再收到 22dvh。
+ * 实测 26dvh 时弹层内容仍溢出 28px、撤回条被挤出可视区；海报是这一屏里唯一能伸缩的块。 */
+@media (max-width: 560px) and (max-height: 600px) {
+  .qv-stage {
+    width: min(64vw, 320px, 22dvh);
+  }
+}
+
+/* 超矮手机（浏览器工具栏吃掉后可视高 ≤ 600px，如 375 × 553）：海报再收到 22dvh。
+ * 实测 26dvh 时弹层内容仍溢出 28px、撤回条被挤出可视区；海报是这一屏里唯一能伸缩的块。 */
+@media (max-width: 560px) and (max-height: 600px) {
+  .qv-stage {
+    width: min(64vw, 320px, 22dvh);
   }
 }
 

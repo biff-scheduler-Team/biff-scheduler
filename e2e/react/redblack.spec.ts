@@ -1606,31 +1606,59 @@ test("快速投票：矮屏（390 × 667）里卡片不再顶满一屏 —— �
   expect(measured.lowest, JSON.stringify(measured)).toBeLessThanOrEqual(measured.viewport);
 });
 
-test("快速投票：手机上弹层内容不需要滚动 —— 三枚按钮与撤回条都在可见区内", async ({ page }) => {
-  // 2026-10-15 用户截图：手机上海报下面的图例 / 按钮被弹层裁掉、要滚才看得到。
-  // ⚠ 真正的瓶颈不是视口，而是**弹层内容区**（标题 + 底部「关闭」+ 内边距之后剩下的高度），
-  //   所以直接量那个滚动容器：`scrollHeight ≤ clientHeight` 才算「不用滚」。
-  // 844 高是 iPhone 13；浏览器地址栏 / 工具栏会再吃掉一截，所以另跑一档 700。
-  for (const height of [844, 700]) {
-    await page.setViewportSize({ width: 390, height });
-    await stubEmpty(page);
-    await seed(page, deckSeed);
+test("快速投票：手机上整块内容完整可见 —— 不用滚，且每个控件都点得到", async ({ page }) => {
+  // 2026-10-15 用户截图 + 「验证在手机端能完全显示」。判据有三层，缺一不可：
+  //  ① 弹层滚动容器 `scrollHeight ≤ clientHeight`（不用滚）；
+  //  ② 图例 / 三枚按钮 / 撤回条的矩形都落在视口内；
+  //  ③ 这些控件**中心点**真的命中自己（`elementFromPoint`）—— 只看矩形会放过「在视口里但被遮住」。
+  // ⚠ 尺寸取「浏览器工具栏吃掉一截之后」的真实可视高度，含最小的 320 × 568（iPhone SE 1 代）。
+  const sizes = [
+    { width: 430, height: 728 },
+    { width: 390, height: 664 },
+    { width: 375, height: 553 },
+    { width: 360, height: 600 },
+    { width: 320, height: 568 },
+  ];
+  await stubEmpty(page);
+  await seed(page, deckSeed);
+  for (const size of sizes) {
+    await page.setViewportSize(size);
     await ready(page, "/redblack?sort=red&vote=1");
     await expect(page.locator(".qv-card")).toBeVisible();
-    const measured = await page.evaluate(() => {
+    const report = await page.evaluate(() => {
       let node: HTMLElement | null = document.querySelector(".qv");
       while (node && node.scrollHeight <= node.clientHeight + 1 && node !== document.body) {
         node = node.parentElement;
       }
-      const bottom = (sel: string) => document.querySelector(sel)!.getBoundingClientRect().bottom;
-      const box = node && node !== document.body ? node.getBoundingClientRect().bottom : Infinity;
-      return {
-        overflow: node && node !== document.body ? node.scrollHeight - node.clientHeight : 0,
-        undoBottom: bottom(".qv-undo-row"),
-        containerBottom: box,
-      };
+      const overflow = node && node !== document.body ? node.scrollHeight - node.clientHeight : 0;
+      const hidden: string[] = [];
+      const targets: Array<[string, Element | null]> = [
+        ["图例", document.querySelector(".qv-legend")],
+        ["不喜欢", document.querySelector('[aria-label="不喜欢（投黑榜）"]')],
+        ["跳过", [...document.querySelectorAll(".qv-actions button")][1] ?? null],
+        ["喜欢", document.querySelector('[aria-label="喜欢（投红榜）"]')],
+        ["撤回条", document.querySelector(".qv-undo-row")],
+      ];
+      for (const [label, el] of targets) {
+        if (!el) {
+          hidden.push(`${label}:缺失`);
+          continue;
+        }
+        const r = el.getBoundingClientRect();
+        const x = r.left + r.width / 2;
+        const y = r.top + r.height / 2;
+        const inView = r.top >= 0 && r.bottom <= window.innerHeight && r.left >= 0 && r.right <= window.innerWidth;
+        const hit = document.elementFromPoint(x, y);
+        if (!inView || !hit || !(el === hit || el.contains(hit))) hidden.push(label);
+      }
+      const buttons = [...document.querySelectorAll(".qv-actions button")].map((b) => Math.round(b.getBoundingClientRect().height));
+      return { overflow, hidden, buttons };
     });
-    expect(measured.overflow, `${height}: ${JSON.stringify(measured)}`).toBeLessThanOrEqual(1);
+    const tag = `${size.width}x${size.height} ${JSON.stringify(report)}`;
+    expect(report.hidden, tag).toEqual([]);
+    expect(report.overflow, tag).toBeLessThanOrEqual(1);
+    // 按钮折成两行时高度会翻倍（实测「不喜欢」折成「不喜 / 欢」是 65px）
+    for (const height of report.buttons) expect(height, tag).toBeLessThanOrEqual(48);
   }
 });
 
