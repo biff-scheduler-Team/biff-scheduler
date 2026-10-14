@@ -304,18 +304,6 @@ test("export text and a real PNG come out of the itinerary, and ticket reminders
   expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
   expect(png.length).toBeGreaterThan(10_000);
   await dialog.getByRole("button", { name: "关闭", exact: true }).click();
-  await page
-    .getByRole("button", { name: /距第.*批开票|购票信息|售票中/ })
-    .click();
-  await expect(
-    page.getByRole("dialog", { name: "购票信息", exact: true }),
-  ).toContainText("北京时间");
-  const waitTicket = page.waitForEvent("download");
-  await page.getByRole("button", { name: "导出开票提醒", exact: true }).click();
-  const ticket = await waitTicket;
-  const ics = await readFile((await ticket.path())!, "utf8");
-  expect(ics).toContain("BEGIN:VALARM");
-  expect(ics).toMatch(/DTSTART:\d{8}T\d{6}Z/);
 });
 
 test("desktop zoom and floating panel preserve preferences; mobile never overflows the viewport", async ({

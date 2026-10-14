@@ -45,7 +45,7 @@ function input(over: Partial<RbPosterInput> = {}): RbPosterInput {
     crowd: new Map(),
     board: new Map(),
     site: { total: 0, red: 0, black: 0 },
-    mine: { marked: 0, placed: 0, quota: 0 },
+    mine: { placed: 0 },
     today: new Date(2026, 8, 22), // 2026-09-22
     ...over,
   };
@@ -55,13 +55,13 @@ const boardOf = (entries: Record<string, "red" | "black">): StickerBoard =>
   new Map(Object.entries(entries).map(([k, type]) => [k, [{ id: `s-${k}`, type, posX: 0.5, posY: 0.5 }]]));
 
 describe("buildRbPosterModel:两个榜各 TOP10,判据与页面同口径", () => {
-  it("红榜按评分从高到低、黑榜从低到高 —— 两榜都看评分(2026-10-12 撤了总数榜)", () => {
+  it("红榜按红票降序、黑榜按黑票降序 —— 两榜各看自己那一色(2026-10-14 改按数量)", () => {
     const films = [film("a", "甲"), film("b", "乙"), film("c", "丙")];
     const c = crowd({ a: [9, 1], b: [1, 9], c: [5, 5] });
     const model = buildRbPosterModel(input({ films, crowd: c }));
 
     const byLabel = new Map(model.boards.map((b) => [b.label, b.rows.map((r) => r.key)]));
-    // C = 0.5、m = 5：a = (9 + 2.5)/15 = 7.7、c = 5.0、b = (1 + 2.5)/15 = 2.3
+    // 红票 a = 9、c = 5、b = 1；黑票 b = 9、c = 5、a = 1
     expect(byLabel.get("红榜")).toEqual(["a", "c", "b"]);
     expect(byLabel.get("黑榜")).toEqual(["b", "c", "a"]);
   });
@@ -76,7 +76,7 @@ describe("buildRbPosterModel:两个榜各 TOP10,判据与页面同口径", () =>
     const red = model.boards[0];
     expect(red.rows).toHaveLength(TOP_N);
     expect(red.label).toBe("红榜");
-    expect(red.hint).toBe("按评分从高到低");
+    expect(red.hint).toBe("按红贴纸数（多在前）· 同数量比评分");
     // 全站全是红票 → 每部评分都是 10.0，名次由**票数**定：f0 票最多，排第一
     expect(red.rows[0].key).toBe("f0");
     expect(red.rows[0].score).toBe(10);
@@ -199,10 +199,10 @@ describe("buildRbPosterModel:头部与署名", () => {
 
   it("全站与我那两份数字**照传进来的用**(与页面 hero 同一份,不重算)", () => {
     const model = buildRbPosterModel(
-      input({ site: { total: 20629, red: 11919, black: 8710 }, mine: { marked: 72, placed: 60, quota: 12 } }),
+      input({ site: { total: 20629, red: 11919, black: 8710 }, mine: { placed: 60 } }),
     );
     expect(model.site).toMatchObject({ total: 20629, red: 11919, black: 8710 });
-    expect(model.mine).toEqual({ marked: 72, placed: 60, quota: 12 });
+    expect(model.mine).toEqual({ placed: 60 });
   });
 
   it("底部署名 = 网站 + 作者(与页面页脚逐字一致)", () => {

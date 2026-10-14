@@ -89,7 +89,9 @@ export async function replaceContributorVotes(
    *    不在这里静默吃掉 —— 吃掉的后果是漂移永远查不出来。 */
   const prevSkins = new Map<string, StickerSkin | null>();
   for (const row of existing) {
-    // 未知取值（被人工改过的坏行）直接丢掉：它没有对应的聚合列可减
+    // 未知取值（被人工改过的坏行）直接丢掉：它没有对应的聚合列可减。
+    // ⚠ 2026-10-14 修订：白名单又回到 `isFilmVote`（红 / 黑两态）—— 第三态 `unseen` 撤掉之后，
+    //   这里不再有「认得它、但不给它减账」那种第三种情况。
     if (isFilmVote(row.vote)) {
       previous.set(row.film_key, row.vote);
       prevComments.set(row.film_key, row.comment ?? null);
@@ -140,7 +142,9 @@ export async function replaceContributorVotes(
   const statKey = (filmKey: string) =>
     and(eq(filmVoteStat.edition, edition), eq(filmVoteStat.film_key, filmKey));
 
-  /** 加一票：聚合行「插入或原地加」（行不存在时用 delta 作初值）。 */
+  /** 加一票：聚合行「插入或原地加」（行不存在时用 delta 作初值）。
+   *  ⚠ 2026-10-14 修订：这里原来有一道「`unseen` 直接返回」的守卫（当时第三态不进红黑账）——
+   *    第三态撤掉之后 `vote` 只可能是红 / 黑，那道守卫成了恒不成立的分支，一并删掉。 */
   const addVote = (filmKey: string, vote: FilmVote, delta: number) => {
     push(filmKey, {
       statement: db
@@ -173,7 +177,8 @@ export async function replaceContributorVotes(
     );
   };
 
-  /** 撤一票：探测负漂移 → 钳零写入 → 两色都归零时删行（顺序不可换）。 */
+  /** 撤一票：探测负漂移 → 钳零写入 → 两色都归零时删行（顺序不可换）。
+   *  ⚠ 顺序上它必须在 `statKey` **之前**返回 —— 否则会去探测一个根本不存在的负漂移。 */
   const removeVote = (filmKey: string, vote: FilmVote, delta: number) => {
     const key = statKey(filmKey);
     const column = vote === "red" ? filmVoteStat.red_count : filmVoteStat.black_count;
@@ -344,18 +349,19 @@ export async function replaceContributorVotes(
   for (const entry of added) addVote(entry.key, entry.vote, 1);
   // 按款细分：撤的按**旧款**减、加的按**新款**加 —— 改款自然落成「旧款 −1 / 新款 +1」。
   // ⚠ 必须与上面那两行**同源同拍**：少减一次，群点就会比卡片上的数字多一枚，且永不自愈。
+  // ⚠ `isFilmVote` 那道判断是**类型收口**：按款表只认红黑两色（主键里的 `vote` 就是它们）。
   for (const entry of removed) {
     const skin = prevSkins.get(entry.key) ?? null;
-    if (skin) removeSkinCount(entry.key, skin, entry.vote, -1);
+    if (skin && isFilmVote(entry.vote)) removeSkinCount(entry.key, skin, entry.vote, -1);
   }
   for (const entry of added) {
     const skin = nextSkins.get(entry.key) ?? null;
-    if (skin) addSkinCount(entry.key, skin, entry.vote, 1);
+    if (skin && isFilmVote(entry.vote)) addSkinCount(entry.key, skin, entry.vote, 1);
   }
   // 只换了款（票与颜色都没动）的那几票：`removed` / `added` 里没有它们，得自己算。
   for (const filmKey of extrasEdits) {
     const vote = votes.get(filmKey);
-    if (!vote) continue;
+    if (!vote || !isFilmVote(vote)) continue;
     const before = prevSkins.get(filmKey) ?? null;
     const after = nextSkins.get(filmKey) ?? null;
     if (before === after) continue;
@@ -396,6 +402,7 @@ export async function readContributorBoard(
   const rows = await readContributorVotes(db, edition, contributor);
   const board: VoteBoard = { votes: new Map(), comments: new Map(), skins: new Map() };
   for (const row of rows) {
+    // 未知取值（被人工改过的坏行）不认：它没有对应的聚合列可减。
     if (!isFilmVote(row.vote)) continue;
     board.votes.set(row.film_key, row.vote);
     board.comments.set(row.film_key, row.comment ?? null);
@@ -517,6 +524,7 @@ export async function recountVoteStats(db: Db, edition: string): Promise<Recount
     FROM film_vote_contribution
     WHERE edition = ${edition}
     GROUP BY edition, film_key
+    HAVING SUM(CASE WHEN vote IN ('red', 'black') THEN 1 ELSE 0 END) > 0
     ON CONFLICT(edition, film_key) DO UPDATE SET
       red_count = excluded.red_count,
       black_count = excluded.black_count,
@@ -632,6 +640,7 @@ export interface VoteAuditRow {
   // ⚠ 字段名走 **camelCase**:库里的行是 snake_case(`VoteRow`),但**对外的 DTO 一律 camelCase**
   //   —— 与 `/api/account/sync`、讨论区 / 反馈那几套一致(`createdAt` / `updatedAt` / `postId`)。
   filmKey: string;
+  /** 红 / 黑 —— 2026-10-14 的第三态 `unseen` 同日撤掉（见 `film-vote-stats.ts` 文件头）。 */
   vote: FilmVote;
   updatedAt: number;
   /** 这一行是不是匿名身份投的 */
@@ -687,6 +696,7 @@ export function auditVoteRows(
  *    要给它加调用点,先确认门禁(见 `admin.ts`)。 */
 export interface VoteAdminRow {
   filmKey: string;
+  /** 红 / 黑。⚠ 管理端那份**不回身份**（见上面那条约束），但它要能看见并删掉任意一行。 */
   vote: FilmVote;
   contributor: string;
   anonymous: boolean;

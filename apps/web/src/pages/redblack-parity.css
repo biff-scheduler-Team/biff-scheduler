@@ -669,24 +669,27 @@
   }
 }
 
-/* 「生成分享图」—— 这一排里**唯一的主操作**(用户 2026-09-29:
- * 「将主要操作(如『生成分享图』)高亮突出,筛选切换保持统一的 Segmented Control 样式」)。
- * ⚠ 改版前它用 `--selected` / `--selected-line`(= #388452 绿):用户读作「绿色胶囊」,
- *   而绿色与红黑榜的红黑语义毫无关系 —— 那只是别处抄来的 token。
- *   现在收归品牌红,与 hero 的整块红底同源,一排里只有它是实底。 */
+/* ⚠ 2026-10-14(PLAN-20261014190000 修订 2):原来这里有一条 `.rb-quick-btn`
+ *   —— 「快速投票」在这一排里的实底按钮。入口已搬到**页头**(`BoardPage` 的 `.board-quick`),
+ *   所以那条规则随按钮一起删掉,不留一个没人用的类名。
+ *
+ * 「生成分享图」—— 仍然是这一排里**唯一的主操作**（这一排只剩「看结果」那几件事）。
+ * ⚠ 只改配色那只旧账记得留着：改版前它用 `--selected` / `--selected-line`(= #388452 绿)，
+ *   用户读作「绿色胶囊」，而绿色与红黑榜的红黑语义毫无关系 —— 那只是别处抄来的 token。
+ *   ⚠ 类名与结构**不许动**：E2E 与 `shareBtnRef`（焦点归还）都按它找。 */
 .rb-share-btn {
-  padding: 6px 16px;
-  border: 1px solid var(--brand);
+  padding: 6px 14px;
+  border: 1px solid var(--line);
   border-radius: 999px;
-  background: var(--brand);
-  color: #fff;
+  background: var(--surface);
+  color: var(--text);
   font-size: 13px;
-  font-weight: 600;
   cursor: pointer;
 }
 
 .rb-share-btn:hover {
-  filter: brightness(1.08);
+  border-color: var(--brand);
+  color: var(--brand);
 }
 
 /* 分享图预览:竖长图,靠容器限宽 + 自适应高度 */
@@ -968,9 +971,9 @@
   transition: opacity 0.14s ease;
 }
 
-.rb-card:not([data-rb-marked]) .rb-canvas-hint {
-  opacity: 0;
-}
+/* ⚠ 2026-10-14:原来这里还有一条 `.rb-card:not([data-rb-marked]) .rb-canvas-hint { opacity: 0 }`
+ *   —— 「未标记看过时那句引导默认不显形」的闸门。`data-rb-marked` 与「标记看过」一起删了，
+ *   这句引导于是**常态可见**（它现在说的是唯一的入口：「点「快速投票」投一枚」）。 */
 
 .rb-card:not([data-rb-marked]):hover .rb-canvas-hint,
 .rb-card:not([data-rb-marked]):focus-within .rb-canvas-hint {
@@ -1044,12 +1047,12 @@
     0 2px 3px rgb(0 0 0 / 14%),
     0 3px 7px rgb(0 0 0 / 10%);
   transform: translate(-50%, -50%) rotate(var(--rb-tilt, 0deg));
-  cursor: grab;
-  touch-action: none;
-}
-
-.rb-dot:active {
-  cursor: grabbing;
+  /* ⚠ 2026-10-14:这里原来是 `cursor: grab` + `touch-action: none`（配 `:active { grabbing }`）——
+   *   那是「它是一根拖拽手柄」的语言。现在它只是一个 `<span role="img">`：
+   *   留着抓手光标等于承诺一个不存在的手势（用户会按住试图拖），
+   *   而 `touch-action: none` 更糟 —— 它会让**手指按在这枚贴纸上时滚不动页面**。
+   *   两者一起删掉，它回归「一块压在画布上的画」。 */
+  cursor: inherit;
 }
 
 /* ---------- 长按的「蓄力进度环」(2026-10-05) ----------

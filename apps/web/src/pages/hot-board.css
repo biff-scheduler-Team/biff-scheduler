@@ -27,6 +27,35 @@
   background: var(--raised);
 }
 
+/* 页头那一行：三个 tab + 「快速投票」（2026-10-14，PLAN-20261014190000 修订 2）。
+ * ⚠ 那一枚**不在 `.board-tabs` 里面**，所以另起一层 flex —— 它是**动作**（打开投票卡片），
+ *   不是第四个视图。塞进 `role=tablist` 会让读屏把它念成视图，`aria-selected` 也说不通。
+ * ⚠ `flex-wrap`：窄屏上 tab 占满一行、按钮落到第二行，比把两者一起压扁好读。 */
+.board-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* 主操作 —— 投票是这一页唯一**改数据**的入口，所以给它品牌色实底（与 `.board-tab[aria-selected]` 同色）。
+ * ⚠ 与那个选中的 tab 同色不算冲突：两者的位置、形状（圆角 999 vs 9）与语义都不同，
+ *   而「这页最该先做的事」本来就该和「当前在看哪一份榜」用同一种强调色。 */
+.board-quick {
+  padding: 8px 20px;
+  border: 1px solid var(--brand);
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.board-quick:hover {
+  filter: brightness(1.08);
+}
+
 .board-tab {
   padding: 7px 20px;
   border: 0;
@@ -631,6 +660,7 @@
 @media (pointer: coarse) {
   /* 触控目标下限 44px（与 redblack-parity.css 同一条口径 —— 电影节现场主要用手机） */
   .board-tab,
+  .board-quick,
   .hb-share-btn {
     min-height: 44px;
   }

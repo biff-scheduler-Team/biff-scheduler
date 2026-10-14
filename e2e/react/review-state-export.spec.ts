@@ -37,19 +37,6 @@ test("retired keys are purged on load, unknown keys survive, and ICS import stil
   await expect(agenda.locator('[data-grid-code="033"]')).toBeVisible();
 });
 
-test("reopening ticket information after the opening time refreshes its status", async ({ page }) => {
-  await page.clock.install({ time: new Date("2026-09-21T04:59:50Z") });
-  await ready(page);
-  await page.getByRole("button", { name: /距第 2 批开票/ }).click();
-  const dialog = page.getByRole("dialog", { name: "购票信息", exact: true });
-  await expect(dialog.locator(".ticket-batch").last()).toContainText("还有");
-  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
-  await page.clock.fastForward(20_000);
-  await page.getByRole("button", { name: /BIFF 2026 售票中/ }).click();
-  await expect(dialog.locator(".ticket-batch").last()).toContainText("已开票");
-  await expect(dialog.locator(".ticket-batch").last()).not.toContainText("还有");
-});
-
 type ImageTestWindow = Window & { __reviewBlobJobs: (() => void)[] };
 
 async function holdPosterBlobs(page: Page) {

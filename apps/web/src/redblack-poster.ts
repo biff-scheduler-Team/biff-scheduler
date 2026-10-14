@@ -5,9 +5,10 @@
 //   弹层 / 剪贴板 / 下载 = `components/RedBlackShareDialog.tsx`。
 //
 // ★ 三类内容,一次说清(用户 2026-09-22 定;2026-10-12 起**总数榜已撤**,只留两榜):
-//   ① **红榜 / 黑榜 各 TOP10** —— 判据**逐字复用页面那两个档位**(`redblack.ts::sortByScore`),
+//   ① **红榜 / 黑榜 各 TOP10** —— 判据**逐字复用页面那两个档位**(`redblack.ts::sortByVotes`),
 //      不另立一套排名规则:分享图上看到的顺序必须与页面上点同档位时看到的一致。
-//      两榜都按**评分**(加权红占比,见 `redblack.ts::scoreOf`),红榜从高到低、黑榜从低到高。
+//      两榜都按**该榜自己的贴纸数**降序(红榜看红票、黑榜看黑票;2026-10-14 起,
+//      见 `redblack.ts` 的「排序」那一段),票数相同再比评分(`scoreOf`)。
 //   ② **我贴过的** —— **不限条数**(贴了多少列多少),每行给「我贴的那一色 + 全站红黑数」。
 //   ③ 底部署名:网站 + 作者。
 //
@@ -45,7 +46,7 @@ import {
   othersSkins,
   priorOf,
   scoreOf,
-  sortByScore,
+  sortByVotes,
   sortByTotal,
   tiltOf,
   type CrowdCounts,
@@ -111,7 +112,7 @@ export interface RbPosterBoard {
   mode: SortMode;
   /** 「红榜」/「黑榜」 */
   label: string;
-  /** 口径说明,例如「按评分从高到低」 */
+  /** 口径说明,例如「按红贴纸数（多在前）· 同数量比评分」 */
   hint: string;
   rows: RbPosterRow[];
 }
@@ -122,8 +123,10 @@ export interface RbPosterModel {
   subtitle: string;
   /** 全站聚合(与页面 hero 的大字同一份数字) */
   site: { total: number; red: number; black: number; films: number };
-  /** 我的(与页面 hero 那行小字同一份数字) */
-  mine: { marked: number; placed: number; quota: number };
+  /** 我的(与页面 hero 那行小字同一份数字)。
+   *  ⚠ 2026-10-14 两轮修订后`marked` / `quota`（「标记看过 / 还能贴」）与 `unseen`（「没看过」）
+   *    都撤掉了 —— 一部片对一个人只剩红 / 黑两态，我的那份小字因此只剩「已贴几枚」。 */
+  mine: { placed: number };
   boards: RbPosterBoard[];
   /** 我贴过的 —— 不限条数 */
   myTitle: string;
@@ -160,8 +163,8 @@ export interface RbPosterInput {
   board: StickerBoard;
   /** 页面 hero 那份「全站」统计 —— **传进来而不是重算**,分享图与页面才会是同一些数字 */
   site: { total: number; red: number; black: number };
-  /** 页面 hero 那份「我的」统计 */
-  mine: { marked: number; placed: number; quota: number };
+  /** 页面 hero 那份「我的」统计。⚠ 与 `RbPosterModel.mine` 同一组字段（今天只有 `placed`）。 */
+  mine: { placed: number };
   /** 评分先验（全站红占比）—— 权衡「票少 × 评分」的那个 `C`（`redblack.ts::priorOf`）。
    *  ⚠ **页面把它算好传进来**（`RedBlackPage` 的 `priorRate`），好让分享图行的评分与页面卡片角标
    *    逐字一致；不传时退回按 `crowd` 现算，单测与最小调用方不必自己造这个数。 */
@@ -187,9 +190,12 @@ export interface RbPosterInput {
   showFooter?: boolean;
 }
 
+/** 两榜的**口径说明**（印在节标题右边）。⚠ 必须与 `RedBlackPage` 的 `.rb-sort-hint` **同字**：
+ *  两处各写一份已经够糟了，再各写一个口径就是错的（§5）。2026-10-14 起排序是
+ *  「按该榜自己的贴纸数降序、同数量比评分」（见 `redblack.ts::sortByVotes`），两句一起改。 */
 const BOARDS: ReadonlyArray<{ mode: SortMode; label: string; hint: string }> = [
-  { mode: "red", label: "红榜", hint: "按评分从高到低" },
-  { mode: "black", label: "黑榜", hint: "按评分从低到高" },
+  { mode: "red", label: "红榜", hint: "按红贴纸数（多在前）· 同数量比评分" },
+  { mode: "black", label: "黑榜", hint: "按黑贴纸数（多在前）· 同数量比评分" },
 ];
 
 /** 长图里**可以单独勾掉**的节。
@@ -275,7 +281,7 @@ const NO_SYNCED_FACES: ReadonlyMap<string, SyncedStickerFace> = new Map();
 /**
  * 构建分享图模型。
  *
- * ⚠ 两条**展示**规则(不是排名规则,故不写在 `sortByScore` 里):
+ * ⚠ 两条**展示**规则(不是排名规则,故不写在 `sortByVotes` 里):
  *  ① **该榜那一色一票都没有的片不进该榜** —— 黑榜里列一堆「黑 0」毫无意义;票不够 10 部时榜就短一些。
  *     ⚠ 按**每榜各自的颜色**筛(`redblack.ts::boardHasVotes`),不是笼统的「有没有票」,
  *       也**不是**「评分 > 0」:只看「总数大于 0」的话,一部 3 红 0 黑 的片会照样出现在黑榜里。
@@ -307,7 +313,7 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
   // 勾掉的榜**连算都不算**(不是算完再藏起来):少一节就该少一节的开销
   const boards: RbPosterBoard[] = BOARDS.filter((entry) => picked.has(entry.mode))
     .map((entry) => {
-      const ranked = sortByScore(
+      const ranked = sortByVotes(
         candidates.filter((film) => boardHasVotes(crowd.get(film.key), entry.mode)),
         crowd,
         entry.mode,
@@ -748,7 +754,7 @@ function drawHeader(ctx: CanvasRenderingContext2D, model: RbPosterModel): void {
   ctx.font = font(22, 500);
   ctx.fillStyle = C.muted;
   ctx.fillText(
-    `我的：标记看过 ${model.mine.marked} 部 · 已贴 ${model.mine.placed} 枚 · 还能贴 ${model.mine.quota} 枚`,
+    `我的：已贴 ${model.mine.placed} 枚`,
     PAD,
     y + 366,
   );

@@ -5,6 +5,9 @@
  * 匿名 0.75，为了防刷而加权）；这边是「一人一部一票，值为红或黑」——
  * 贴纸是离散的实体隐喻，3 个人贴了红就该显示 3，加权会读出 2.25 这种没人看得懂的数。
  * 防刷交给贡献表的 (edition, film_key, contributor) 唯一约束：同一个人再怎么点也只算一票。
+ *
+ * ⚠ 2026-10-14：当天先加过第三种状态 `unseen`（「没看过」），**同日又按用户拍板撤掉** ——
+ *   上滑改成纯跳过之后，贡献行上只剩 `"red"` / `"black"` 两种取值。
  */
 
 import { isStickerSkin, type StickerSkin } from "@biff/contracts/sticker";
@@ -16,6 +19,11 @@ export const FILM_VOTES: readonly FilmVote[] = ["red", "black"];
 export function isFilmVote(value: unknown): value is FilmVote {
   return value === "red" || value === "black";
 }
+
+/* ⚠ 2026-10-14 修订:这里原来还有一个 `FilmVoteState = FilmVote | "unseen"`（第三态「没看过」）
+ *   与配对的 `isFilmVoteState`。用户当天拍板把上滑改成**纯跳过**之后,那个状态整个不存在了 ——
+ *   一部片对一个人只剩红 / 黑两种取值,所以这两个符号连同它们的守卫一起删掉,
+ *   全模块重新只用上面那个 `FilmVote` / `isFilmVote`。 */
 
 /** 一次上报最多带多少部片（与 want-ping 的 500 对齐，前端也按同一上限截断） */
 export const MAX_VOTES_PER_PING = 500;
@@ -29,7 +37,9 @@ export interface VoteCounts {
 }
 
 /** 上报列表 → Map。同一部片出现多次时**以最后一条为准**（前端可能把旧值和新值一起发上来了）；
- *  非法条目（空 key / 超长 key / 非红非黑的 vote）静默丢弃 —— 与 `hydrate()` 的「只取白名单」同一条原则。 */
+ *  非法条目（空 key / 超长 key / 白名单之外的 vote）静默丢弃 —— 与 `hydrate()` 的「只取白名单」同一条原则。
+ *  ⚠ 2026-10-14 修订：落库白名单与计数白名单**又是同一个** `isFilmVote` 了 ——
+ *    第三态 `unseen` 撤掉之后，不再需要把「能不能落库」与「进不进红黑账」分开（那是它当时唯一的用途）。 */
 export function normalizeVotes(
   input: Iterable<{ key: unknown; vote: unknown }>,
 ): Map<string, FilmVote> {
@@ -64,7 +74,10 @@ export function formatVoteCounts(
 export function diffVotes(
   previous: ReadonlyMap<string, FilmVote>,
   next: ReadonlyMap<string, FilmVote>,
-): { removed: Array<{ key: string; vote: FilmVote }>; added: Array<{ key: string; vote: FilmVote }> } {
+): {
+  removed: Array<{ key: string; vote: FilmVote }>;
+  added: Array<{ key: string; vote: FilmVote }>;
+} {
   const removed: Array<{ key: string; vote: FilmVote }> = [];
   const added: Array<{ key: string; vote: FilmVote }> = [];
   for (const [key, vote] of previous) {

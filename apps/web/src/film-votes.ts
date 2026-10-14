@@ -15,7 +15,7 @@ import { isStickerSkin, type StickerSkin } from "@biff/contracts/sticker";
 // ⚠ 只作**类型**引入（`import type`）：`redblack.ts` 是这一层的大户，运行期不值得为两个类型
 //    多一次模块加载，也避免任何潜在的首屏顺序纠缠。
 import { timeoutSignal } from "./net";
-import type { FilmSkinCounts, SkinCrowdCounts, SyncedStickerFace } from "./redblack";
+import type { FilmSkinCounts, SkinCrowdCounts, StickerType, SyncedStickerFace } from "./redblack";
 import { wholeCount } from "./util";
 
 /** 影片 key → 红 / 黑票数 */
@@ -35,7 +35,10 @@ const PING_URL = "/api/stats/film-votes-ping";
  *   所以这里用 `dedupeVotes` 把「省略字段」一律补成 `null`，而不是把它透传下去。 */
 export interface FilmVotePayload {
   key: string;
-  vote: "red" | "black";
+  /** 红 / 黑 两态（见 `redblack.ts::StickerType`）。
+   *  ⚠ 2026-10-14 修订：原来这里还有第三态 `"unseen"`（上滑记「没看过」），**已撤掉** ——
+   *    上滑改成**纯跳过**，一个字节都不写、也就没有东西要上报。 */
+  vote: StickerType;
   comment: string | null;
   skin: StickerSkin | null;
 }
@@ -45,7 +48,7 @@ export interface FilmVotePayload {
  *  进了这条链路之后一定是「字段齐全」的那个形状。 */
 export interface FilmVoteInput {
   key: string;
-  vote: "red" | "black";
+  vote: StickerType;
   comment?: string | null;
   skin?: StickerSkin | null;
 }
@@ -182,9 +185,11 @@ export function peekFilmSkins(): FilmSkinCounts {
  *    「先采纳、再重拉」），否则两次广播之间会出现「贴纸先涨回来一枚、再降下去」的跳动。
  * ⚠ 空表也是合法输入（我撤回全部票）—— 它表达的是「服务端那份里现在已经没有我了」。
  * ⚠ 两半（计数 `synced` 与外观 `syncedFaces`）**同进同退**：漏掉款那一半，换款那一拍群点会
- *    从错的桶里扣（见 `syncedFaces` 的说明，那是 2026-10-05 修的那个 bug）。 */
+ *    从错的桶里扣（见 `syncedFaces` 的说明，那是 2026-10-05 修的那个 bug）。
+ * ⚠ 2026-10-14 修订：入参只剩红 / 黑两态（第三态 `"unseen"` 随上滑改纯跳过撤掉），
+ *    所以这里不再需要「跳过某一种取值」那道分支。 */
 export function adoptSyncedVotes(
-  votes: Iterable<{ key: string; vote: "red" | "black"; skin?: StickerSkin | null }>,
+  votes: Iterable<{ key: string; vote: StickerType; skin?: StickerSkin | null }>,
 ): void {
   const next = emptyCounts();
   const nextFaces: Record<string, SyncedStickerFace> = Object.create(null);
@@ -361,7 +366,14 @@ export function shouldRetryPing(error: unknown): boolean {
  * ⚠ `set` 里 `comment` / `skin` **必须显式带上**（没写评语时是 `null`）：服务端按「这一票现在
  *   是什么状态」整条覆盖 —— 省掉字段等于告诉它「这部片现在没有评语」，那不是用户的意思。 */
 export type VoteOp =
-  | { op: "set"; key: string; vote: "red" | "black"; comment: string | null; skin: StickerSkin | null }
+  | {
+      op: "set";
+      key: string;
+      /** 红 / 黑；服务端那侧的枚举必须与它逐字一致（`"red"` / `"black"`）。 */
+      vote: StickerType;
+      comment: string | null;
+      skin: StickerSkin | null;
+    }
   | { op: "remove"; key: string };
 
 /** 盘上（与内存里）那一份待发。 */
@@ -719,7 +731,7 @@ export function flushFilmVotesPing(options: { keepalive?: boolean } = {}): void 
  *  iOS 上切到别的 App 走的是 `visibilitychange`，「关闭标签页 / 被系统回收」走 `pagehide`；
  *  少挂一个就有一整类场景不补发。
  *  ⚠ **惰性挂**（第一次上报 / 补发时才挂），不在 import 期碰 DOM：本模块被 node 环境的单测直接
- *    import（与 `redblack.ts::scheduleSaveStickers` 挂 `pagehide` 是同一个手法）。 */
+ *    import（`want-counts.ts` / `screening-counts.ts` 三个同构模块都是这个手法）。 */
 function bindPingLifecycle(): void {
   if (lifecycleBound || typeof window === "undefined") return;
   lifecycleBound = true;

@@ -78,7 +78,10 @@ interface RedBlackShareDialogProps {
   /** 评分先验（全站红占比）—— 页面那份，与卡片右上角评分**同一个数**
    *  （口径见 `redblack.ts::priorOf` / `redblack-poster.ts::RbPosterInput.priorRate`） */
   priorRate: number;
-  mine: { marked: number; placed: number; quota: number };
+  /** 我的（与页面 hero 那行小字同一份数字）。
+   *  ⚠ 2026-10-14 两轮修订：`marked` / `quota` 随「标记看过」那道闸门撤掉，`unseen` 随上滑改
+   *    纯跳过撤掉 —— 现在只剩 `placed`（我贴了几枚）。 */
+  mine: { placed: number };
   onDismiss: () => void;
 }
 

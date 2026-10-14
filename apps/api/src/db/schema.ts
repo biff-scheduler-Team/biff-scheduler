@@ -172,7 +172,10 @@ export const filmVoteContribution = sqliteTable("film_vote_contribution", {
   edition: text().notNull(),
   film_key: text().notNull(),
   contributor: text().notNull(),
-  vote: text().notNull(), // "red" | "black";白名单收口在 film-vote-stats.ts，不写 CHECK（旧行迁移过来时更宽松）
+  // "red" | "black";白名单收口在 film-vote-stats.ts，**不写 CHECK**（旧行迁移过来时更宽松）。
+  // ⚠ 2026-10-14：当天曾短暂加过第三态 "unseen"（快速投票「上滑 = 没看过」），**同日撤掉** ——
+  //   上滑改成纯跳过之后没有客户端会写它；**列定义一个字都没变**，所以自始至终没有配过迁移。
+  vote: text().notNull(),
   /** 评语正文（2026-09-29，PLAN-20260929181900）。`null` = 只贴了纸、没写评语
    *  （「从来没写」与「写了又清空」同值 —— 两者对读的人没有区别）。 */
   comment: text(),

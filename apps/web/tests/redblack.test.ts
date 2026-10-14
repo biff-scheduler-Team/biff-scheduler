@@ -15,38 +15,31 @@ import {
   boardFilms,
   boardHasVotes,
   clampSpot,
-  countsOf,
   countsSignature,
   crowdOf,
   crowdSignature,
   crowdStickers,
-  flushPendingStickers,
   loadStickers,
-  loadWatched,
   makeSticker,
   MAX_PER_FILM,
-  moveSticker,
   othersOf,
   placeSticker,
   priorOf,
   PRIOR_VOTES,
   purgeDemoLeavings,
   reconcile,
-  reskinSticker,
   retintSticker,
   saveStickers,
-  saveWatched,
-  scheduleSaveStickers,
   scoreOf,
   searchBoardFilm,
+  setFilmVote,
   setStickerComment,
-  sortByScore,
   sortByTotal,
+  sortByVotes,
   spotOf,
   takeSticker,
-  tallyOf,
   tiltOf,
-  votesOf,
+  voteInputsOf,
   votesSignature,
   type CrowdCounts,
   type Sticker,
@@ -155,46 +148,31 @@ describe("位置与角度", () => {
   });
 });
 
-describe("配额:标记「看过」才发,一部一枚", () => {
-  it("没标记 → 不能贴(暂存区那两枚是灰的)", () => {
-    expect(tallyOf("cat:f001", false, new Map())).toMatchObject({
-      marked: false,
-      canPlace: false,
-      quota: 0,
-    });
+// 为什么不再是纯占比:纯占比下「1 红 0 黑」= 10.0 会压过「47 红 3 黑」= 9.4 的口碑片 —— 一票封顶。
+// 快速投票的一次落定(2026-10-14,PLAN-20261014190000)。
+// 为什么单测它:这里是「左滑 / 右滑」落到数据上**唯一**的出口,而**幂等**是靠
+// 「内容没变就返回同一个引用」表达的 —— 短路写错的话,「投了红再投红」会白触发一次上报。
+describe("setFilmVote:一次落定(改票 = 原地换色)", () => {
+  const one = (type: "red" | "black"): StickerBoard =>
+    new Map([["cat:f001", [{ id: "x", type, posX: 0.3, posY: 0.4 }]]] as never);
+
+  it("没贴过 → 新贴一枚,颜色就是这次投的", () => {
+    const next = setFilmVote(new Map(), "cat:f001", "red", () => 0.5);
+    expect(next.get("cat:f001")).toHaveLength(1);
+    expect(next.get("cat:f001")![0].type).toBe("red");
   });
 
-  it("标记过且还没贴 → 可以贴,暂存区里红黑二选一", () => {
-    expect(tallyOf("cat:f001", true, new Map())).toMatchObject({ canPlace: true, quota: 1 });
+  it("★ 已经是这一色 → 返回**同一个引用**(调用方靠它跳过写盘与上报)", () => {
+    const before = one("red");
+    expect(setFilmVote(before, "cat:f001", "red", () => 0.5)).toBe(before);
   });
 
-  it("贴过一枚(无论红黑)→ 不能再贴,要先把那张拖出去收回", () => {
-    const red: StickerBoard = new Map([["cat:f001", [sticker("a", "red")]]] as never);
-    expect(tallyOf("cat:f001", true, red)).toMatchObject({ total: 1, canPlace: false, quota: 0 });
-    const black: StickerBoard = new Map([["cat:f001", [sticker("b", "black")]]] as never);
-    expect(tallyOf("cat:f001", true, black)).toMatchObject({ total: 1, canPlace: false });
-  });
-
-  it("取消「看过」标记:不能新贴(已贴的那枚由视图层收回)", () => {
-    const board: StickerBoard = new Map([["cat:f001", [sticker("a", "red")]]] as never);
-    expect(tallyOf("cat:f001", false, board)).toMatchObject({
-      marked: false,
-      canPlace: false,
-      quota: 0,
-    });
-  });
-
-  it("红 / 黑分别计数", () => {
-    expect(countsOf([sticker("a", "red"), sticker("b", "black")])).toEqual({
-      total: 2,
-      red: 1,
-      black: 1,
-    });
+  it("投另一色 → **原地换色**:id 与位置都不动(那是改主意,不是重贴)", () => {
+    const after = setFilmVote(one("red"), "cat:f001", "black", () => 0.5);
+    expect(after.get("cat:f001")![0]).toMatchObject({ id: "x", type: "black", posX: 0.3, posY: 0.4 });
   });
 });
 
-// 红黑榜评分 = **加权**红占比折算成 0–10 分(2026-10-12,PLAN-20261011235624)。
-// 为什么不再是纯占比:纯占比下「1 红 0 黑」= 10.0 会压过「47 红 3 黑」= 9.4 的口碑片 —— 一票封顶。
 describe("scoreOf:红黑榜评分(加权红占比)", () => {
   it("票足够多时趋近真实红占比(天花板 / 地板由**先验**决定)", () => {
     // 全站都投红（C = 1）时全红才是**恰好** 10；先验中性时它收敛到 9.9
@@ -255,31 +233,33 @@ describe("boardHasVotes:入榜门槛(该榜那一色至少一票)", () => {
   });
 });
 
-// 排序按**评分**走(用户 2026-10-12:「红榜以及黑榜 要按评分来算 而不是单纯按数量来算」)。
-describe("排序:红榜评分降序 / 黑榜评分升序", () => {
+// 排序的**主判据是那一榜自己的票数**（2026-10-14 下午改回「按数量」）——
+// 评分只在**票数相同**时才决定先后；一票都没有的片两榜都排最后。
+// 口径沿革（评分 → 分档 → 按数量）写在 `redblack.ts` 的「排序」那一段，别只看这行。
+describe("排序:先按票数降序,同票数再比评分", () => {
   const films = ["a", "b", "c", "d"].map((key) => ({ key }));
   const crowd: CrowdCounts = new Map([
-    ["a", { total: 5, red: 4, black: 1 }], // C = 0.8 → 8.0 分
-    ["b", { total: 1, red: 1, black: 0 }], // → 8.3 分
-    ["c", { total: 3, red: 0, black: 3 }], // → 5.0 分
+    ["a", { total: 5, red: 4, black: 1 }], // 红 4 / 黑 1（红榜 4 枚、黑榜 1 枚）
+    ["b", { total: 1, red: 1, black: 0 }], // 红 1 / 黑 0
+    ["c", { total: 3, red: 0, black: 3 }], // 红 0 / 黑 3
   ]);
 
-  it("红榜:评分高的在前(无票的 d 排最后)", () => {
-    expect(sortByScore(films, crowd, "red", 0.8).map((f) => f.key)).toEqual(["b", "a", "c", "d"]);
+  it("红榜:红票多的在前（a 4 枚 → b 1 枚 → c 0 枚）", () => {
+    expect(sortByVotes(films, crowd, "red", 0.8).map((f) => f.key)).toEqual(["a", "b", "c", "d"]);
   });
 
-  it("黑榜:同一个评分升序(红占比越低越靠前)", () => {
-    expect(sortByScore(films, crowd, "black", 0.8).map((f) => f.key)).toEqual(["c", "a", "b", "d"]);
+  it("黑榜:黑票多的在前（c 3 枚 → a 1 枚 → b 0 枚）", () => {
+    expect(sortByVotes(films, crowd, "black", 0.8).map((f) => f.key)).toEqual(["c", "a", "b", "d"]);
   });
 
   it("一票都没有 → 两档都排最后,内部保序(影片库默认顺序)", () => {
-    expect(sortByScore(films, new Map(), "red", 0.5).map((f) => f.key)).toEqual([
+    expect(sortByVotes(films, new Map(), "red", 0.5).map((f) => f.key)).toEqual([
       "a",
       "b",
       "c",
       "d",
     ]);
-    expect(sortByScore(films, new Map(), "black", 0.5).map((f) => f.key)).toEqual([
+    expect(sortByVotes(films, new Map(), "black", 0.5).map((f) => f.key)).toEqual([
       "a",
       "b",
       "c",
@@ -287,16 +267,48 @@ describe("排序:红榜评分降序 / 黑榜评分升序", () => {
     ]);
   });
 
-  it("同分按票数降序(评分只到一位小数,大票量时同分很常见)", () => {
-    // C = 0.8 下这两个都是 8.3 分 → 票多的 b 排前面
+  it("票数差一截时看票数,与评分高低无关（评分都是 8.3,票多的 b 仍在前）", () => {
+    // C = 0.8 下这两个评分都是 8.3 → 判据只能落在票数上
     const tie: CrowdCounts = new Map([
       ["a", { total: 120, red: 100, black: 20 }],
       ["b", { total: 240, red: 200, black: 40 }],
     ]);
     expect([scoreOf(tie.get("a")!, 0.8), scoreOf(tie.get("b")!, 0.8)]).toEqual([8.3, 8.3]);
     const tied = ["a", "b"].map((key) => ({ key }));
-    expect(sortByScore(tied, tie, "red", 0.8).map((f) => f.key)).toEqual(["b", "a"]);
-    expect(sortByScore(tied, tie, "black", 0.8).map((f) => f.key)).toEqual(["b", "a"]);
+    expect(sortByVotes(tied, tie, "red", 0.8).map((f) => f.key)).toEqual(["b", "a"]);
+    expect(sortByVotes(tied, tie, "black", 0.8).map((f) => f.key)).toEqual(["b", "a"]);
+  });
+
+  it("★ 回归:票多、评分略低的那部,排在票少的全红片**前面**", () => {
+    // 线上实测同一形态（2026-10-14）：24 枚（20 红 4 黑 → 8.1 分）vs 8 枚（8 红 0 黑 → 8.8 分）
+    // C 取那一份数据的全站红占比 0.695
+    const tally: CrowdCounts = new Map([
+      ["many", { total: 24, red: 20, black: 4 }],
+      ["few", { total: 8, red: 8, black: 0 }],
+    ]);
+    const scoreMany = scoreOf(tally.get("many")!, 0.695);
+    const scoreFew = scoreOf(tally.get("few")!, 0.695);
+    // 先把「分确实不一样、而且是票多的那部更低」这件事钉住 —— 否则这条用例会退化成
+    // 「同票数才比评分」那条的副本,不再守「分低但票多」这个真正的回归点
+    expect([scoreMany, scoreFew]).toEqual([8.1, 8.8]);
+    expect(scoreFew!).toBeGreaterThan(scoreMany!);
+    // 票数 24 > 8 → 票多的那部在前（评分更低也照样在前）
+    const pair = [{ key: "many" }, { key: "few" }];
+    expect(sortByVotes(pair, tally, "red", 0.695).map((f) => f.key)).toEqual(["many", "few"]);
+    expect(sortByVotes(pair, tally, "black", 0.695).map((f) => f.key)).toEqual(["many", "few"]);
+  });
+
+  it("评分只在票数相同时起作用:黑榜上两者黑票都是 0 → 低分在前", () => {
+    const tally: CrowdCounts = new Map([
+      ["one", { total: 1, red: 1, black: 0 }], // (1 + 4)/6 = 8.3 分
+      ["ten", { total: 10, red: 10, black: 0 }], // (10 + 4)/15 = 9.3 分
+    ]);
+    expect([scoreOf(tally.get("one")!, 0.8), scoreOf(tally.get("ten")!, 0.8)]).toEqual([8.3, 9.3]);
+    const pair = [{ key: "one" }, { key: "ten" }];
+    // 红榜:红票 10 > 1,按票数
+    expect(sortByVotes(pair, tally, "red", 0.8).map((f) => f.key)).toEqual(["ten", "one"]);
+    // 黑榜:两者黑票都是 0 → 退回评分;黑榜低分在前,所以反过来
+    expect(sortByVotes(pair, tally, "black", 0.8).map((f) => f.key)).toEqual(["one", "ten"]);
   });
 });
 
@@ -328,13 +340,13 @@ describe("对接服务端票数", () => {
     expect(crowdOf({}).size).toBe(0);
   });
 
-  it("votesOf:每部只取那一枚的颜色(一人一部一票)", () => {
+  it("voteInputsOf:每部只取那一枚的颜色(一人一部一票)", () => {
     const board: StickerBoard = new Map([
       ["a", [sticker("x", "red")]],
       ["b", [sticker("y", "black")]],
       ["c", []],
     ] as never);
-    expect(votesOf(board)).toEqual([
+    expect(voteInputsOf(board)).toEqual([
       { key: "a", vote: "red", comment: null, skin: null },
       { key: "b", vote: "black", comment: null, skin: null },
     ]);
@@ -344,12 +356,12 @@ describe("对接服务端票数", () => {
   // 为什么单测它:**少带 `comment` 字段**会被服务端读成「旧版前端」→ 这一整份的评语一个字都不碰
   // (那是**有意的**数据保护:老客户端一次普通上报不能静默清空用户写过的评语)。
   // 于是「字段漏了」的症状是「评语永远写不进去」,而且服务端不报错 —— 只能靠断言钉住。
-  it("votesOf:每一条都带 comment 字段(没写评语时是 null,不是省略)", () => {
+  it("voteInputsOf:每一条都带 comment 字段(没写评语时是 null,不是省略)", () => {
     const board: StickerBoard = new Map([
       ["a", [sticker("x", "red", 0.5, 0.5)]],
       ["b", [{ ...sticker("y", "black"), comment: "稳" }]],
     ] as never);
-    const payload = votesOf(board);
+    const payload = voteInputsOf(board);
     expect(payload).toEqual([
       { key: "a", vote: "red", comment: null, skin: null },
       { key: "b", vote: "black", comment: "稳", skin: null },
@@ -360,12 +372,12 @@ describe("对接服务端票数", () => {
 
   // 贴纸款随票一起上报(2026-09-29)。**与 `comment` 逐字同一条理由** ——
   // 少带 `skin` 字段会被服务端读成「旧版前端」,那一整份的款一个字都不碰。
-  it("votesOf:每一条都带 skin 字段(没说款时是 null,不是省略)", () => {
+  it("voteInputsOf:每一条都带 skin 字段(没说款时是 null,不是省略)", () => {
     const board: StickerBoard = new Map([
       ["a", [{ ...sticker("x", "red"), skin: "scrap" as const }]],
       ["b", [sticker("y", "black")]],
     ] as never);
-    const payload = votesOf(board);
+    const payload = voteInputsOf(board);
     expect(payload).toEqual([
       { key: "a", vote: "red", comment: null, skin: "scrap" },
       { key: "b", vote: "black", comment: null, skin: null },
@@ -385,31 +397,6 @@ describe("对接服务端票数", () => {
   });
 });
 
-// 换皮肤(2026-09-29)：与 `retintSticker`(换色)**逐字同一套范式** ——
-// 不可变、同引用短路、位置与 id 都保留。为什么单测它:短路写错的话,
-// 「点了一下同款」会被当成一次真编辑 → 白触发一次防抖上报,而且用户看不出哪里不对。
-describe("reskinSticker:原地换一款", () => {
-  const board = (): StickerBoard =>
-    new Map([["a", [{ id: "x", type: "red", posX: 0.3, posY: 0.4, skin: "stub" }]]] as never);
-
-  it("★ 同款 → 返回**同一个引用**（调用方靠它知道「这次什么也没做」）", () => {
-    const before = board();
-    expect(reskinSticker(before, "a", "x", "stub")).toBe(before);
-  });
-
-  it("换款 → 新 board、位置与 id 与颜色都不动，只有 skin 变", () => {
-    const after = reskinSticker(board(), "a", "x", "scrap");
-    expect(after.get("a")?.[0]).toEqual({ id: "x", type: "red", posX: 0.3, posY: 0.4, skin: "scrap" });
-    // 不可变：原来那份没被改
-    expect(board().get("a")?.[0]?.skin).toBe("stub");
-  });
-
-  it("片不存在 / 贴纸不存在 → 原样返回同一个引用", () => {
-    const before = board();
-    expect(reskinSticker(before, "zzz", "x", "scrap")).toBe(before);
-    expect(reskinSticker(before, "a", "zzz", "scrap")).toBe(before);
-  });
-});
 
 // 「以本地视角修正过的全站票数」(2026-09-23,PLAN-20260923182810)。
 // 为什么单测它:用户报的是「收回贴纸之后 贴纸仍残留 然后过一段时间才刷新」——
@@ -653,7 +640,7 @@ describe("countsSignature:一部片的票数签名", () => {
   });
 });
 
-describe("贴纸变更:不可变 + 红黑各一枚 + 拖动只在本片改坐标", () => {
+describe("贴纸变更:不可变 + 一部一枚", () => {
   it("placeSticker 不改原 board;一部一枚:第二枚(任何颜色)都被拦下", () => {
     const board: StickerBoard = new Map();
     const once = placeSticker(board, "a", sticker("s1", "red"));
@@ -669,28 +656,6 @@ describe("贴纸变更:不可变 + 红黑各一枚 + 拖动只在本片改坐标
     expect(takeSticker(board, "a", "s1").has("a")).toBe(false);
   });
 
-  it("挪位置 → 只改坐标,并钳进安全区", () => {
-    const board = placeSticker(new Map(), "a", sticker("s1", "red", 0.5, 0.5));
-    const moved = moveSticker(board, "a", "s1", 2, -1);
-    expect(moved.get("a")![0]).toMatchObject({ id: "s1", posX: 0.92, posY: 0.08 });
-  });
-
-  // 张贴区**按片独立**(2026-09-23 用户:「贴纸张贴区应该是电影之间独立的」)。
-  // 旧版 `moveSticker` 收一个 `toKey`:拖到别片的画布上就把这一票**直接改记到别片头上** ——
-  // 那条路径已删,现在它连参数都不接受跨片(所以这里只能断言「挪自己那枚不会动别片」);
-  // 「跨片拖拽不落到别片」由 E2E 守:`e2e/react/redblack.spec.ts`。
-  it("挪位置只动本片这一枚:别片的记录原封不动", () => {
-    let board = placeSticker(new Map(), "a", sticker("s1", "red", 0.5, 0.5));
-    board = placeSticker(board, "b", sticker("s2", "black", 0.5, 0.5));
-    const moved = moveSticker(board, "a", "s1", 0.9, 0.1);
-    expect(moved.get("a")).toEqual([{ id: "s1", type: "red", posX: 0.9, posY: 0.1 }]);
-    expect(moved.get("b")).toEqual([{ id: "s2", type: "black", posX: 0.5, posY: 0.5 }]);
-  });
-
-  it("来源没有这枚 → 原样返回", () => {
-    const board = placeSticker(new Map(), "a", sticker("s1", "red"));
-    expect(moveSticker(board, "a", "不存在", 0.2, 0.2)).toBe(board);
-  });
 });
 
 describe("持久化:零迁移 + 坏数据兜底", () => {
@@ -700,13 +665,6 @@ describe("持久化:零迁移 + 坏数据兜底", () => {
     expect(loadStickers()).toEqual(board);
   });
 
-  it("「看过」标记独立落盘,与贴纸互不影响", () => {
-    saveWatched(new Set(["cat:f001", "cat:f002"]));
-    expect(loadWatched()).toEqual(new Set(["cat:f001", "cat:f002"]));
-    expect(loadStickers().size).toBe(0);
-    saveStickers(placeSticker(new Map(), "cat:f001", sticker("s1", "red")));
-    expect(loadWatched().size).toBe(2);
-  });
 
   it("非法条目静默丢弃(类型 / 非数字坐标 / 重复同色 / 缺 id)", () => {
     mem.set(
@@ -737,15 +695,9 @@ describe("持久化:零迁移 + 坏数据兜底", () => {
 
   it("坏 JSON / 键缺失 → 空集合,不抛", () => {
     mem.set(LS_V2, "{坏 JSON");
-    mem.set(LS_WATCHED, "{坏 JSON");
     expect(loadStickers().size).toBe(0);
-    expect(loadWatched().size).toBe(0);
   });
 
-  it("「看过」标记里的非法项(非字符串 / 空串)被丢掉", () => {
-    mem.set(LS_WATCHED, JSON.stringify(["cat:f001", 42, "", null]));
-    expect(loadWatched()).toEqual(new Set(["cat:f001"]));
-  });
 });
 
 // 旧模型(v1:槽位 + `color`)与新模型(v2:自由坐标 + `type`)结构不兼容。
@@ -884,35 +836,37 @@ describe("purgeDemoLeavings:清理示例残留", () => {
   it("没有示例残留 → 原样返回,一个字节都不动", () => {
     const mine = placeSticker(new Map(), "cat:f001", sticker("s1", "red", 0.3, 0.3));
     saveStickers(mine);
-    saveWatched(new Set(["cat:f002"]));
     const result = purgeDemoLeavings();
     expect(result.board).toEqual(mine);
-    expect(result.watched).toEqual(new Set(["cat:f002"]));
   });
 
-  it("贴纸全是示例生成的 → board 与 watched 一起清空(整份都是自动铺的)", () => {
+  it("贴纸全是示例生成的 → board 清空(整份都是自动铺的)", () => {
     saveStickers(placeSticker(new Map(), "cat:f001", sticker("demo-cat:f001-red", "red")));
-    saveWatched(new Set(["cat:f001", "cat:f002"]));
     const result = purgeDemoLeavings();
     expect(result.board.size).toBe(0);
-    expect(result.watched.size).toBe(0);
     // 当场落盘:只清内存的话刷新一次示例又回来了
     expect(loadStickers().size).toBe(0);
-    expect(loadWatched().size).toBe(0);
   });
 
-  it("混着自己贴的 → 只摘示例那几枚,用户自己的贴纸与标记原样保留", () => {
+  it("混着自己贴的 → 只摘示例那几枚,用户自己的贴纸原样保留", () => {
     let board = placeSticker(new Map(), "cat:f001", sticker("demo-cat:f001-red", "red"));
     board = placeSticker(board, "cat:f002", sticker("s-mine", "black", 0.4, 0.6));
     saveStickers(board);
-    saveWatched(new Set(["cat:f002"]));
     const result = purgeDemoLeavings();
     expect([...result.board.keys()]).toEqual(["cat:f002"]);
     expect(result.board.get("cat:f002")).toEqual([
       { id: "s-mine", type: "black", posX: 0.4, posY: 0.6 },
     ]);
-    expect(result.watched).toEqual(new Set(["cat:f002"]));
     expect(loadStickers().has("cat:f001")).toBe(false);
+  });
+
+  it("顺手收掉两只废弃的键(标记看过 / 没看过)", () => {
+    // 两只键今天都读不到东西了,但形状都是「影片 key 数组」—— 留着迟早有人读错
+    mem.set(LS_WATCHED, JSON.stringify(["cat:f002"]));
+    mem.set("biff.redblack.unseen.v1", JSON.stringify(["cat:f003"]));
+    purgeDemoLeavings();
+    expect(mem.has(LS_WATCHED)).toBe(false);
+    expect(mem.has("biff.redblack.unseen.v1")).toBe(false);
   });
 
   it("顺手收掉废弃的「关掉示例」键(功能已删,留着只是垃圾)", () => {
@@ -927,11 +881,6 @@ describe("purgeDemoLeavings:清理示例残留", () => {
 // 但原因都很难猜 —— 算得太松:拖一下位置就发一次全量上报(+ 成功后一次重拉);
 // 算得太严:真改了颜色却不重算,榜上的数字一直不更新。
 describe("votesSignature:票的签名与坐标无关", () => {
-  it("只挪位置(票一枚没变)→ 签名不变", () => {
-    const before = placeSticker(new Map(), "a", sticker("s1", "red", 0.1, 0.1));
-    const after = moveSticker(before, "a", "s1", 0.9, 0.9);
-    expect(votesSignature(after)).toBe(votesSignature(before));
-  });
 
   it("换色 / 新增票 → 签名变;空榜 → 空串", () => {
     const one = placeSticker(new Map(), "a", sticker("s1", "red"));
@@ -992,40 +941,6 @@ describe("retintSticker:原地换色", () => {
     expect(board.get("a")![0].type).toBe("red");
   });
 });
-
-// 分级写盘(2026-09-28,PLAN-20260928102019 ④)。
-// 为什么单测它:延后写盘的两条风险都是「安静地丢数据」—— flush 漏了、或合并把最后一次吃掉,
-// 而两者都只在崩溃 / 关页那一刻才暴露。这里把时序钉住。
-describe("scheduleSaveStickers:延后写盘", () => {
-  beforeEach(() => {
-    flushPendingStickers();
-    mem.clear();
-  });
-
-  it("调度后不立刻落盘,flush 之后才落盘", () => {
-    scheduleSaveStickers(placeSticker(new Map(), "a", sticker("s1", "red", 0.2, 0.4)));
-    expect(mem.has(LS_V2)).toBe(false);
-    flushPendingStickers();
-    expect(loadStickers().get("a")).toEqual([
-      { id: "s1", type: "red", posX: 0.2, posY: 0.4 },
-    ]);
-  });
-
-  it("同一拍内多次调度 → 只写最后一次那一份", () => {
-    const first = placeSticker(new Map(), "a", sticker("s1", "red", 0.2, 0.2));
-    scheduleSaveStickers(first);
-    scheduleSaveStickers(moveSticker(first, "a", "s1", 0.9, 0.9));
-    flushPendingStickers();
-    expect(loadStickers().get("a")![0]).toMatchObject({ posX: 0.9, posY: 0.9 });
-  });
-
-  it("没有待写的东西时 flush 是空转:不抛,也不动已经落盘的那一份", () => {
-    saveStickers(placeSticker(new Map(), "a", sticker("s1", "red")));
-    flushPendingStickers();
-    expect(loadStickers().has("a")).toBe(true);
-  });
-});
-
 // 评语存在**本地那一枚贴纸上**(2026-09-29,PLAN-20260929181900)。
 // 为什么它必须在本地:公开读接口**刻意不回身份**(`contributor` 那条硬约束),
 // 所以「大家说」列表里认不出哪条是我写的 —— 「改我自己的评语」只能靠本地这一份。
