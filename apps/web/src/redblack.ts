@@ -3,7 +3,8 @@
 // ⚠ 2026-10-14(PLAN-20261014190000):**投票入口**整体换成「快速投票」滑动卡片,本模块的口径随之变成:
 //   · 左滑 = 黑票、右滑 = 红票、**上滑 = 跳过（不写任何状态，见下面那条修订）**;
 //   · **落点与皮肤都在投票那一刻随机**(`voteSticker`)—— 用户不再拖、也不再挑款;
-//   · 候选来自我的行程(`quick-vote.ts`),含已投过的片子(再投一次 = 改票);
+//   · 候选来自我的行程(`quick-vote.ts`);**已处理过的片(投过 / 跳过过)不再进队列**(修订 5),
+//     所以卡片默认不会再看到已经贴过的那几部 —— 改票去榜单上点那一枚;
 //   · 「标记看过」已删:`biff.redblack.watched.v1` 只作为**一次性清理**的旧键保留;
 //   · 画布上「我贴的那一枚」是**只读**的(不能拖 / 不能双击收回 / 没有方向键与换肤轮盘)。
 //
@@ -84,6 +85,17 @@ export const LS_REDBLACK_WATCHED = "biff.redblack.watched.v1";
  *  (用户原话:「正式环境不应该是空的让用户自己贴的吗」)。这个键现在只在一次性清理
  *  (`purgeDemoLeavings`) 里被删掉一次,新代码不要再读它。 */
 export const LS_REDBLACK_SEEN = "biff.redblack.seen.v1";
+/** 快速投票里**被我跳过过**的影片 key(2026-10-14,`PLAN-20261014190000` 修订 5)。
+ *
+ *  上滑「跳过」的语义是「这一张我翻过了、不想表态」——它**不写任何红黑状态**(本模块的既有口径)。
+ *  但如果连「翻过」都不记,下次打开快速投票又从这一张开始,用户会觉得「划了等于没划」
+ *  (用户原话:「是匿名态也要在浏览器缓存里面稍微记录一下通过快速投票的标记情况」)。
+ *
+ *  ⚠ 与 `biff.redblack.v2`(红黑票)**是两件事**,所以是两个键:
+ *    那个回答「我表了什么态」,这个回答「我翻过哪几张」。撤回贴纸**不该**抹掉「翻过」,
+ *    而「投过」的片同样不再进队列 —— 那一条由 `board` 直接判,不在这里再记一遍。
+ *  ⚠ 只记 key、不记时间:队列过滤只需要「有没有」。 */
+export const LS_REDBLACK_SKIPPED = "biff.redblack.skipped.v1";
 
 /** 一部电影只有一枚贴纸(用户 2026-09-16 定:「标记看过只能选一个贴纸」)——
  *  红 / 黑是同一个名额的两种取舍,贴上就没得再贴,收回才重新可选。 */
@@ -700,8 +712,10 @@ export function takeSticker(board: StickerBoard, key: string, id: string): Stick
  * 为什么需要它:一部一枚的口径下,「贴错了颜色」不该走「先收回、再重贴」(位置与皮肤都丢掉)。
  * 换色是同一个名额换了个态度,不是「再贴一枚」,所以它**绕开 `placeSticker` 的 `MAX_PER_FILM` 闸门**,
  * 直接改那一枚。
- * ★ 2026-10-14 起,快速投票里「已投过的片子再过一遍」走的**就是这一条**:
- *   改票 = 原地换色(位置与皮肤都保留),读起来像「改了主意」而不是「又贴了一枚新的」。
+ * ★ 2026-10-14 起,「同一部片在一个名额上换态度」走的**就是这一条**:改票 = 原地换色
+ *   (位置与皮肤都保留),读起来像「改了主意」而不是「又贴了一枚新的」。
+ *   ⚠ 修订 5 之后快速投票的队列默认**不含**已经贴过的片(划过就不再来),所以要走到这里
+ *     只有两条路:① 卡片里点了「再划一遍」;② 别处(`setFilmVote` 对外仍是幂等语义)。
  *
  * ⚠ 同色时原样返回**同一个引用**:调用方靠 `next === board` 就知道「这次点击什么也没做」,
  *   不必自己再比一次颜色(也让视图层能据此决定要不要弹提示)。 */
@@ -836,6 +850,27 @@ export function loadStickers(): StickerBoard {
 export function saveStickers(board: StickerBoard): void {
   try {
     writeWorkspaceItem(LS_REDBLACK, JSON.stringify(Object.fromEntries(board)));
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 读出「快速投票里跳过过」的 key 集合。
+ *  ⚠ 读取端一律白名单(与 `parseV2` 同一条原则):非空字符串之外的一切静默丢弃 ——
+ *    手改过的 localStorage 不该让队列过滤凭空少掉 / 多出几张卡。 */
+export function loadSkipped(): Set<string> {
+  const keys = new Set<string>();
+  const raw = readJson(LS_REDBLACK_SKIPPED);
+  if (!Array.isArray(raw)) return keys;
+  for (const key of raw) {
+    if (typeof key === "string" && key) keys.add(key);
+  }
+  return keys;
+}
+
+export function saveSkipped(keys: ReadonlySet<string>): void {
+  try {
+    writeWorkspaceItem(LS_REDBLACK_SKIPPED, JSON.stringify([...keys]));
   } catch {
     /* 忽略 */
   }

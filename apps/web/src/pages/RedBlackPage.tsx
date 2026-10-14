@@ -1,9 +1,10 @@
 // 电影红黑榜(2026-09-16,PLAN-20260916102339)
 //
 // ⚠ 2026-10-14(PLAN-20261014190000):**投票入口换成了「快速投票」滑动卡片**。
-//   · 控制栏上的「快速投票」→ 一张一张划:左滑 = 黑、右滑 = 红、上滑 = 记一条「没看过」;
-//   · 候选来自**我的行程**(`quick-vote.ts::quickVoteOrder`),**已投过的也在队列里**
-//     (这就是改票的入口 —— 所以再也不需要「先收回、再重贴」那套);
+//   · 控制栏上的「快速投票」→ 一张一张划:左滑 = 黑、右滑 = 红、上滑 = **跳过**(不写任何状态);
+//   · 候选来自**我的行程**(`quick-vote.ts::quickVoteOrder`),行程为空时用热门榜 TOP50 兜底;
+//     **划过一遍的片(投过 / 跳过过)不再进队列**(2026-10-14 修订 5,「跳过」那本本地账在
+//     `biff.redblack.skipped.v1`)—— 改票的入口因此挪到**榜单上那一枚**;
 //   · 贴纸的**落点与皮肤都在投票那一刻随机**(`redblack.ts::voteSticker`)—— 用户不再拖、也不再挑款。
 //   随之删掉的正是原来那一整套「贴纸操作」:标记看过、暂存区、拖拽微调、双击收回、方向键微调、换肤轮盘。
 //
@@ -43,6 +44,7 @@ import {
   countsSignature,
   crowdOf,
   crowdSignature,
+  loadSkipped,
   loadStickers,
   LS_REDBLACK,
   othersOf,
@@ -51,6 +53,7 @@ import {
   purgeDemoLeavings,
   reconcile,
   retintSticker,
+  saveSkipped,
   saveStickers,
   scoreOf,
   searchBoardFilm,
@@ -706,7 +709,40 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
     [commitBoard],
   );
 
-  /** 候选队列 ①：**我的行程**（含已投过的片子，再投一次 = 改票）。
+  /** 「快速投票里跳过过」的本地账（2026-10-14，`PLAN-20261014190000` 修订 5）。
+   *  跳过**不写任何红黑状态**（既有口径），但要把「我翻过这一张」记下来 —— 否则下次打开
+   *  快速投票又从它开始，用户会觉得「划了等于没划」。
+   *  ⚠ **匿名也记**：它就是 localStorage；登录后随 `biff.*` 一起同步（与 board 同一个处置）。 */
+  const [skipped, setSkipped] = useState<ReadonlySet<string>>(() => loadSkipped());
+  /** ⚠ 两个写盘回调读的是 `skippedRef` 而不是 state：它们会被存进 `QuickVoteDeck` 的 props，
+   *  依赖 state 的话每次跳过都换一次引用（白重渲染），而这里的写入本来就是「一次一张」。 */
+  const skippedRef = useRef(skipped);
+  skippedRef.current = skipped;
+  const markSkipped = useCallback((key: string) => {
+    if (skippedRef.current.has(key)) return;
+    const next = new Set(skippedRef.current);
+    next.add(key);
+    saveSkipped(next);
+    setSkipped(next);
+  }, []);
+  const unmarkSkipped = useCallback((key: string) => {
+    if (!skippedRef.current.has(key)) return;
+    const next = new Set(skippedRef.current);
+    next.delete(key);
+    saveSkipped(next);
+    setSkipped(next);
+  }, []);
+  /** 「这一部**已经处理过**没有」= 投过红 / 黑（`board` 里有那一枚）**或**跳过过。
+   *  ⚠ 由 `QuickVoteDeck` 在**一轮开始时**读一次（划的过程中不再过滤）—— 否则刚划掉的那一张
+   *    会让后面所有卡的索引整体前移（用户报的 5/50 → 1/50）。
+   *  ⚠ `board` 与「跳过」都走 ref：这个回调会在**渲染期**被调用（卡片用它算初始队列），
+   *    必须拿到当前那一份，而不是创建闭包那一刻的。 */
+  const handledOf = useCallback(
+    (key: string) => latest.current.board.has(key) || skippedRef.current.has(key),
+    [],
+  );
+
+  /** 候选队列 ①：**我的行程**（🎫 是否已投过由 `handledOf` 在卡片里过滤，这里不管）。
    *  ⚠ 依赖 `storeRevision`：`films` 与选片无关（它是目录 + 豆瓣映射的函数），
    *    所以「我加了一部片到行程」不会换掉 `films` 的引用 —— 不跟这个修订号就永远不重算。 */
   const agendaQueue = useMemo(
@@ -729,7 +765,20 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
    *    要求行程非空，见 `BoardPage`）—— 所以「兜底」不会伪装成默认候选。
    *  ⚠ 用的是 `buildHotRows`（热门榜面板**同一支**），不是在红黑榜里再写一遍按想看人数排序 ——
    *    两处口径分叉的症状是「热门榜第一和兜底第一不是同一部」，而那种错没人会立刻看出来。
-   *  ⚠ 组件那边会显示一句「行程还是空的」：兜底候选必须**说得出自己是兜底**。 */
+   *  ⚠ 组件那边会显示一句「行程还是空的」：兜底候选必须**说得出自己是兜底**。
+   *
+   *  ⚠⚠ **`crowd` / `priorRate` 不能进这个 useMemo 的依赖**（2026-10-14 修订 5 修的 bug）：
+   *    它们只进 `buildHotRows` 的**展示列**（红 / 黑 / 评分），而 TOP50 的**顺序**由 `want` 决定
+   *    （`buildHotRows` 末尾 `sort(compareByWant)`）—— 而这里只取 `row.key`。
+   *    放进依赖的代价：每投一票 → 1200ms 上报成功 → `onFilmVotesChange` → `setVotes(新对象)`
+   *    → `crowd` 换引用 → 本 useMemo **重算成新数组** → `QuickVoteDeck` 判成「候选换了」
+   *    → 卡片退回第 1 张（用户报的「划了五部又从 5/50 变成 1/50」）。
+   *    改用 ref 读最新值喂给 `buildHotRows`：那两个数字**不会**因此在界面上变旧 ——
+   *    卡片上的红黑数走的是 `countsOf`（另一条实时的路），这里算出来的那两个数**根本没人读**。 */
+  const crowdRef = useRef(crowd);
+  crowdRef.current = crowd;
+  const priorRateRef = useRef(priorRate);
+  priorRateRef.current = priorRate;
   const deck = useMemo(() => {
     if (agendaQueue.length) return { films: agendaQueue, fromAgenda: true };
     // ⚠ 「想看人数」还没到 → **先不造候选**，而不是拿一份 want 全为 0 的榜单硬排：
@@ -739,12 +788,12 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
     if (!Object.keys(wants).length) return { films: EMPTY_DECK, fromAgenda: false };
     const byKey = new Map(films.map((film) => [film.key, film]));
     const fallback: FilmNode[] = [];
-    for (const row of buildHotRows(films, wants, crowd, priorRate).slice(0, 50)) {
+    for (const row of buildHotRows(films, wants, crowdRef.current, priorRateRef.current).slice(0, 50)) {
       const film = byKey.get(row.key);
       if (film) fallback.push(film);
     }
     return { films: fallback, fromAgenda: false };
-  }, [agendaQueue, films, wants, crowd, priorRate]);
+  }, [agendaQueue, films, wants]);
 
   return (
     <section className="rb-page" aria-label="榜单" ref={pageRef}>
@@ -926,9 +975,12 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
           queue={deck.films}
           fromAgenda={deck.fromAgenda}
           voteOf={voteOf}
+          handledOf={handledOf}
           countsOf={(key) => filmCounts.get(key) ?? EMPTY_COUNTS}
           onVote={vote}
           onRestore={restoreVote}
+          onSkip={markSkipped}
+          onUnskip={unmarkSkipped}
           onDismiss={closeDeck}
         />
       )}

@@ -19,7 +19,9 @@ import {
   crowdOf,
   crowdSignature,
   crowdStickers,
+  loadSkipped,
   loadStickers,
+  LS_REDBLACK_SKIPPED,
   makeSticker,
   MAX_PER_FILM,
   othersOf,
@@ -29,6 +31,7 @@ import {
   purgeDemoLeavings,
   reconcile,
   retintSticker,
+  saveSkipped,
   saveStickers,
   scoreOf,
   searchBoardFilm,
@@ -698,6 +701,34 @@ describe("持久化:零迁移 + 坏数据兜底", () => {
     expect(loadStickers().size).toBe(0);
   });
 
+});
+
+describe("快速投票「跳过过」那本账(2026-10-14 修订 5)", () => {
+  it("落盘后读回一致(是集合,不关心顺序)", () => {
+    saveSkipped(new Set(["cat:a", "cat:b"]));
+    expect([...loadSkipped()].sort()).toEqual(["cat:a", "cat:b"]);
+  });
+
+  it("键缺失 / 坏 JSON → 空集合,不抛", () => {
+    expect(loadSkipped().size).toBe(0);
+    mem.set(LS_REDBLACK_SKIPPED, "{坏 JSON");
+    expect(loadSkipped().size).toBe(0);
+  });
+
+  it("★ 读取端白名单:非数组 / 非字符串 / 空串一律丢弃", () => {
+    // 手改过的 localStorage 不该让队列**凭空少掉或多出**几张卡
+    mem.set(LS_REDBLACK_SKIPPED, JSON.stringify(["cat:a", "", 42, null, { key: "cat:b" }]));
+    expect([...loadSkipped()]).toEqual(["cat:a"]);
+    mem.set(LS_REDBLACK_SKIPPED, JSON.stringify({ "cat:a": true }));
+    expect(loadSkipped().size).toBe(0);
+  });
+
+  it("★ 与红黑票**分两个键**:写一边不动另一边(撤票不该抹掉「翻过」)", () => {
+    saveStickers(placeSticker(new Map(), "cat:z", sticker("s1", "red")));
+    saveSkipped(new Set(["cat:a"]));
+    expect(loadStickers().has("cat:z")).toBe(true);
+    expect([...loadSkipped()]).toEqual(["cat:a"]);
+  });
 });
 
 // 旧模型(v1:槽位 + `color`)与新模型(v2:自由坐标 + `type`)结构不兼容。

@@ -10,6 +10,15 @@
  *
  * ⚠ **上滑不写任何状态**（2026-10-14 修订）：`axisVote("up")` 返回 `null`，本文件对它
  *   连 `onVote` 都不调 —— 只把卡片送走、把这一张记进撤销栈。用户口径「跳过不应覆盖原有评价」。
+ *   ⚠ 修订 5：跳过**会**被记一笔「我翻过这一张」（`onSkip`，落 localStorage）——
+ *     那**不是**一个投票状态（红 / 黑那本账一个字都不动），只是让这一张下次不再出现在队列里。
+ *     撤销一步是跳过时要把这一笔撤掉（`onUnskip`），否则「撤回了却再也不出现」。
+ *
+ * ⚠ **一轮开始时**就按 `handledOf` 去掉已经处理过的片（投过 / 跳过过，修订 5）——
+ *   划的过程中**不再**过滤：刚划掉的那一张若当场消失，后面所有卡的索引会整体前移。
+ *   「候选换了没有」的判据是 `deckSignature`（key 序列）而**不是**数组引用 —— 上游每次
+ *   重算 `useMemo` 都会造一个新数组（票数刷新就是其中之一），拿引用当判据会让用户划到一半
+ *   被甩回第 1 张（2026-10-14 用户报的「5/50 → 1/50」）。
  *
  * ⚠ a11y 不自造：`role=dialog` / aria-modal / focus trap / Esc 由 S2 的 `Dialog` 提供（§5）。
  *   滑动**只是快捷方式**：下面那排按钮与方向键走的是同一条 `commit`，所以不存在「只有能手滑才能用」。
@@ -24,7 +33,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FilmNode } from "../app/model";
 import { introOf } from "../intros";
-import { axisVote, deckStateOf, resolveSwipe, swipeProgress, voteStateLabel, type SwipeAxis } from "../quick-vote";
+import {
+  axisVote,
+  deckSignature,
+  deckStateOf,
+  pendingQueue,
+  resolveSwipe,
+  swipeProgress,
+  voteStateLabel,
+  type SwipeAxis,
+} from "../quick-vote";
 import type { StickerCounts, StickerType } from "../redblack";
 import { Button, ButtonGroup, Content, Dialog, DialogContainer, Heading } from "./spectrum";
 import "./quick-vote.css";
@@ -105,18 +123,25 @@ interface Step {
 }
 
 interface QuickVoteDeckProps {
-  /** 候选：已排好序。⚠ **顺序由调用方定**（行程里有片就用行程、行程为空则用热门榜 TOP20） */
+  /** 候选：已排好序。⚠ **顺序由调用方定**（行程里有片就用行程、行程为空则用热门榜 TOP50）。
+   *  这里给的是**全量候选** —— 「已经处理过的不再出现」由本文件按 `handledOf` 在**一轮开始时**过滤。 */
   queue: readonly FilmNode[];
   /** 队列的来源，只用来显示一句说明。`false` = 这不是我的行程，而是热门榜兜底 */
   fromAgenda: boolean;
   /** 影片 key → 我当前的票；`undefined` = 未决定 */
   voteOf: (key: string) => StickerType | undefined;
+  /** 影片 key → **已经处理过没有**（投过红黑 / 跳过过）—— 只在**一轮开始时**读一次，见文件头。 */
+  handledOf: (key: string) => boolean;
   /** 影片 key → 这一部的全站票数（卡片上要显示「红 x · 黑 y」） */
   countsOf: (key: string) => StickerCounts;
   /** 一次表态（红 / 黑）。**跳过不调它** —— 见文件头。 */
   onVote: (key: string, intent: StickerType) => void;
   /** 撤销一次表态：把这一部恢复到 `before`（`undefined` = 把那枚贴纸撤掉）。 */
   onRestore: (key: string, before: StickerType | undefined) => void;
+  /** 记一笔「这一张我跳过过」—— 它**不是**投票状态，只让这一张下次不再进队列。 */
+  onSkip: (key: string) => void;
+  /** 撤销那笔跳过（撤销一步是跳过时要跟着撤，否则「撤回了却再也不出现」）。 */
+  onUnskip: (key: string) => void;
   onDismiss: () => void;
 }
 
@@ -124,14 +149,18 @@ export function QuickVoteDeck({
   queue,
   fromAgenda,
   voteOf,
+  handledOf,
   countsOf,
   onVote,
   onRestore,
+  onSkip,
+  onUnskip,
   onDismiss,
 }: QuickVoteDeckProps) {
-  /** 这一轮要走过的卡片。⚠ 与 `queue` 分开：总结页那条「重新浏览未评价影片」会把范围收窄，
-   *  而 `queue` 是调用方的候选（收窄之后还要能退回全量）。 */
-  const [round, setRound] = useState<readonly FilmNode[]>(queue);
+  /** 这一轮要走过的卡片 = 候选去掉**已经处理过**的片（投过 / 跳过过，修订 5）。
+   *  ⚠ 与 `queue` 分开：这一轮**开始之后就不再变**（判据见下面那个 effect），
+   *    而总结页那条「重新浏览未评价影片」还要在它内部再收窄一次。 */
+  const [round, setRound] = useState<readonly FilmNode[]>(() => pendingQueue(queue, handledOf));
   const [index, setIndex] = useState(0);
   const [history, setHistory] = useState<readonly Step[]>([]);
   // 拖动中的位移。⚠ 它是**渲染用**的状态（卡片要跟着手指），判定那条路用的是 `resolveSwipe(dx, dy, unit)`
@@ -141,16 +170,26 @@ export function QuickVoteDeck({
   const drag = useRef<{ pointerId: number; x: number; y: number; unit: number } | null>(null);
   /** 「这一张已经在落定了」—— 防止动画期间又被一次指针 / 键盘事件推进两张 */
   const committing = useRef(false);
+  /** 最新的候选 / 已处理判据 —— effect 里要读它们，但**不能**把它们写进依赖（见下）。 */
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
+  const handledRef = useRef(handledOf);
+  handledRef.current = handledOf;
+  /** 队列的**内容身份**（key 序列）—— 「候选换了没有」的判据，**不是**数组引用。 */
+  const signature = deckSignature(queue);
 
-  // ⚠ 候选换了（用户在别处改了行程 / 兜底数据到了）→ 整轮重来。
+  // ⚠ 候选**真的**换了（内容变了：兜底数据到达 / 用户在别处改了行程）→ 整轮重来。
   //   不重置的话 `index` 会指向新数组里**另一部片**，读起来像「卡片自己跳了」。
+  //   ⚠ 判据是 `signature`（内容）而不是 `queue`（引用）：引用变了但 key 序列没变时**不重开** ——
+  //     否则「投一票 → 上报成功 → 票数聚合换引用 → `deck` 重算」就会把用户划到一半的卡片
+  //     甩回第 1 张（2026-10-14 用户报的「5/50 → 1/50」，根因在上游的依赖，这里是第二道防线）。
   useEffect(() => {
-    setRound(queue);
+    setRound(pendingQueue(queueRef.current, handledRef.current));
     setIndex(0);
     setHistory([]);
     setLeaving(null);
     setDelta({ dx: 0, dy: 0 });
-  }, [queue]);
+  }, [signature]);
 
   const card = round[index];
   const unitOf = useCallback((): number => {
@@ -175,6 +214,9 @@ export function QuickVoteDeck({
         // ⚠ 触觉只在**真的写了一张票**时响：跳过不是一次表态，给它一次震动会读成「我投了」。
         buzz(12);
       } else {
+        // ⚠ 跳过**不是**投票状态（红 / 黑那本账一个字都不动），但要记一笔「这一张我翻过」——
+        //   否则下次打开又从它开始（修订 5）；撤销那一步时要把这一笔撤掉（见 `undo`）。
+        onSkip(current.key);
         setHistory((prev) => [...prev, { key: current.key, before, wrote: false }]);
       }
       const wait = reducedMotion() ? LEAVE_MS_REDUCED : LEAVE_MS;
@@ -185,7 +227,7 @@ export function QuickVoteDeck({
         setIndex((currentIndex) => currentIndex + 1);
       }, wait);
     },
-    [index, onVote, round, voteOf],
+    [index, onSkip, onVote, round, voteOf],
   );
 
   /** 撤销一步：**先恢复数据、再退回上一张**。
@@ -196,10 +238,11 @@ export function QuickVoteDeck({
     const last = history[history.length - 1];
     if (!last) return;
     if (last.wrote) onRestore(last.key, last.before);
+    else onUnskip(last.key);
     setHistory((prev) => prev.slice(0, -1));
     setIndex((prev) => Math.max(0, prev - 1));
     setDelta({ dx: 0, dy: 0 });
-  }, [history, onRestore]);
+  }, [history, onRestore, onUnskip]);
 
   // ⚠ 键盘等价路径：指针玩不了的那一半用户（以及桌面上的鼠标用户）走这里。
   //   ⚠ 空格 / 方向键都是**页面级**快捷键，必须先问「用户是不是在打字」——
@@ -295,6 +338,9 @@ export function QuickVoteDeck({
     setIndex(0);
     setHistory([]);
   };
+  /** 「再划一遍」= 拿回**不过滤**的全量候选。⚠ 这是唯一一条「已经处理过的片重新出现」的路，
+   *  所以它必须是**用户主动点**的（修订 5 的口径是「划过的不再出现」，而这一颗按钮就是
+   *  「我就是要重划一遍」）。 */
   const restartAll = () => {
     setRound(queue);
     setIndex(0);
@@ -317,14 +363,28 @@ export function QuickVoteDeck({
         <Content>
           <div className="qv" data-qv-done={done ? "" : undefined}>
             {round.length === 0 ? (
-              /* ⚠ 两种「空」必须分开说：`fromAgenda` 为真 = 真的没有候选（我的行程是空的）；
-                 为假 = 兜底那份（热门榜）还没到 —— 而这一支是**异步**来的。
-                 混成一句话会让用户以为「行程是空的」，跑去加片，其实再等一秒就有了。 */
-              <p className="qv-empty">
-                {fromAgenda
-                  ? "还没有可以投票的影片。先去「我的行程」把想看的场次加进来，再回来快速投票。"
-                  : "正在取热门榜的候选…稍等一下。若一直不动，先把想看的场次加进「我的行程」。"}
-              </p>
+              /* ⚠ 三种「空」必须分开说（修订 5 加了第三种）：
+                 ① 候选本身是空的 —— `fromAgenda` 为真 = 真的没有候选（我的行程是空的）；
+                    为假 = 兜底那份（热门榜）还没到 —— 而这一支是**异步**来的。
+                    混成一句话会让用户以为「行程是空的」，跑去加片，其实再等一秒就有了。
+                 ② **候选有、但都被过滤掉了** = 这一批我全划过一遍了（投过 / 跳过过）——
+                    这种说成「行程是空的」会把用户支去加片，说成「正在取候选」会让他一直干等。 */
+              queue.length > 0 ? (
+                <>
+                  <p className="qv-empty">这一批候选你都划过一遍了。想改票，去榜单上点那一枚贴纸。</p>
+                  <ButtonGroup>
+                    <Button variant="secondary" onPress={restartAll}>
+                      再划一遍
+                    </Button>
+                  </ButtonGroup>
+                </>
+              ) : (
+                <p className="qv-empty">
+                  {fromAgenda
+                    ? "还没有可以投票的影片。先去「我的行程」把想看的场次加进来，再回来快速投票。"
+                    : "正在取热门榜的候选…稍等一下。若一直不动，先把想看的场次加进「我的行程」。"}
+                </p>
+              )
             ) : done ? (
               /* ---------------- 总结页 ----------------
                * ⚠ 三个计数都按**这一轮**算，不按全站：它回答的是「我刚刚划了些什么」。

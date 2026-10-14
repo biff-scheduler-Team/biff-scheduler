@@ -2,8 +2,11 @@
  * 快速投票 —— 红黑榜投票入口的**纯逻辑**（2026-10-14，PLAN-20261014190000）。
  *
  * 这一层只管三件事，件件都可以脱开 DOM 单测：
- *  ① **候选与顺序**：从我的行程里取片单（`store.picks` 的 key 集合 → `films` 里对应的那些），
- *     已投过的**也出现**（再投一次 = 改票）；行程为空时由调用方改用热门榜候选；
+ *  ① **候选与顺序**：从我的行程里取片单（`store.picks` 的 key 集合 → `films` 里对应的那些）；
+ *     行程为空时由调用方改用热门榜候选；
+ *     ⚠ 2026-10-14 修订 5（用户拍板）：**已经处理过的片（投过 / 跳过过）不再进队列** ——
+ *     过滤归 `pendingQueue`，而且只在**一轮开始时**做一次；改票入口挪到榜单上那一枚，
+ *     所以 `quickVoteOrder` 这一层仍然**不看** `board`（它只回答「候选是谁」）；
  *  ② **手势 → 意图**：位移落在哪一档（左 = 黑 / 右 = 红 / 上 = **跳过**），不到阈值就是「什么也没发生」；
  *  ③ **状态的对外命名**：`undecided` / `liked` / `passed` —— 卡片角标与 E2E 都读它。
  *
@@ -76,8 +79,10 @@ export function swipeProgress(dx: number, dy: number, unit: number): number {
 
 /** 「我的行程」的影片集合 → 投票队列。
  *
- *  规则（用户 2026-10-14 确认）：**行程内去重影片，全部都要再过一遍** ——
- *  已投过的片子照样出现（它的用途就是改票），所以这里**不看** `board`。
+ *  规则：**行程内去重影片**都进候选。
+ *  ⚠ 这是**候选来源**那一层：它**不看** `board`，也不在这里判「投过没有」——
+ *    「已经处理过的片不再进队列」是 `pendingQueue` 的事（修订 5），而那条判据的另一半
+ *    （「跳过过」这本账）只有视图层拿得到，所以过滤留在调用方。
  *
  *  顺序：按**我在行程里最早的那一场**升序；没有场次的目录片排在最后，并列按目录序（确定性）。
  *  ⚠ 「最早那场」直接用 `film.shows[0]`，**不在这里另写一套日期比较** ——
@@ -100,6 +105,33 @@ function compareByFirstScreening(a: FilmNode, b: FilmNode): number {
   const right = b.shows[0];
   if (!left || !right) return left ? -1 : right ? 1 : 0;
   return left.date.localeCompare(right.date) || left.start_time.localeCompare(right.start_time);
+}
+
+/** 从候选里去掉**已经处理过**的片 —— 已投过红 / 黑（`board` 里有那一枚）与**快速投票里跳过过**的那些。
+ *
+ *  2026-10-14（PLAN-20261014190000 修订 5，用户拍板）：改票入口从这张卡片挪到**榜单上那一枚**，
+ *  卡片这边改成「划过一遍就不再来」—— 所以过滤必须发生，否则用户每次打开都从第 1 张重划。
+ *
+ *  ⚠ 只在**一轮开始时**调一次（打开卡片 / 候选换源），**不要**在划的过程中重新过滤：
+ *    刚划掉的那一张会让后面所有卡的索引整体前移，读起来就是「刚划完就被甩回前面」。
+ *  ⚠ 它**不读** `board` / localStorage：判据由调用方给（纯函数不猜数据来源，与 `quickVoteOrder`
+ *    同一条规矩）。也正因此，「投过」与「跳过」两件事可以合成一个 `handled` 判据传进来。 */
+export function pendingQueue(
+  films: readonly FilmNode[],
+  handled: (key: string) => boolean,
+): FilmNode[] {
+  return films.filter((film) => !handled(film.key));
+}
+
+/** 队列的**内容身份**（key 序列）—— 视图层用它判断「候选换了没有」。
+ *
+ *  ⚠ 判据必须是**内容**而不是数组引用：上游每次重算 `useMemo` 都会造一个新数组
+ *    （票数刷新、榜单重排、`buildHotRows` 重跑），拿引用当判据的话，用户划到一半就会被
+ *    重置回第 1 张（2026-10-14 用户报的「5/50 → 1/50」）。
+ *  ⚠ 分隔符用 `\n`：影片 key 里不可能出现换行，所以「a\nb」不会被读成别的组合。
+ *  ⚠ 空队列 → 空串（`EMPTY_DECK` 那份模块级常量的签名）。 */
+export function deckSignature(films: readonly FilmNode[]): string {
+  return films.map((film) => film.key).join("\n");
 }
 
 /** 我对一部片的状态，用**规格里的那三个词**表达（2026-10-14）。

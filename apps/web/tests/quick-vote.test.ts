@@ -9,7 +9,9 @@ import { describe, expect, it } from "vitest";
 import type { FilmNode } from "../src/app/model";
 import {
   axisVote,
+  deckSignature,
   deckStateOf,
+  pendingQueue,
   quickVoteOrder,
   resolveSwipe,
   SWIPE_RATIO,
@@ -104,10 +106,54 @@ describe("quickVoteOrder:候选与顺序", () => {
     expect(quickVoteOrder(films, new Set())).toEqual([]);
   });
 
-  it("★ 已投过的片子照样在队列里（它本来就是改票的入口）", () => {
-    // 这一条是**故意的**：候选只看「在不在我的行程」，不看「投过没有」
+  it("★ 候选只看「在不在我的行程」，**不看投过没有**", () => {
+    // 这一层是**候选来源**；「已处理的片不再出现」是 `pendingQueue` 的事（2026-10-14 修订 5）。
+    // 两件事分开的原因：候选是「我可能想看的片」，已处理是「我已经翻过的那几张」——
+    // 混成一个函数的话，「再划一遍」（要拿回全量候选）就没有入口了。
     const queue = quickVoteOrder(films, new Set(["cat:b", "cat:c"]));
     expect(queue.map((f) => f.key)).toEqual(["cat:b", "cat:c"]);
+  });
+});
+
+describe("pendingQueue:一轮开始时去掉**已经处理过**的片", () => {
+  const films = [film("cat:a"), film("cat:b"), film("cat:c")];
+
+  it("已投过（board 里有）与已跳过（本地标记）都不再进队列", () => {
+    const skipped = new Set(["cat:b"]);
+    const voted = new Set(["cat:c"]);
+    const queue = pendingQueue(films, (key) => skipped.has(key) || voted.has(key));
+    expect(queue.map((f) => f.key)).toEqual(["cat:a"]);
+  });
+
+  it("一部都没处理过 → 原样（且保持传入的顺序）", () => {
+    expect(pendingQueue(films, () => false).map((f) => f.key)).toEqual(["cat:a", "cat:b", "cat:c"]);
+  });
+
+  it("★ 全处理完 → 空数组（界面据此说「都划过了」而不是「行程是空的」）", () => {
+    expect(pendingQueue(films, () => true)).toEqual([]);
+  });
+});
+
+describe("deckSignature:队列的「内容身份」", () => {
+  it("★ 内容相同、数组引用不同 → 签名相同（5/50 → 1/50 的回归）", () => {
+    // 用户报的 bug：投一票 → 上报成功 → 票数聚合换引用 → 队列**重算成新数组** →
+    // 卡片的 `useEffect` 判成「候选换了」→ 划到第 6 张被甩回第 1 张。
+    // 判据必须是**内容**：引用变了但 key 序列没变时，卡片不该重开这一轮。
+    const before = [film("cat:a"), film("cat:b")];
+    const after = [film("cat:a"), film("cat:b")];
+    expect(after).not.toBe(before);
+    expect(deckSignature(after)).toBe(deckSignature(before));
+  });
+
+  it("顺序变了 / 成员变了 → 签名必须不同（真的换了一轮就要重开）", () => {
+    const base = deckSignature([film("cat:a"), film("cat:b")]);
+    expect(deckSignature([film("cat:b"), film("cat:a")])).not.toBe(base);
+    expect(deckSignature([film("cat:a")])).not.toBe(base);
+    expect(deckSignature([])).not.toBe(base);
+  });
+
+  it("空队列的签名是空串（等价于 EMPTY_DECK 那份常量）", () => {
+    expect(deckSignature([])).toBe("");
   });
 });
 
