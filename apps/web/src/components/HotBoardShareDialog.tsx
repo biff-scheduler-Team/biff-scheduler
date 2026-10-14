@@ -19,12 +19,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { download } from "../app/download";
 import type { HotRow, HotUnit } from "../hot-board";
-import {
-  buildHotPosterModel,
-  drawHotPoster,
-  HOT_POSTER_ROWS,
-  hotPosterHeight,
-} from "../hot-poster";
+import { buildHotPosterModel, drawHotPoster, hotPosterHeight } from "../hot-poster";
 import { loadPosterImages, POSTER_W, posterBlob, posterPixels } from "../poster-brush";
 import { copyImageOrDownload } from "./share-image";
 import {
@@ -40,13 +35,22 @@ import {
   PickerItem,
 } from "./spectrum";
 
-/** 「取前几名」的档位。`0` = **全部**（会拉长，见 `hot-poster.ts` 的「不拉长」说明）。 */
+/** 「取前几名」的档位（2026-10-14 用户：「取前几名 改成 TOP3 TOP10」）。
+ *
+ *  ⚠ 原来是 前 5 / 前 8（3:4）/ 前 20（会变长）/ 全部 **四档**，现在收成两档。
+ *  ⚠ **代价写清**：原先默认那档是 8 行 —— 它正好拼出 1080 × 1440（几何见
+ *    `hot-poster.ts::HOT_POSTER_ROWS`）。这两档都不是 8，所以默认出图**不再是**那个
+ *    3:4 竖版：TOP10 = 1080 × 1710（高一截）、TOP3 = 1080 × 765（一张小卡）。
+ *    图高只跟行数走、**绝不补白**，这条口径没变（`hotPosterHeight`）。 */
 const TOP_N_CHOICES: ReadonlyArray<{ id: string; label: string }> = [
-  { id: "5", label: "前 5" },
-  { id: String(HOT_POSTER_ROWS), label: `前 ${HOT_POSTER_ROWS}（3:4）` },
-  { id: "20", label: "前 20（会变长）" },
-  { id: "0", label: "全部" },
+  { id: "3", label: "TOP3" },
+  { id: "10", label: "TOP10" },
 ];
+
+/** 默认档 —— 两档里信息更全的那一支（TOP3 是给「只要三张脸」的短卡用的）。
+ *  ⚠ **必须取上面某一档的 id**：`Picker` 的 `value` 匹配不到任何 `PickerItem` 时会显示空白，
+ *    不会报错 —— 改档位时记得一起改这里。 */
+const TOP_N_DEFAULT = 10;
 
 /** 文件名里不能出现的字符（单元名可能带 `/`、`:`）—— 换成全角间隔号，别让下载静默失败。 */
 function safeName(raw: string): string {
@@ -75,7 +79,7 @@ export function HotBoardShareDialog({
   // 数据快照：只在挂载时取一次（见文件头）。`today` 同理 —— 出图日期不该随重渲染变。
   const [snapshot] = useState(() => ({ rows, units, today: new Date() }));
   const [unitId, setUnitId] = useState(unit);
-  const [topN, setTopN] = useState(HOT_POSTER_ROWS);
+  const [topN, setTopN] = useState(TOP_N_DEFAULT);
   const [showHeader, setShowHeader] = useState(true);
   const [showFooter, setShowFooter] = useState(true);
 
@@ -145,11 +149,11 @@ export function HotBoardShareDialog({
       <Dialog size="L">
         <Heading slot="title">热门榜分享图</Heading>
         <Content>
+          {/* ⚠ 这里**不写**具体像素：宽高由 `hotPosterHeight` + `posterPixels` 算，
+              下面那行 `.hb-share-size` 已经如实印了。写死一份迟早与它打架（§5）。 */}
           <p className="hb-share-lede">
-            按<strong>想看人数</strong>排序，右侧是红黑口碑。
-            {topN > 0
-              ? ` 取前 ${topN} 名 —— 默认 ${HOT_POSTER_ROWS} 行正好是 1080 × 1440 的竖版，手机上一屏能读完。`
-              : " 不截断 —— 行多了图会变长，手机上就要滑着看了。"}
+            按<strong>想看人数</strong>排序，右侧是红黑口碑。取前 {topN} 名 ——
+            行数决定图高（TOP3 是一张小卡，TOP10 高一截），不补白。下面是这张图的实际尺寸。
           </p>
           <div className="hb-share-scope">
             <Picker
