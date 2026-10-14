@@ -146,10 +146,6 @@ function derive(base: Catalog) {
     plans,
     films,
     filmByKey: new Map(films.map((f) => [f.key, f])),
-    conflictCount: [...conflicts.values()].reduce(
-      (sum, c) => sum + c.pairs.length,
-      0,
-    ),
   };
 }
 const AppContext = createContext<ReturnType<typeof derive> | null>(null);

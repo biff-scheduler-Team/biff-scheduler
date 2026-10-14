@@ -293,21 +293,10 @@ html:has(.update-banner) {
   align-items: center;
   gap: 8px;
 }
-/* 「重叠 N」—— 顶栏里的**冲突提示**(2026-09-29,用户:「『重叠 4』按钮与灰色胶囊样式
- * (如『回到旧版』)混在一起」)。
- * 它原来和 `.version-link` 共用一副灰胶囊面孔,一排扫过去分不出哪条是提醒、哪条是入口。
- * 这里给它一档**警示**形态,让它在一排中性按钮里自己跳出来。
- * ⚠ 颜色只用 `--conflict` / `--conflict-line`:这对 token 的语义本来就是「时间重叠」
- *   (`.gantt-slot` / `.screening-card.in-conf` 同源),不是为顶栏另造的颜色 ——
- *   暗色主题自动跟随,不需要在这里再写一份覆盖。
- * ⚠ 选择器多带一层 `.header-actions`(而不是单写 `.header-conflict`):这个按钮是
- *   Spectrum 的 `ActionButton`,自带一条**同特异性**的基础样式,单类名压不住它。 */
-.header-actions .header-conflict {
-  border: 1px solid var(--conflict-line);
-  background: var(--conflict);
-  color: var(--conflict-line);
-  font-weight: 600;
-}
+/* ⚠ 2026-10-14：`.header-actions .header-conflict`（顶栏「重叠 N」冲突提示按钮）已随
+ *   按钮一起删除 —— 用户要求「去掉重叠模块所有相关内容」。冲突体系本身（甘特红卡 /
+ *   图例「时间重叠」/ 卡片冲突提示）**不受影响**，`--conflict` / `--conflict-line`
+ *   仍被 `.gantt-slot` / `.screening-card.in-conf` 使用，故 token 保留。 */
 .app-toolbar {
   display: flex;
   align-items: center;
