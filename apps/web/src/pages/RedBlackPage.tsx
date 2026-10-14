@@ -4,15 +4,18 @@
 //   · 控制栏上的「快速投票」→ 一张一张划:左滑 = 黑、右滑 = 红、上滑 = **跳过**(不写任何状态);
 //   · 候选来自**我的行程**(`quick-vote.ts::quickVoteOrder`),行程为空时用热门榜 TOP50 兜底;
 //     **划过一遍的片(投过 / 跳过过)不再进队列**(2026-10-14 修订 5,「跳过」那本本地账在
-//     `biff.redblack.skipped.v1`)—— 改票的入口因此挪到**榜单上那一枚**;
+//     `biff.redblack.skipped.v1`);
+//   · **每张卡片上还有两枚「红 / 黑」按钮**(修订 6,用户:「保留按钮直接投票」)—— 点一下就投,
+//     走的是与快速投票**同一个** `vote`:落点随机、皮肤随机;改票 = 再点一次另一色(原地换色)。
 //   · 贴纸的**落点与皮肤都在投票那一刻随机**(`redblack.ts::voteSticker`)—— 用户不再拖、也不再挑款。
-//   随之删掉的正是原来那一整套「贴纸操作」:标记看过、暂存区、拖拽微调、双击收回、方向键微调、换肤轮盘。
+//   随之删掉的正是原来那一整套「贴纸操作」:标记看过、拖拽微调、双击收回、方向键微调、换肤轮盘
+//   (⚠ 「暂存区」那两枚按钮在修订 6 已按用户要求**回来了**,但只回来「点一下」这一半 —— 拖动没回来)。
 //
 //   本页保留的是**看结果**那一半:榜单栅格、卡片上的画布与群点、评分角标、hero 总览、分享图、讨论区。
 //
 // 卡片布局(未变):**左**边是海报与影片信息,**右**边一大片留白就是贴纸画布;
-//   · 一部片**只有一枚**(2026-09-16 用户:「标记看过只能选一个贴纸」)—— 红 / 黑 / 没看过 是同一个
-//     名额的三种取舍,不是可以并存的三样东西;
+//   · 一部片**只有一枚**(2026-09-16 用户:「标记看过只能选一个贴纸」)—— 红 / 黑 是同一个
+//     名额的两种取舍,不是可以并存的两样东西(「没看过」那第三种随修订 3 撤掉了);
 //   · 刚贴下的那一枚仍会**闪一下描边**(票多时否则根本找不着),闪完仍留一圈**常驻纸白边**
 //     (见 `redblack-parity.css` 的 `.rb-dot`);
 //   · ⚠ 但「我贴的那一枚」现在是**只读**的:它仍然单独画、仍然有上面那两圈描边,
@@ -217,9 +220,13 @@ interface RbCardProps {
    *  ⚠ 与「常驻纸白边」是两回事:后者在 `.rb-dot` 上恒有,不靠这个 prop(见 CSS 里的说明) */
   fresh: boolean;
   /** 保存这一部的评语（讨论区弹层里那个表单）。空串 = 清掉。
-   *  ⚠ 必须是**稳定引用**（`memo` 的前提）——它是 `useCallback([commitBoard])`,满足。
-   *  ⚠ 这是卡片上**唯一**还能改数据的入口：那一枚贴纸本身已经只读了（2026-10-14）。 */
+   *  ⚠ 必须是**稳定引用**（`memo` 的前提）——它是 `useCallback([commitBoard])`,满足。 */
   onSaveComment: (filmKey: string, comment: string) => void;
+  /** **卡片上那两枚「红 / 黑」按钮**要的那一次投票（2026-10-14，PLAN-20261014190000 修订 6）。
+   *  ⚠ 与快速投票走**同一个** `onVote`（页面那个 `vote`）—— 「落点随机、皮肤随机、
+   *    改票原地换色」这三件事的口径都只有一处实现，这里不许另写一份。
+   *  ⚠ 稳定引用（`memo` 的前提）：它是 `useCallback([commitBoard, markFresh])`，满足。 */
+  onVote: (filmKey: string, intent: StickerType) => void;
 }
 
 /** 「榜单」页外壳（`pages/BoardPage.tsx`）传进来的开关（2026-10-14，`PLAN-20261014150805`）。
@@ -802,7 +809,7 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
           <p className="rb-eyebrow">划过就投</p>
           <h1>榜单</h1>
           <p className="rb-lede">
-            一部电影一枚贴纸：左滑投黑，右滑投红。
+            一部电影一枚贴纸：点左边的「红 / 黑」直接投，或者用「快速投票」一张一张划。
             {/* 完整规则收进 `?`(2026-09-29,PLAN-20260929172651 §1):正文只留一句话,把版面让出来。
                 ⚠ 展开走**纯 CSS** 的 `:hover` + `:focus-within`,不引 JS 状态 —— `:focus-within` 让触屏
                 也「点一下 `?`」就能看,键盘 Tab 进来同样展开;`aria-describedby` 让读屏也拿得到全文
@@ -812,8 +819,8 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
                 ?
               </button>
               <span className="rb-rule-pop" id="rb-rule-full">
-                点「快速投票」，一张一张划：左滑投黑、右滑投红、上滑「没看过」。候选就是「我的行程」里的片，
-                已经投过的也会再出现一次 —— 想改主意，再划一次就行。贴纸落在右边那块空地上，位置和款式都是随机的。
+                点卡片左边的「红 / 黑」直接投一枚：贴纸落在右边那块空地上，位置和款式都是随机的。
+                也可以点「快速投票」一张一张划：左滑投黑、右滑投红、上滑跳过。想改主意，再点一次另一色就行。
                 一部片只有一枚，红黑是同一个名额的两种取舍。大家的票一起排榜。
               </span>
             </span>
@@ -937,7 +944,7 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
           而且它本来就是同一个口径的事:文案说的是「**榜**还是空的」,榜 = 全站票数。 */}
       {totals.total === 0 && (
         <p className="rb-hint" role="status">
-          榜还是空的。点「快速投票」，一张一张划过去 —— 这是你自己的榜。
+          榜还是空的。点卡片左边的「红 / 黑」投一枚 —— 这是你自己的榜。
         </p>
       )}
 
@@ -965,6 +972,7 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
               syncedFace={syncedFaceByKey.get(film.key)}
               fresh={freshKeys.has(film.key)}
               onSaveComment={saveComment}
+              onVote={vote}
             />
           ))}
         </div>
@@ -1054,6 +1062,7 @@ const RbCard = memo(function RbCard({
   syncedFace,
   fresh,
   onSaveComment,
+  onVote,
 }: RbCardProps) {
   // 视口按需渲染:屏幕外的卡**一枚贴纸都不画**(见 `useInView` 与 PLAN-20260922145815)。
   // ⚠ 贴纸是绝对定位,稍后补画不触发兄弟节点回流 —— 所以「滚到才画」不会引起版面跳动。
@@ -1207,12 +1216,44 @@ const RbCard = memo(function RbCard({
             </span>
           )}
         </p>
-        {/* ⚠ 2026-10-14:这一整块**暂存区**（`.rb-tray` + 红/黑两枚 `.rb-src` + 那层
-            `.rb-tray-lock` 拦截层）**已删**（PLAN-20261014190000，用户:「取消贴贴纸所有行为」）。
-            它原来承担的是「挑一枚贴纸、点一下随机贴、或者拖到画布上」—— 三件事现在全归快速投票：
-            投票那一刻落点与皮肤都随机，用户不再挑选、也不再搬运。
-            ⚠ 于是「未标记时是真 disabled、并用拦截层解释为什么点不动」那套（2026-09-29 / 2026-10-07
-              两次修订）也一并作废：按钮没了，就没有「点了没反应」可言。 */}
+        {/* 卡片上的**两枚投票按钮**（2026-10-14，PLAN-20261014190000 修订 6）。用户原话：
+            「也要保留按钮直接投票 不需要拖动了 贴纸随机落点就行 也不需要点击看过
+            直接点击按钮就可以直接投票」。
+
+            ⚠ 这一块在修订 3 被整块删过（连 `.rb-tray-lock` 拦截层一起），因为那版的口号是
+              「取消贴贴纸所有行为」；修订 6 把**点一下**这一条请了回来 —— 拖动没有回来，
+              「标记看过」那道闸门也没有（后者在修订 3 之前才有，本轮的「不需要点击看过」
+              因此是**已经满足**，不是要新删什么）。
+            ⚠ 两枚按钮与快速投票共用**同一个** `onVote`：同一部片再点另一色 = 原地换色
+              （位置与皮肤保留），只有首次投票才走 `voteSticker` 的**随机落点 + 随机皮肤**。
+            ⚠ 不再有 `disabled`：没有闸门，就没有「点了没反应」需要解释的场合。「这一色已经
+              贴出去了」由 `data-rb-spent` 表达（CSS 里那一档淡到底、去掉投影的形态）。 */}
+        <div className="rb-tray" role="group" aria-label={`给《${film.zh}》投票`}>
+          <button
+            type="button"
+            className="rb-src rb-src--red"
+            data-rb-src="red"
+            data-rb-spent={mine.red > 0 || undefined}
+            aria-pressed={mine.red > 0}
+            title={mine.black > 0 ? "点一下把贴纸换成红色（位置不变）" : undefined}
+            aria-label={`给《${film.zh}》贴红贴纸（点一下随机贴）`}
+            onClick={() => onVote(film.key, "red")}
+          >
+            红
+          </button>
+          <button
+            type="button"
+            className="rb-src rb-src--black"
+            data-rb-src="black"
+            data-rb-spent={mine.black > 0 || undefined}
+            aria-pressed={mine.black > 0}
+            title={mine.red > 0 ? "点一下把贴纸换成黑色（位置不变）" : undefined}
+            aria-label={`给《${film.zh}》贴黑贴纸（点一下随机贴）`}
+            onClick={() => onVote(film.key, "black")}
+          >
+            黑
+          </button>
+        </div>
       </div>
 
       <div
@@ -1262,13 +1303,14 @@ const RbCard = memo(function RbCard({
         })}
         {/* 没有票时的引导。
             ⚠ 2026-10-14:原来它按 `marked` 分两句话(「点左边的红 / 黑，或把贴纸拖进来」vs
-              「标记「看过」即可贴」)—— 两档现在合成**一句**,因为改数据的入口只剩快速投票一处,
-              而这句话要说的就是「去哪儿投」。
+              「标记「看过」即可贴」)—— 闸门撤掉之后合成**一句**:「去哪儿投」。
+            ⚠ 修订 6 起这句话指向**卡片自己那两枚按钮**(它们离得更近、也是最短的一条路);
+              快速投票仍是另一条路,由页头那枚按钮和规则弹层说。
             ⚠ 节点**仍然渲染**、条件**仍然只看票数**,不要顺手加条件:它挂在画布中央,
               一收一放会让卡片内容跳一下(与 hero 那条空榜引导同一个理由)。
               样式(何时淡入)由 CSS 的 `.rb-canvas-hint` 管,JS 这边一个字都不用改。 */}
         {myStickers.length === 0 && others.total === 0 && (
-          <span className="rb-canvas-hint">点「快速投票」投一枚</span>
+          <span className="rb-canvas-hint">点左边的「红 / 黑」投一枚</span>
         )}
       </div>
 

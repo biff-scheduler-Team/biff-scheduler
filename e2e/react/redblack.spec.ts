@@ -2739,3 +2739,71 @@ test("热门影片：减少动态效果时关掉过渡（缩放不做，信息�
   await expect(card.locator(".hb-frame-img")).toHaveCSS("transform", "none");
 });
 
+/* ⚠ 2026-10-14（`PLAN-20261014190000` 修订 6）：卡片上那两枚「红 / 黑」按钮回来了。
+ *
+ * 守着四件事，每一件都是用户这次点名的：
+ *   ① **不需要先「标记看过」** —— 按钮开局就是可用的（那道闸门在修订 3 已删）；
+ *   ② 点一下就投，**贴纸落点是随机的**（写在 inline `left/top` 的百分比上）；
+ *   ③ 改票 = 点另一色，**同一枚原地换色**（位置一个字都不动）；
+ *   ④ 1200ms 防抖后**真的上报**，且载荷里是最后那一色。
+ *
+ * ⚠ 本文件里那批守着「标记看过 / 暂存区 / 拖拽 / 换款轮盘」的旧用例仍是红的
+ *   （修订 3 的欠项，见 PLAN 的「仍欠」）—— 这一条**不依赖**它们，走的是修订 6 的新契约。 */
+test("卡片上的「红 / 黑」按钮直接投票：点一下随机落一枚、改票原地换色、并上报", async ({ page }) => {
+  await stubEmpty(page);
+  const pings: Array<{ ops: Array<Record<string, unknown>> }> = [];
+  // ⚠ 注册在 `stubEmpty` **之后**：Playwright 后注册的路由优先，而
+  //   `**/api/stats/film-votes**` 也匹配 `…-ping` —— 顺序反了这里就收不到载荷
+  await page.route("**/api/stats/film-votes-ping", async (route) => {
+    pings.push(JSON.parse(route.request().postData() ?? "{}") as { ops: Array<Record<string, unknown>> });
+    await route.fulfill({ json: { ok: true, count: 1, votes: {}, skins: {} } });
+  });
+  await ready(page, "/redblack?sort=red");
+
+  const key = keyOf("008");
+  const card = page.locator(`.rb-card[data-film-key="${key}"]`);
+  const red = card.getByRole("button", { name: /贴红贴纸/ });
+  const black = card.getByRole("button", { name: /贴黑贴纸/ });
+
+  // ① 没有前置闸门：开局就能点，且两枚都还没被选中
+  await expect(red).toBeEnabled();
+  await expect(black).toBeEnabled();
+  await expect(red).toHaveAttribute("aria-pressed", "false");
+
+  await red.click();
+
+  // 自己贴的那一枚**立刻**可见（不等服务端）；按钮同时进入「这一色已贴出去」的形态
+  const mine = card.locator(".rb-dot");
+  await expect(mine).toHaveCount(1);
+  await expect(card.locator(".rb-dot--red")).toHaveCount(1);
+  await expect(red).toHaveAttribute("aria-pressed", "true");
+  await expect(red).toHaveAttribute("data-rb-spent", "true");
+  await expect(black).toHaveAttribute("aria-pressed", "false");
+
+  // ② 落点是**随机**的：坐标由 `softSpot` 摇出来，写成画布内的百分比
+  //   ⚠ 只断言「是一个合法百分比」而不写死数值 —— 写死等于把随机分布钉成常量，第二天就红
+  const spot = await mine.evaluate((node) => ({
+    left: (node as HTMLElement).style.left,
+    top: (node as HTMLElement).style.top,
+  }));
+  expect(spot.left).toMatch(/^\d+(\.\d+)?%$/);
+  expect(spot.top).toMatch(/^\d+(\.\d+)?%$/);
+
+  // ③ 改票 = 点另一色：**同一枚**原地换色（位置一个字都不动，见 `retintSticker`）
+  await black.click();
+  await expect(card.locator(".rb-dot--black")).toHaveCount(1);
+  await expect(card.locator(".rb-dot--red")).toHaveCount(0);
+  await expect(mine).toHaveCount(1);
+  expect(await mine.evaluate((node) => (node as HTMLElement).style.left)).toBe(spot.left);
+  await expect(black).toHaveAttribute("aria-pressed", "true");
+  await expect(red).toHaveAttribute("aria-pressed", "false");
+
+  // ④ 1200ms 防抖之后才发出去；最后那一条载荷里，这一部是**黑**（改票后的状态）
+  await expect
+    .poll(
+      () => pings.at(-1)?.ops.find((op) => op.key === key)?.vote ?? null,
+      { timeout: 8000 },
+    )
+    .toBe("black");
+});
+
