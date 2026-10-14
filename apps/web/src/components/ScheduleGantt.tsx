@@ -706,6 +706,10 @@ export function ScheduleGantt({
                             原先只能回导航栏 → 红黑榜 → 再手打片名。带**这一场的片名**跳过去,红黑榜按 `q`
                             过滤后只剩这一部(`searchFilm` 匹配 `FilmNode.title`,与本卡 `info.title` 同一
                             口径 —— 都是 `bilingualTitle`)。
+                            ⚠ 合集场次(如 `062`「Asian Short Film Competition 1」)落到红黑榜后是它的
+                              **5 部成员片**而不是一张合集卡 —— 那张卡已被 `redblack.ts::boardFilms` 拆开,
+                              而这一串片名正是它们的「所属合集」,`searchBoardFilm` 照样认
+                              (见 `PLAN-20261014112444`)。
                             ⚠ 与 `.gantt-ticket-edit` 一样是 `.gantt-film` 的**兄弟**:点它不会冒泡到
                               「移出行程」那个按钮上,不存在误删场次的风险。 */}
                         {agenda && (

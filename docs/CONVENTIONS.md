@@ -651,6 +651,17 @@ GUEST 查票（`/guest`，PLAN-20261009150124）：scheduler API 直连官方 GU
   · ⚠ 服务端票数**已含我自己那一票**(上报成功后),所以前端**不能**再与本地贴纸相加 —— 会重复计。
     顺序:贴完 → 画布上我那枚**立刻**可见 → 约 1.2s 后数字更新(与 want-counts 同节奏)。
   · 前端 `film-votes.ts` 读失败(接口未部署 / 断网 / 半截响应)一律退化成空表,页面照常可贴 —— 本地贴纸不依赖它。
+  · **★ 榜单上「一部」= 一部影片:合集场次按成员片拆开**(2026-10-14,`PLAN-20261014112444`)。
+    `redblack.ts::boardFilms` 不再让「合集场次」自己占一张卡,而是**改由它的成员片各占一张** ——
+    合集 = 一张票连看多部(`screening.midnight_members` 标记的 Asian / Korean Short Film Competition、
+    `A + B` 双片连映),它的成员片是「只在合集里放映」的目录片(`FilmItem.block_code`,
+    节点上 `shows` 为空),拆之前**既搜不到也贴不了票**(用户原话:「搜 062 出现的是
+    'Asian Short Film Competition 1',我希望出现的是『她说』」)。
+    ⚠ 判据是「**成员片在榜上别无落脚点**」:成员片自己就有场次的合集(午夜联映 `Midnight Passion 1/2/3`)
+    原样保留 —— 拆了只是把卡片弄没,还会让「搜合集编号」落空。
+    ⚠ 搜索必须走 `redblack.ts::searchBoardFilm`(在 `model.ts::searchFilm` 之外**再认这张卡所属合集场次**
+    的编号 / 中英片名)—— 成员片自己 `shows` 为空,不补这一步「搜 062」会**一张都不剩**。
+    ⚠ 换口径后榜单卡片数 299 → 319;此前贴在合集卡上的贴纸不再有卡片显示(本地 / 服务端数据都不删)。
 - **★ 分享图(2026-09-22,PLAN-20260922164728)**:应用有**两张**对外出图的分享图 ——
   「看片计划海报」(`poster.ts` + `components/PosterPreview.tsx`)与「红黑榜分享图」
   (`redblack-poster.ts` + `components/RedBlackShareDialog.tsx`)。

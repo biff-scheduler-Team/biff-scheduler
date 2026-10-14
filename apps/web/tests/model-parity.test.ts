@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildFilmIndex, loadDoubanMappings } from "../src/data";
 import { loadExtras } from "../src/extras";
+import { boardFilms, searchBoardFilm } from "../src/redblack";
 import { buildFilms, filmInUnit, libraryUnits, searchFilm, unitKey } from "../src/app/model";
 import type { Catalog, FilmsFile, Mapping, ScheduleFile, VenuesFile } from "../src/types";
 import { filmInfoOf } from "../src/util";
@@ -137,5 +138,36 @@ describe("douban mapping resolution", () => {
     expect(withShows.map).toBe(mappings.get(withShows.shows[0].code));
     const noShows = withMappings.find((n) => n.shows.length === 0 && mappings.get(n.cats[0]?.id ?? ""))!;
     expect(noShows.map).toBe(mappings.get(noShows.cats[0].id));
+  });
+});
+
+/* ---------- 红黑榜榜单:合集场次拆成成员片(2026-10-14,`PLAN-20261014112444`) ----------
+ * 用户:「我在红黑榜搜索 062 …出现的是 'Asian Short Film Competition 1',
+ * 我希望出现的是和影片库一样是『她说』」。这几条拿**真实产物**钉住口径:
+ * 合集卡不在榜上、成员片在榜上(含《她说》),且搜合集编号能命中它们。 */
+describe("红黑榜榜单", () => {
+  const board = boardFilms(nodes);
+
+  it("合集场次不占卡,成员片各占一张(含《她说》)", () => {
+    const keys = board.map((f) => f.key);
+    // 判同仍与影片库同源(`filmNodeKey` + `buildFilms`)→ 不该出现重复 key
+    expect(new Set(keys).size).toBe(keys.length);
+    // 299 部有排期 - 8 个「短片竞赛 / 双片连映」合集 + 28 部成员片(实测)
+    expect(board).toHaveLength(319);
+    expect(keys).not.toContain("sched:asian short film competition 1");
+    expect(board.find((f) => f.key === "cat:f228")!.zh).toBe("她说");
+  });
+
+  it("搜合集场次编号 062 → 命中的是那 5 部成员片,而不是合集卡", () => {
+    expect(board.filter((f) => searchBoardFilm(f, "062")).map((f) => f.key)).toEqual([
+      "cat:f219", "cat:f221", "cat:f223", "cat:f226", "cat:f228",
+    ]);
+  });
+
+  it("午夜联映的卡片与搜索都不受影响(那些成员片自己就有卡片)", () => {
+    expect(board.map((f) => f.key)).toContain("sched:midnight passion 1");
+    expect(board.filter((f) => searchBoardFilm(f, "269")).map((f) => f.key)).toEqual([
+      "sched:midnight passion 3",
+    ]);
   });
 });
