@@ -573,16 +573,17 @@ export function QuickVoteDeck({
                       （用户朋友的问句就是证据）；「黑 / 红」仍在跟手标记与总结页里，术语没有丢。 */}
                 <div className="qv-actions">
                   <Button
+                    size="S"
                     variant="secondary"
                     aria-label="不喜欢（投黑榜）"
                     onPress={() => commit("left")}
                   >
                     ← 不喜欢
                   </Button>
-                  <Button variant="secondary" onPress={() => commit("up")}>
+                  <Button size="S" variant="secondary" onPress={() => commit("up")}>
                     跳过
                   </Button>
-                  <Button aria-label="喜欢（投红榜）" onPress={() => commit("right")}>
+                  <Button size="S" aria-label="喜欢（投红榜）" onPress={() => commit("right")}>
                     喜欢 →
                   </Button>
                 </div>

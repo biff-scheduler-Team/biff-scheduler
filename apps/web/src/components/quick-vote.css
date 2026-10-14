@@ -18,9 +18,14 @@
 
 .qv-counter {
   margin: 0;
+  max-width: 100%;
   font-size: 13px;
   color: var(--text);
   opacity: 0.72;
+  /* 2026-10-15：片名长（中 + 英）时原来折成两行，手机上白白吃掉一行高度 —— 单行省略 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 兜底候选的一句说明（我的行程为空时）—— 它是**状态说明**，不是警告，所以用中性色弱化 */
@@ -489,6 +494,25 @@
 
   .qv-stage {
     width: min(78vw, 320px, 32vh);
+  }
+}
+
+/* 手机（2026-10-15，用户：「海报和喜欢 / 不喜欢字体太大了，手机上都看不到下面的字」）：
+ * 弹层自带标题 + 底部「关闭」按钮 + 内边距，真正留给内容的高度只有视口的约 6 成，
+ * 而 `vh` 在手机浏览器里还是「含地址栏」的大视口 —— 所以改用 `dvh`（动态视口），并把海报再收一档。
+ * ⚠ 只限窄屏：桌面（≥ 561px）卡片仍受 `320px` 约束，逐像素不变。 */
+@media (max-width: 560px) {
+  .qv {
+    gap: 8px;
+  }
+
+  .qv-stage {
+    width: min(64vw, 320px, 26dvh);
+  }
+
+  .qv-legend {
+    font-size: 11px;
+    gap: 8px;
   }
 }
 

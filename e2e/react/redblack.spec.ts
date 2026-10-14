@@ -1606,6 +1606,34 @@ test("快速投票：矮屏（390 × 667）里卡片不再顶满一屏 —— �
   expect(measured.lowest, JSON.stringify(measured)).toBeLessThanOrEqual(measured.viewport);
 });
 
+test("快速投票：手机上弹层内容不需要滚动 —— 三枚按钮与撤回条都在可见区内", async ({ page }) => {
+  // 2026-10-15 用户截图：手机上海报下面的图例 / 按钮被弹层裁掉、要滚才看得到。
+  // ⚠ 真正的瓶颈不是视口，而是**弹层内容区**（标题 + 底部「关闭」+ 内边距之后剩下的高度），
+  //   所以直接量那个滚动容器：`scrollHeight ≤ clientHeight` 才算「不用滚」。
+  // 844 高是 iPhone 13；浏览器地址栏 / 工具栏会再吃掉一截，所以另跑一档 700。
+  for (const height of [844, 700]) {
+    await page.setViewportSize({ width: 390, height });
+    await stubEmpty(page);
+    await seed(page, deckSeed);
+    await ready(page, "/redblack?sort=red&vote=1");
+    await expect(page.locator(".qv-card")).toBeVisible();
+    const measured = await page.evaluate(() => {
+      let node: HTMLElement | null = document.querySelector(".qv");
+      while (node && node.scrollHeight <= node.clientHeight + 1 && node !== document.body) {
+        node = node.parentElement;
+      }
+      const bottom = (sel: string) => document.querySelector(sel)!.getBoundingClientRect().bottom;
+      const box = node && node !== document.body ? node.getBoundingClientRect().bottom : Infinity;
+      return {
+        overflow: node && node !== document.body ? node.scrollHeight - node.clientHeight : 0,
+        undoBottom: bottom(".qv-undo-row"),
+        containerBottom: box,
+      };
+    });
+    expect(measured.overflow, `${height}: ${JSON.stringify(measured)}`).toBeLessThanOrEqual(1);
+  }
+});
+
 test("扫码投票：控制栏那枚按钮打开弹层，里面是一枚画好了的二维码", async ({ page }) => {
   await stubEmpty(page);
   await ready(page, "/redblack?sort=red");
