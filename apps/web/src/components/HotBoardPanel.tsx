@@ -105,7 +105,9 @@ export function HotBoardPanel() {
   /** 选中的单元原串；空串 = 全部单元 */
   const [unitId, setUnitId] = useState("");
   const shown = useMemo(
-    () => (unitId ? rows.filter((row) => row.unit === unitId) : rows),
+    // ⚠ 用 `units.includes`（不是 `unit ===`）：联映块成员片可能同时属于这个单元，
+    //   与 `groupByUnit` 把同一行放进多个组是同一条口径（否则「点头部说 N 部、列表少几行」）
+    () => (unitId ? rows.filter((row) => row.units.includes(unitId)) : rows),
     [rows, unitId],
   );
   const totals = useMemo(() => hotTotals(shown), [shown]);

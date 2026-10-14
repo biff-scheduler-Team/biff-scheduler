@@ -2319,6 +2319,40 @@ test("榜单页：想看数据到达后榜单**真的渲染出来**（回归 · 
   await expect(page.locator(".hb-panel .empty-state")).toHaveCount(0);
 });
 
+test("榜单页：单元分组的键已归一，且「头部说 N 部」与列表行数同源", async ({ page }) => {
+  // ⚠ 这条守的是 2026-10-14 **打开浏览器才发现**的两个真 bug：
+  //   ① 单元按钮/下拉里出现 4 个一模一样的「…年度亚洲电影人奖 · 杨紫琼专题」（按**原串**分组）；
+  //   ② 同一单元两套数（头部说 N 部、列表少几行）。
+  //   两者都只在「有数据」的前提下才现形 —— 拿空数据是抓不到的。
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  const keys = [
+    ...new Set(Array.from({ length: 60 }, (_, i) => keyOf(String(i + 1).padStart(3, "0")))),
+  ];
+  await page.route("**/api/stats/want-counts**", (route) =>
+    route.fulfill({
+      json: { counts: Object.fromEntries(keys.map((key, i) => [key, 300 - i])) },
+    }),
+  );
+  await ready(page, "/redblack");
+  await expect.poll(() => page.locator(".hb-row").count()).toBeGreaterThan(20);
+
+  // ① 单元按钮不重名 —— 同义写法已归一到同一个键
+  const labels = (await page.locator(".hb-unit-btn").allInnerTexts()).map((t) => t.trim());
+  expect(labels.length).toBeGreaterThan(5);
+  expect(new Set(labels).size).toBe(labels.length);
+
+  // ② 头的计数与列表同源：点进某个单元后，「N 部上榜」必须等于列表行数
+  const button = page.locator(".hb-unit-btn").first();
+  await button.click();
+  const filmsOf = async () => {
+    const text = await page.locator(".hb-hero").innerText();
+    return Number(text.match(/(\d+)\s*部上榜/)?.[1] ?? -1);
+  };
+  await expect.poll(filmsOf).toBeGreaterThan(0);
+  await expect.poll(async () => page.locator(".hb-row").count()).toBe(await filmsOf());
+});
+
 test("榜单页：从日程表格子带 `q` 跳进来时仍落在红榜（不是热门榜）", async ({ page }) => {
   await stubEmpty(page);
   await stubComments(page, { items: [] });

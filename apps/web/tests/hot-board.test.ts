@@ -11,8 +11,9 @@ import type { FilmItem } from "../src/types";
 import { buildHotRows, compareByWant, groupByUnit, hotTotals } from "../src/hot-board";
 import { scoreOf, type CrowdCounts } from "../src/redblack";
 
-/** 最小影片节点：只写热门榜真正读的字段（`cats[0].unit` / `title` / `poster`）。 */
-function film(key: string, title: string, unit: string, poster?: string): FilmNode {
+/** 最小影片节点：只写热门榜真正读的字段（`cats[0].unit` / `title` / `poster`）。
+ *  `also` = 联映块单元的成员关系（`FilmItem.also_units`）。 */
+function film(key: string, title: string, unit: string, poster?: string, also?: string[]): FilmNode {
   return {
     key,
     title,
@@ -20,7 +21,7 @@ function film(key: string, title: string, unit: string, poster?: string): FilmNo
     zh: title,
     names: [title],
     meta: "",
-    cats: [{ unit } as FilmItem],
+    cats: [{ unit, also_units: also } as FilmItem],
     shows: [],
     poster,
   };
@@ -96,10 +97,58 @@ describe("buildHotRows", () => {
     expect(rows[0].black).toBe(3);
   });
 
-  it("单元取自目录条目（FilmNode 上没有 unit），未知单元原样展示", () => {
+  it("单元键取自目录条目（FilmNode 上没有 unit），未知单元原样兜底", () => {
     const rows = buildHotRows([film("cat:a", "A", "Test Unit")], { "cat:a": 1 }, new Map(), PRIOR);
-    expect(rows[0].unit).toBe("Test Unit");
+    expect(rows[0].units).toEqual(["Test Unit"]);
     expect(rows[0].unitName).toBe("Test Unit");
+  });
+
+  it("★ 回归：同一单元的不同写法归一到**一个**键（原先是 4 个同名选项各占一行）", () => {
+    // 2026-10-14 打开榜单页实测：单元下拉里出现了 4 个一模一样的
+    // 「Asian Filmmaker of the Year · 年度亚洲电影人奖 · 杨紫琼专题，1 部」——
+    // 根因是按**原串**分组，而 `units.ts::unitKey` 早就把它们归一成「亚洲电影人奖」了。
+    const films = [
+      film("cat:a", "A", "亚洲电影人奖"),
+      film("cat:b", "B", "年度亚洲电影人奖-杨紫琼专题"),
+      film("cat:c", "C", "2026年度亚洲电影人奖-杨紫琼专题"),
+    ];
+    const rows = buildHotRows(
+      films,
+      { "cat:a": 3, "cat:b": 2, "cat:c": 1 },
+      new Map(),
+      PRIOR,
+    );
+    expect(rows.map((r) => r.units)).toEqual([
+      ["亚洲电影人奖"],
+      ["亚洲电影人奖"],
+      ["亚洲电影人奖"],
+    ]);
+    const units = groupByUnit(rows);
+    expect(units).toHaveLength(1);
+    expect(units[0].name).toContain("年度亚洲电影人奖");
+  });
+
+  it("联映块成员片**同时**属于两个单元（与影片库 `filmInUnit` / `libraryUnits` 同一口径）", () => {
+    const rows = buildHotRows(
+      [film("cat:a", "A", "广角镜 - 纪录片放映", undefined, ["Midnight Passion"])],
+      { "cat:a": 5 },
+      new Map(),
+      PRIOR,
+    );
+    expect(rows[0].units).toEqual(["广角镜 - 纪录片放映", "Midnight Passion"]);
+    // 行里那行小字仍是**主单元**的名字
+    expect(rows[0].unitName).toContain("广角镜");
+
+    // 两个单元各成一组（⚠ 不断言组的**顺序**：两组想看合计相同 → 落到按组名排那一档，
+    // 而中文序随运行环境的 ICU 数据变），组名跟着**组**走 ——
+    // 不是行上的主单元名，否则「午夜激情」那一组会被标成「广角镜 · 纪录片放映」
+    const units = groupByUnit(rows);
+    expect(units.map((u) => u.id).sort()).toEqual(
+      ["Midnight Passion", "广角镜 - 纪录片放映"].sort(),
+    );
+    const midnight = units.find((u) => u.id === "Midnight Passion")!;
+    expect(midnight.name).toContain("午夜激情");
+    expect(midnight.rows.map((r) => r.key)).toEqual(["cat:a"]);
   });
 
   it("电影库里没有的键（sched:* 讲座 / 探针残留）天然出局", () => {
@@ -131,9 +180,11 @@ describe("groupByUnit", () => {
     expect(units[1].rows.map((r) => r.key)).toEqual(["cat:b"]);
   });
 
-  it("未标单元的组有兜底名字（不出现空标题）", () => {
+  it("未标单元的组有兜底名字，且与影片库**同一个词**（不出现空标题）", () => {
     const rows = buildHotRows([film("cat:a", "A", "")], { "cat:a": 1 }, new Map(), PRIOR);
-    expect(groupByUnit(rows)[0].name).toBe("未标单元");
+    // `units.ts::unitKey("")` = 「未标注单元」—— 与影片库单元下拉的兜底同一处实现
+    expect(groupByUnit(rows)[0].id).toBe("未标注单元");
+    expect(groupByUnit(rows)[0].name).toBe("未标注单元");
   });
 });
 

@@ -17,7 +17,7 @@ function row(want: number, over: Partial<HotRow> = {}): HotRow {
   return {
     key: `cat:f${want}`,
     title: `片${want}`,
-    unit: "甲单元",
+    units: ["甲单元"],
     unitName: "甲单元",
     want,
     red: 0,

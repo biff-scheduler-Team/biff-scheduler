@@ -388,9 +388,9 @@ describe("rbPosterRow:行内海报缩略图(2026-10-08)", () => {
  */
 
 describe("buildRbPosterModel:按单元切分", () => {
-  /** 带单元的影片（`cats[0].unit` 才是本模块认的那个「主单元」）。 */
-  function inUnit(key: string, unit: string, zh = key): FilmNode {
-    return { ...film(key, zh), cats: [{ unit } as FilmItem] };
+  /** 带单元的影片（单元挂在目录条目上；`also` = 联映块单元的成员关系）。 */
+  function inUnit(key: string, unit: string, zh = key, also?: string[]): FilmNode {
+    return { ...film(key, zh), cats: [{ unit, also_units: also } as FilmItem] };
   }
 
   const films = [
@@ -527,12 +527,47 @@ describe("posterUnitOptions:弹层那个「单元」下拉的选项", () => {
     expect(byName.get("乙单元")).toBe(1);
   });
 
-  it("选项里的 id 与 `buildRbPosterModel` 的筛选用的是同一个原串（否则会切出一张空图）", () => {
+  it("选项里的 id 与 `buildRbPosterModel` 的筛选用的是同一个键（否则会切出一张空图）", () => {
     const films: FilmNode[] = [{ ...film("a"), cats: [{ unit: "甲单元" } as FilmItem] }];
     const id = posterUnitOptions(films)[0].id;
     const model = buildRbPosterModel(
       input({ films, crowd: crowd({ a: [1, 0] }), unit: id }),
     );
     expect(model.boards[0].rows.map((r) => r.key)).toEqual(["a"]);
+  });
+
+  it("★ 回归：同一单元的多种写法合成**一项**（原先是 4 个同名选项，各 1 部片）", () => {
+    // 2026-10-14 打开弹层实测：下拉里 4 行一模一样的
+    // 「Asian Filmmaker of the Year · 年度亚洲电影人奖 · 杨紫琼专题，1 部」
+    const films: FilmNode[] = [
+      { ...film("a"), cats: [{ unit: "亚洲电影人奖" } as FilmItem] },
+      { ...film("b"), cats: [{ unit: "年度亚洲电影人奖-杨紫琼专题" } as FilmItem] },
+      { ...film("c"), cats: [{ unit: "2026年度亚洲电影人奖-杨紫琼专题" } as FilmItem] },
+    ];
+    const options = posterUnitOptions(films);
+    expect(options).toHaveLength(1);
+    expect(options[0].films).toBe(3);
+    // 这个键也真的能切出全部 3 部 —— 「计数与筛选同源」的那条老规矩
+    const model = buildRbPosterModel(
+      input({ films, crowd: crowd({ a: [1, 0], b: [1, 0], c: [1, 0] }), unit: options[0].id }),
+    );
+    expect(model.boards[0].rows.map((r) => r.key)).toEqual(["a", "b", "c"]);
+  });
+
+  it("联映块成员片在该单元的图上也会出现（与影片库的计数同源，不再少画那 4 部）", () => {
+    const films: FilmNode[] = [
+      {
+        ...film("sapiens"),
+        cats: [{ unit: "广角镜 - 纪录片放映", also_units: ["Midnight Passion"] } as FilmItem],
+      },
+      { ...film("in-unit"), cats: [{ unit: "Midnight Passion" } as FilmItem] },
+    ];
+    const options = posterUnitOptions(films);
+    const midnight = options.find((o) => o.id === "Midnight Passion")!;
+    expect(midnight.films).toBe(2);
+    const model = buildRbPosterModel(
+      input({ films, crowd: crowd({ sapiens: [1, 0], "in-unit": [1, 0] }), unit: midnight.id }),
+    );
+    expect(model.boards[0].rows.map((r) => r.key).sort()).toEqual(["in-unit", "sapiens"]);
   });
 });

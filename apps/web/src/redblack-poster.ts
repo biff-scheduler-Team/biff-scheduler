@@ -35,7 +35,7 @@ import { glyphPath, glyphPlacement, type StickerGlyph } from "./sticker-glyph";
 import { paintMaterial } from "./sticker-material";
 import { shapePath, type StickerShape } from "./sticker-shape";
 import { FALLBACK_SKIN, resolveSkin, skinSpec, type StickerSkin } from "./sticker-skin";
-import { dateInfo, filmUnitOf, unitLabel } from "./util";
+import { dateInfo, filmUnitKeys, unitLabel } from "./util";
 import {
   boardFilms,
   boardHasVotes,
@@ -172,8 +172,9 @@ export interface RbPosterInput {
   sections?: ReadonlySet<RbPosterSection>;
   /** **只讲一个单元**(原串,取自目录条目 `FilmItem.unit`)。**不传 = 全部单元**。
    *  用户 2026-10-14:「分享的时候可以选择需要哪个单元的就行」。
-   *  ⚠ 匹配走 `util.ts::filmUnitOf`(与「热门榜」的分组同一支),**只认主单元** ——
-   *    `also_units` 的副单元不参与(4 部片额外属于 Midnight Passion,见 PLAN 的「风险与口径细节」)。
+   *  ⚠ 匹配走 `util.ts::filmUnitKeys`(与「热门榜」的分组、影片库的筛选同一支),
+   *    取值是**规范键**(`units.ts::unitKey`),不是目录里的原串 ——
+   *    同义写法(`年度亚洲电影人奖-杨紫琼专题` / `2026年度…`)归一到同一个键。
    *  ⚠ 选了单元**连「我贴过的」也一起切** —— 保持「这张图只讲这个单元」的语义。 */
   unit?: string;
   /** 每个榜取前几名。**不传 = `TOP_N`(10)**;`<= 0` = 不截断(弹层那一档叫「全部」)。
@@ -288,14 +289,17 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
   const { films, crowd, board, skins = {}, syncedFaces = NO_SYNCED_FACES, site, mine, today } = input;
   const picked = input.sections ?? allSections();
   // 单元切分（2026-10-14，用户「分享的时候可以选择需要哪个单元的就行」）：
-  // ⚠ 只认**主单元**（`util.ts::filmUnitOf`），`also_units` 的副单元不参与 ——
-  //   否则同一部片会同时出现在两个单元的图上；这是 PLAN「风险与口径细节」里写明的**有意**取舍。
+  // ⚠ 归属口径走 `util.ts::filmUnitKeys`（主单元 ∪ 联映块单元，与影片库的 `filmInUnit`
+  //   和热门榜的分组**同一支**）。一部片因此可能出现在两个单元的图上 —— 那是**对的**：
+  //   它在两个单元的筛选结果里都真的会露面，图上少画反而是两处口径分叉。
   const unit = (input.unit ?? "").trim();
   const unitName = unit ? unitLabel(unit) : "";
   const topN = input.topN ?? TOP_N;
   const showHeader = input.showHeader ?? true;
   const showFooter = input.showFooter ?? true;
-  const candidates = boardFilms(films).filter((film) => !unit || filmUnitOf(film) === unit);
+  const candidates = boardFilms(films).filter(
+    (film) => !unit || filmUnitKeys(film).includes(unit),
+  );
   // 评分先验：优先用页面算好的那份（这样分享图行与卡片角标逐字一致）；没传才按**整份影片库**的
   // 票数现算 —— 只看当前榜单那几部的话，先验会随榜单长短变，同一张图里的两榜也会用上不同基准。
   const priorRate = input.priorRate ?? priorOf(crowd);
@@ -360,16 +364,16 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
  *
  *  ⚠ 排序按**展示名**(不是按片数,也不是按热度):下拉是「找自己关心的那个单元」,
  *    顺序稳定比「最热在前」更好用 —— 要按热度排的是「热门榜」那一页的分组。
- *  ⚠ 只收**主单元**(`util.ts::filmUnitOf`),与 `buildRbPosterModel` 的切分口径**同一支**:
- *    两处各写一份的话,下拉里会出现一个切不出任何片的选项。 */
+ *  ⚠ 归属走 `util.ts::filmUnitKeys`,与 `buildRbPosterModel` 的切分口径**同一支**
+ *    (再往下是 `units.ts::unitKey` / `unitsOfFilm` —— 与影片库的下拉同一支):
+ *    两处各写一份的话,下拉里会出现一个切不出任何片的选项。
+ *  ⚠ 一部片可能给**多个**单元各计一次(联映块成员片),这与影片库的计数同一口径。 */
 export function posterUnitOptions(
   films: readonly FilmNode[],
 ): Array<{ id: string; name: string; films: number }> {
   const counts = new Map<string, number>();
   for (const film of films) {
-    const unit = filmUnitOf(film);
-    if (!unit) continue;
-    counts.set(unit, (counts.get(unit) ?? 0) + 1);
+    for (const unit of filmUnitKeys(film)) counts.set(unit, (counts.get(unit) ?? 0) + 1);
   }
   return [...counts.entries()]
     .map(([id, count]) => ({ id, name: unitLabel(id), films: count }))

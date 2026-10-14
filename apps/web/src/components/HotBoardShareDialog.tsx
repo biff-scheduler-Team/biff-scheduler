@@ -84,7 +84,9 @@ export function HotBoardShareDialog({
     [snapshot, unitId],
   );
   const shown = useMemo(
-    () => (unitId ? snapshot.rows.filter((row) => row.unit === unitId) : snapshot.rows),
+    // ⚠ `units.includes` 而不是 `unit ===`：与 `groupByUnit` / 面板筛选同一条口径，
+    //   否则图上会比页面上少几部（联映块成员片，见 `util.ts::filmUnitKeys`）
+    () => (unitId ? snapshot.rows.filter((row) => row.units.includes(unitId)) : snapshot.rows),
     [snapshot, unitId],
   );
   const model = useMemo(

@@ -19,15 +19,17 @@
 
 import type { FilmNode } from "./app/model";
 import { scoreOf, type CrowdCounts } from "./redblack";
-import { filmUnitOf, unitLabel } from "./util";
+import { filmUnitKeys, unitLabel } from "./util";
 
 /** 热门榜的一行。 */
 export interface HotRow {
   key: string;
   title: string;
-  /** 单元原串（来自目录条目 `FilmItem.unit`），未标单元时为空串 */
-  unit: string;
-  /** 单元展示名（中文优先，走 `util.ts::unitLabel`） */
+  /** 这部片**归属的全部单元键**（已归一，主单元在前）—— 见 `util.ts::filmUnitKeys`。
+   *  ⚠ 是数组而不是单值：联映块成员片（`also_units`）在午夜单元里也算成员，
+   *    只认主单元会让这里说 5 部、影片库说 9 部（同一个单元两套数）。 */
+  units: string[];
+  /** **主单元**的展示名（行里那行小字用它，走 `util.ts::unitLabel`） */
   unitName: string;
   want: number;
   red: number;
@@ -40,9 +42,9 @@ export interface HotRow {
 
 /** 一个单元分组。 */
 export interface HotUnit {
-  /** 单元原串（用于筛选与断言）；未标单元的组是空串 */
+  /** 单元**规范键**（`units.ts::unitKey` 的输出；用于筛选与断言）。未标单元的组是 `未标注单元` */
   id: string;
-  /** 展示名 */
+  /** 展示名（`unitLabel(id)`） */
   name: string;
   /** 组内想看合计（分组排序用） */
   want: number;
@@ -99,13 +101,14 @@ export function buildHotRows(
     const red = Math.max(0, counts?.red ?? 0);
     const black = Math.max(0, counts?.black ?? 0);
     if (!want && !red && !black) continue;
-    // ⚠ 单元口径走 `util.ts::filmUnitOf`（与红黑榜分享图的「按单元切分」同一支）
-    const unit = filmUnitOf(film);
+    // ⚠ 单元口径走 `util.ts::filmUnitKeys`（与红黑榜分享图的「按单元切分」、
+    //   影片库的 `filmInUnit` / `libraryUnits` 同一支）—— 三处各写一份必然分叉
+    const units = filmUnitKeys(film);
     rows.push({
       key: film.key,
       title: film.title,
-      unit,
-      unitName: unitLabel(unit),
+      units,
+      unitName: unitLabel(units[0] ?? ""),
       want,
       red,
       black,
@@ -127,13 +130,20 @@ export function buildHotRows(
 export function groupByUnit(rows: readonly HotRow[]): HotUnit[] {
   const groups = new Map<string, HotUnit>();
   for (const row of rows) {
-    let group = groups.get(row.unit);
-    if (!group) {
-      group = { id: row.unit, name: row.unitName || "未标单元", want: 0, rows: [] };
-      groups.set(row.unit, group);
+    // ⚠ 一部片**可以进多个组**（联映块成员片，见 `util.ts::filmUnitKeys`）：
+    //   组里列出来的那一部，就是点这个单元时真的会出现的那一部（筛选同源，见 `HotBoardPanel`）。
+    //   它的想看数也因此计入每个相关单元的合计 —— 与影片库「每个单元各计一次」同一口径。
+    for (const unit of row.units) {
+      let group = groups.get(unit);
+      if (!group) {
+        // ⚠ 组名用 `unitLabel(组 id)`，**不是**行上的 `unitName`：联映块成员片的主单元在别处，
+        //   拿它的名字当组名会把「午夜激情」这一组标成「广角镜 · 纪录片放映」。
+        group = { id: unit, name: unitLabel(unit), want: 0, rows: [] };
+        groups.set(unit, group);
+      }
+      group.rows.push(row);
+      group.want += row.want;
     }
-    group.rows.push(row);
-    group.want += row.want;
   }
   return [...groups.values()].sort((a, b) => b.want - a.want || a.name.localeCompare(b.name));
 }
