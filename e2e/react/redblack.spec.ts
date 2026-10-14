@@ -100,7 +100,7 @@ async function pressOpenWheel(page: Page, dot: Locator): Promise<void> {
 
 test("首次进入是空榜:一枚贴纸都没有,只留一句怎么开始", async ({ page }) => {
   await stubEmpty(page);
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   // 早先版本会在这里自动铺一份示例 —— 那正是用户报「为什么有一堆默认贴纸」的原因
   await expect(page.locator(".rb-hint")).toBeVisible();
@@ -132,7 +132,7 @@ test("首次进入是空榜:一枚贴纸都没有,只留一句怎么开始", asy
 //   而 Playwright 为了点击会滚页面 —— 这次不再有那个坑)。
 test("点「标记看过」不会把整页顶上去", async ({ page }) => {
   await stubEmpty(page);
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const key = keyOf("008");
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
@@ -193,7 +193,7 @@ test("点「标记看过」不会把整页顶上去", async ({ page }) => {
 
 test("榜单铺出去重后的影片,同一部只出现一次,且能按场次 code 搜到", async ({ page }) => {
   await stubEmpty(page);
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const cards = page.locator(".rb-card");
   await expect(cards.first()).toBeVisible();
@@ -220,7 +220,7 @@ test("榜单铺出去重后的影片,同一部只出现一次,且能按场次 co
 //   这个短片竞赛合集场次的编号(一张票连看 5 部),那 5 部此前在榜上既搜不到也贴不了票。
 test("搜合集场次编号 062 → 出现的是 5 部成员片(含《她说》),不再是一张合集卡", async ({ page }) => {
   await stubEmpty(page);
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   await page.getByRole("searchbox").fill("062");
   // ⚠ 搜索词是 200ms 合并提交的(见上一条用例)—— 先断**数量**,否则「还没过滤时就通过」会假绿:
@@ -244,7 +244,7 @@ test("按场次编号搜索时,hero 的全站总览数字不变", async ({ page 
   const a = keyOf("008");
   const b = keyOf("033");
   await stubVotes(page, { [a]: { red: 3, black: 2 }, [b]: { red: 1, black: 4 } });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const global = page.locator(".rb-global");
   const num = global.locator(".rb-global-num");
@@ -272,7 +272,7 @@ test("按场次编号搜索时,hero 的全站总览数字不变", async ({ page 
 //   那是「点另一色原地换色」的出口,2026-09-28 加的,不许被这轮改掉)。
 test("没标记「看过」时红 / 黑按钮是禁态,标记之后才放开", async ({ page }) => {
   await stubEmpty(page);
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const card = page.locator(`.rb-card[data-film-key="${keyOf("008")}"]`);
   const red = card.getByRole("button", { name: /贴红贴纸/ });
@@ -301,7 +301,7 @@ test("没标记「看过」时红 / 黑按钮是禁态,标记之后才放开", a
 //   ① 一句提示(落在 `role=alertdialog` 的提示条里);② 那枚角标拿到 `rb-mark--nudge`(脉冲一下指路)。
 test("没标记「看过」时想点贴纸:提示「标记看过」并点亮那枚角标", async ({ page }) => {
   await stubEmpty(page);
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const card = page.locator(`.rb-card[data-film-key="${keyOf("008")}"]`);
   const lock = card.locator(".rb-tray-lock");
@@ -336,7 +336,7 @@ test("标记「看过」→ 贴一枚红:画布上立刻出现,并上报给服�
     }
     return route.fulfill({ json: { edition: "biff-2026", votes: {} } });
   });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const key = keyOf("008");
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
@@ -374,7 +374,7 @@ test("服务端的全体票数渲染成卡片上的红黑数字与只读小点",
       json: { edition: "biff-2026", votes: { [key]: { red: 3, black: 2 } } },
     }),
   );
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
   // ⚠ 2026-09-30:红黑合成**一颗**(「红 166 · 黑 73」) —— 判据从两颗各自比对
@@ -406,13 +406,15 @@ test("默认就是红榜:按评分从高到低;切黑榜后反过来", async ({ 
       },
     }),
   );
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   // ⚠ 2026-10-12 起只留两榜，默认档从「总数」变成**红榜** —— 首屏不用点任何按钮
   await expect(page.locator(".rb-card").first()).toHaveAttribute("data-film-key", good);
 
   // 切「黑榜」：同一个评分**升序**，红占比低的那部排前面
-  await page.getByRole("button", { name: "黑榜", exact: true }).click();
+  // ⚠ 2026-10-14（PLAN-20261014150805 修订 1）：档位改由「榜单」页外壳的 tab 托管，
+  //   页面自己那个 `.rb-seg` 分段控件已不再渲染 —— 入口从它改成外壳的 tab。
+  await page.locator('[data-board-tab="black"]').click();
   await expect(page.locator(".rb-card").first()).toHaveAttribute("data-film-key", bad);
 });
 
@@ -422,7 +424,7 @@ test("默认就是红榜:按评分从高到低;切黑榜后反过来", async ({ 
 test("票数几枚就画几枚:100 枚全部画出来,没有「+N」角标", async ({ page }) => {
   const key = keyOf("008");
   await stubVotes(page, { [key]: { red: 60, black: 40 } });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
   await expect(card.locator(".rb-chip--tally")).toHaveText("红 60 · 黑 40");
@@ -437,7 +439,7 @@ test("票数几枚就画几枚:100 枚全部画出来,没有「+N」角标", asy
 test("少数派颜色不会被抹掉:1 红 / 100 黑 也画得出那枚红", async ({ page }) => {
   const key = keyOf("008");
   await stubVotes(page, { [key]: { red: 1, black: 100 } });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
   // ⚠ 期望值必须**两侧都写**(2026-09-30,CI 实测红):红黑合并成一颗之后,两侧都非 0 就都出现 ——
@@ -456,7 +458,7 @@ test("少数派颜色不会被抹掉:1 红 / 100 黑 也画得出那枚红", asy
 test("屏幕外的卡片一枚贴纸都不画,滚回视野再补齐", async ({ page }) => {
   const key = keyOf("008");
   await stubVotes(page, { [key]: { red: 3, black: 2 } });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
   const painted = await paintedCanvas(card);
@@ -480,7 +482,7 @@ test("屏幕外的卡片一枚贴纸都不画,滚回视野再补齐", async ({ p
 test("屏幕外的卡片仍留着我贴的那一枚:自己的贴纸始终抓得到", async ({ page }) => {
   const key = keyOf("008");
   await stubVotes(page, { [key]: { red: 3, black: 2 } });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
   await card.getByRole("button", { name: /^标记《/ }).click();
@@ -513,7 +515,7 @@ test("屏幕外的卡片仍留着我贴的那一枚:自己的贴纸始终抓得�
 test("「别人的贴纸」与我贴的那枚同尺寸,只差常驻纸白边与能不能拖", async ({ page }) => {
   const key = keyOf("008");
   await stubVotes(page, { [key]: { red: 3, black: 2 } });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
   await card.getByRole("button", { name: /^标记《/ }).click();
@@ -623,7 +625,7 @@ test("讨论区:数字与卡片一致、按片读、只列写了评语的人、E
       },
     });
   });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
   await card.getByRole("button", { name: /^标记《/ }).click();
@@ -673,7 +675,7 @@ test("双击自己贴的那一枚才收回;单击什么都不做", async ({ page
     }
     return route.fulfill({ json: { edition: "biff-2026", votes: {} } });
   });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const key = keyOf("008");
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
@@ -731,7 +733,7 @@ test("收回自己那一枚:画布与数字**当场**少一枚,不等上报", as
       json: { edition: "biff-2026", votes: reads === 1 ? {} : { [key]: { red: 1, black: 0 } } },
     });
   });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
   await card.getByRole("button", { name: /^标记《/ }).click();
@@ -756,7 +758,7 @@ test("收回自己那一枚:画布与数字**当场**少一枚,不等上报", as
 
 test("拖一下微调位置不算点击:贴纸不会被顺手收走,也不会弹出换款环", async ({ page }) => {
   await stubEmpty(page);
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const key = keyOf("008");
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
@@ -795,7 +797,7 @@ test("拖一下微调位置不算点击:贴纸不会被顺手收走,也不会弹
 // 拖到别片的画布上松手,这一票就被**直接改记到别片头上** —— 不报错、不提示,只有盯着两张卡才看得出来。
 test("跨片拖拽:别片的张贴区一枚都不会多", async ({ page }) => {
   await stubEmpty(page);
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   // ⚠ 用**相邻的两张卡**而不是挑两个 key:拖拽走真实指针坐标,两张卡必须同时在视口里
   //   (挑 key 的话它们可能隔着几十张卡,`page.mouse` 的事件送不到另一张身上,测试会假绿)。
@@ -872,7 +874,7 @@ test("跨片拖拽:别片的张贴区一枚都不会多", async ({ page }) => {
 test("拖出张贴区:先给「会被收回」的提示,拖回来立刻消失,松手确实收回", async ({ page }) => {
   const key = keyOf("008");
   await stubEmpty(page);
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
   await card.getByRole("button", { name: /^标记《/ }).click();
@@ -1009,7 +1011,7 @@ test("拖出张贴区:先给「会被收回」的提示,拖回来立刻消失,�
 test("从暂存区拖出并移出画布:提示是「松开 · 取消」,暂存区不亮", async ({ page }) => {
   const key = keyOf("008");
   await stubEmpty(page);
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
   await card.getByRole("button", { name: /^标记《/ }).click();
@@ -1117,7 +1119,7 @@ async function dispatchPointerUp(page: Page, pointerId: number, point: { x: numb
 // ⚠ 现有用例抓不到它:它们全都只按一根手指。
 test("两指同时按住两张卡的贴纸:一次松手只结算发起的那一枚", async ({ page }) => {
   await stubEmpty(page);
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const a = page.locator(".rb-card").nth(0);
   const b = page.locator(".rb-card").nth(1);
@@ -1227,7 +1229,7 @@ test("两指同时按住两张卡的贴纸:一次松手只结算发起的那一�
 // (旧实现监听挂 `useEffect([drag])` 上,下一次 `pointerdown` 会顶掉旧监听而自愈;同步挂之后没这层)。
 test("窗口外松手丢了 pointerup:手势不卡死,贴纸也原样留着", async ({ page }) => {
   await stubEmpty(page);
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const a = page.locator(".rb-card").nth(0);
   const b = page.locator(".rb-card").nth(1);
@@ -1306,7 +1308,7 @@ test("窗口外松手丢了 pointerup:手势不卡死,贴纸也原样留着", as
 // 不问 `movedRef`。
 test("拖过一次之后,键盘回车照样能把贴纸收回来", async ({ page }) => {
   await stubEmpty(page);
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const key = keyOf("008");
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
@@ -1337,7 +1339,7 @@ test("拖过一次之后,键盘回车照样能把贴纸收回来", async ({ page
 // 原来没有任何线索指出它在哪;但**必须有界** —— 闪完就与别人的贴纸逐字一致(拉平口径)。
 test("刚贴的那一枚会闪描边,闪完与别人的完全一致", async ({ page }) => {
   await stubEmpty(page);
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const key = keyOf("008");
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
@@ -1360,7 +1362,7 @@ test("刚贴的那一枚会闪描边,闪完与别人的完全一致", async ({ p
 test("默认档「按评分」在首屏就是真的:票数落定后自动排一次", async ({ page }) => {
   const top = keyOf("008");
   await stubVotes(page, { [top]: { red: 40, black: 0 } });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   await expect(page.locator(".rb-card").first()).toHaveAttribute("data-film-key", top);
   // 顺序已经是按最新票数排的 → 不留下提示
@@ -1383,7 +1385,7 @@ test("票数落下之前用户已经在滚 → 不补排,顺序照旧并亮起�
     await gate;
     return route.fulfill({ json: { edition: "biff-2026", votes: { [top]: { red: 40, black: 0 } } } });
   });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const first = await page.locator(".rb-card").first().getAttribute("data-film-key");
   // ⚠ 用 `window.scrollBy` 而不是 `mouse.wheel`:**WebKit 不支持 `mouse.wheel`**
@@ -1408,7 +1410,7 @@ test("生成分享图:两榜各 TOP10、我贴过的全部、底部署名", asyn
   const low = keyOf("003");
   // 一部只有红票、一部只有黑票 → 红榜 / 黑榜各自只剩一条,便于断言「该榜按该色排」
   await stubVotes(page, { [top]: { red: 40, black: 0 }, [low]: { red: 0, black: 30 } });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const card = page.locator(`.rb-card[data-film-key="${top}"]`);
   const topTitle = (await card.locator(".rb-title").textContent())!.trim();
@@ -1473,7 +1475,7 @@ test("生成分享图:可以只分享部分榜单,一节都不勾时下载停用
   await trackPaintedTexts(page);
   const top = keyOf("008");
   await stubVotes(page, { [top]: { red: 40, black: 0 }, [keyOf("003")]: { red: 0, black: 30 } });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   // 先贴一枚:否则「我贴过的」那一项没有内容、是被置灰的
   const card = page.locator(`.rb-card[data-film-key="${top}"]`);
@@ -1551,7 +1553,7 @@ test("生成分享图:可以只分享部分榜单,一节都不勾时下载停用
 
 test("「只看我贴过」:只列我贴过的片,参数进 URL,再点一次恢复全量", async ({ page }) => {
   await stubEmpty(page);
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const key = keyOf("008");
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
@@ -1562,9 +1564,11 @@ test("「只看我贴过」:只列我贴过的片,参数进 URL,再点一次恢�
   await page.getByRole("button", { name: "只看我贴过" }).click();
   await expect(page.locator(".rb-card")).toHaveCount(1);
   await expect(page.locator(`.rb-card[data-film-key="${key}"]`)).toBeVisible();
-  // 筛选是**独立参数**,不挤进 `sort`(排序档位此时仍是默认的「红榜」)
+  // 筛选是**独立参数**,不挤进 `sort`(排序档位此时仍是「红榜」)
   expect(new URL(page.url()).searchParams.get("only")).toBe("mine");
-  expect(new URL(page.url()).searchParams.get("sort")).toBeNull();
+  // ⚠ 2026-10-14（PLAN-20261014150805 修订 1）：档位现在**显式**写在 URL 上
+  //   （外壳 `BoardPage` 会把隐含档位固化成 `?sort=`,否则清掉 `q` 时档位会翻转）。
+  expect(new URL(page.url()).searchParams.get("sort")).toBe("red");
 
   await page.getByRole("button", { name: "只看我贴过" }).click();
   await expect.poll(() => page.locator(".rb-card").count()).toBe(all);
@@ -1585,7 +1589,7 @@ test("重拉同一份票数不算「有新贴纸」:数量没变就不提示重�
     reads += 1;
     return route.fulfill({ json: { edition: "biff-2026", votes: { [key]: { red: 3, black: 2 } } } });
   });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const resort = page.locator(".rb-resort");
   // 首屏**不该**留下「有新贴纸」的提示:票数落定后会自动按评分补排一次(2026-09-22,PLAN-20260922161710)。
@@ -1660,7 +1664,7 @@ test("讨论区:按游标翻页,翻完按钮消失", async ({ page }) => {
       },
     });
   });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
   await card.getByRole("button", { name: /讨论区/ }).click();
@@ -1689,7 +1693,7 @@ test("在讨论区里写一条评语:ping 载荷里真的带了 comment 字段",
     pings.push(JSON.parse(route.request().postData() ?? "{}") as { ops: Array<Record<string, unknown>> });
     await route.fulfill({ json: { ok: true, count: 1, votes: {}, skins: {} } });
   });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const key = keyOf("008");
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
@@ -1733,7 +1737,7 @@ test("评语接口 500:讨论区走空态,红黑榜照常可用(静默降级)", 
   await page.route("**/api/stats/film-comments**", (route) =>
     route.fulfill({ status: 500, json: { error: "BOOM" } }),
   );
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const key = keyOf("008");
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
@@ -1779,7 +1783,7 @@ test("讨论区总览:跨片列出评语(每行带片名角标),点一行跳到�
       },
     });
   });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   await page.getByRole("button", { name: "打开讨论区总览" }).click();
   const dialog = page.getByRole("dialog");
@@ -1849,7 +1853,7 @@ test("长按会弹出换款轮盘,但它不在贴纸里、也不在卡片里", a
   await stubComments(page, {
     items: [{ filmKey: keyOf("008"), vote: "red", comment: "好看", displayName: null }],
   });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const key = keyOf("008");
   const card = page.locator(`.rb-card[data-film-key="${key}"]`);
@@ -1950,7 +1954,7 @@ test("换款轮盘:长按弹出、悬停节点只是预览、点选才落定并�
     return route.fulfill({ json: { edition: "biff-2026", votes: {} } });
   });
   await stubComments(page, { items: [] });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const { dot } = await placeRedAndSettle(page);
   // ⚠ 先等提示条退场:它挂在视口**底部**、`role=alertdialog`、而且**接得住指针** ——
@@ -2022,7 +2026,7 @@ test("换款轮盘:Esc 关得掉;而「双击贴纸 = 收回」这条既有契�
   test.skip(isMobile, "这一条走 `page.mouse`；触屏那条在「★ 触屏长按换款」里用手动派发的事件覆盖");
   await stubEmpty(page);
   await stubComments(page, { items: [] });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const { dot } = await placeRedAndSettle(page);
   await pressOpenWheel(page, dot);
@@ -2049,7 +2053,7 @@ test("换款轮盘:键盘也能走完(聚焦弹出、方向键转、回车落定
   test.skip(isMobile, "移动端浏览器不做 Tab 焦点遍历");
   await stubEmpty(page);
   await stubComments(page, { items: [] });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const { dot } = await placeRedAndSettle(page);
   // ⚠ 不能直接 `dot.focus()`:程序化聚焦**不匹配 `:focus-visible`**,而环正是靠这个判据
@@ -2082,7 +2086,7 @@ test("换款轮盘:滚一下就关掉(锚点是视口坐标,不跟着滚)", asyn
   test.skip(isMobile, "这一条走 `page.mouse`；触屏那条在「★ 触屏长按换款」里用手动派发的事件覆盖");
   await stubEmpty(page);
   await stubComments(page, { items: [] });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const { dot } = await placeRedAndSettle(page);
   await pressOpenWheel(page, dot);
@@ -2107,7 +2111,7 @@ test("★ 触屏长按换款:带一点点抖动也照样弹出轮盘,松手不�
   //   **手动派发带 `pointerType: "touch"` 的 pointer 事件**,三个项目(含 desktop)都能跑这条判据。
   await stubEmpty(page);
   await stubComments(page, { items: [] });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const { card, dot } = await placeRedAndSettle(page);
   const box = (await dot.boundingBox())!;
@@ -2214,7 +2218,7 @@ test("★ 触屏:环弹出后照样拖得动贴纸,而环**不会**因此消失(
   //   (`beginDrag` 的监听挂在 `window` 上,与环没有关系)。
   await stubEmpty(page);
   await stubComments(page, { items: [] });
-  await ready(page, "/redblack");
+  await ready(page, "/redblack?sort=red");
 
   const { card, dot } = await placeRedAndSettle(page);
   const box = (await dot.boundingBox())!;
@@ -2260,5 +2264,222 @@ test("★ 触屏:环弹出后照样拖得动贴纸,而环**不会**因此消失(
   // ④ 出口仍然是有效的:点环外 → 关(触屏没有 Escape,这是那条通用退路)
   await page.locator(".rb-sort-hint").click();
   await expect(wheel).toHaveCount(0);
+});
+
+/* ---------------- 「榜单」页的页内 tab（2026-10-14，PLAN-20261014150805 修订 1 / 2） ----------------
+ * 红黑榜从「一整页」变成「榜单页的一个 tab」：外壳 `BoardPage` 用 `?sort=` 承载
+ * 「热门榜 / 红榜 / 黑榜」三档（`RedBlackPage` 本来就读这个参数，所以老书签不受影响）。
+ * 这里钉两条口径：
+ *   ① 没有 `sort` 且没有 `q` → 默认落在**热门榜**（从导航进来的第一眼）；
+ *   ② 切到红榜后贴纸墙出现、热门榜消失（两块视图互斥，不是叠在一起）。 */
+
+test("榜单页：默认落在热门榜；切到红榜后贴纸墙出现、热门榜消失", async ({ page }) => {
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  await page.route("**/api/stats/want-counts**", (route) => route.fulfill({ json: { counts: {} } }));
+  await ready(page, "/redblack");
+
+  // ① 默认 = 热门榜（外壳的 tab 是唯一的档位入口）
+  await expect(page.locator('[data-board-tab="hot"]')).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".hb-panel")).toHaveCount(1);
+  await expect(page.locator(".rb-page")).toHaveCount(0);
+  // 没有任何想看 / 票 → 榜单走空态，而不是画一串 0
+  await expect(page.locator(".hb-list")).toHaveCount(0);
+
+  // ② 切红榜：贴纸墙出现，热门榜卸载
+  await page.locator('[data-board-tab="red"]').click();
+  await expect(page.locator('[data-board-tab="red"]')).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".hb-panel")).toHaveCount(0);
+  await expect(page.locator(".rb-page")).toHaveCount(1);
+  // ⚠ 档位改由外壳托管 → 页面自己那个分段控件不再渲染：
+  //   同一屏里不能有两个「红榜 / 黑榜」入口（它们是同一件事）。
+  await expect(page.locator(".rb-seg")).toHaveCount(0);
+});
+
+test("榜单页：想看数据到达后榜单**真的渲染出来**（回归 · 不是停在空表）", async ({ page }) => {
+  // ⚠ 这条是回归测试，复现的是 2026-10-14 本地验收时抓到的一个真 bug：
+  //   订阅回调当时写成了空函数（`() => undefined`），于是 `loadWantCounts()` 到了数据
+  //   **也不会触发重渲染** —— 接口明明有数据，页面却永远停在第一帧的空表上
+  //   （`rows = 0` / hero 显示 `0 部上榜`）。
+  //   ⚠ 光断言「空表走空态」是**抓不到**它的：那种写法在有数据时同样会红/同样会绿。
+  //   必须在有数据的前提下断言**行数与顺序**。
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  await page.route("**/api/stats/want-counts**", (route) =>
+    route.fulfill({ json: { counts: { "cat:f001": 120, "cat:f002": 30 } } }),
+  );
+  await ready(page, "/redblack");
+
+  const rows = page.locator(".hb-row");
+  await expect(rows).toHaveCount(2);
+  // 按想看降序：120 的排在 30 的前面
+  await expect(rows.first()).toHaveAttribute("data-hot-row", "cat:f001");
+  await expect(rows.first().locator(".hb-want")).toContainText("120");
+  // 只看得到有想看的这两部 —— 一票没有的片不该出现在热门榜上
+  await expect(page.locator(".hb-panel .empty-state")).toHaveCount(0);
+});
+
+test("榜单页：从日程表格子带 `q` 跳进来时仍落在红榜（不是热门榜）", async ({ page }) => {
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  await ready(page, "/redblack?q=008");
+  // ⚠ 这是「去评分」那条链路的兜底（`agenda-gantt.spec.ts` 只断言了 URL，这里补断言视图）：
+  //   从那一跳进来的人是要**贴贴纸**的，给热门榜等于把他挡在门外。
+  await expect(page.locator('[data-board-tab="red"]')).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".rb-page")).toHaveCount(1);
+});
+
+/* ★ 分享图的「范围」开关（2026-10-14，PLAN-20261014150805 修订 2）
+ *
+ * 用户原话：「分享的时候可以选择需要哪个单元的就行」「只要出 PNG，我自己上传」。
+ * 出图是 canvas 手绘、没有 DOM 可断言，所以读**画出来的字**（`helpers.ts::trackPaintedTexts`
+ * 给 `fillText` 打了补丁）+ 弹层里那句尺寸提示。
+ * ⚠ `paintedTexts` 跨多次出图**累加**：判断「这一张图上有什么」必须前后各读一次、只比新增的那段。
+ */
+
+/** 读弹层里那句「这张图：W × H px」—— 换选项图高会变，所以每次都要现读一次。 */
+async function shareSize(dialog: Locator): Promise<{ width: number; height: number }> {
+  const text = await dialog.locator(".hb-share-size, .rb-share-size").innerText();
+  const matched = text.match(/(\d+)\s*×\s*(\d+)\s*px/);
+  return { width: Number(matched![1]), height: Number(matched![2]) };
+}
+
+/** 在下拉里挑一个**真实存在**的单元（不写死名字：单元清单来自 `films.json`，写死会随片单变）。
+ *  返回它的展示名 —— 断言要用它。 */
+async function pickFirstUnit(page: Page, dialog: Locator): Promise<string> {
+  await dialog.getByRole("button", { name: /单元/ }).click();
+  await expect(page.getByRole("listbox")).toBeVisible();
+  // ⚠ 第 0 项恒是「全部单元」，所以要第 1 项
+  const option = page.getByRole("option").nth(1);
+  const label = ((await option.textContent()) ?? "").trim();
+  await option.click();
+  // 选项文案是「单元名，N 部」—— 去掉尾巴那一截才是单元名
+  return label.replace(/[，,]\s*\d+\s*部$/, "").trim();
+}
+
+test("热门榜：生成分享图是 3:4 竖版；换单元后这张图只讲那个单元", async ({ page }) => {
+  await trackPaintedTexts(page);
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  // 给一批真实影片灌想看数据（多给几个场次编号，去重后一定撑得起默认那 8 行）
+  const keys = [
+    ...new Set(
+      Array.from({ length: 20 }, (_, i) => keyOf(String(i + 1).padStart(3, "0"))),
+    ),
+  ];
+  await page.route("**/api/stats/want-counts**", (route) =>
+    route.fulfill({
+      json: { counts: Object.fromEntries(keys.map((key, i) => [key, 200 - i * 7])) },
+    }),
+  );
+  await ready(page, "/redblack");
+
+  // 前置事实：榜上真的够 8 行（出图默认就取 8 行 —— 3:4 那条比值断言靠它成立）。
+  // ⚠ 必须用会重试的 `expect.poll`：想看数据是异步到达的（`want-counts` 拉回来才建榜），
+  //   一次性 `count()` 会抢在数据之前读到 0 行（与「榜单真的渲染出来」那条同一条纪律）。
+  await expect.poll(() => page.locator(".hb-row").count()).toBeGreaterThanOrEqual(8);
+
+  const opener = page.getByRole("button", { name: "生成分享图" });
+  await opener.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  // 出图是异步的（画完才 toBlob），等按钮出来即代表图已生成
+  await expect(dialog.getByRole("button", { name: "下载 PNG 图片" })).toBeVisible();
+
+  // ★ 竖版 3:4（用户 2026-10-14：「现在的 是不是不适合手机阅读」——根因是长宽比，不是清晰度）。
+  //   ⚠ 断言**比值**而不是某两个具体像素：倍率由 `posterScale` 按面积反算（连续值），
+  //     写死 2160 × 2880 会在别人改上限时假红，而比值才是这条口径本身。
+  const first = await shareSize(dialog);
+  expect(first.width).toBeGreaterThanOrEqual(1080);
+  // 竖版 = 高是宽的 4/3（1080 宽 × 1440 高 —— PLAN 里说的「3:4」是**宽:高**）
+  expect(first.height / first.width).toBeCloseTo(4 / 3, 2);
+  // 画布手绘没有 DOM 可断 → 读锚点属性，确认图里真的带了海报（而不是整张在画占位块）
+  await expect(dialog.locator(".hb-share-preview")).toHaveAttribute(
+    "data-poster-count",
+    /^[1-9]\d*$/,
+  );
+
+  // 换单元 → 图**当场重画**（不必关掉弹层重开），而且这张图只讲那个单元
+  const before = (await paintedTexts(page)).length;
+  const unitName = await pickFirstUnit(page, dialog);
+  await expect
+    .poll(async () => (await paintedTexts(page)).slice(before))
+    .toContain(`${unitName} 热门榜`);
+  await expect(dialog.getByRole("button", { name: /单元/ })).toContainText(unitName);
+
+  // 关掉署名 → 新画的那一段里不该再有网站那行（⚠ 头部也印 `by @…`，所以判据用网站域名）
+  const mark = (await paintedTexts(page)).length;
+  await dialog.getByText("画署名", { exact: true }).click();
+  await expect
+    .poll(async () => {
+      const seg = (await paintedTexts(page)).slice(mark);
+      return seg.length > 0 && !seg.includes("biff.lcandy.co");
+    })
+    .toBe(true);
+
+  // Esc 关闭 + 焦点归还给打开它的那个按钮（§5 硬约束）
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(opener).toBeFocused();
+});
+
+test("红黑榜分享图：可以只讲一个单元，也可以关头尾", async ({ page }) => {
+  await trackPaintedTexts(page);
+  // 两榜各铺够 8 行 —— 否则「前 5」这一档改变不了任何东西，那条「图矮一截」的断言会失去意义
+  const keys = [
+    ...new Set(Array.from({ length: 16 }, (_, i) => keyOf(String(i + 1).padStart(3, "0")))),
+  ];
+  await stubVotes(
+    page,
+    Object.fromEntries(
+      keys.map((key, i) => [key, i % 2 === 0 ? { red: 30 - i, black: 0 } : { red: 0, black: 30 - i }]),
+    ),
+  );
+  await stubComments(page, { items: [] });
+  await ready(page, "/redblack?sort=red");
+
+  const opener = page.getByRole("button", { name: "生成分享图" });
+  await opener.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("button", { name: "下载 PNG 图片" })).toBeVisible();
+
+  // ① 每榜条数改成 5 → 图**矮一截**（两榜各少 5 行）
+  const full = await shareSize(dialog);
+  await dialog.getByRole("button", { name: /每榜条数/ }).click();
+  await page.getByRole("option", { name: "前 5", exact: true }).click();
+  const five = await shareSize(dialog);
+  expect(five.height).toBeLessThan(full.height);
+
+  // ② 选一个单元 → 副标题里点明范围（只印几行却不说哪一单元，读图的人会误读成全站）
+  const beforeUnit = (await paintedTexts(page)).length;
+  const unitName = await pickFirstUnit(page, dialog);
+  await expect
+    .poll(async () => (await paintedTexts(page)).slice(beforeUnit))
+    .toContain(unitName);
+
+  // ③ 关掉标题栏 → 届次那一行不再画；关掉署名 → 网站那行不再画。
+  //   ⚠ 两次点击之间**必须重读 offset**：每一次重画都往累加数组里追加文本，
+  //     拿同一个起点去比「最终那一段」会把中间那次画的残留也算进来（永远红）。
+  const a = (await paintedTexts(page)).length;
+  await dialog.getByText("画标题栏", { exact: true }).click();
+  await expect
+    .poll(async () => {
+      const seg = (await paintedTexts(page)).slice(a);
+      return seg.length > 0 && !seg.includes("BIFF 2026 · 观影红黑榜");
+    })
+    .toBe(true);
+
+  const b = (await paintedTexts(page)).length;
+  await dialog.getByText("画署名", { exact: true }).click();
+  await expect
+    .poll(async () => {
+      const seg = (await paintedTexts(page)).slice(b);
+      return seg.length > 0 && !seg.includes("biff.lcandy.co");
+    })
+    .toBe(true);
+
+  // 头尾都关掉了，图仍然出得来（不是 0 高、也不是空白失败），而且比「只关掉头尾之一」更矮
+  expect(await dialog.locator(".rb-share-size").innerText()).toMatch(/\d+\s*×\s*\d+\s*px/);
+  expect((await shareSize(dialog)).height).toBeLessThan(five.height);
 });
 

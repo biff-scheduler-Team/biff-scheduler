@@ -1,0 +1,406 @@
+/* 「榜单」页的外壳 +「热门榜」（2026-10-14，PLAN-20261014150805 修订 1 / 2）。
+ *
+ * ★ 颜色一律走既有 token（`--brand` / `--line` / `--muted` / `--surface` / `--raised` /
+ *   `--text`），暗色只覆盖 token、本文件不写第二套色 —— 见 AGENTS §5「token 是唯一色源」。
+ * ★ 热门榜刻意**长得比红黑榜轻**（浅底卡片 + 左侧品牌色条，而不是红黑榜那面大渐变 hero）：
+ *   两个 tab 是同一页的两件事，第一眼就该分得出自己在哪一档。
+ */
+
+/* ---------------- 外层：页内 tab ---------------- */
+
+.board-page {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.board-tabs {
+  display: inline-flex;
+  align-items: stretch;
+  align-self: flex-start;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--raised);
+}
+
+.board-tab {
+  padding: 7px 20px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.board-tab:hover {
+  color: var(--brand);
+}
+
+.board-tab[aria-selected="true"] {
+  background: var(--brand);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ---------------- 热门榜面板 ---------------- */
+
+.hb-panel {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.hb-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 20px 24px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--brand);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.hb-hero-text {
+  min-width: 0;
+}
+
+.hb-eyebrow {
+  margin: 0;
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.hb-hero h1 {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-size: 30px;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+}
+
+.hb-lede {
+  max-width: 46ch;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.hb-lede strong {
+  color: var(--text);
+}
+
+/* 口径注脚：与上面的正文分开，避免被读成同一句话 */
+.hb-note {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.hb-stats {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.hb-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hb-stat strong {
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.hb-stat small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* ---------------- 单元筛选 ---------------- */
+
+.hb-units {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hb-unit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+.hb-unit-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.hb-unit-btn[aria-pressed="true"] {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.hb-unit-btn small {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hb-unit-btn[aria-pressed="true"] small {
+  color: var(--brand);
+}
+
+/* ---------------- 榜单 ---------------- */
+
+.hb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hb-row {
+  display: grid;
+  grid-template-columns: 30px 48px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 14px 9px 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.hb-rank {
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.hb-poster {
+  width: 48px;
+  aspect-ratio: 2 / 3;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--raised);
+}
+
+.hb-poster--empty {
+  display: block;
+  border: 1px dashed var(--line);
+  background: var(--raised);
+}
+
+.hb-main {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.hb-title {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hb-unit-name {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 想看条：只表达「相对榜首的规模」，绝对值由右边的数字负责 */
+.hb-bar {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--raised);
+}
+
+.hb-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--brand);
+  opacity: 0.85;
+}
+
+.hb-want,
+.hb-score {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 62px;
+}
+
+.hb-want strong {
+  color: var(--text);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hb-score strong {
+  color: var(--brand);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hb-want small,
+.hb-score small {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* ---------------- 分享图出口 + 弹层 ---------------- */
+
+.hb-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 形态与 `.rb-share-btn` 一致（同一应用里「出图」是同一件事的同一个按钮），
+   ⚠ 但**不共用那条类名**：它定义在 `redblack-parity.css`，从「榜单」页的样式表里借另一个
+   页面文件里的类名，会让「改红黑榜的按钮」悄悄改到热门榜（§5 不许同一个东西两处描述、
+   也不许两处互相牵连）。这几条各自只有几行，重复的成本低于耦合的成本。 */
+.hb-share-btn {
+  padding: 9px 18px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--brand);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+
+.hb-share-btn:hover {
+  filter: brightness(1.08);
+}
+
+/* 弹层里的说明文字 / 尺寸提示 / 预览画布 —— 与 `.rb-share-*` 同一套观感（理由同上，各写一份） */
+.hb-share-lede {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.hb-share-scope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px 16px;
+  margin: 0 0 12px;
+}
+
+.hb-share-size {
+  margin: 6px 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.hb-share-size strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.hb-share-preview {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  margin: 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+/* ---------------- 窄屏 ---------------- */
+
+@media (max-width: 560px) {
+  .board-tabs {
+    align-self: stretch;
+  }
+
+  .board-tab {
+    flex: 1;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  .hb-hero {
+    padding: 16px;
+  }
+
+  .hb-hero h1 {
+    font-size: 24px;
+  }
+
+  /* 海报降到 38px、评分那列收窄：手机上把宽度让给片名 */
+  .hb-row {
+    grid-template-columns: 22px 38px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 8px 10px 8px 6px;
+  }
+
+  .hb-poster {
+    width: 38px;
+  }
+
+  /* 评分角标换行到片名下方（`grid-column` 让它跨掉整行右半边会挤压片名，故改为隐藏标签、只留数字） */
+  .hb-score small {
+    display: none;
+  }
+}
+
+@media (pointer: coarse) {
+  /* 触控目标下限 44px（与 redblack-parity.css 同一条口径 —— 电影节现场主要用手机） */
+  .board-tab,
+  .hb-unit-btn,
+  .hb-share-btn {
+    min-height: 44px;
+  }
+}

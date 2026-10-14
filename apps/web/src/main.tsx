@@ -6,7 +6,7 @@ import { IndexRedirect, Loading, Root, RouteError } from "./app/App";
 import { LibraryPage } from "./pages/LibraryPage";
 import { FeedbackPage } from "./pages/FeedbackPage";
 import { AgendaPage } from "./pages/AgendaPage";
-import { RedBlackPage } from "./pages/RedBlackPage";
+import { BoardPage } from "./pages/BoardPage";
 import { EatsPage } from "./pages/EatsPage";
 import { FilmDialog } from "./pages/FilmDialog";
 import { installUpdateWatch } from "./pwa-update";
@@ -39,7 +39,10 @@ const router = createBrowserRouter([
         children: filmRoute(),
       },
       { path: "agenda", element: <AgendaPage />, children: filmRoute() },
-      { path: "redblack", element: <RedBlackPage />, children: filmRoute() },
+      // 「榜单」(2026-10-14,PLAN-20261014150805 修订 1):原先直接挂 `RedBlackPage`,
+      // 现在由 `BoardPage` 做页内 tab 外壳(热门榜 / 红榜 / 黑榜),档位仍走 `?sort=`,
+      // 所以老书签 `/redblack?sort=black` 照常落在黑榜。路由名不动(书签 / PWA / TEST-MAP 契约)。
+      { path: "redblack", element: <BoardPage />, children: filmRoute() },
       // 数据分析(2026-09-20,PLAN-20260920161837;同日由「抢票分析」更名见 PLAN-20260920193032):
       // 票务主题的「预判 / 复盘」视图(原先与 /rush 并列,`/rush` 已于 2026-09-22 下线)。
       //

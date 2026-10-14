@@ -87,6 +87,43 @@ function mockFilmVotes(
   response.end(body);
 }
 
+// Mock 想看人数（仅 dev，2026-10-14，`PLAN-20261014150805`）。
+//
+// 为什么需要它：真实接口 `GET /api/stats/want-counts` 由 API Worker 提供，**dev server 没有**——
+// 而「榜单」页的「热门榜」整个建立在想看数上（排序依据 + 每行的大字），没有它本地只会看到
+// 一列 `0 人想看`，等于这个新页面看不出任何效果。
+//
+// 生成方式与 `mockFilmVotes` 同一手法：**确定性 hash**（同一份 films.json 每次结果相同），
+// 所以「刷新前后数字一样」，可以拿它做视觉对比。范围 0–189，与线上量级（12,092 总数 / 223 部有数据）同量级。
+function mockWantCounts(
+  request: IncomingMessage,
+  response: ServerResponse,
+  next: () => void,
+) {
+  const [pathname] = (request.url ?? "").split("?");
+  if (pathname !== "/api/stats/want-counts") return next();
+
+  const filmsPath = fileURLToPath(new URL("./public/films.json", import.meta.url));
+  const raw = JSON.parse(readFileSync(filmsPath, "utf8")) as {
+    films: { id: string }[];
+  };
+
+  const counts: Record<string, number> = {};
+  raw.films.forEach((f, i) => {
+    // 另一组乘数（与 mockFilmVotes 不同）→ 想看数与票数**不相关**，
+    // 免得本地看起来像「票多的必然想看多」那种本来不存在的规律。
+    const h = (((i + 1) * 2246822519) >>> 0) ^ 0x9e3779b9;
+    const want = (h >>> 3) % 190;
+    if (want > 0) counts[`cat:${f.id}`] = want;
+  });
+
+  const body = JSON.stringify({ counts });
+  response.statusCode = 200;
+  response.setHeader("Content-Type", "application/json");
+  response.setHeader("Content-Length", Buffer.byteLength(body));
+  response.end(body);
+}
+
 // ── IDE 安全垫片阈值(2026-09-11)────────────────────────────────────────────
 // 症状:dist/ 已存在时 `vite build` 必失败,报
 //   [safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED] {"count":527,"threshold":500,...}
@@ -144,6 +181,7 @@ export default defineConfig({
       name: "legacy-entry-redirect",
       configureServer(server) {
         server.middlewares.use(mockFilmVotes);
+        server.middlewares.use(mockWantCounts);
         server.middlewares.use(legacyRedirect);
       },
       configurePreviewServer(server) {

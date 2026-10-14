@@ -300,7 +300,14 @@ interface RbCardProps {
   onNudge: (filmKey: string, sticker: Sticker, dx: number, dy: number) => void;
 }
 
-export function RedBlackPage() {
+/** 「榜单」页外壳（`pages/BoardPage.tsx`）传进来的开关（2026-10-14，`PLAN-20261014150805`）。
+ *  档位（红 / 黑）由**外壳的 tab**决定，页面自己的分段控件就下岗 ——
+ *  否则同一屏里会出现两个「红榜 / 黑榜」入口，而它们其实是同一件事。 */
+interface RedBlackPageProps {
+  hideSortBar?: boolean;
+}
+
+export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
   // ⚠ `filmByKey` 用**目录那份全量映射**（别名避让下面那份「当前榜单」的局部同名映射）——
   //   讨论区总览列的是全站评语，片名反查不能跟着页面的搜索词一起缩水。
   const { films, filmByKey: allFilmByKey } = useCatalog();
@@ -1182,11 +1189,11 @@ export function RedBlackPage() {
   );
 
   return (
-    <section className="rb-page" aria-label="红黑榜" ref={pageRef}>
+    <section className="rb-page" aria-label="榜单" ref={pageRef}>
       <header className="rb-hero">
         <div className="rb-hero-text">
           <p className="rb-eyebrow">看过就贴</p>
-          <h1>红黑榜</h1>
+          <h1>榜单</h1>
           <p className="rb-lede">
             一部电影一枚贴纸：标记「看过」，再点红或黑。
             {/* 完整规则收进 `?`(2026-09-29,PLAN-20260929172651 §1):正文只留一句话,把版面让出来。
@@ -1247,19 +1254,21 @@ export function RedBlackPage() {
             不再是几个各自带边框的胶囊。
             ⚠ `role=group` + `aria-pressed` 一个都不能少:分段控件只是视觉形态,语义上它仍是
               「一组互斥选项」(用户 2026-09-29:「筛选切换(总数、红榜、黑榜)保持统一的分段控件样式」)。 */}
-        <div className="rb-seg" role="group" aria-label="榜单排序">
-          {SORTS.map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              className="rb-seg-btn"
-              aria-pressed={mode === value}
-              onClick={() => update({ sort: value === "red" ? null : value }, true)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {!hideSortBar && (
+          <div className="rb-seg" role="group" aria-label="榜单排序">
+            {SORTS.map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                className="rb-seg-btn"
+                aria-pressed={mode === value}
+                onClick={() => update({ sort: value === "red" ? null : value }, true)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         {/* 筛选是**另一个视野**,不是排序的第四档 —— 所以留在排序组外面 */}
         <button
           type="button"

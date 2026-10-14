@@ -60,7 +60,9 @@ test("切换查票渠道不混用库存，零想看人数可显示", async ({ pa
   await page.route("**/api/stats/want-counts**", (route) => route.fulfill({ json: { counts: {} } }));
   await ready(page, "/general");
   await expect(page.locator("[data-general-code='222'] [data-want-count='0']")).toHaveText("0 人想看");
-  await page.getByRole("navigation", { name: "查票渠道" }).getByRole("link", { name: "GUEST 查票" }).click();
+  // 2026-10-14（PLAN-20261014150805 修订 1）：两个渠道合并成一个导航入口 + **页内分段控件**，
+  // 原先那两个 `<Link>`（`navigation[name="查票渠道"]`）已不存在。
+  await page.locator('[data-guest-channel="guest"]').click();
   await expect(page.locator("[data-guest-code='222'] .guest-stock")).toContainText("GUEST 27 张");
   await expect(page.locator("[data-general-code]")).toHaveCount(0);
 });

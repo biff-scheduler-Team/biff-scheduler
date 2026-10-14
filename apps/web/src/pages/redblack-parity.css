@@ -696,6 +696,16 @@
   font-size: 12px;
 }
 
+/* 分享图的范围开关(2026-10-14,PLAN-20261014150805):单元 / 每榜条数 / 头尾。
+   与 `.inline-fields` 同一个形态(同一应用里「一组并排控件」长得一样),只是这里还带两个勾选框。 */
+.rb-share-scope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px 16px;
+  margin: 0 0 12px;
+}
+
 /* 出图尺寸提示:数字是重点,所以加粗那一截、其余压小压灰 */
 .rb-share-size {
   margin: 6px 0 10px;

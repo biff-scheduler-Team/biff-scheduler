@@ -257,6 +257,15 @@ export function unitLabel(raw: string | null | undefined): string {
   return def ? bilingualTitle(def.en, def.zh) : (raw ?? "").trim();
 }
 
+/** 影片的**主单元**原串(归一前,取自目录条目第一条)。
+ *  ⚠ `FilmNode` 上没有 `unit` —— 它挂在目录条目(`FilmItem.unit`)上。
+ *  「热门榜」的分组(`hot-board.ts`)与红黑榜分享图的「按单元切分」(`redblack-poster.ts`)
+ *  共用这一支:两处各写一遍的话,同一部片会在两个视图里被归到不同单元(§5 口径单一来源)。
+ *  ⚠ 只认主单元 —— `also_units` 的副单元不参与,所以一部片在一次切分里只出现一次。 */
+export function filmUnitOf(film: { cats: readonly FilmItem[] }): string {
+  return (film.cats[0]?.unit ?? "").trim();
+}
+
 /** 目录条目的「单元 · 国家 · 年份 · 导演」元信息(空位自动省略,全空则空串)。
  *  单元走 `unitLabel()`(中英对照)—— 原先直接印 `cat.unit`,同一份片单里
  *  「有的单元是英文、有的是中文」,读起来像两套语言。 */

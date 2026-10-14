@@ -103,6 +103,17 @@ export const COLORS = {
   stickerInk: "#f4f4f6",
 };
 
+/** 分享图的**网站署名** —— 与页面页脚同源(`App.tsx` 的页脚也用这个域名)。
+ *  ⚠ 2026-10-14 从 `redblack-poster.ts` 搬到这里:那时又多了「热门榜」分享图,
+ *    三张图都要印同一行署名,而常量待在红黑榜那个模块里会逼着 `hot-poster.ts` 去 import
+ *    一整份红黑榜海报(约 9KB gz)只为拿两个字符串。搬到共用的笔刷模块 = 单一来源。
+ *  ⚠ `redblack-poster.ts` 仍在**原样转出**这两个名字,既有 import 不受影响。 */
+export const SITE = "biff.lcandy.co";
+/** 分享图的**作者署名** —— 与页面页脚**逐字一致**(`App.tsx`:「by @gaaiyeoi 和 by @lcandy2」)。
+ *  ⚠ 两个 handle 都是**GitHub 账号名**(不是提交者显示名 `citron`):图片上没有链接,
+ *    印一个搜不到的显示名等于没署名。改这里必须同步 `App.tsx` 的页脚。 */
+export const CREDIT_BY = "by @gaaiyeoi 和 by @lcandy2";
+
 /** 字体栈与页面同族(中文优先 PingFang / 微软雅黑,拉丁走 system-ui)。 */
 export const FONT =
   '"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,-apple-system,"Segoe UI",sans-serif';

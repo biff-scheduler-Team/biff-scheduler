@@ -19,15 +19,15 @@ import { ready, storage } from "./helpers";
 const lookupOff = (page: Page) =>
   page.route("**/api/eats/lookup**", (route) => route.fulfill({ status: 503, json: { error: "LOOKUP_DISABLED" } }));
 
-test("「吃喝」紧跟在「红黑榜」之后 —— 它与选片 / 观影 / 复盘那条主线无关", async ({ page }) => {
+test("「吃喝」紧跟「查票」之后 —— 它与选片 / 观影 / 复盘那条主线无关", async ({ page }) => {
   await lookupOff(page);
   await ready(page, "/eats");
   const labels = (
     await page.getByRole("navigation", { name: "主要导航" }).getByRole("link").allTextContents()
   ).map((text) => text.trim());
-  // ⚠ 2026-09-22 用户重排后末尾是「建议」,吃喝不再是最后一项(`PLAN-20260922102751`);
-  //   锁定「紧邻红黑榜且在其后」这个相对关系即可。
-  expect(labels.indexOf("吃喝")).toBe(labels.indexOf("红黑榜") + 1);
+  // ⚠ 2026-10-14 导航重排（PLAN-20261014150805 修订 1）：「榜单」置顶、两个查票入口合一，
+  //   吃喝不再紧邻「榜单」—— 锁定它「紧邻查票且在其后」这个**新的**相对关系。
+  expect(labels.indexOf("吃喝")).toBe(labels.indexOf("查票") + 1);
   await expect(page.getByRole("heading", { name: "吃喝", exact: true })).toBeVisible();
 });
 

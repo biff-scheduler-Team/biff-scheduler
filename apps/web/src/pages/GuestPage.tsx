@@ -1,6 +1,6 @@
 import { GUEST_NOTE, GUEST_STATUS_LABELS, type GuestResult } from "@biff/contracts/guest";
 import { useEffect, useState } from "react";
-import { Link, Outlet } from "react-router";
+import { Outlet, useNavigate } from "react-router";
 import { api, ApiFailure } from "../account-sync";
 import { useCatalog } from "../app/store";
 import { ActionButton, Checkbox, SearchField } from "../components/spectrum";
@@ -19,6 +19,10 @@ export function GeneralPage() {
 }
 
 function TicketAvailabilityPage({ channel }: { channel: "guest" | "general" }) {
+  // 渠道切换 = 换路由（两条路由**都保留**：书签 / PWA 缓存 / TEST-MAP 的契约）。
+  // ⚠ 换路由会让本组件**重挂**，在途请求由下面那个 effect 的 cleanup 中止 —— 这正是要的：
+  //   两个渠道的余票是两份数据，绝不能互相顶替（用户 2026-10-14：合并成一个入口，页内切换）。
+  const navigate = useNavigate();
   const label = channel === "guest" ? "GUEST" : "普通票";
   const { cat } = useCatalog();
   const [date, setDate] = useState("");
@@ -93,7 +97,31 @@ function TicketAvailabilityPage({ channel }: { channel: "guest" | "general" }) {
         <div><h1 id="guest-heading">{label} 查票</h1><p>官方{channel === "guest" ? "嘉宾" : "普通票 WEB"}渠道余票 · 韩国时间</p></div>
         <ActionButton isDisabled={loading} onPress={() => setRequest((current) => ({ revision: current.revision + 1, force: true }))}>刷新余票</ActionButton>
       </div>
-      <nav aria-label="查票渠道"><Link to="/general">普通票查票</Link>{" · "}<Link to="/guest">GUEST 查票</Link></nav>
+      {/* 渠道切换（2026-10-14，`PLAN-20261014150805` 修订 1）：原先这里是两个 `<Link>`
+          （导航里也各占一项），现在合并成**一个入口 + 页内分段控件** ——
+          用户：「两个查票放到同一个 TAB 然后在里面去切换普通和 GUEST」。
+          ⚠ 形态与「榜单」页的 tab 同源（`pages/hot-board.css::.board-tabs`）：
+            同一应用里「互斥选项」长得一样。语义仍是一组互斥选项（`role=group` + `aria-pressed`）。 */}
+      <div className="guest-seg" role="group" aria-label="查票渠道">
+        <button
+          type="button"
+          className="guest-seg-btn"
+          data-guest-channel="general"
+          aria-pressed={channel === "general"}
+          onClick={() => navigate("/general")}
+        >
+          普通票
+        </button>
+        <button
+          type="button"
+          className="guest-seg-btn"
+          data-guest-channel="guest"
+          aria-pressed={channel === "guest"}
+          onClick={() => navigate("/guest")}
+        >
+          GUEST
+        </button>
+      </div>
       <p className="guest-note">{channel === "guest" ? `${GUEST_NOTE} 场次卡中的票价为普通票价，不代表嘉宾换票费用。` : "官方 WEB 普通票列表余量，仅供查询；不锁座、不创建订单。列表有票不代表具体座位已核验，实际余票与票价以官方购票页为准。"}</p>
       <p className="guest-note">后台每 5 分钟采集并保存快照；韩国时间 08:00–08:30 每分钟采集。{channel === "guest" ? "GUEST 查询当天和次日。" : "普通票采集官方全部开放日期。"}</p>
       <div className="guest-controls">
