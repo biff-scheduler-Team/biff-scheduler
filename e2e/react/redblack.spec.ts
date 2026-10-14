@@ -2407,20 +2407,24 @@ async function shareSize(dialog: Locator): Promise<{ width: number; height: numb
  *  返回它的展示名 —— 断言要用它。 */
 async function pickFirstUnit(page: Page, dialog: Locator): Promise<string> {
   await dialog.getByRole("button", { name: /单元/ }).click();
-  await expect(page.getByRole("listbox")).toBeVisible();
+  // ⚠ **必须限定在「单元」那个 listbox 里**：同一张弹层里还有别的下拉（「取前几名」/「每榜条数」），
+  //   选完一次之后它的 listbox **仍然留在 DOM 上** —— 不限定就会 strict mode 撞两个
+  //   （2026-10-14 实测：先选了 TOP3、再挑单元，`getByRole("listbox")` 解到 2 个，直接红）。
+  const listbox = page.getByRole("listbox", { name: "单元" });
+  await expect(listbox).toBeVisible();
   // ⚠ 第 0 项恒是「全部单元」，所以要第 1 项
-  const option = page.getByRole("option").nth(1);
+  const option = listbox.getByRole("option").nth(1);
   const label = ((await option.textContent()) ?? "").trim();
   await option.click();
   // 选项文案是「单元名，N 部」—— 去掉尾巴那一截才是单元名
   return label.replace(/[，,]\s*\d+\s*部$/, "").trim();
 }
 
-test("热门榜：生成分享图是 3:4 竖版；换单元后这张图只讲那个单元", async ({ page }) => {
+test("热门榜：分享图默认 TOP10、换 TOP3 矮一截；换单元后这张图只讲那个单元", async ({ page }) => {
   await trackPaintedTexts(page);
   await stubEmpty(page);
   await stubComments(page, { items: [] });
-  // 给一批真实影片灌想看数据（多给几个场次编号，去重后一定撑得起默认那 8 行）
+  // 给一批真实影片灌想看数据（多给几个场次编号，去重后一定撑得起默认那 10 行）
   const keys = [
     ...new Set(
       Array.from({ length: 20 }, (_, i) => keyOf(String(i + 1).padStart(3, "0"))),
@@ -2433,13 +2437,13 @@ test("热门榜：生成分享图是 3:4 竖版；换单元后这张图只讲那
   );
   await ready(page, "/redblack");
 
-  // 前置事实：榜上真的够 8 部（出图默认就取 8 行 —— 3:4 那条比值断言靠它成立）。
+  // 前置事实：榜上真的够 10 部（出图默认就取 10 行 —— 「换 TOP3 会矮一截」那条靠它成立）。
   // ⚠ 必须用会重试的 `expect.poll`：想看数据是异步到达的（`want-counts` 拉回来才建榜），
   //   一次性 `count()` 会抢在数据之前读到 0 部（与「榜单真的渲染出来」那条同一条纪律）。
   //   ⚠ 榜首（`.hb-lead`）也是榜上的一部，所以数的是「1 + 海报墙」。
   await expect
     .poll(async () => 1 + (await page.locator(".hb-card").count()))
-    .toBeGreaterThanOrEqual(8);
+    .toBeGreaterThanOrEqual(10);
 
   const opener = page.getByRole("button", { name: "生成分享图" });
   await opener.click();
@@ -2448,18 +2452,28 @@ test("热门榜：生成分享图是 3:4 竖版；换单元后这张图只讲那
   // 出图是异步的（画完才 toBlob），等按钮出来即代表图已生成
   await expect(dialog.getByRole("button", { name: "下载 PNG 图片" })).toBeVisible();
 
-  // ★ 竖版 3:4（用户 2026-10-14：「现在的 是不是不适合手机阅读」——根因是长宽比，不是清晰度）。
-  //   ⚠ 断言**比值**而不是某两个具体像素：倍率由 `posterScale` 按面积反算（连续值），
-  //     写死 2160 × 2880 会在别人改上限时假红，而比值才是这条口径本身。
-  const first = await shareSize(dialog);
-  expect(first.width).toBeGreaterThanOrEqual(1080);
-  // 竖版 = 高是宽的 4/3（1080 宽 × 1440 高 —— PLAN 里说的「3:4」是**宽:高**）
-  expect(first.height / first.width).toBeCloseTo(4 / 3, 2);
-  // 画布手绘没有 DOM 可断 → 读锚点属性，确认图里真的带了海报（而不是整张在画占位块）
+  // ★ 档位（2026-10-14 用户：「取前几名 改成 TOP3 TOP10」）：两档、默认 TOP10，
+  //   换 TOP3 之后图**矮一截**。
+  //   ⚠ 断言「换了真的变矮」而不是某两个具体像素：图高由 `hotPosterHeight` 按行数算
+  //     （不补白），写死 1080 × 1710 / 1080 × 765 会在别人改行高时假红，
+  //     而「行数决定图高」才是这条口径本身。
+  const topPicker = dialog.getByRole("button", { name: /取前几名/ });
+  await expect(topPicker).toContainText("TOP10");
+  const ten = await shareSize(dialog);
+  expect(ten.width).toBeGreaterThanOrEqual(1080);
+  // 画布手绘没有 DOM 可断 → 读锚点属性，确认图里真的带了海报（而不是整张在画占位块）。
+  // ⚠ 在**默认那 10 行**上读：换成 TOP3 之后只剩 3 行，样本太小（可能三行都没图）。
   await expect(dialog.locator(".hb-share-preview")).toHaveAttribute(
     "data-poster-count",
     /^[1-9]\d*$/,
   );
+  await topPicker.click();
+  await page
+    .getByRole("listbox", { name: "取前几名" })
+    .getByRole("option", { name: "TOP3", exact: true })
+    .click();
+  await expect(topPicker).toContainText("TOP3");
+  await expect.poll(async () => (await shareSize(dialog)).height).toBeLessThan(ten.height);
 
   // 换单元 → 图**当场重画**（不必关掉弹层重开），而且这张图只讲那个单元
   const before = (await paintedTexts(page)).length;
