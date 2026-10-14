@@ -231,7 +231,7 @@
     },
     {
       "id": "redblack",
-      "note": "电影红黑榜（看完贴红/黑贴纸 + 全体票数聚合，一人一部一票）；2026-10-14 起它挂在「榜单」页外壳（BoardPage，页内 tab：热门榜 / 红榜 / 黑榜）之下，热门榜是按想看人数排的纯 CSS 排名榜（hot-board.ts，刻意不引 ECharts）；两张分享图（redblack-poster.ts / hot-poster.ts）都能按单元切分并开关头尾",
+      "note": "电影红黑榜（投票 + 全体票数聚合，一人一部一票）；2026-10-14 起它挂在「榜单」页外壳（BoardPage，页内 tab：热门榜 / 红榜 / 黑榜 + 页头的「快速投票」入口）之下；**投票入口是滑动卡片**（QuickVoteDeck + quick-vote.ts：左滑黑 / 右滑红 / 上滑纯跳过，含撤销与总结页），候选优先取「我的行程」，行程为空时退到热门榜 TOP20；热门榜是按想看人数排的纯 CSS 排名榜（hot-board.ts，刻意不引 ECharts）；两张分享图（redblack-poster.ts / hot-poster.ts）都能按单元切分并开关头尾",
       "paths": [
         "apps/web/src/pages/RedBlackPage.tsx",
         "apps/web/src/pages/BoardPage.tsx",
@@ -263,7 +263,10 @@
         "apps/api/src/film-vote-stats.ts",
         "apps/api/src/film-vote-store.ts",
         "apps/api/migrations/0006_ordinary_silvermane.sql",
-        "apps/api/migrations/0011_lucky_spitfire.sql"
+        "apps/api/migrations/0011_lucky_spitfire.sql",
+        "apps/web/src/quick-vote.ts",
+        "apps/web/src/components/QuickVoteDeck.tsx",
+        "apps/web/src/components/quick-vote.css"
       ],
       "specs": [
         "redblack"

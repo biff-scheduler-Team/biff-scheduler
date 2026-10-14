@@ -393,11 +393,11 @@ test("服务端的全体票数渲染成卡片上的红黑数字与只读小点",
   await expect(canvas).toHaveAttribute("data-rb-crowd-black", "2");
 });
 
-test("默认就是红榜:按评分从高到低;切黑榜后反过来", async ({ page }) => {
+test("默认就是红榜:红票多的在前;切黑榜后按黑票反过来", async ({ page }) => {
   const good = keyOf("008");
   const bad = keyOf("001");
-  // good = 40 红 2 黑（95% 红）、bad = 1 红 3 黑（25% 红）→ C = 42/46 = 0.913
-  // 加权后 good ≈ 9.5 分、bad ≈ 6.2 分：红榜 good 在前，黑榜 bad 在前
+  // good = 40 红 2 黑、bad = 1 红 3 黑：红榜按红票（40 > 1）good 在前，
+  // 黑榜按黑票（3 > 2）bad 在前
   await page.route("**/api/stats/film-votes**", (route) =>
     route.fulfill({
       json: {
@@ -411,7 +411,7 @@ test("默认就是红榜:按评分从高到低;切黑榜后反过来", async ({ 
   // ⚠ 2026-10-12 起只留两榜，默认档从「总数」变成**红榜** —— 首屏不用点任何按钮
   await expect(page.locator(".rb-card").first()).toHaveAttribute("data-film-key", good);
 
-  // 切「黑榜」：同一个评分**升序**，红占比低的那部排前面
+  // 切「黑榜」：改按**黑票**降序，黑票多的那部排前面
   // ⚠ 2026-10-14（PLAN-20261014150805 修订 1）：档位改由「榜单」页外壳的 tab 托管，
   //   页面自己那个 `.rb-seg` 分段控件已不再渲染 —— 入口从它改成外壳的 tab。
   await page.locator('[data-board-tab="black"]').click();
@@ -1355,11 +1355,11 @@ test("刚贴的那一枚会闪描边,闪完与别人的完全一致", async ({ p
   await expect(mine).toHaveCSS("outline-style", "none");
 });
 
-// 默认档「按评分从高到低」在**首屏**就得是真的(2026-09-22,PLAN-20260922161710;
-// 2026-10-12 起默认档由「总数」换成红榜)。
-// 改版前:排序发生在票数到达之前 → 每部并列 0 → 退化成影片库目录序,而 chip 上写着「按评分」。
+// 默认档「按红贴纸数（多在前）」在**首屏**就得是真的(2026-09-22,PLAN-20260922161710;
+// 2026-10-12 起默认档由「总数」换成红榜;2026-10-14 起判据由评分改成**票数**)。
+// 改版前:排序发生在票数到达之前 → 每部并列 0 → 退化成影片库目录序,而 chip 上写着排序口径。
 // 这条守的是「票数一落定就自动补排一次」。
-test("默认档「按评分」在首屏就是真的:票数落定后自动排一次", async ({ page }) => {
+test("默认档「按红贴纸数」在首屏就是真的:票数落定后自动排一次", async ({ page }) => {
   const top = keyOf("008");
   await stubVotes(page, { [top]: { red: 40, black: 0 } });
   await ready(page, "/redblack?sort=red");
@@ -1440,16 +1440,16 @@ test("生成分享图:两榜各 TOP10、我贴过的全部、底部署名", asyn
     "BIFF 2026 · 观影红黑榜",
     "红黑榜",
     "红榜",
-    "按评分从高到低",
+    "按红贴纸数（多在前）",
     "黑榜",
-    "按评分从低到高",
+    "按黑贴纸数（多在前）",
     "我贴过的 1 部",
     "biff.lcandy.co",
     "by @gaaiyeoi 和 by @lcandy2",
   ]) {
     expect(painted).toContain(needle);
   }
-  // 每行印**评分**(2026-10-12):榜单按它排,只印红黑数看不出「为什么这部排在前面」。
+  // 每行印**评分**(2026-10-12):票数相同时它就是名次的依据,只印红黑数看不出「为什么这部排在前面」。
   // top = 40 红 0 黑、low = 0 红 30 黑 → C = 40/70 = 0.571 → top = (40 + 2.86)/45 ≈ 9.5 分
   expect(painted).toContain("9.5 分");
   // 我贴过的片名要真的画上去(而不是只有节标题)
@@ -1494,10 +1494,10 @@ test("生成分享图:可以只分享部分榜单,一节都不勾时下载停用
   await expect(contents.getByRole("checkbox")).toHaveCount(3);
 
   // 对照组:默认全选,第一张图里两榜都在
-  // ⚠ 断言用的是各节的**口径说明**(「按评分从低到高」这种)而不是节名 —— 图里那个大标题
+  // ⚠ 断言用的是各节的**口径说明**(「按黑贴纸数（多在前）」这种)而不是节名 —— 图里那个大标题
   //   「**红黑榜**」本身就含「黑榜」三个字,拿节名去判「有没有」会永远为真
   const first = await paintedTexts(page);
-  expect(first).toContain("按评分从低到高");
+  expect(first).toContain("按黑贴纸数（多在前）");
 
   // 尺寸提示(2026-09-22 用户:「提示一下选择不同的分享模块后图片分别的大小是多少」):
   // 勾一节图就矮一截,所以每换一次选择都读一次这个数字,断言它**真的跟着变**
@@ -1527,24 +1527,24 @@ test("生成分享图:可以只分享部分榜单,一节都不勾时下载停用
   //   得前后各读一次、只比新增的那一段,否则永远能看到上一张的残留
   await toggle("黑榜");
   await expect
-    .poll(async () => (await paintedTexts(page)).slice(first.length).includes("按评分从高到低"))
+    .poll(async () => (await paintedTexts(page)).slice(first.length).includes("按红贴纸数（多在前）"))
     .toBe(true);
   expect((await sizeOf()).height).toBeLessThan(full.height); // 少一节 → 图矮一截
   const second = (await paintedTexts(page)).slice(first.length);
-  expect(second).not.toContain("按评分从低到高");
-  expect(second).toContain("按评分从高到低");
+  expect(second).not.toContain("按黑贴纸数（多在前）");
+  expect(second).toContain("按红贴纸数（多在前）");
 
   // 再勾掉「我贴过的」→ 那一节消失,红榜还在
   await toggle(/^我贴过的/);
   const offset = first.length + second.length;
   await expect
-    .poll(async () => (await paintedTexts(page)).slice(offset).includes("按评分从高到低"))
+    .poll(async () => (await paintedTexts(page)).slice(offset).includes("按红贴纸数（多在前）"))
     .toBe(true);
   const withoutMine = await sizeOf();
   expect(withoutMine.height).toBeLessThan(full.height); // 「我贴过的」那一节也占高度
   const third = (await paintedTexts(page)).slice(offset);
   expect(third).not.toContain("左侧圆点是我贴的那一色"); // 「我贴过的」的说明不再画
-  expect(third).toContain("按评分从高到低");
+  expect(third).toContain("按红贴纸数（多在前）");
 
   // 一节都不勾 → 图里只剩头部与署名(空态文案说的是「还没选」,不是「榜上没贴纸」),
   // 下载 / 复制停用,免得把一张空图发出去
@@ -1597,7 +1597,7 @@ test("重拉同一份票数不算「有新贴纸」:数量没变就不提示重�
   await ready(page, "/redblack?sort=red");
 
   const resort = page.locator(".rb-resort");
-  // 首屏**不该**留下「有新贴纸」的提示:票数落定后会自动按评分补排一次(2026-09-22,PLAN-20260922161710)。
+  // 首屏**不该**留下「有新贴纸」的提示:票数落定后会自动按票数补排一次(2026-09-22,PLAN-20260922161710)。
   // 改版前首屏那次排序发生在票数到达之前(全部并列 0 → 退化成目录序),所以才需要这条提示让人手动补排。
   // ⚠ 属性值是 `"true"` 而不是空串:React 对 `data-*` 上的布尔值走 `setAttribute(String(v))`
   //   (`data-rb-stale={orderStale || undefined}`)。

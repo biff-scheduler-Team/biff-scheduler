@@ -1,11 +1,25 @@
-// 电影红黑榜 —— 贴纸数据 / 配额 / 排序 / 持久化(2026-09-16,PLAN-20260916102339)
+// 电影红黑榜 —— 贴纸数据 / 排序 / 持久化(2026-09-16,PLAN-20260916102339)
 //
-// 口径(用户当天三轮修订后的最终形态):
-//   · **一部电影一枚贴纸**(红 / 黑二选一,贴上就没有第二个名额):在卡片上标记「看过」解锁,
-//     点红 / 黑按钮就在这张卡的画布上生成一枚;
+// ⚠ 2026-10-14(PLAN-20261014190000):**投票入口**整体换成「快速投票」滑动卡片,本模块的口径随之变成:
+//   · 左滑 = 黑票、右滑 = 红票、**上滑 = 跳过（不写任何状态，见下面那条修订）**;
+//   · **落点与皮肤都在投票那一刻随机**(`voteSticker`)—— 用户不再拖、也不再挑款;
+//   · 候选来自我的行程(`quick-vote.ts`),含已投过的片子(再投一次 = 改票);
+//   · 「标记看过」已删:`biff.redblack.watched.v1` 只作为**一次性清理**的旧键保留;
+//   · 画布上「我贴的那一枚」是**只读**的(不能拖 / 不能双击收回 / 没有方向键与换肤轮盘)。
+//
+// ⚠ **2026-10-14 修订（同日第二次，用户拍板）**：「上滑 = 记一条『没看过』并上报」那条**作废**。
+//   上滑就是**跳过** —— 一个字节都不写：
+//   · 不动红黑票（已有红/黑评价的片被跳过之后**仍然是红/黑**，用户口径「跳过不应覆盖原有评价」）；
+//   · 也不记第三种状态：一部片对一个人只有**两种**可能（红 / 黑），没贴过就是「未决定」——
+//     那个状态不需要存储，它**就是** `board` 里没有这个 key。
+//   于是 `biff.redblack.unseen.v1` 与 `LS_REDBLACK_UNSEEN` 一起变成**只清理不读写**的旧键
+//   （与 `watched.v1` 同一个处置），服务端那第三态也一并撤掉。
+//
+// 保留下来的口径:
+//   · **一部电影一枚贴纸**(红 / 黑二选一,贴上就没有第二个名额);
 //   · 贴纸落在**卡片右侧的留白画布**上,位置是自由相对坐标 —— 允许重叠、每枚角度不同(±15°),
 //     像线下手绘打卡墙,不做避让 / 吸附;
-//   · 贴纸**贴过就保留**:取消「看过」标记不会把已贴的收走(那是已经做过的动作)。
+//   · 红 / 黑 是**同一个名额的两种取舍**,不是可以并存的两色。
 //
 // ⚠ 本模块是纯逻辑 + localStorage 读写,**import 期不碰 DOM**(单测挂内存 localStorage 替身即可)。
 
@@ -23,11 +37,11 @@ export type { StickerSkin };
  *
  *  ⚠ `comment`(2026-09-29,PLAN-20260929181900)是**可选**字段 —— 加可空字段是**向后兼容**的,
  *    不触发 AGENTS §5 那条「改结构必须新 key + 一次性迁移 + 删旧 key」(那条管的是**不兼容**变更):
- *    老数据里没有它就是「这一票还没写评语」,读回来照旧能贴能拖。
+ *    老数据里没有它就是「这一票还没写评语」,读回来照旧能贴能读。
  *
  *  ⚠ 为什么评语要存在本地:公开读接口`刻意不回身份`(`film-vote-store.ts` 的硬约束),
  *    于是「大家说」列表里**认不出哪条是我写的** —— 「改我自己的评语」只能靠本地这一份。
- *    它同时是上报载荷里 `comment` 的来源(见 `votesOf`)。 */
+ *    它同时是上报载荷里 `comment` 的来源(见 `voteInputsOf`)。 */
 export interface Sticker {
   id: string;
   type: StickerType;
@@ -45,17 +59,26 @@ export interface Sticker {
 export type StickerBoard = Map<string, Sticker[]>;
 
 /** 榜单档位（2026-10-12 起**只留两榜**，PLAN-20261011235624）：
- *  · `red` = **红榜** —— 按评分从高到低（红的占比越高越靠前）；
- *  · `black` = **黑榜** —— 按**同一个评分**从低到高（红占比越低 = 黑占比越高越靠前）。
- *  ⚠ 原来的 `total`（总数榜）已撤：评分口径下 `red/total` 与 `black/total` 互为倒数，
- *    两榜是同一份名单「正着看 / 倒着看」，再留一个按票数排的第三档等于让总数榜与红榜逐字重复。 */
+ *  · `red` = **红榜** —— 按**红票数**降序（贴纸多的在前）；
+ *  · `black` = **黑榜** —— 按**黑票数**降序（贴纸多的在前）。
+ *  ⚠ 票数相同再看评分（`scoreOf`）；两榜**不再**互为倒序 —— 2026-10-14 改按数量后，
+ *    红榜 / 黑榜是两份**不同的**名单（2026-10-12 撤「总数榜」时的那条理由随之失效，但总数榜
+ *    仍不恢复：用户没要，且「我贴过的」那节已由 `sortByTotal` 承担全站总数口径）。
+ *  ⚠ 三次口径沿革（评分 → 分档 → 按数量）写在下面「排序」那一段，改之前先读。 */
 export type SortMode = "red" | "black";
 
 /** 当前结构(v2)。**独立键**:v1 是「槽位 + 一部一枚」的旧模型,互相不兼容。 */
 export const LS_REDBLACK = "biff.redblack.v2";
 /** 旧结构(槽位模型)—— 只作为一次性迁移源,读完即删 */
 const LS_REDBLACK_V1 = "biff.redblack.v1";
-/** 「看过」标记 —— 独立键(存影片 key 数组):标记与贴纸是两件事,合在一个键里只会互相牵连 */
+/** ⚠ **已废弃**（2026-10-14 修订，PLAN-20261014190000）：上滑改成**纯跳过**之后，
+ *  「没看过」不再是一个状态 —— 一部片对一个人只剩红 / 黑两种取值，没贴过就是「未决定」。
+ *  这个键现在只在一次性清理（`purgeDemoLeavings`）里被删掉一次，**新代码不要再读写它**。
+ *  （与 `watched.v1` 同一个处置：留着键名是为了把用户机器上那份旧数据扫干净。） */
+const LS_REDBLACK_UNSEEN = "biff.redblack.unseen.v1";
+/** ⚠ **已废弃**（2026-10-14，PLAN-20261014190000）：「标记看过」这道闸门整个撤掉了 ——
+ *  投票不再需要先声明「看过」（上滑那句「没看过」本身就是一次表态）。
+ *  这个键现在只在一次性清理（`purgeDemoLeavings`）里被删掉一次，新代码不要再读写它。 */
 export const LS_REDBLACK_WATCHED = "biff.redblack.watched.v1";
 /** ⚠ **已废弃**(2026-09-16):「示例铺底」功能已删 —— 正式环境就该是空的,让用户自己贴
  *  (用户原话:「正式环境不应该是空的让用户自己贴的吗」)。这个键现在只在一次性清理
@@ -144,6 +167,19 @@ export function tiltOf(id: string): number {
  *  ⚠ 款的白名单与中文名在 `@biff/contracts/sticker`，这里只读它的**顺序**。 */
 export function derivedSkin(id: string): StickerSkin {
   return STICKER_SKIN_KEYS[hashOf(id) % STICKER_SKIN_KEYS.length];
+}
+
+/** 从契约层白名单里**随机**取一款（2026-10-14，PLAN-20261014190000）。
+ *
+ *  用户不再挑皮肤（换肤轮盘随贴纸操作一起撤掉），所以投票那一刻直接摇一款 ——
+ *  展板仍然是一片不一样的贴纸，只是那一款不再代表任何选择。
+ *
+ *  ⚠ 顺序来自 `STICKER_SKIN_KEYS`（契约层唯一来源），不在本地再抄一份 id 列表。
+ *  ⚠ 两头都夹一下：`rand()` 在无参时可能被注入返回 `1` 的坏种子（单测 / 边界），
+ *    `Math.floor(1 * len)` 会越界成 `undefined`。 */
+export function randomSkin(rand: () => number = Math.random): StickerSkin {
+  const index = Math.floor(rand() * STICKER_SKIN_KEYS.length);
+  return STICKER_SKIN_KEYS[Math.min(STICKER_SKIN_KEYS.length - 1, Math.max(0, index))];
 }
 
 /** 一部片的**按款票数**（服务端聚合回的那一份，稀疏：只含带款的票）。
@@ -276,9 +312,22 @@ export function makeSticker(
   // ⚠ 四次 `rand()` 的**次序**就是「x 的主 / 副、y 的主 / 副」(见 `softSpot`)——
   //   单测喂固定种子时靠它复现
   const at = spot ?? softSpot(rand(), rand(), rand(), rand());
-  // 新贴的这枚先给一个**按 id 推导**的款（与 `derivedSkin` 同一套），用户想换就用贴纸上的
-  // 环形滚轮换。为什么不是「一律默认款」：这样即使他从没打开过滚轮，展板也仍然是一片不一样的贴纸。
+  // ⚠ 这里的款是**按 id 推导**的兜底（与 `derivedSkin` 同一套），给「迁移前的老票 / 群点」用。
+  //    **投票**那一刻走的不是这里，而是 `voteSticker`（款是随机摇的，见它的说明）。
   return { id, type, skin: derivedSkin(id), ...clampSpot(at.posX, at.posY) };
+}
+
+/** 快速投票**落下的一枚**：落点随机（`softSpot`）、皮肤随机（契约白名单）。
+ *
+ *  与 `makeSticker` 的分工：那个是「一枚贴纸」的通用构造（皮肤按 id 推导 —— 迁移前的老票与群点
+ *  都靠它保持稳定）；这里是**用户投出一票**那一刻的构造 —— 从此位置与皮肤都不再是用户的选择
+ *  （2026-10-14，PLAN-20261014190000）。
+ *
+ *  ⚠ 改票（同一部片换色）**不走这里**：那一条路是 `retintSticker`，位置与皮肤都原样保留 ——
+ *    否则「把红改黑」会把那一枚顺手挪到别处、还换张脸，读起来像「又贴了一枚新的」。 */
+export function voteSticker(type: StickerType, rand: () => number = Math.random): Sticker {
+  const sticker = makeSticker(type, undefined, rand);
+  return { ...sticker, skin: randomSkin(rand) };
 }
 
 /* ---------------- 统计 ---------------- */
@@ -367,19 +416,36 @@ export function othersOf(counts: StickerCounts, mine: StickerCounts): StickerCou
   };
 }
 
-export interface FilmTally extends StickerCounts {
-  /** 用户是否标记了「看过」 */
-  marked: boolean;
-  /** 还能不能贴(标记过 + 这一部还没贴)—— 此时暂存区里那两枚红 / 黑可选 */
-  canPlace: boolean;
-  /** 还能贴几枚(0 / 1);顶部统计按它累加 */
-  quota: number;
-}
+/* ---------------- 快速投票:一次落定 ----------------
+ * ⚠ 2026-10-14(PLAN-20261014190000):这一段取代了原来的 `FilmTally` / `tallyOf`(「标记看过 + 配额」)。
+ *   现在不再有「先声明看过、再看还能贴几枚」这两层 —— 一次滑动就是一次落定,
+ *   而「能不能投」只有一个条件:**这部片属不属于我的行程**(那个判断在 `quick-vote.ts` 里取候选时做掉)。
+ *
+ * ⚠ 这里刻意**不**返回「还能贴几枚」:那个数在旧模型里是给暂存区上那两枚红 / 黑按钮做禁用用的,
+ *   而暂存区已经删了。留着它只会让调用方以为存在一条配额路径。 */
 
-export function tallyOf(filmKey: string, marked: boolean, board: StickerBoard): FilmTally {
-  const counts = countsOf(board.get(filmKey));
-  const canPlace = marked && counts.total < MAX_PER_FILM;
-  return { ...counts, marked, canPlace, quota: canPlace ? 1 : 0 };
+/** **快速投票的一次落定**:把这一部片设成红或黑。
+ *
+ *  · 已有贴纸 → **原地换色**(位置与皮肤都不动,像改主意而不是重贴);
+ *  · 没有 → 新贴一枚(`voteSticker`:落点与皮肤都随机)。
+ *
+ *  ⚠ **跳过（上滑）不走这里** —— 它什么也不写（2026-10-14 修订）。调用方(卡片)因此不需要
+ *    一个「把状态设成未决定」的入口：未决定就是**这个 `board` 里没有这个 key**，
+ *    而「从有到无」在快速投票里根本不是一条用户能走的路（那是榜单上「收回贴纸」的事）。
+ *
+ *  ⚠ **幂等**，靠 `retintSticker` / `placeSticker` 的既有约定：内容没变时返回**同一个引用** ——
+ *    所以「投了红再投红」调用方一看 `next === board` 就知道什么也没发生，不必自己比对。
+ *  ⚠ `rand` 只在**真要新贴一枚**时才会被调用,所以单测可以传一个固定种子。 */
+export function setFilmVote(
+  board: StickerBoard,
+  key: string,
+  intent: StickerType,
+  rand: () => number = Math.random,
+): StickerBoard {
+  const existing = board.get(key)?.[0];
+  return existing
+    ? retintSticker(board, key, existing.id, intent)
+    : placeSticker(board, key, voteSticker(intent, rand));
 }
 
 /** 加权分里先验的**票数权重**（贝叶斯收缩的 `m`）。
@@ -418,9 +484,17 @@ export function scoreOf(counts: StickerCounts, priorRate: number): number | null
 }
 
 /* ---------------- 排序 ----------------
- * 两档都看**评分**（红榜降序 / 黑榜升序）；同分按票数降序，再并列保序 —— 所以「一枚贴纸
- * 都没有」时结果就是传入顺序（影片库默认顺序：目录序 → 中文名），不引入随机，刷新稳定。
- * ⚠ 同分那一层不是可选项：评分只有一位小数，票少时同分很常见，没有它就等于把名次交给目录序。 */
+ * 主判据 = 那一榜**自己的票数**降序（红榜看**红**票、黑榜看**黑**票）—— 「贴纸多的在前」；
+ * 票数相同时比**评分**（红榜高在前 / 黑榜低在前），再并列按目录序**稳定**排，不引入随机。
+ * ⚠ 「一票都没有」的片两榜都排**最后**（单独一支，不受上面那个方向影响）。
+ *
+ * ⚠ **口径沿革**（三次改过，改动前先读完这一行，别再「顺手改回去」）：
+ *   · 2026-10-12：撤「按数量」，改按**评分**（加权红占比 `scoreOf`）—— 为避免「1 红 0 黑 = 10.0」封顶；
+ *   · 2026-10-14 上午：加**分档**（先比整数分档、档内比票数）—— 修「票多但占比略低反而排后面」；
+ *   · 2026-10-14 下午（**当前**）：改回**按数量**（本段上面那两行）—— 因为评分是**占比**，
+ *     「12 枚全红」永远压得过「58 枚 · 81% 红」；用户看到线上红榜榜首是 12 枚的片后拍的板。
+ *     代价如实记着：红榜会变成**人气榜**，「红多但黑也多」的争议片会靠票量上前。
+ * ⚠ `scoreOf` 没有删：它仍是**卡片角标 / 分享图上那个 `N.N 分`** 的来源，也是同票数时的次序。
 
 /** 某一档的**入榜门槛**：该榜那一色至少有一票（红榜看红票、黑榜看黑票）。
  *  ⚠ 单独导出而不是埋在排序里：分享图要用它**筛掉「该榜为 0」的片**
@@ -431,36 +505,49 @@ export function boardHasVotes(counts: StickerCounts | undefined, mode: SortMode)
   return mode === "red" ? counts.red > 0 : counts.black > 0;
 }
 
-/** 榜单排序：按评分（红榜降序 / 黑榜升序），同分按票数降序，再并列保序。 */
-export function sortByScore<T extends { key: string }>(
+/** 榜单排序：**按该榜自己的票数降序**（红榜看红票 / 黑榜看黑票），票数相同再比评分
+ *  （红榜高在前 / 黑榜低在前），最后按目录序稳定。
+ *  ⚠ 主判据为什么是票数而不是评分、以及三次口径沿革，见上面「排序」那一段 —— 别只看本函数。
+ *  ⚠ 名字是 `sortByVotes` 不是 `sortByScore`：2026-10-14 改按数量后**评分不再是排序主判据**，
+ *    名字留着 `Score` 就是骗人（调用方读名字就会以为它按分排）。 */
+export function sortByVotes<T extends { key: string }>(
   films: readonly T[],
   counts: CrowdCounts,
   mode: SortMode,
   priorRate: number,
 ): T[] {
-  const totalOf = (key: string): number => counts.get(key)?.total ?? 0;
+  /** 这一榜看的那一色票数（红榜看红、黑榜看黑）；一票没有的片是 0，但排序时另走「一律最后」 */
+  const votesAt = (key: string): number => {
+    const countsForFilm = counts.get(key);
+    if (!countsForFilm) return 0;
+    return mode === "red" ? countsForFilm.red : countsForFilm.black;
+  };
+  /** 评分；一票都没贴 → `null`（下面按「一律排最后」处理，**不**参与同票数比较） */
   const scoreAt = (key: string): number | null => {
     const countsForFilm = counts.get(key);
     return countsForFilm ? scoreOf(countsForFilm, priorRate) : null;
   };
-  const tieBreak = (a: { film: T; index: number }, b: { film: T; index: number }): number =>
-    totalOf(b.film.key) - totalOf(a.film.key) || a.index - b.index;
   return films
-    .map((film, index) => ({ film, index, score: scoreAt(film.key) }))
+    .map((film, index) => ({ film, index, votes: votesAt(film.key), score: scoreAt(film.key) }))
     .sort((a, b) => {
-      // 无票（`scoreOf` 给 `null`）一律排**最后** —— 两档都一样，所以先处理它
+      // ① 一票都没有（评分 `null`）的片两榜都排**最后** —— 先处理它，否则会被下面的方向反转
       if (a.score === null || b.score === null) {
-        if (a.score === b.score) return tieBreak(a, b);
+        if (a.score === b.score) return a.index - b.index;
         return a.score === null ? 1 : -1;
       }
+      // ② 主判据：**票数降序**（「贴纸多的在前」）
+      if (a.votes !== b.votes) return b.votes - a.votes;
+      // ③ 同票数看**评分**（红榜高的在前 / 黑榜低的在前 = 更黑）
       if (a.score !== b.score) return mode === "red" ? b.score - a.score : a.score - b.score;
-      return tieBreak(a, b);
+      // ④ 并列保序（传入顺序 = 目录序 → 中文名），刷新稳定
+      return a.index - b.index;
     })
     .map((entry) => entry.film);
 }
 
 /** 「我贴过的」那一节的排序：按**全站总数**降序，并列保序。
- *  ⚠ 它不是榜单而是清单（「贴了多少列多少」），所以**不**跟着榜单改成评分口径。 */
+ *  ⚠ 它不是榜单而是清单（「贴了多少列多少」），所以**不**跟着榜单走（榜单 2026-10-14 起按该色票数，
+ *    而这里是红黑合计）。 */
 export function sortByTotal<T extends { key: string }>(films: readonly T[], counts: CrowdCounts): T[] {
   return films
     .map((film, index) => ({ film, index }))
@@ -524,20 +611,23 @@ export function crowdSignature(counts: CrowdCounts): string {
     .join("|");
 }
 
-/** 我自己贴出来的那几枚 → 上报载荷。一人一部一票,所以每部只取那一枚的颜色。
+/** 我的**状态** → 上报载荷。一部片一个人**只有一条**,`vote` 是三态(红 / 黑 / 没看过)。
  *
- *  ⚠ **`comment` 字段一条都不能省**(2026-09-29,PLAN-20260929181900):服务端靠「这一份里
- *    有没有 `comment`」分辨**新版前端**与**旧版前端** —— 一个都没带时它一个字都不碰评语列
- *    (否则老客户端一次普通上报就会**静默清空**用户写过的评语)。所以没有评语时送 `null`,
+ *  ⚠ **`comment` / `skin` 字段一条都不能省**(2026-09-29,PLAN-20260929181900):服务端靠「这一份里
+ *    有没有这个字段」分辨**新版前端**与**旧版前端** —— 一个都没带时它一个字都不碰那两列
+ *    (否则老客户端一次普通上报就会**静默清空**用户写过的评语 / 选的款)。所以没有评语时送 `null`,
  *    而不是省略字段。 */
-export function votesOf(
+export function voteInputsOf(
   board: StickerBoard,
 ): Array<{ key: string; vote: StickerType; comment: string | null; skin: StickerSkin | null }> {
-  const out: Array<{ key: string; vote: StickerType; comment: string | null; skin: StickerSkin | null }> = [];
+  const out: Array<{
+    key: string;
+    vote: StickerType;
+    comment: string | null;
+    skin: StickerSkin | null;
+  }> = [];
   for (const [key, list] of board) {
     const sticker = list[0];
-    // ⚠ `skin` **一条都不能省**，理由与 `comment` 逐字相同：服务端靠「这一份里有没有这个字段」
-    //   分辨新旧前端，缺字段时它一个字都不碰那一列（否则老客户端一次普通上报会静默清空用户选的款）。
     if (sticker) {
       out.push({ key, vote: sticker.type, comment: sticker.comment ?? null, skin: sticker.skin ?? null });
     }
@@ -556,7 +646,11 @@ export function votesOf(
  *
  * ⚠ **评语必须进签名**(2026-09-29,PLAN-20260929181900):签名是上报 effect 的依赖
  *   (`RedBlackPage.tsx` 的 `votesKey`)。只串 key 与颜色的话,**改评语不会触发上报** ——
- *   用户写完一句,那句话永远上不去服务端(而且不报错、界面照旧)。 */
+ *   用户写完一句,那句话永远上不去服务端(而且不报错、界面照旧)。
+ * ⚠ 拖动那条路已经删了(`moveSticker` / 延后写盘随之一并撤掉),但「与坐标无关」这条性质仍是
+ *   这个签名的**判据来源**:它回答的是「票变了吗」,而不是「board 这个对象换了吗」。
+ * ⚠ 2026-10-14 修订:上滑不再写任何状态,所以签名也不再需要串「没看过」那本账 ——
+ *   它现在**只**是「红黑票的内容签名」,一个参数就够。 */
 export function votesSignature(board: StickerBoard): string {
   const parts: string[] = [];
   for (const [key, list] of board) {
@@ -569,7 +663,8 @@ export function votesSignature(board: StickerBoard): string {
 }
 
 /* ---------------- 变更(全部不可变:返回新 board) ----------------
- * ⚠ 纯函数里**不校验「看过」标记**:标记是视图层的概念,这里只管数据结构。 */
+ * ⚠ 纯函数里**不校验「这部片是不是在我的行程里」**:候选范围是视图层(`quick-vote.ts` 取候选)的概念,
+ *   这一层只管数据结构。 */
 
 function cloneBoard(board: StickerBoard): StickerBoard {
   return new Map([...board].map(([key, list]) => [key, list.map((s) => ({ ...s }))]));
@@ -595,31 +690,18 @@ export function takeSticker(board: StickerBoard, key: string, id: string): Stick
   return next;
 }
 
-/** 拖动**已经贴在画布上**的那一枚:只改坐标(相对坐标,钳进安全区)。
- *  ⚠ **没有「挪到别的片」这回事**(2026-09-23 用户:「张贴区应该是电影之间独立的」):
- *    一枚贴纸的归属就是 `key` 这一部,别片的画布不是它的落点 —— 想给别片贴,走别片自己的暂存区。
- *    落点算不算「本片画布」由视图层判定(`RedBlackPage.tsx::finishRef`),不是就算出界(收回)。
- *    所以这里**连参数都不给**跨片的可能:留一条永远不该被调用的路径,就是给下次复发留门。 */
-export function moveSticker(
-  board: StickerBoard,
-  key: string,
-  id: string,
-  posX: number,
-  posY: number,
-): StickerBoard {
-  const next = cloneBoard(board);
-  const src = next.get(key);
-  const i = src?.findIndex((s) => s.id === id) ?? -1;
-  if (!src || i < 0) return board;
-  src[i] = { ...src[i], ...clampSpot(posX, posY) };
-  return next;
-}
+/* ⚠ 2026-10-14(PLAN-20261014190000):`moveSticker`(拖位置)**已删** —— 用户要的是
+ *   「取消贴贴纸所有行为」,挪位置正是其中最费手的一件;而它的落点校验(`finishRef`)也只在拖拽那条路上有用。
+ *   同理 `scheduleSaveStickers` / `flushPendingStickers`(延后写盘)**一并撤掉**:那套机制唯一的用途就是
+ *   「拖动是装饰性写入、可以晚一拍落盘」——没有拖动之后,每一次写入都是语义操作,一律立即落盘。 */
 
 /** 把**已经贴着的那一枚**原地换色:只改 `type`,**位置与 id 都保留**(2026-09-28)。
  *
- * 为什么需要它:一部一枚的口径下,「贴错了颜色」过去只有两条路 —— 先单击收回
- * (贴纸消失、位置丢掉),再从暂存区重贴(随机落点)。换色是同一个名额换了个态度,
- * 不是「再贴一枚」,所以它**绕开 `placeSticker` 的 `MAX_PER_FILM` 闸门**,直接改那一枚。
+ * 为什么需要它:一部一枚的口径下,「贴错了颜色」不该走「先收回、再重贴」(位置与皮肤都丢掉)。
+ * 换色是同一个名额换了个态度,不是「再贴一枚」,所以它**绕开 `placeSticker` 的 `MAX_PER_FILM` 闸门**,
+ * 直接改那一枚。
+ * ★ 2026-10-14 起,快速投票里「已投过的片子再过一遍」走的**就是这一条**:
+ *   改票 = 原地换色(位置与皮肤都保留),读起来像「改了主意」而不是「又贴了一枚新的」。
  *
  * ⚠ 同色时原样返回**同一个引用**:调用方靠 `next === board` 就知道「这次点击什么也没做」,
  *   不必自己再比一次颜色(也让视图层能据此决定要不要弹提示)。 */
@@ -639,29 +721,6 @@ export function retintSticker(
   return next;
 }
 
-/** 把**已经贴着的那一枚**换一款皮肤（2026-09-29）。与 `retintSticker` 逐字同一套：
- *  位置与 id 都保留（那是「同一个名额换了个外观」，不是「再贴一枚」），
- *  所以它**绕开 `placeSticker` 的 `MAX_PER_FILM` 闸门**，直接改那一枚。
- *
- *  ⚠ 同款时原样返回**同一个引用**：调用方靠 `next === board` 就知道「这次什么也没做」，
- *    不必自己再比一次（也让票签名那条上报链路能短路）。
- *  ⚠ 与颜色**互不影响**：换款不动 `type`，换色也不动 `skin`（`retintSticker` 只 spread `type`）。 */
-export function reskinSticker(
-  board: StickerBoard,
-  key: string,
-  id: string,
-  skin: StickerSkin,
-): StickerBoard {
-  const list = board.get(key);
-  const index = list?.findIndex((sticker) => sticker.id === id) ?? -1;
-  if (!list || index < 0 || list[index].skin === skin) return board;
-  const next = cloneBoard(board);
-  const target = next.get(key);
-  if (!target) return board;
-  target[index] = { ...target[index], skin };
-  return next;
-}
-
 /** 评语归一(本地这一侧):去掉首尾空白,**空串当作「没写」**。
  *
  * ⚠ **不在这里截断长度** —— 长度上限的**唯一收口在服务端**(`film-vote-stats.ts::normalizeComment`,
@@ -676,7 +735,7 @@ export function normalizeStickerComment(value: unknown): string | undefined {
 
 /** 给**已经贴着的那一枚**写 / 改 / 清空评语。一人一片一票一评,所以只动那一枚。
  *
- * ⚠ 与 `moveSticker` / `retintSticker` 同一条:**不可变**;内容没变时返回**同一个引用** ——
+ * ⚠ 与 `retintSticker` / `placeSticker` 同一条:**不可变**;内容没变时返回**同一个引用** ——
  *   调用方(以及 `votesSignature` 那条上报链路)靠 `next === board` 就知道「这次什么也没做」,
  *   不必自己再比一次。
  * ⚠ 传空串 = **清掉评语**(写下去的是 `null`,服务端据此把那一列清空)。 */
@@ -782,56 +841,10 @@ export function saveStickers(board: StickerBoard): void {
   }
 }
 
-/* ---------------- 延后写盘(只给「挪位置」用) ----------------
- * 贴 / 收 / 换色是**语义操作**,必须立即落盘 —— 崩溃时丢掉一枚贴纸是「我做的事没了」;
- * 而拖动只是挪个位置,丢掉它的代价是「下次再拖一遍」。两者不对等,所以只有拖动走这里。 */
-
-/** 待落盘的那一份(`scheduleSaveStickers` 的暂存处) */
-let pendingStickers: StickerBoard | null = null;
-let pendingTimer: ReturnType<typeof setTimeout> | undefined;
-/** `pagehide` 只挂一次 —— 每次调度都挂会积一串不会因一次 flush 而消失的监听 */
-let pagehideBound = false;
-
-/** 把待落盘的那一份**立刻**写掉。幂等:没有待写的就什么也不做。
- *  ⚠ 页面要走时必须走它(`pagehide` 已挂),否则最后那次延后写会随着页面一起消失。 */
-export function flushPendingStickers(): void {
-  if (pendingTimer !== undefined) {
-    clearTimeout(pendingTimer);
-    pendingTimer = undefined;
-  }
-  const board = pendingStickers;
-  pendingStickers = null;
-  if (board) saveStickers(board);
-}
-
-/** 延后写盘:同一拍内的多次调用合并成一次,实际写发生在下一轮宏任务。
- *  ⚠ 只给**装饰性**的写入用(当前只有拖动),见上面那段「两者不对等」。 */
-export function scheduleSaveStickers(board: StickerBoard): void {
-  pendingStickers = board;
-  if (pendingTimer !== undefined) return;
-  pendingTimer = setTimeout(flushPendingStickers, 0);
-  // ⚠ 单测跑在 node 环境(没有 window),这条自动跳过 —— 那个环境里由测试自己调 flush
-  if (!pagehideBound && typeof window !== "undefined") {
-    pagehideBound = true;
-    window.addEventListener("pagehide", flushPendingStickers);
-  }
-}
-
-export function loadWatched(): Set<string> {
-  const watched = new Set<string>();
-  const raw = readJson(LS_REDBLACK_WATCHED);
-  if (!Array.isArray(raw)) return watched;
-  for (const key of raw) if (typeof key === "string" && key) watched.add(key);
-  return watched;
-}
-
-export function saveWatched(watched: ReadonlySet<string>): void {
-  try {
-    writeWorkspaceItem(LS_REDBLACK_WATCHED, JSON.stringify([...watched]));
-  } catch {
-    /* 忽略 */
-  }
-}
+/* ⚠ 2026-10-14(修订):这里原来有一对 `loadUnseen` / `saveUnseen`（「没看过」那本账）。
+ *   上滑改成**纯跳过**之后那个状态就不存在了 —— 一部片对一个人只剩红 / 黑两态,
+ *   「未决定」**就是** `board` 里没有这个 key,不需要第二本账,也不需要第二次读写。
+ *   与它对应的 `biff.redblack.unseen.v1` 现在只在 `purgeDemoLeavings` 里被清一次。 */
 
 /** 榜单影片候选 —— **一部片一张卡**,两条规则(`PLAN-20261014112444`):
  *
@@ -920,17 +933,29 @@ export function searchBoardFilm(film: FilmNode, query: string): boolean {
 const DEMO_ID_PREFIX = "demo-";
 
 /**
- * 清掉示例残留,返回清理后的 `board` / `watched`(页面载入时调一次)。
+ * 清掉示例残留,返回清理后的 `board`(页面载入时调一次)。
  *
  * 判据分两档,**保守优先**:
- *  ① 贴纸**全部**是示例生成的(或压根没有贴纸)→ 整份都是自动铺的,board 与 watched 一起清空;
- *  ② 混着自己贴的(存在 `s-` 前缀)→ **只摘掉示例那几枚**,用户自己的贴纸与标记一律不动。
+ *  ① 贴纸**全部**是示例生成的(或压根没有贴纸)→ 整份都是自动铺的,board 清空;
+ *  ② 混着自己贴的(存在 `s-` 前缀)→ **只摘掉示例那几枚**,用户自己的贴纸一律不动。
  *
  * ⚠ 只在确实读到示例残留时才写盘:清一次即止,之后每次载入都是空转。
+ * ⚠ 2026-10-14(PLAN-20261014190000):「标记看过」那道闸门撤掉了,所以这里**不再返回也不写
+ *    `watched`**;顺带把**废弃的两只键**各删掉一次。它们今天一样都读不到东西,但形状都是
+ *    「影片 key 数组」—— 留着迟早有人读错（尤其 `unseen.v1`，它曾经真的是一个状态）。
  */
-export function purgeDemoLeavings(): { board: StickerBoard; watched: Set<string> } {
+export function purgeDemoLeavings(): { board: StickerBoard } {
+  // ⚠ 废弃键的清理放在**最前面、且无条件**:它跟「有没有示例残留」毫无关系。
+  //   挂进下面任一条分支里的话,「恰好有自己贴的贴纸」的那次载入就永远清不掉它。
+  for (const retired of [LS_REDBLACK_WATCHED, LS_REDBLACK_UNSEEN]) {
+    try {
+      removeWorkspaceItem(retired);
+    } catch {
+      /* 忽略 */
+    }
+  }
+
   const stored = loadStickers();
-  const watched = loadWatched();
   const stickers = [...stored.values()].flat();
   if (!stickers.some((s) => s.id.startsWith(DEMO_ID_PREFIX))) {
     // 没有示例残留 —— 顺手把「关掉示例」那个废弃键收掉(功能没了,留着只是一份垃圾数据)
@@ -939,21 +964,19 @@ export function purgeDemoLeavings(): { board: StickerBoard; watched: Set<string>
     } catch {
       /* 忽略 */
     }
-    return { board: stored, watched };
+    return { board: stored };
   }
 
   const mine = stickers.filter((s) => !s.id.startsWith(DEMO_ID_PREFIX));
   if (!mine.length) {
     const empty: StickerBoard = new Map();
-    const none = new Set<string>();
     saveStickers(empty);
-    saveWatched(none);
     try {
       removeWorkspaceItem(LS_REDBLACK_SEEN);
     } catch {
       /* 忽略 */
     }
-    return { board: empty, watched: none };
+    return { board: empty };
   }
 
   const board: StickerBoard = new Map();
@@ -962,5 +985,5 @@ export function purgeDemoLeavings(): { board: StickerBoard; watched: Set<string>
     if (kept.length) board.set(key, kept);
   }
   saveStickers(board);
-  return { board, watched };
+  return { board };
 }

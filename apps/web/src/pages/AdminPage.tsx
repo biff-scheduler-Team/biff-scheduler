@@ -675,7 +675,22 @@ function AdminRowsView() {
  *
  *  ⚠ 删除**不可撤销**，所以是两步：先点「删除」，该行变成「确认删掉这枚？」，再点确认。
  *    一次点击就删在手机上是灾难（手指一滑就没了），而且这一页的主要读者就在现场用手机。
+ *
+ *  ⚠ 2026-10-14：行里当天曾短暂有过**第三态** `unseen`（快速投票里「上滑：我没看过」），
+ *    **同日按用户拍板撤掉** —— 上滑改成纯跳过之后它不再是一个状态，所以这一屏又回到红 / 黑两态。
  */
+
+/** 投票行的**唯一**文案口径。⚠ 别退回 JSX 里写 `vote === "red" ? "红" : "黑"`：
+ *  那种写法在**取值集合变化时**会静默读错（这一行字曾经就为第三态改过一次）。 */
+function voteLabel(vote: AdminVoteRow["vote"]): string {
+  return vote === "red" ? "红" : "黑";
+}
+
+/** Toast 里「删掉了什么」的说法（贴纸是实物名词）。 */
+function voteNoun(vote: AdminVoteRow["vote"]): string {
+  return `一枚${voteLabel(vote)}贴纸`;
+}
+
 function AdminStickersView() {
   const { params, update } = useQuery();
   const onlyAnonymous = params.get("anon") === "1";
@@ -714,9 +729,7 @@ function AdminStickersView() {
     deleteAdminVote({ contributor: row.contributor, filmKey: row.filmKey })
       .then(() => {
         setRows((previous) => previous.filter((item) => rowKey(item) !== rowKey(row)));
-        setNotice(
-          `已删掉《${titleOf(row.filmKey)}》上的一枚${row.vote === "red" ? "红" : "黑"}贴纸。`,
-        );
+        setNotice(`已删掉《${titleOf(row.filmKey)}》上的${voteNoun(row.vote)}。`);
       })
       .catch((cause: unknown) => {
         // ⚠ 「本来就没有这一行」(404) 与「参数写错 / 网络坏了」是两件事，必须分开说：
@@ -806,9 +819,9 @@ function AdminStickersView() {
                     <span className="admin-mono text-12">{row.filmKey}</span>
                   </td>
                   <td>
-                    <span className={row.vote === "red" ? "admin-chip-red" : "admin-chip-black"}>
-                      {row.vote === "red" ? "红" : "黑"}
-                    </span>
+                    {/* 类名与文案都由 `vote` 直接推（`.admin-chip-red` / `.admin-chip-black`），
+                        ⚠ 别在这里写 `vote === "red" ? …` 那种三元：取值集合一变它就会静默读错。 */}
+                    <span className={`admin-chip-${row.vote}`}>{voteLabel(row.vote)}</span>
                   </td>
                   <td className="admin-mono text-12" title={row.contributor}>
                     {shortContributor(row)}

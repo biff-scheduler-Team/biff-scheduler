@@ -162,6 +162,7 @@ export async function loadAdminTrend(options: {
 
 export interface AdminVoteRow {
   filmKey: string;
+  /** 红 / 黑。⚠ 2026-10-14 的第三态 `unseen` 同日撤掉（上滑改纯跳过），服务端也不再返回它。 */
   vote: "red" | "black";
   contributor: string;
   anonymous: boolean;

@@ -1,0 +1,469 @@
+/**
+ * 快速投票的滑动卡（2026-10-14，PLAN-20261014190000；同日修订 2 加了牌堆 / 标记 / 总结页）。
+ *
+ * ⚠ **两端动效必须不一样**（用户明确要求）：左滑是「碎片飞散」（`.qv-shard` × 12），
+ *   右滑是「盖章 + 整卡右滑」（`.qv-stamp` 那圈红环 + 卡片自己冲出去）。上滑最朴素 ——
+ *   它不改变任何状态，最不该抢戏。
+ * ⚠ 时长与组件里的 `LEAVE_MS`(300ms) / `LEAVE_MS_REDUCED`(160ms) **必须一致**。
+ * ⚠ 颜色只走 token：红黑取 `--rb-red` / `--rb-black`（与画布上那两枚贴纸**同一个源**），
+ *   其余走 `--surface` / `--raised` / `--line` / `--text` / `--muted` / `--brand`。见 AGENTS §5。
+ */
+
+.qv {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.qv-counter {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+  opacity: 0.72;
+}
+
+/* 兜底候选的一句说明（我的行程为空时）—— 它是**状态说明**，不是警告，所以用中性色弱化 */
+.qv-source {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 舞台：给卡片一个**确定大小**的容器。卡片在里面绝对定位 —— 三个方向的出场动画都靠 transform，
+   所以它必须能溢出容器还能被看见（`overflow: visible`），否则「飞出去」会被裁成「原地消失」。 */
+.qv-stage {
+  position: relative;
+  width: min(78vw, 320px);
+  aspect-ratio: 2 / 3;
+  /* 卡片与牌堆都要飞出 / 露到盒子外，所以这里不能裁切 */
+  overflow: visible;
+}
+
+/* 牌堆里后面那两张：**只是影子**。它们不接指针（`pointer-events: none`），
+   也不参与判定 —— 唯一的作用是「露出边缘，暗示还有下一张」。 */
+.qv-ghost {
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 14%);
+  pointer-events: none;
+  /* ⚠ 位移与缩放由组件内联写（`data-qv-depth` 决定幅度），这里只管过渡 ——
+     下一张补位时它要**平滑**升一格，不是瞬移。 */
+  transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.qv-card {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 22%);
+  /* ⚠ 触摸设备上必须显式接管：不写的话横向拖动会被解读成「滚这个弹层」，
+     于是 `pointermove` 收不到连续位移，手势读起来就是「划不动」。 */
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+  /* 松手弹回原位的动画（`.qv-card--dragging` 期间关掉，否则卡片会拖在手后面） */
+  transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.qv-card--dragging {
+  transition: none;
+  cursor: grabbing;
+}
+
+/* 落定中：交回给 keyframes 控制 transform，所以这里要**同时**关掉过渡 */
+.qv-card--leaving {
+  transition: none;
+  cursor: default;
+}
+
+.qv-poster {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* 海报是 `draggable={false}` 的，这里再挡一道原生图片拖拽 */
+  -webkit-user-drag: none;
+}
+
+/* 没有海报的目录片：一条空底色 + 首字，别让卡片塌成 0 高 */
+.qv-poster--none {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(160deg, var(--raised), var(--line));
+  color: var(--text);
+  font-size: 40px;
+  font-weight: 600;
+  opacity: 0.55;
+}
+
+.qv-caption {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 12px 12px 12px;
+  color: #fff;
+  max-height: 74%;
+  overflow: hidden;
+  /* 海报本身颜色不可控，所以这层压暗是硬需求（不是装饰） */
+  background: linear-gradient(to top, rgb(0 0 0 / 88%) 40%, rgb(0 0 0 / 70%) 72%, rgb(0 0 0 / 0%));
+}
+
+.qv-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.qv-en,
+.qv-meta,
+.qv-sub,
+.qv-counts,
+.qv-intro {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.88;
+}
+
+/* 简介是这一块里唯一「可读的一段话」，给它略宽的呼吸与更低的对比，
+   好与上面那几行机读信息（元信息 / 场次 / 计数）在字色上分开 */
+.qv-intro {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.72;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  /* 卡片高度固定，简介只留 3 行 —— 超出由 `overflow: hidden` 裁掉，不做折叠交互 */
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+/* ---------------- 拖动中的两枚标记 ----------------
+ * 「加入红榜 / 加入黑榜」：**强度跟着拖动距离走**（透明度由组件内联给）。
+ * ⚠ 它们必须压在 caption 之上、且不吃指针 —— 拖动中它们就在手指附近。 */
+.qv-mark {
+  position: absolute;
+  top: 18px;
+  padding: 6px 12px;
+  border: 2px solid currentcolor;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  pointer-events: none;
+  /* 起始态由内联 `opacity` 控制，这里不做 transition —— 
+     跟手的东西加过渡会「慢半拍」，正是规格里要避免的那种手感 */
+}
+
+.qv-mark--right {
+  right: 14px;
+  color: var(--rb-red);
+  transform: rotate(10deg);
+}
+
+.qv-mark--left {
+  left: 14px;
+  color: var(--rb-black);
+  transform: rotate(-10deg);
+}
+
+.qv-mark--up {
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  color: var(--brand);
+}
+
+/* 拖动进度：只用来做边缘高亮，不参与判定（判定是 `quick-vote.ts::resolveSwipe`） */
+.qv-progress {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: 14px;
+  border: 2px solid var(--brand);
+  opacity: calc(var(--qv-progress, 0) * 0.9);
+}
+
+/* ---------------- 左滑：碎片飞散 ----------------
+ * 12 块碎片各自朝自己的方向飞（位移 / 角度由组件按 (卡序号, 碎片序号) 确定性推出，写成内联变量）。 */
+.qv-shard {
+  position: absolute;
+  background-repeat: no-repeat;
+  pointer-events: none;
+  animation: qv-shard-fly 300ms cubic-bezier(0.19, 1, 0.22, 1) forwards;
+}
+
+@keyframes qv-shard-fly {
+  from {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+
+  to {
+    transform: translate(var(--qv-dx, -180px), var(--qv-dy, 0)) rotate(var(--qv-rot, 0deg)) scale(0.7);
+    opacity: 0;
+  }
+}
+
+/* 主体同时快速淡出 —— 否则碎片飞光了，底下那张「完整的海报」还在 */
+.qv-card--leaving[data-qv-leave="left"] {
+  animation: qv-card-out-left 300ms ease-out forwards;
+}
+
+@keyframes qv-card-out-left {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+/* ---------------- 右滑：盖章 + 整卡右滑 ----------------
+ * 与左滑**刻意不同**：这里不合卡片，是整张冲出去 + 一圈红环从中心扩散（像盖下去的一记红章）。 */
+.qv-card--leaving[data-qv-leave="right"] {
+  animation: qv-card-out-right 300ms cubic-bezier(0.32, 0.72, 0.34, 1) forwards;
+}
+
+@keyframes qv-card-out-right {
+  from {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+
+  to {
+    transform: translate(120%, -6%) rotate(16deg) scale(1.08);
+    opacity: 0;
+  }
+}
+
+.qv-stamp {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 42%;
+  aspect-ratio: 1;
+  margin: -21% 0 0 -21%;
+  border-radius: 50%;
+  border: 3px solid var(--rb-red);
+  background: radial-gradient(circle, rgb(207 59 82 / 42%), rgb(207 59 82 / 0%) 68%);
+  pointer-events: none;
+  animation: qv-stamp 300ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes qv-stamp {
+  from {
+    transform: scale(0.45);
+    opacity: 0.95;
+  }
+
+  to {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+/* ---------------- 上滑：跳过 ----------------
+ * 「跳过」不改任何状态，所以它**最朴素**：不给碎片也不给章，整卡上移淡出。 */
+.qv-card--leaving[data-qv-leave="up"] {
+  animation: qv-card-out-up 300ms cubic-bezier(0.32, 0.72, 0.34, 1) forwards;
+}
+
+@keyframes qv-card-out-up {
+  from {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+
+  to {
+    transform: translate(0, -120%) scale(0.94);
+    opacity: 0;
+  }
+}
+
+/* ---------------- 按钮与撤销 ---------------- */
+
+.qv-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+}
+
+.qv-undo-row {
+  display: flex;
+  justify-content: center;
+}
+
+/* 撤销是**弱按钮**：它是回头路，不该与那三颗并列抢视觉重心 */
+.qv-undo {
+  padding: 5px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.qv-undo:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--raised);
+  color: var(--brand);
+}
+
+.qv-undo:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.qv-help {
+  margin: 0;
+  font-size: 12px;
+  text-align: center;
+  color: var(--text);
+  opacity: 0.6;
+  max-width: 360px;
+}
+
+/* ---------------- 空态 / 总结页 ---------------- */
+
+.qv-empty {
+  width: min(78vw, 320px);
+  margin: 0;
+  padding: 18px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--raised);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.qv-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  width: min(88vw, 560px);
+}
+
+.qv-summary-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.qv-summary-line {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+  opacity: 0.8;
+}
+
+.qv-walls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+.qv-wall-title {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+/* 海报墙：小格 + 细间距，像节目册的索引页 —— 不是游戏化的收集册 */
+.qv-wall-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 210px;
+  overflow-y: auto;
+}
+
+.qv-wall-cell {
+  aspect-ratio: 2 / 3;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--raised);
+  border: 1px solid var(--line);
+}
+
+.qv-wall-cell img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 缺海报时格子里写片名（**不编一个占位图**）—— 小格放不下全名，靠 `title` 补 */
+.qv-wall-none {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 4px;
+  font-size: 10px;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--muted);
+  overflow: hidden;
+}
+
+/* ---------------- 动效敏感 ----------------
+ * ⚠ 时长必须与组件里的 `LEAVE_MS_REDUCED`(160ms) 一致：那边 160ms 后就推进卡片了。
+ *   碎片与红章在这里整个撤掉 —— 「飞散的碎块」正是最该被关掉的那类动效。 */
+@media (prefers-reduced-motion: reduce) {
+  .qv-shard,
+  .qv-stamp {
+    display: none;
+  }
+
+  .qv-card--leaving[data-qv-leave] {
+    animation: qv-card-out-fade 160ms ease-out forwards;
+  }
+
+  .qv-card,
+  .qv-ghost {
+    transition: none;
+  }
+}
+
+@keyframes qv-card-out-fade {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+/* 触控目标下限 44px（与 redblack-parity.css / hot-board.css 同一条口径 —— 电影节现场主要用手机） */
+@media (pointer: coarse) {
+  .qv-undo {
+    min-height: 44px;
+  }
+}
+
+/* 窄屏：两面板报墙叠成一列，别把格子挤到 30px 以下（那时海报已认不出是哪部） */
+@media (max-width: 560px) {
+  .qv-walls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

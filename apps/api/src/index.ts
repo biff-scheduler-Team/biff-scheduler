@@ -717,10 +717,14 @@ app.post("/api/stats/want-ping", limited(pingLimiter), async (c) => {
  * 读公开(榜单本来就是给大家看的),写匿名也可用(身份口径与 want-ping 完全一致)。 */
 
 /** 一条增量 op（2026-10-05，PLAN-20261005182415 §C）。
- *  ⚠ 只有 `set` / `remove` 两种：**改色就是一次新的 `set`** —— 这一条正是「重放幂等」的来源
+ *  ⚠ 只有 `set` / `remove` 两种：**改状态就是一次新的 `set`** —— 这一条正是「重放幂等」的来源
  *    （把同一部片设成同一个状态，第二次是空差分）。
  *  ⚠ 形状只管「是字符串、别超长」，真正的白名单收口在 `film-vote-stats.ts::mergeVoteOps`
- *    （那里调 `normalizeComment` / `normalizeSkin`）—— 与整份替换那条路径同一道。 */
+ *    （那里调 `normalizeComment` / `normalizeSkin`）—— 与整份替换那条路径同一道。
+ *
+ *  ⚠ 2026-10-14：当天先放宽到三态（`"unseen"` = 快速投票里「上滑 = 我没看过这部」），
+ *    **同日又收回两态** —— 用户把上滑改成了**纯跳过**（不写任何状态），于是没有任何客户端
+ *    会再发那个值，留在枚举里只会让人以为还存在第三态。 */
 const voteOpSchema = z.discriminatedUnion("op", [
   z
     .object({
