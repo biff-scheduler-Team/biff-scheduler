@@ -22,6 +22,8 @@
 //   按同一格式补一行即可;查不到的原样返回(`util.ts::unitLabel` 的兜底),
 //   故**漏行只会少一次对照,不会让单元消失**。
 
+import type { FilmItem } from "./types";
+
 export interface UnitDef {
   /** 官网 section 英文名 */
   en: string;
@@ -94,4 +96,39 @@ export function unitDef(raw: string | null | undefined): UnitDef | null {
   if (!t) return null;
   const key = normUnit(t);
   return UNIT_INDEX.get(key) ?? UNIT_INDEX.get(key.replace(/^(19|20)\d{2}/, "")) ?? null;
+}
+
+/* ---------------- 单元**身份**与归属（2026-10-14 从 `app/model.ts` 搬来） ----------------
+ *
+ * ⚠ 为什么搬到这里：`app/model.ts` 依赖 `util.ts`，而榜单 / 分享图那几支纯逻辑模块要复用
+ *   这两个函数 —— 放在 `model.ts` 会把它们逼成「要么循环 import、要么各写一份归一化」。
+ *   `units.ts` 是叶子模块（零 import），它本来就是「单元」这件事的家。
+ *   `app/model.ts` 仍**原样转出**这两个名字，既有的 `import { unitKey } from "../app/model"` 不受影响。
+ */
+
+/** 单元的**规范键** —— 分组 / 筛选 / 计数一律用它，展示名走 `util.ts::unitLabel()`。
+ *
+ *  ⚠ 为什么不能拿原串当身份：同一条管线会产出多种写法，实测这几个都指同一个单元 ——
+ *    `亚洲电影人奖` / `年度亚洲电影人奖-杨紫琼专题` / `2026年度亚洲电影人奖-杨紫琼专题` / …，
+ *    而 `unitLabel()` 对它们的展示名**一模一样**。拿原串分组的结果是「下拉里 4 个同名选项」
+ *    （2026-10-14 打开榜单页实测就是这个），分享图也会被切成 4 张各 1 部片的图。
+ *
+ *  与旧版选片器同一套归一化：只合并拼写变体，不合并子单元。 */
+export function unitKey(raw: string | null | undefined): string {
+  const value = (raw ?? "").trim();
+  const en = value.match(/^([A-Za-z][A-Za-z'&.\- ]*?)\s*(?=[\u4e00-\u9fa5])/);
+  if (en?.[1].trim()) return en[1].trim();
+  if (value.includes("年度亚洲电影人奖")) return "亚洲电影人奖";
+  return value || "未标注单元";
+}
+
+/** 一部目录片**归属的全部单元键**（主单元 ∪ 联映块单元）。
+ *
+ *  为什么不是单值：午夜单元的成员是「块内成员片」，而官网只给每部片一个主单元 ——
+ *  实测 4 部（Sapiens / Angel′s Egg / The Spiral / Jim Queen）主单元在别处，却在午夜块里放，
+ *  只看 `unit` 会让午夜单元少数这 4 部（5 部 vs 官网 9 部，`PLAN-20260915144335`）。
+ *  ⚠ **计数（`libraryUnits`）与筛选（`filmInUnit`）必须同源走这里** —— 否则会出现
+ *    「下拉说 9 部、点进去只有 5 张卡」。`unit` 本身仍是唯一身份，本函数不改它。 */
+export function unitsOfFilm(film: FilmItem): string[] {
+  return [...new Set([film.unit, ...(film.also_units ?? [])])].map(unitKey);
 }

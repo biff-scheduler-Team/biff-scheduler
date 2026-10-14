@@ -24,6 +24,7 @@ import {
   buildRbPosterModel,
   drawRbPoster,
   POSTER_SECTIONS,
+  posterUnitOptions,
   rbPosterHeight,
   TOP_N,
   type RbPosterSection,
@@ -45,9 +46,20 @@ import {
   Dialog,
   DialogContainer,
   Heading,
+  Picker,
+  PickerItem,
 } from "./spectrum";
 
 const FILE_NAME = "BIFF2026-红黑榜.png";
+
+/** 「每榜取前几名」的档位。`0` = **全部**（不截断）—— 小单元里选「5」比在 10 行里找更省事，
+ *  而大单元里想全列（Icons 有 20 部有票）时也只有这一档做得到。 */
+const TOP_N_CHOICES: ReadonlyArray<{ id: string; label: string }> = [
+  { id: "5", label: "前 5" },
+  { id: "10", label: "前 10" },
+  { id: "20", label: "前 20" },
+  { id: "0", label: "全部" },
+];
 
 interface RedBlackShareDialogProps {
   films: readonly FilmNode[];
@@ -98,15 +110,21 @@ export function RedBlackShareDialog({
     today: new Date(),
   }));
   const [sections, setSections] = useState<Set<RbPosterSection>>(allSections);
+  // 三个「范围」开关（2026-10-14，`PLAN-20261014150805`）：单元 / 每榜条数 / 头尾。
+  // ⚠ 它们是**活**的（与 `sections` 同性质）：改了当场重组这张图，不必关掉弹层重开。
+  const [unit, setUnit] = useState("");
+  const [topN, setTopN] = useState(TOP_N);
+  const [showHeader, setShowHeader] = useState(true);
+  const [showFooter, setShowFooter] = useState(true);
+  const unitOptions = useMemo(() => posterUnitOptions(snapshot.films), [snapshot]);
   const model = useMemo(
-    () => buildRbPosterModel({ ...snapshot, sections }),
-    [snapshot, sections],
+    () => buildRbPosterModel({ ...snapshot, sections, unit, topN, showHeader, showFooter }),
+    [snapshot, sections, unit, topN, showHeader, showFooter],
   );
-  // 「我贴过的」那一项的条数:0 部时勾它没有意义,直接置灰(而不是让用户勾出一节空白)
-  const placedCount = useMemo(
-    () => [...snapshot.board.values()].filter((list) => list.length > 0).length,
-    [snapshot],
-  );
+  // 「我贴过的」那一项的条数:0 部时勾它没有意义,直接置灰(而不是让用户勾出一节空白)。
+  // ⚠ 直接用模型里的 `myCount` 而不是自己再数一遍 —— 它是**按当前单元切过**的那份
+  //   （模型里 `placedFilms` 本来就来自切分后的候选集），自数一份必然在选单元后对不上。
+  const placedCount = model.myCount;
   const hasContent = model.boards.length > 0 || model.myRows.length > 0;
   // 模型里带海报的行数(缺图行不算)。画布手绘没有 DOM 可断言,与 `PosterPreview` 的
   // `data-export-codes` 同一手法:给 E2E 一个「图里真的带了海报」的锚点。
@@ -125,6 +143,8 @@ export function RedBlackShareDialog({
     const element = canvas.current;
     if (!element) return;
     let canceled = false;
+    // 重画前先清掉上一次的失败提示：换了勾选之后它还挂着，会与这张**已经画好了**的图同时显示
+    setError("");
     void (async () => {
       try {
         // 海报缩略图与行程图共用同一份加载语义(`poster-brush.ts::loadPosterImages`):
@@ -154,8 +174,47 @@ export function RedBlackShareDialog({
         <Heading slot="title">红黑榜分享图</Heading>
         <Content>
           <p className="rb-share-lede">
-            红榜 / 黑榜各取前 {TOP_N}；我贴过的全部列出，不限条数。
+            红榜 / 黑榜各取{topN > 0 ? `前 ${topN}` : "全部"}；我贴过的全部列出，不限条数。
+            {unit
+              ? " 只讲这一个单元 —— 连「我贴过的」也只列这个单元里的。"
+              : ""}
           </p>
+          {/* 三个「范围」开关（2026-10-14，用户「分享的时候可以选择需要哪个单元的就行」）：
+              单元 / 每榜条数 / 要不要头尾。改任一项都**当场重组这张图**，与下面那组勾选同性质。 */}
+          <div className="rb-share-scope">
+            <Picker
+              label="单元"
+              value={unit || "all"}
+              onChange={(value) => {
+                const next = String(value);
+                setUnit(next === "all" ? "" : next);
+              }}
+            >
+              <PickerItem id="all">全部单元</PickerItem>
+              {unitOptions.map((option) => (
+                <PickerItem id={option.id} key={option.id}>
+                  {`${option.name}，${option.films} 部`}
+                </PickerItem>
+              ))}
+            </Picker>
+            <Picker
+              label="每榜条数"
+              value={String(topN)}
+              onChange={(value) => setTopN(Number(value))}
+            >
+              {TOP_N_CHOICES.map((choice) => (
+                <PickerItem id={choice.id} key={choice.id}>
+                  {choice.label}
+                </PickerItem>
+              ))}
+            </Picker>
+            <Checkbox isSelected={showHeader} onChange={setShowHeader}>
+              画标题栏
+            </Checkbox>
+            <Checkbox isSelected={showFooter} onChange={setShowFooter}>
+              画署名
+            </Checkbox>
+          </div>
           {/* 每一节都能单独勾掉:榜单是「全站看法」,不是每个人都愿意全发出去 */}
           <CheckboxGroup
             label="长图内容"

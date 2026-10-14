@@ -8,6 +8,7 @@ import type { FilmNode } from "../src/app/model";
 import {
   buildRbPosterModel,
   CREDIT_BY,
+  posterUnitOptions,
   rbPosterHeight,
   ROW_H,
   SITE,
@@ -16,6 +17,7 @@ import {
   type RbPosterSection,
 } from "../src/redblack-poster";
 import type { CrowdCounts, StickerBoard } from "../src/redblack";
+import type { FilmItem } from "../src/types";
 import { show } from "./helpers";
 
 /** 最小有排期的 FilmNode(`boardFilms` 只要求 `shows.length > 0`) */
@@ -376,5 +378,196 @@ describe("rbPosterRow:行内海报缩略图(2026-10-08)", () => {
     );
     // ⚠ 行高是绘制与 `rbPosterHeight` 的共用自变量:带图改高度就会两处错位、静默裁图
     expect(rbPosterHeight(withArt)).toBe(rbPosterHeight(without));
+  });
+});
+
+/* ---------------- 2026-10-14 新增:单元 / 条数 / 头尾（PLAN-20261014150805 修订 2） ----------------
+ *
+ * 这一组守的是「分享的时候可以选择需要哪个单元的就行」那件事：**范围**选错不会崩、不会报错，
+ * 只会安静地发出一张内容不对的图 —— 只有断言拦得住。
+ */
+
+describe("buildRbPosterModel:按单元切分", () => {
+  /** 带单元的影片（单元挂在目录条目上；`also` = 联映块单元的成员关系）。 */
+  function inUnit(key: string, unit: string, zh = key, also?: string[]): FilmNode {
+    return { ...film(key, zh), cats: [{ unit, also_units: also } as FilmItem] };
+  }
+
+  const films = [
+    inUnit("a", "甲单元"),
+    inUnit("b", "乙单元"),
+    inUnit("c", "甲单元"),
+  ];
+  const c = crowd({ a: [1, 0], b: [0, 1], c: [1, 0] });
+
+  it("只列该单元：另一单元的片连同它的票一起被切掉", () => {
+    const model = buildRbPosterModel(input({ films, crowd: c, unit: "甲单元" }));
+    const keys = model.boards.flatMap((b) => b.rows.map((r) => r.key));
+    expect(keys).toEqual(["a", "c"]);
+    // 全站影片数也跟着切 —— 图上那句「N 部有排期的影片」说的必须是**这个单元**的规模
+    expect(model.site.films).toBe(2);
+    expect(model.unitName).toBe("甲单元");
+  });
+
+  it("单元名进副标题（只印 5 行红榜却不说哪一单元，读图的人判断不了自己在看什么）", () => {
+    const model = buildRbPosterModel(input({ films, crowd: c, unit: "甲单元" }));
+    expect(model.subtitle).toContain("甲单元");
+    // 不选单元时不额外插一个「全站」进去 —— 默认那版文案与加这个参数之前逐字一致
+    expect(buildRbPosterModel(input({ films, crowd: c })).subtitle).toBe(
+      "SEP 22 · 3 部有排期的影片",
+    );
+  });
+
+  it("「我贴过的」也一起切（这张图只讲这个单元），`myCount` 是切后的数", () => {
+    const model = buildRbPosterModel(
+      input({
+        films,
+        crowd: c,
+        unit: "甲单元",
+        board: boardOf({ a: "red", b: "black" }),
+      }),
+    );
+    expect(model.myRows.map((r) => r.key)).toEqual(["a"]);
+    // ⚠ 弹层里那句「我贴过的（N 部）」读的就是 `myCount`，它必须已经切过
+    expect(model.myCount).toBe(1);
+  });
+
+  it("这个单元一票没有 → 空态说的是「这个单元」，不是「榜上还没有贴纸」", () => {
+    const model = buildRbPosterModel(input({ films, crowd: crowd({ b: [1, 0] }), unit: "甲单元" }));
+    expect(model.boards).toEqual([]);
+    expect(model.emptyText).toContain("甲单元");
+    // 与「真的没票」那句区分开：后者把用户支去贴票，而这里贴票也不解决他的问题（他要的是另一个单元）
+    expect(model.emptyText).not.toContain("去「看过」");
+  });
+});
+
+describe("buildRbPosterModel:每榜条数 topN", () => {
+  const films = Array.from({ length: 14 }, (_, i) => film(`f${i}`));
+  const c = crowd(Object.fromEntries(films.map((f, i) => [f.key, [14 - i, 0] as [number, number]])));
+
+  it("topN = 5 → 每榜只留 5 行（不是 10）", () => {
+    const model = buildRbPosterModel(input({ films, crowd: c, topN: 5 }));
+    expect(model.boards[0].rows).toHaveLength(5);
+    expect(model.boards[0].rows.map((r) => r.key)).toEqual(["f0", "f1", "f2", "f3", "f4"]);
+  });
+
+  it("榜里不够 topN 时**全列**，不补零", () => {
+    const model = buildRbPosterModel(
+      input({ films: films.slice(0, 2), crowd: crowd({ f0: [2, 0], f1: [1, 0] }), topN: 10 }),
+    );
+    expect(model.boards[0].rows).toHaveLength(2);
+  });
+
+  it("topN <= 0 = 不截断（弹层那一档叫「全部」）", () => {
+    const model = buildRbPosterModel(input({ films, crowd: c, topN: 0 }));
+    expect(model.boards[0].rows).toHaveLength(14);
+  });
+
+  it("不传 topN 仍是 10（默认值没被这次的参数化改掉）", () => {
+    const model = buildRbPosterModel(input({ films, crowd: c }));
+    expect(model.boards[0].rows).toHaveLength(TOP_N);
+  });
+});
+
+describe("rbPosterHeight:头尾开关只改高度，不改内容", () => {
+  const films = [film("a"), film("b")];
+  const c = crowd({ a: [2, 1], b: [1, 0] });
+
+  it("关掉头部 → 高度少掉一个**与行数无关**的固定量", () => {
+    const oneRow = [film("a")];
+    const twoRows = films;
+    // 行数不同、行高相同：差值（= 头部那一块）必须一致 —— 否则就是「少了一行的同时
+    // 还多留了一块空白」，而那正是用户说的「不适合手机阅读」的来源
+    const d1 =
+      rbPosterHeight(buildRbPosterModel(input({ films: oneRow, crowd: c }))) -
+      rbPosterHeight(buildRbPosterModel(input({ films: oneRow, crowd: c, showHeader: false })));
+    const d2 =
+      rbPosterHeight(buildRbPosterModel(input({ films: twoRows, crowd: c }))) -
+      rbPosterHeight(buildRbPosterModel(input({ films: twoRows, crowd: c, showHeader: false })));
+    expect(d1).toBeGreaterThan(0);
+    expect(d2).toBe(d1);
+  });
+
+  it("关掉署名 → 同样只少一个固定量；两个都关仍然是一张完整的图（> 0）", () => {
+    const base = buildRbPosterModel(input({ films, crowd: c }));
+    const noFooter = buildRbPosterModel(input({ films, crowd: c, showFooter: false }));
+    const bare = buildRbPosterModel(input({ films, crowd: c, showHeader: false, showFooter: false }));
+    expect(rbPosterHeight(base)).toBeGreaterThan(rbPosterHeight(noFooter));
+    expect(rbPosterHeight(bare)).toBeLessThan(rbPosterHeight(noFooter));
+    expect(rbPosterHeight(bare)).toBeGreaterThan(0);
+  });
+
+  it("头尾开关**不动**图里的内容（榜单 / 我贴过的 / 数字一字不变）", () => {
+    const base = buildRbPosterModel(input({ films, crowd: c, board: boardOf({ a: "red" }) }));
+    const bare = buildRbPosterModel(
+      input({ films, crowd: c, board: boardOf({ a: "red" }), showHeader: false, showFooter: false }),
+    );
+    expect(bare.boards).toEqual(base.boards);
+    expect(bare.myRows).toEqual(base.myRows);
+    expect(bare.showHeader).toBe(false);
+    expect(base.showHeader).toBe(true);
+    expect(base.showFooter).toBe(true);
+  });
+});
+
+describe("posterUnitOptions:弹层那个「单元」下拉的选项", () => {
+  it("按单元去重、数出各单元片数，且**不含**未标单元的片", () => {
+    const films: FilmNode[] = [
+      { ...film("a"), cats: [{ unit: "乙单元" } as FilmItem] },
+      { ...film("b"), cats: [{ unit: "甲单元" } as FilmItem] },
+      { ...film("c"), cats: [{ unit: "甲单元" } as FilmItem] },
+      film("d"), // 没有目录条目 → 没有单元
+    ];
+    const options = posterUnitOptions(films);
+    expect(options).toHaveLength(2);
+    // ⚠ 不在这里断言**顺序**:那一列按 `localeCompare` 的中文序排,而它随运行环境的
+    //   ICU 数据变 —— 拿它当断言会变成「测环境」而不是「测口径」（与 `hot-board.test.ts` 同一条纪律）
+    const byName = new Map(options.map((o) => [o.name, o.films]));
+    expect(byName.get("甲单元")).toBe(2);
+    expect(byName.get("乙单元")).toBe(1);
+  });
+
+  it("选项里的 id 与 `buildRbPosterModel` 的筛选用的是同一个键（否则会切出一张空图）", () => {
+    const films: FilmNode[] = [{ ...film("a"), cats: [{ unit: "甲单元" } as FilmItem] }];
+    const id = posterUnitOptions(films)[0].id;
+    const model = buildRbPosterModel(
+      input({ films, crowd: crowd({ a: [1, 0] }), unit: id }),
+    );
+    expect(model.boards[0].rows.map((r) => r.key)).toEqual(["a"]);
+  });
+
+  it("★ 回归：同一单元的多种写法合成**一项**（原先是 4 个同名选项，各 1 部片）", () => {
+    // 2026-10-14 打开弹层实测：下拉里 4 行一模一样的
+    // 「Asian Filmmaker of the Year · 年度亚洲电影人奖 · 杨紫琼专题，1 部」
+    const films: FilmNode[] = [
+      { ...film("a"), cats: [{ unit: "亚洲电影人奖" } as FilmItem] },
+      { ...film("b"), cats: [{ unit: "年度亚洲电影人奖-杨紫琼专题" } as FilmItem] },
+      { ...film("c"), cats: [{ unit: "2026年度亚洲电影人奖-杨紫琼专题" } as FilmItem] },
+    ];
+    const options = posterUnitOptions(films);
+    expect(options).toHaveLength(1);
+    expect(options[0].films).toBe(3);
+    // 这个键也真的能切出全部 3 部 —— 「计数与筛选同源」的那条老规矩
+    const model = buildRbPosterModel(
+      input({ films, crowd: crowd({ a: [1, 0], b: [1, 0], c: [1, 0] }), unit: options[0].id }),
+    );
+    expect(model.boards[0].rows.map((r) => r.key)).toEqual(["a", "b", "c"]);
+  });
+
+  it("联映块成员片在该单元的图上也会出现（与影片库的计数同源，不再少画那 4 部）", () => {
+    const films: FilmNode[] = [
+      {
+        ...film("sapiens"),
+        cats: [{ unit: "广角镜 - 纪录片放映", also_units: ["Midnight Passion"] } as FilmItem],
+      },
+      { ...film("in-unit"), cats: [{ unit: "Midnight Passion" } as FilmItem] },
+    ];
+    const options = posterUnitOptions(films);
+    const midnight = options.find((o) => o.id === "Midnight Passion")!;
+    expect(midnight.films).toBe(2);
+    const model = buildRbPosterModel(
+      input({ films, crowd: crowd({ sapiens: [1, 0], "in-unit": [1, 0] }), unit: midnight.id }),
+    );
+    expect(model.boards[0].rows.map((r) => r.key).sort()).toEqual(["in-unit", "sapiens"]);
   });
 });

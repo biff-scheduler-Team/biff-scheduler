@@ -19,9 +19,11 @@ import { EDITION } from "./edition";
 import {
   ACCENT_H,
   COLORS as C,
+  CREDIT_BY,
   FOOTER_H,
   PAD,
   POSTER_W,
+  SITE,
   drawAccentBars,
   drawRule,
   fitText,
@@ -33,7 +35,7 @@ import { glyphPath, glyphPlacement, type StickerGlyph } from "./sticker-glyph";
 import { paintMaterial } from "./sticker-material";
 import { shapePath, type StickerShape } from "./sticker-shape";
 import { FALLBACK_SKIN, resolveSkin, skinSpec, type StickerSkin } from "./sticker-skin";
-import { dateInfo } from "./util";
+import { dateInfo, filmUnitKeys, unitLabel } from "./util";
 import {
   boardFilms,
   boardHasVotes,
@@ -59,12 +61,9 @@ import {
 /** 每个榜取前几名 */
 export const TOP_N = 10;
 
-/** 网站署名 —— 与页面页脚同源(`App.tsx` 的页脚也用这个域名)。 */
-export const SITE = "biff.lcandy.co";
-/** 作者署名 —— 与页面页脚**逐字一致**(`App.tsx`:「by @gaaiyeoi 和 by @lcandy2」)。
- *  ⚠ 两个 handle 都是**GitHub 账号名**(不是提交者显示名 `citron`):图片上没有链接,
- *    印一个搜不到的显示名等于没署名。改这里必须同步 `App.tsx` 的页脚。 */
-export const CREDIT_BY = "by @gaaiyeoi 和 by @lcandy2";
+// 网站 / 作者署名的定义已搬到共用的 `poster-brush.ts`（2026-10-14，见那边的说明）——
+// 这里**原样转出**，既有的 `import { SITE } from "./redblack-poster"` 不受影响。
+export { CREDIT_BY, SITE };
 
 /** 分享图上要摊开的一枚贴纸 —— 只有位置与歪斜(没有交互,是死像素)。
  *  ⚠ 落点 / 歪斜**不在这里算**:两者都由 `redblack.ts::spotOf` / `tiltOf` 从 id 确定性推导,
@@ -135,6 +134,14 @@ export interface RbPosterModel {
   /** 图里一节都没有时画这一句 —— 分成「没勾」与「真的没票」两种,别把「你还没选」说成「榜上没贴纸」 */
   emptyText: string;
   credit: { site: string; by: string };
+  /** 这一张图**只讲哪个单元**(原串;空串 = 全部单元)。绘制层据此在副标题里点明范围 ——
+   *  只印 5 行红榜而不说哪一单元,读图的人没法判断自己在看什么。 */
+  unit: string;
+  /** 单元的展示名(中文优先,走 `util.ts::unitLabel`);空串 = 全部单元 */
+  unitName: string;
+  /** 头部 / 尾部署名画不画 —— **几何**(`rbPosterHeight`)与绘制都读它,不能各存一份 */
+  showHeader: boolean;
+  showFooter: boolean;
 }
 
 export interface RbPosterInput {
@@ -163,6 +170,21 @@ export interface RbPosterInput {
   today: Date;
   /** 要分享哪几节(用户勾选)。**不传 = 全选** —— 分享图默认给全,是「少给」才需要动作 */
   sections?: ReadonlySet<RbPosterSection>;
+  /** **只讲一个单元**(原串,取自目录条目 `FilmItem.unit`)。**不传 = 全部单元**。
+   *  用户 2026-10-14:「分享的时候可以选择需要哪个单元的就行」。
+   *  ⚠ 匹配走 `util.ts::filmUnitKeys`(与「热门榜」的分组、影片库的筛选同一支),
+   *    取值是**规范键**(`units.ts::unitKey`),不是目录里的原串 ——
+   *    同义写法(`年度亚洲电影人奖-杨紫琼专题` / `2026年度…`)归一到同一个键。
+   *  ⚠ 选了单元**连「我贴过的」也一起切** —— 保持「这张图只讲这个单元」的语义。 */
+  unit?: string;
+  /** 每个榜取前几名。**不传 = `TOP_N`(10)**;`<= 0` = 不截断(弹层那一档叫「全部」)。
+   *  ⚠ 榜里不足这么多行时**全列**,不补零 —— 小单元本来就只有几部片有票。 */
+  topN?: number;
+  /** 画不画**头部**(届次 / 大标题 / 副标题 / 全站三格 / 我的一行)。**不传 = 画**。
+   *  「只要榜单本体」时才需要关掉,图高会同比少一截(几何见 `rbPosterHeight`)。 */
+  showHeader?: boolean;
+  /** 画不画**尾部署名**。**不传 = 画**。 */
+  showFooter?: boolean;
 }
 
 const BOARDS: ReadonlyArray<{ mode: SortMode; label: string; hint: string }> = [
@@ -257,12 +279,27 @@ const NO_SYNCED_FACES: ReadonlyMap<string, SyncedStickerFace> = new Map();
  *  ① **该榜那一色一票都没有的片不进该榜** —— 黑榜里列一堆「黑 0」毫无意义;票不够 10 部时榜就短一些。
  *     ⚠ 按**每榜各自的颜色**筛(`redblack.ts::boardHasVotes`),不是笼统的「有没有票」,
  *       也**不是**「评分 > 0」:只看「总数大于 0」的话,一部 3 红 0 黑 的片会照样出现在黑榜里。
- *  ② 两榜都取**前 `TOP_N`**;「我贴过的」那一节**不截断**。
+ *  ② 两榜都取**前 `input.topN`**(缺省 `TOP_N` = 10);「我贴过的」那一节**不截断**。
+ *
+ * ★ 三个**范围**开关(2026-10-14,`PLAN-20261014150805`):`unit` 只讲一个单元、
+ *   `topN` 调每榜条数、`showHeader` / `showFooter` 决定要不要头与署名。
+ *   ⚠ 它们全部是**可选**的:一个都不传时产物与加这三个参数之前**逐像素一致**。
  */
 export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
   const { films, crowd, board, skins = {}, syncedFaces = NO_SYNCED_FACES, site, mine, today } = input;
   const picked = input.sections ?? allSections();
-  const candidates = boardFilms(films);
+  // 单元切分（2026-10-14，用户「分享的时候可以选择需要哪个单元的就行」）：
+  // ⚠ 归属口径走 `util.ts::filmUnitKeys`（主单元 ∪ 联映块单元，与影片库的 `filmInUnit`
+  //   和热门榜的分组**同一支**）。一部片因此可能出现在两个单元的图上 —— 那是**对的**：
+  //   它在两个单元的筛选结果里都真的会露面，图上少画反而是两处口径分叉。
+  const unit = (input.unit ?? "").trim();
+  const unitName = unit ? unitLabel(unit) : "";
+  const topN = input.topN ?? TOP_N;
+  const showHeader = input.showHeader ?? true;
+  const showFooter = input.showFooter ?? true;
+  const candidates = boardFilms(films).filter(
+    (film) => !unit || filmUnitKeys(film).includes(unit),
+  );
   // 评分先验：优先用页面算好的那份（这样分享图行与卡片角标逐字一致）；没传才按**整份影片库**的
   // 票数现算 —— 只看当前榜单那几部的话，先验会随榜单长短变，同一张图里的两榜也会用上不同基准。
   const priorRate = input.priorRate ?? priorOf(crowd);
@@ -270,15 +307,19 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
   // 勾掉的榜**连算都不算**(不是算完再藏起来):少一节就该少一节的开销
   const boards: RbPosterBoard[] = BOARDS.filter((entry) => picked.has(entry.mode))
     .map((entry) => {
-      const rows = sortByScore(
+      const ranked = sortByScore(
         candidates.filter((film) => boardHasVotes(crowd.get(film.key), entry.mode)),
         crowd,
         entry.mode,
         priorRate,
-      )
-        .slice(0, TOP_N)
-        .map((film) => toRow(film, crowd, board, skins, syncedFaces, priorRate));
-      return { ...entry, rows };
+      );
+      // ⚠ `topN <= 0` = 不截断（弹层那一档叫「全部」）；榜里不足这么多行时自然**全列**，不补零 ——
+      //   小单元（实测红黑票只填得满 4 个单元）正是靠这一条才不出现一排 0。
+      const shown = topN > 0 ? ranked.slice(0, topN) : ranked;
+      return {
+        ...entry,
+        rows: shown.map((film) => toRow(film, crowd, board, skins, syncedFaces, priorRate)),
+      };
     })
     .filter((entry) => entry.rows.length > 0);
 
@@ -296,7 +337,10 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
     eyebrow: `${EDITION.replace("-", " ").toUpperCase()} · 观影红黑榜`,
     title: "红黑榜",
     // 日期走全站唯一口径（`OCT 8`），此前直接印 `isoDate` 的 `2026-10-08` —— 同一张海报两种写法
-    subtitle: `${dateInfo(isoDate(today)).label} · ${candidates.length} 部有排期的影片`,
+    // ⚠ 选了单元时把单元名插进来:只印 5 行红榜却不说哪一单元,读图的人判断不了自己在看什么。
+    subtitle: unit
+      ? `${dateInfo(isoDate(today)).label} · ${unitName} · ${candidates.length} 部有排期的影片`
+      : `${dateInfo(isoDate(today)).label} · ${candidates.length} 部有排期的影片`,
     site: { ...site, films: candidates.length },
     mine,
     boards,
@@ -305,13 +349,42 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
     myHint: "左侧圆点是我贴的那一色 · 右侧是这部片收到的全部贴纸",
     myRows,
     myCount: placedFilms.length,
-    // ⚠ 「一节都没勾」与「真的没有票」是两回事,不能共用一句话
-    emptyText:
-      picked.size === 0
-        ? "还没选要分享的内容 —— 勾上「长图内容」里的榜单再出图。"
-        : "榜上还没有贴纸 —— 去「看过」的片子上贴一枚红或黑吧。",
+    // ⚠ 「一节都没勾」「这个单元还没票」「真的没有票」是三回事,不能共用一句话 ——
+    //   共用会把用户支到错误的地方找原因(去贴票 / 去换单元 / 去勾选框)。
+    emptyText: emptyTextOf(picked.size, unit, unitName),
     credit: { site: SITE, by: CREDIT_BY },
+    unit,
+    unitName,
+    showHeader,
+    showFooter,
   };
+}
+
+/** 分享图弹层里那个「单元」下拉的选项 —— 从整份影片库去重(空单元 / 未标单元不进下拉)。
+ *
+ *  ⚠ 排序按**展示名**(不是按片数,也不是按热度):下拉是「找自己关心的那个单元」,
+ *    顺序稳定比「最热在前」更好用 —— 要按热度排的是「热门榜」那一页的分组。
+ *  ⚠ 归属走 `util.ts::filmUnitKeys`,与 `buildRbPosterModel` 的切分口径**同一支**
+ *    (再往下是 `units.ts::unitKey` / `unitsOfFilm` —— 与影片库的下拉同一支):
+ *    两处各写一份的话,下拉里会出现一个切不出任何片的选项。
+ *  ⚠ 一部片可能给**多个**单元各计一次(联映块成员片),这与影片库的计数同一口径。 */
+export function posterUnitOptions(
+  films: readonly FilmNode[],
+): Array<{ id: string; name: string; films: number }> {
+  const counts = new Map<string, number>();
+  for (const film of films) {
+    for (const unit of filmUnitKeys(film)) counts.set(unit, (counts.get(unit) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([id, count]) => ({ id, name: unitLabel(id), films: count }))
+    .sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+}
+
+/** 「图里一节都没有」那句话 —— 三种原因各说各的(理由见调用处)。 */
+function emptyTextOf(pickedCount: number, unit: string, unitName: string): string {
+  if (pickedCount === 0) return "还没选要分享的内容 —— 勾上「长图内容」里的榜单再出图。";
+  if (unit) return `${unitName} 这个单元还没有人贴过贴纸 —— 换个单元试试。`;
+  return "榜上还没有贴纸 —— 去「看过」的片子上贴一枚红或黑吧。";
 }
 
 /* ---------------- 几何 ---------------- */
@@ -357,10 +430,12 @@ const TITLE_X = MARK_X + MARK_W;
  *  ⚠ 两处各算一份必然出现「算出来 3000 高、实际画了 3200」,而画布是按它设的 →
  *    多出来的内容**被裁掉且不报错**(最难查的一类),所以只写这一个函数。 */
 export function rbPosterHeight(model: RbPosterModel): number {
-  let h = ACCENT_H + HEADER_H;
+  // ⚠ 头 / 尾是**开关**（2026-10-14）：关掉就真的不占高度，图高同比少一截 ——
+  //   不能「不画但留白」（那正是用户说的「不适合手机阅读」：留白把长宽比拉得更长）。
+  let h = ACCENT_H + (model.showHeader ? HEADER_H : 0);
   for (const b of model.boards) h += BLOCK_GAP + SECTION_H + b.rows.length * ROW_H;
   if (model.myRows.length) h += BLOCK_GAP + SECTION_H + model.myRows.length * ROW_H;
-  return h + FOOTER_H + ACCENT_H;
+  return h + (model.showFooter ? FOOTER_H : 0) + ACCENT_H;
 }
 
 /* ---------------- 绘制 ---------------- */
@@ -705,9 +780,10 @@ export function drawRbPoster(
   ctx.fillRect(0, 0, POSTER_W, h);
   drawAccentBars(ctx, POSTER_W, h);
 
-  drawHeader(ctx, model);
+  // ⚠ 上下品牌红条恒在（它是这张图的「边框」，不是内容）；关掉的只是头部信息块与尾部署名。
+  if (model.showHeader) drawHeader(ctx, model);
 
-  let y = ACCENT_H + HEADER_H;
+  let y = ACCENT_H + (model.showHeader ? HEADER_H : 0);
   for (const b of model.boards) {
     y += BLOCK_GAP;
     drawSection(ctx, b.label, b.hint, y);
@@ -736,14 +812,16 @@ export function drawRbPoster(
   }
 
   // 页脚(绝对定位:内容再长也不会把它顶出画面)
-  const footTop = h - ACCENT_H - FOOTER_H;
-  drawRule(ctx, footTop + 24, POSTER_W - PAD * 2);
-  ctx.textAlign = "center";
-  ctx.font = font(24, 600);
-  ctx.fillStyle = C.ink2;
-  ctx.fillText(model.credit.site, POSTER_W / 2, footTop + 62);
-  ctx.font = font(20, 400);
-  ctx.fillStyle = C.muted;
-  ctx.fillText(model.credit.by, POSTER_W / 2, footTop + 90);
-  ctx.textAlign = "left";
+  if (model.showFooter) {
+    const footTop = h - ACCENT_H - FOOTER_H;
+    drawRule(ctx, footTop + 24, POSTER_W - PAD * 2);
+    ctx.textAlign = "center";
+    ctx.font = font(24, 600);
+    ctx.fillStyle = C.ink2;
+    ctx.fillText(model.credit.site, POSTER_W / 2, footTop + 62);
+    ctx.font = font(20, 400);
+    ctx.fillStyle = C.muted;
+    ctx.fillText(model.credit.by, POSTER_W / 2, footTop + 90);
+    ctx.textAlign = "left";
+  }
 }

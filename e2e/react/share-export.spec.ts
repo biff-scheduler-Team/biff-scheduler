@@ -34,14 +34,16 @@ test("主导航是 2026-09-22 指定的新顺序，且「抢票」已下线", as
   const labels = (
     await page.getByRole("navigation", { name: "主要导航" }).getByRole("link").allTextContents()
   ).map((text) => text.trim());
+  // ⚠ 2026-10-14 用户重排（PLAN-20261014150805 修订 1）：「榜单」（原「红黑榜」）置顶、
+  //   「数据分析」从导航下线、两个查票入口合并成一项「查票」。
   expect(labels).toEqual([
+    "榜单",
     "排片表",
     "影片库",
     "我的选片",
     "我的行程",
-    "红黑榜",
+    "查票",
     "吃喝",
-    "数据分析",
     "建议",
   ]);
 

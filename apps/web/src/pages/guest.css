@@ -8,6 +8,17 @@
 .guest-list > li { min-width: 0; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
 .guest-stock { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 8px; }
 .guest-film-id { display: block; margin-top: 8px; }
+/* 渠道切换（2026-10-14，PLAN-20261014150805）：原先这里是两个 `<Link>`（导航里也各占一项），
+ * 现在是一个入口 + 页内分段控件；形态与「榜单」页的 tab 同源（hot-board.css::.board-tabs）。 */
+.guest-seg { display: inline-flex; align-items: stretch; padding: 3px; margin: 12px 0; border: 1px solid var(--line); border-radius: 12px; background: var(--raised); }
+.guest-seg-btn { padding: 7px 20px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: inherit; font-size: 14px; cursor: pointer; transition: background 0.12s ease, color 0.12s ease; }
+.guest-seg-btn:hover { color: var(--brand); }
+.guest-seg-btn[aria-pressed="true"] { background: var(--brand); color: #fff; font-weight: 600; }
 @media (max-width: 768px) {
   .guest-controls { align-items: stretch; flex-direction: column; }
+  .guest-seg { align-self: stretch; }
+  .guest-seg-btn { flex: 1; }
+}
+@media (pointer: coarse) {
+  .guest-seg-btn { min-height: 44px; }
 }

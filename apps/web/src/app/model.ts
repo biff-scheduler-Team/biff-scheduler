@@ -1,5 +1,8 @@
 import type { Catalog, ExtraProgram, FilmItem, Mapping, Screening } from "../types";
 import { extras, KIND_LABEL, programOf } from "../extras";
+// 单元身份（`unitKey`）与归属（`unitsOfFilm`）定义在叶子的 `units.ts`（2026-10-14 搬过去）：
+// 榜单 / 分享图那几支纯逻辑模块要用同一套归一化，而它们不该 import 本文件（本文件依赖 `util.ts`）。
+import { unitKey, unitsOfFilm } from "../units";
 import {
   bilingualTitle,
   catMetaLine,
@@ -10,6 +13,10 @@ import {
   normText,
   unitLabel,
 } from "../util";
+
+// ⚠ **原样转出**：`unitKey` / `unitsOfFilm` 原先定义在本文件，
+// 既有 `import { unitKey } from "../app/model"` 因此不受这次搬迁影响。
+export { unitKey, unitsOfFilm };
 
 export interface FilmNode {
   key: string;
@@ -142,27 +149,6 @@ export function searchFilm(node: FilmNode, query: string): boolean {
     return Boolean(program && [KIND_LABEL[program.kind], program.guest ?? "", program.guestZh ?? ""]
       .some((value) => normText(value).includes(keyword)));
   });
-}
-
-/** 与旧版选片器同一套归一化：只合并拼写变体，不合并子单元。 */
-export function unitKey(raw: string | null | undefined): string {
-  const value = (raw ?? "").trim();
-  const en = value.match(/^([A-Za-z][A-Za-z'&.\- ]*?)\s*(?=[\u4e00-\u9fa5])/);
-  if (en?.[1].trim()) return en[1].trim();
-  if (value.includes("年度亚洲电影人奖")) return "亚洲电影人奖";
-  return value || "未标注单元";
-}
-
-/** 一部目录片**归属的全部单元键**(主单元 ∪ 联映块单元)。
- *
- *  为什么不是单值:午夜单元的成员是「块内成员片」,而官网只给每部片一个主单元 ——
- *  实测 4 部(Sapiens / Angel′s Egg / The Spiral / Jim Queen)主单元在别处,却在午夜块里放,
- *  只看 `unit` 会让午夜单元少数这 4 部(5 部 vs 官网 9 部,`PLAN-20260915144335`)。
- *  ⚠ **计数(`libraryUnits`)与筛选(`filmInUnit`)必须同源走这里** —— 否则会出现
- *    「下拉说 9 部、点进去只有 5 张卡」。`unit` 本身仍是唯一身份,本函数不改它。
- */
-export function unitsOfFilm(film: FilmItem): string[] {
-  return [...new Set([film.unit, ...(film.also_units ?? [])])].map(unitKey);
 }
 
 export function filmInUnit(film: FilmNode, unit: string): boolean {

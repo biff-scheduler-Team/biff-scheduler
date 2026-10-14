@@ -49,18 +49,17 @@ async function seedCounts(page: Page) {
   return codes;
 }
 
-test("导航里「数据分析」紧接「建议」之前，且与页面标题同名", async ({ page }) => {
+test("「数据分析」已从导航下线，但直链仍可打开（暗门，与 /admin 同一做法）", async ({ page }) => {
   await ready(page, "/rush-analysis");
   const labels = (
     await page.getByRole("navigation", { name: "主要导航" }).getByRole("link").allTextContents()
   ).map((text) => text.trim());
-  // ⚠ 「抢票」页已于 2026-09-22 下线(`PLAN-20260922102751`),原先的「紧接抢票之后」不再成立;
-  //   用户重排后它收在后两位、紧邻「建议」。
-  expect(labels.indexOf("数据分析")).toBe(labels.indexOf("建议") - 1);
+  // ⚠ 2026-10-14（PLAN-20261014150805 修订 1）：入口下线，但**路由与页面都保留** ——
+  //   榜单页的「热门榜」是同一批数据的另一种（更好看的）呈现，不是把这一页删掉；
+  //   这一页仍留着「我的观影画像 / 影片分析」那一组。
+  //   于是「导航名 == 页面标题」那条老断言不再适用（导航里已经没有它了）。
+  expect(labels).not.toContain("数据分析");
   await expect(page.getByRole("heading", { name: "数据分析", exact: true })).toBeVisible();
-  // ⚠ 导航名与页面标题是**两处各写一遍**的字面量（App.tsx / RushAnalysisPage.tsx）。
-  //   这里断言它们逐字相同 —— 以后只改一处（2026-09-20 就是「抢票分析 → 数据分析」这种改名）
-  //   会在这里立刻红，而不是等到用户看见导航和标题不一致。
   expect(await page.locator(".ra-page h1").first().textContent()).toBe("数据分析");
 });
 

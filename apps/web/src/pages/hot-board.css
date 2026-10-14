@@ -1,0 +1,655 @@
+/* 「榜单」页的外壳 +「热门影片」编辑式排行榜（2026-10-14，PLAN-20261014150805 → PLAN-20261014162246）。
+ *
+ * ★ 颜色一律走既有 token（`--brand` / `--line` / `--muted` / `--surface` / `--raised` /
+ *   `--text` / `--brand-soft`），暗色只覆盖 token、本文件不写第二套色 —— 见 AGENTS §5「token 是唯一色源」。
+ * ★ 版式取「独立电影杂志 + 节展节目册」的路子：**克制**——细线分隔、大留白、字重与字号的层级差，
+ *   而不是圆角卡片 + 阴影 + 玻璃拟态（用户 2026-10-14 点名不要那几种）。
+ * ★ 硬约束：**不得引 ECharts**（榜单页是非 lazy 路由，见 `hot-board.ts` 文件头）。
+ */
+
+/* ---------------- 外层：页内 tab ---------------- */
+
+.board-page {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.board-tabs {
+  display: inline-flex;
+  align-items: stretch;
+  align-self: flex-start;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--raised);
+}
+
+.board-tab {
+  padding: 7px 20px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.board-tab:hover {
+  color: var(--brand);
+}
+
+.board-tab[aria-selected="true"] {
+  background: var(--brand);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ---------------- 热门影片面板 ---------------- */
+
+.hb-panel {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* ---------------- 刊头 ---------------- */
+
+.hb-masthead {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.hb-kicker {
+  margin: 0;
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+}
+
+.hb-masthead-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.hb-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: 0.01em;
+}
+
+/* 影片数 / 想看合计：辅助信息，压在标题右侧、字号明显小一档 */
+.hb-count {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 出图那条工具行。⚠ 2026-10-14 起左边那排档位（`.hb-modes`）连同它的 `.hb-mode` /
+   `.hb-hint` / 刊头说明（`.hb-lede` / `.hb-note`）一并删掉 —— 用户：「不需要 热门影片 /
+   正在升温 / 全部影片，还有上面的解释文字」。所以这条现在只剩「生成分享图」一颗按钮，
+   用 `margin-left: auto` 单独把它留在右侧（原先靠 `space-between` 与档位分居两端）。 */
+.hb-controls {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+/* ---------------- 单元筛选（下拉） ----------------
+ *
+ * ⚠ 2026-10-14 用户：「热门影片的单元还是没有通过下拉筛选」。原先这里是**一排
+ *   `aria-pressed` 按钮**（`.hb-unit-btn` 那条筛选带）—— 22 个单元在窄屏会折成好几行，
+ *   而且它根本不是下拉。现在换成 S2 `Picker`（与影片库的「单元」、本页分享图弹层同一支），
+ *   所以这一节只剩外层留白：控件自身的观感由 Spectrum 负责，不在这里再描一遍。
+ */
+.hb-units {
+  margin-top: 6px;
+}
+
+/* ---------------- 榜首（#01 主视觉） ---------------- */
+
+/* ⚠ 2026-10-14 用户：「第一名了海报有点大 把整个页面都占满了」——
+   原先海报吃掉左栏 44%（宽屏 ≈ 600px 宽 / 900px 高），一屏只剩它一个。
+   改成**定宽一栏**（280px → 高 420px，仍是 2:3），既保住「榜首是主视觉」，
+   又把首屏还给海报墙。⚠ 别再写回百分比：宽屏下它会随视口一起胀。 */
+.hb-lead {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 36px;
+  align-items: start;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* 海报框恒定 2:3；图片走 `contain` —— 需求要「尽可能完整展示、不必要不裁切」，
+   两张海报的比例万一不是 2:3，`cover` 会切掉边（`contain` 只留一点底色）。 */
+.hb-lead-media {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--raised);
+}
+
+.hb-lead-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* 缺图占位：统一底色 + 片名首字（**不生成假海报**）。
+   ⚠ 字号跟着上面那次缩版一起收（64px 是给 600px 宽的海报框定的）。 */
+.hb-lead-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--muted);
+  font-size: 40px;
+  font-weight: 700;
+}
+
+.hb-lead-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.hb-lead-tag {
+  margin: 0;
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+}
+
+/* 排名数字：编辑式排版的主角之一，但**不能喧宾夺主** —— 所以压在片名上方、字号小于片名 */
+.hb-lead-rank {
+  margin: 0;
+  color: var(--text);
+  font-size: 56px;
+  font-weight: 700;
+  line-height: 0.9;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.22;
+}
+
+.hb-lead-title {
+  margin: -34px 0 0;
+  color: var(--text);
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+}
+
+.hb-lead-orig {
+  margin: 0;
+  color: var(--muted-strong);
+  font-size: 15px;
+  font-style: italic;
+}
+
+.hb-lead-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.hb-lead-summary {
+  max-width: 62ch;
+  margin: 4px 0 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.75;
+  /* 简介最长 4 行（册子原文很长）：超出省略，版面交给海报墙 */
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hb-lead-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.hb-lead-want {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.hb-lead-want strong {
+  color: var(--text);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hb-lead-score {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hb-lead-cta {
+  padding: 9px 18px;
+  border: 1px solid var(--brand);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--brand);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.hb-lead-cta:hover {
+  background: var(--brand);
+  color: #fff;
+}
+
+/* ---------------- 海报墙（第 2 名起） ---------------- */
+
+.hb-grid {
+  display: grid;
+  /* 桌面 4–5 列（窄一点的桌面自动落到 4 列） */
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 28px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hb-card {
+  min-width: 0;
+}
+
+/* 整格一颗按钮：点击区就是海报本体（触屏下限 44px 远超），键盘 Tab 也停在这里 */
+.hb-card-btn {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hb-card-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+
+/* 海报框：**hover 的裁剪边界就在这一层** —— 放大发生在框内，所以
+   ① 不会溢出去压到邻格，② 不会把父级的 overflow 触发成滚动条 */
+.hb-frame {
+  position: relative;
+  display: block;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--raised);
+}
+
+.hb-frame-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.26s ease-out, filter 0.26s ease-out;
+}
+
+.hb-frame-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--muted);
+  font-size: 34px;
+  font-weight: 700;
+}
+
+/* 底部渐变遮罩：由透明到较深，只压在海报下缘 */
+.hb-veil {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.76) 0%,
+    rgba(0, 0, 0, 0.34) 40%,
+    rgba(0, 0, 0, 0) 70%
+  );
+  opacity: 0;
+  transition: opacity 0.26s ease-out;
+  pointer-events: none;
+}
+
+.hb-hover {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.24s ease-out, transform 0.24s ease-out;
+  pointer-events: none;
+  color: #fff;
+}
+
+.hb-hover-unit {
+  font-size: 11.5px;
+  line-height: 1.4;
+  opacity: 0.86;
+}
+
+.hb-hover-more {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* hover 与键盘聚焦**同一套揭示**：只用鼠标能看到的信息，键盘用户也该看到 */
+.hb-card-btn:hover .hb-frame-img,
+.hb-card-btn:focus-visible .hb-frame-img {
+  transform: scale(1.03);
+  filter: brightness(1.06) contrast(1.03);
+}
+
+.hb-card-btn:hover .hb-veil,
+.hb-card-btn:focus-visible .hb-veil {
+  opacity: 1;
+}
+
+.hb-card-btn:hover .hb-hover,
+.hb-card-btn:focus-visible .hb-hover {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* 说明行：**常驻**（移动端没有 hover，必要信息一项都不许藏在遮罩里） */
+.hb-cap {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.hb-cap-rank {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.hb-cap-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hb-cap-title {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  /* 长片名换行，但不许把网格撑歪：两行封顶 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hb-cap-sub {
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hb-cap-want {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 名次变化：只在**算得出**且真的动了时出现（见 `hot-board.ts::applyRankDeltas`） */
+.hb-trend {
+  font-weight: 600;
+}
+
+.hb-trend--up {
+  color: var(--brand);
+}
+
+.hb-trend--down {
+  color: var(--muted);
+}
+
+/* ---------------- 显示更多 ---------------- */
+
+.hb-more {
+  display: flex;
+  justify-content: center;
+}
+
+.hb-more-btn {
+  padding: 10px 22px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.hb-more-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+/* ---------------- 分享弹层内的几处说明（与 `.rb-share-*` 同一观感，各自一份） ---------------- */
+
+.hb-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 形态与 `.rb-share-btn` 一致（同一应用里「出图」是同一件事的同一个按钮），
+   ⚠ 但**不共用那条类名**：它定义在 `redblack-parity.css`，从「榜单」页的样式表里借另一个
+   页面文件里的类名，会让「改红黑榜的按钮」悄悄改到热门榜（§5 不许同一个东西两处描述、
+   也不许两处互相牵连）。这几条各自只有几行，重复的成本低于耦合的成本。 */
+.hb-share-btn {
+  padding: 9px 18px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--brand);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+
+.hb-share-btn:hover {
+  filter: brightness(1.08);
+}
+
+.hb-share-lede {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.hb-share-scope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px 16px;
+  margin: 0 0 12px;
+}
+
+.hb-share-size {
+  margin: 6px 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.hb-share-size strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.hb-share-preview {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  margin: 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+/* ---------------- 窄屏 ---------------- */
+
+@media (max-width: 1100px) {
+  /* 平板：海报墙 3 列 */
+  .hb-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 24px 16px;
+  }
+}
+
+@media (max-width: 860px) {
+  /* 榜首改纵排：海报在上、信息在下（需求：移动端自然切换为纵向布局） */
+  .hb-lead {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+
+  /* 纵排时海报仍然**封顶 280px**（与宽屏那一栏同宽）——不再让它在手机上撑满屏宽：
+     用户 2026-10-14 的反馈是「海报有点大 把整个页面都占满了」，手机上撑满只会更明显 */
+  .hb-lead-media {
+    max-width: 280px;
+  }
+
+  .hb-lead-title {
+    font-size: 28px;
+  }
+
+  .hb-lead-rank {
+    font-size: 44px;
+  }
+
+  .hb-title {
+    font-size: 28px;
+  }
+}
+
+@media (max-width: 560px) {
+  .board-tabs {
+    align-self: stretch;
+  }
+
+  .board-tab {
+    flex: 1;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  /* 手机：海报墙 2 列 */
+  .hb-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px 12px;
+  }
+
+  /* hover 那点信息在手机上根本没有鼠标可用；说明行本身就常驻，所以这里只把
+     遮罩淡出的那套动画关掉（省一点合成开销），不加任何新规则 */
+  .hb-hover,
+  .hb-veil {
+    display: none;
+  }
+}
+
+@media (pointer: coarse) {
+  /* 触控目标下限 44px（与 redblack-parity.css 同一条口径 —— 电影节现场主要用手机） */
+  .board-tab,
+  .hb-share-btn {
+    min-height: 44px;
+  }
+}
+
+/* 减少动态效果：**关掉过渡与缩放**，但信息一样都不少 ——
+   遮罩与「查看详情」在 :hover 下仍然是即时出现，说明行本来就是常驻的。 */
+@media (prefers-reduced-motion: reduce) {
+  .hb-frame-img,
+  .hb-veil,
+  .hb-hover,
+  .hb-share-btn,
+  .hb-lead-cta,
+  .hb-more-btn {
+    transition: none;
+  }
+
+  .hb-card-btn:hover .hb-frame-img,
+  .hb-card-btn:focus-visible .hb-frame-img {
+    transform: none;
+  }
+}

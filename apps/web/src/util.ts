@@ -1,7 +1,7 @@
 // 通用工具:时间换算 / 格式化 / 影片信息(片名 + 元信息行)
 
 import type { Catalog, FilmItem, Mapping, Screening } from "./types";
-import { unitDef } from "./units";
+import { unitDef, unitsOfFilm } from "./units";
 
 export function hmsToMin(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
@@ -255,6 +255,17 @@ export function filmEnName(f: FilmItem): string {
 export function unitLabel(raw: string | null | undefined): string {
   const def = unitDef(raw);
   return def ? bilingualTitle(def.en, def.zh) : (raw ?? "").trim();
+}
+
+/** 一部影片**归属的全部单元键**(已归一;空数组 = 没有任何单元信息)。
+ *  ⚠ `FilmNode` 上没有 `unit` —— 它挂在目录条目(`FilmItem.cats`)上,所以逐条并起来再归一。
+ *  ⚠ **口径不在这里定**:身份与归属都走 `units.ts::unitKey` / `unitsOfFilm`
+ *    (与影片库的筛选 `filmInUnit` / 计数 `libraryUnits` **同一支**)——
+ *    本函数只负责「影片节点 → 目录条目」这一段搬运(§5 口径单一来源)。
+ *  ⚠ 用数组而不是单值:联映块成员片(`also_units`)在午夜单元里也算成员 ——
+ *    只认主单元会让榜单说 5 部、影片库说 9 部。 */
+export function filmUnitKeys(film: { cats: readonly FilmItem[] }): string[] {
+  return [...new Set(film.cats.flatMap((cat) => unitsOfFilm(cat)))];
 }
 
 /** 目录条目的「单元 · 国家 · 年份 · 导演」元信息(空位自动省略,全空则空串)。

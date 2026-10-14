@@ -18,6 +18,7 @@ import { peekWantCounts } from "../want-counts";
 import { peekFilmVotes } from "../film-votes";
 import { peekScreeningCounts } from "../screening-counts";
 import { MIN_VOTES_FOR_VERDICT } from "../rush-analysis";
+import { compareByWant } from "../hot-board";
 import { wantCountLabel, WANT_LABEL } from "../actions-copy";
 import type { Catalog, Screening } from "../types";
 import { dateInfo, normText } from "../util";
@@ -84,7 +85,9 @@ export function RushCrowdPanel({ tokens }: { tokens: ChartTokens }) {
           };
         })
         .filter((row) => row.want > 0 || row.red + row.black > 0)
-        .sort((a, b) => b.want - a.want || a.title.localeCompare(b.title)),
+        // 排序口径**单一来源**（2026-10-14，PLAN-20261014150805）：与榜单页的「热门榜」
+        // 共用同一支比较器 —— 两处各写一份迟早出现「一处按片名、一处按目录序」的分歧。
+        .sort(compareByWant),
     [films, wantCounts, votes, attendance],
   );
 

@@ -87,6 +87,80 @@ function mockFilmVotes(
   response.end(body);
 }
 
+// Mock 想看人数（仅 dev，2026-10-14，`PLAN-20261014150805`）。
+//
+// 为什么需要它：真实接口 `GET /api/stats/want-counts` 由 API Worker 提供，**dev server 没有**——
+// 而「榜单」页的「热门榜」整个建立在想看数上（排序依据 + 每行的大字），没有它本地只会看到
+// 一列 `0 人想看`，等于这个新页面看不出任何效果。
+//
+// 生成方式与 `mockFilmVotes` 同一手法：**确定性 hash**（同一份 films.json 每次结果相同），
+// 所以「刷新前后数字一样」，可以拿它做视觉对比。范围 0–189，与线上量级（12,092 总数 / 223 部有数据）同量级。
+function mockWantCounts(
+  request: IncomingMessage,
+  response: ServerResponse,
+  next: () => void,
+) {
+  const [pathname] = (request.url ?? "").split("?");
+  if (pathname !== "/api/stats/want-counts") return next();
+
+  const filmsPath = fileURLToPath(new URL("./public/films.json", import.meta.url));
+  const raw = JSON.parse(readFileSync(filmsPath, "utf8")) as {
+    films: { id: string }[];
+  };
+
+  const counts: Record<string, number> = {};
+  raw.films.forEach((f, i) => {
+    // 另一组乘数（与 mockFilmVotes 不同）→ 想看数与票数**不相关**，
+    // 免得本地看起来像「票多的必然想看多」那种本来不存在的规律。
+    const h = (((i + 1) * 2246822519) >>> 0) ^ 0x9e3779b9;
+    const want = (h >>> 3) % 190;
+    if (want > 0) counts[`cat:${f.id}`] = want;
+  });
+
+  const body = JSON.stringify({ counts });
+  response.statusCode = 200;
+  response.setHeader("Content-Type", "application/json");
+  response.setHeader("Content-Length", Buffer.byteLength(body));
+  response.end(body);
+}
+
+// ── 「正在升温」的本地假数据(2026-10-14,PLAN-20261014162246)────────────────────
+// 真实接口 `GET /api/stats/want-trend` 同样**只在 API Worker 上**,dev server 没有它 ——
+// 而「正在升温」这一档整个建立在「今日新增」上,没有它本地永远是那个空态。
+//
+// ⚠ 与 `mockWantCounts` 的两点刻意差别:
+//   ① 只给**一小撮**影片非零增量(约 1/5):真实的「升温」就该是少数几部,
+//      给每一部都加一点,本地看起来就像「全站都在升温」,反而看不出榜单在做什么;
+//   ② 增量量级(1–24)明显小于累计数(0–189):新增 **1000** 累计 **2** 这种组合读起来就是假的。
+function mockWantTrend(
+  request: IncomingMessage,
+  response: ServerResponse,
+  next: () => void,
+) {
+  const [pathname] = (request.url ?? "").split("?");
+  if (pathname !== "/api/stats/want-trend") return next();
+
+  const filmsPath = fileURLToPath(new URL("./public/films.json", import.meta.url));
+  const raw = JSON.parse(readFileSync(filmsPath, "utf8")) as {
+    films: { id: string }[];
+  };
+
+  const deltas: Record<string, number> = {};
+  raw.films.forEach((f, i) => {
+    const h = (((i + 1) * 2654435761) >>> 0) ^ 0x85ebca6b;
+    if (h % 5 !== 0) return;
+    deltas[`cat:${f.id}`] = 1 + ((h >>> 5) % 24);
+  });
+
+  // KST 当日:日账本的日界由服务端算,这里只是为了本地形状正确(与 `apps/api/src/day.ts` 同口径)
+  const toDay = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const body = JSON.stringify({ fromDay: toDay, toDay, days: 1, deltas });
+  response.statusCode = 200;
+  response.setHeader("Content-Type", "application/json");
+  response.setHeader("Content-Length", Buffer.byteLength(body));
+  response.end(body);
+}
+
 // ── IDE 安全垫片阈值(2026-09-11)────────────────────────────────────────────
 // 症状:dist/ 已存在时 `vite build` 必失败,报
 //   [safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED] {"count":527,"threshold":500,...}
@@ -144,6 +218,8 @@ export default defineConfig({
       name: "legacy-entry-redirect",
       configureServer(server) {
         server.middlewares.use(mockFilmVotes);
+        server.middlewares.use(mockWantCounts);
+        server.middlewares.use(mockWantTrend);
         server.middlewares.use(legacyRedirect);
       },
       configurePreviewServer(server) {
