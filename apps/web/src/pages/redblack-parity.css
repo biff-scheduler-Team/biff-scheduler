@@ -1811,9 +1811,13 @@
  * ⚠ 颜色一律走既有 token（`--brand` / `--line` / `--surface` / `--raised` / `--muted` / `--text`），
  *   本文件之外不新增色值（AGENTS §5：token 是唯一色源）。 */
 
-/* 工具条上那枚**总入口**。⚠ 弱按钮（与 `.rb-filter` 同权、同形态），不给品牌色实底 ——
- * 这一排里只有「生成分享图」是主操作。 */
-.rb-board-btn {
+/* 工具条上那两枚**弱按钮**：
+ *  · `.rb-board-btn` = 讨论区总入口（2026-10-07）；
+ *  · `.rb-qr-btn` = 「扫码投票」二维码（2026-10-14，PLAN-20261014205414）。
+ * ⚠ 两者是**同一个形态**，所以写成一个选择器 —— 抄第二份的话，hover / 触控下限迟早在两处分叉（§5）。
+ * ⚠ 弱按钮（与 `.rb-filter` 同权），不给品牌色实底 —— 这一排里只有「生成分享图」是主操作。 */
+.rb-board-btn,
+.rb-qr-btn {
   padding: 6px 14px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -1823,7 +1827,8 @@
   cursor: pointer;
 }
 
-.rb-board-btn:hover {
+.rb-board-btn:hover,
+.rb-qr-btn:hover {
   border-color: var(--brand);
   color: var(--brand);
 }

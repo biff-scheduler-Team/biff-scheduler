@@ -266,7 +266,10 @@
         "apps/api/migrations/0011_lucky_spitfire.sql",
         "apps/web/src/quick-vote.ts",
         "apps/web/src/components/QuickVoteDeck.tsx",
-        "apps/web/src/components/quick-vote.css"
+        "apps/web/src/components/quick-vote.css",
+        "apps/web/src/qr.ts",
+        "apps/web/src/components/VoteQrDialog.tsx",
+        "apps/web/src/components/vote-qr.css"
       ],
       "specs": [
         "redblack"

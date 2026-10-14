@@ -16,6 +16,7 @@ import {
   resolveSwipe,
   SWIPE_RATIO,
   voteStateLabel,
+  voteUrl,
 } from "../src/quick-vote";
 
 const UNIT = 300;
@@ -168,5 +169,21 @@ describe("deckStateOf / voteStateLabel:对外那三个词", () => {
     expect(voteStateLabel("red")).toBe("已投红榜");
     expect(voteStateLabel("black")).toBe("已投黑榜");
     expect(voteStateLabel(undefined)).toBe("还没决定");
+  });
+});
+
+describe("voteUrl:扫码投票那条链接", () => {
+  // 2026-10-14（PLAN-20261014205414）。两个参数都不能少：
+  //   `sort=red` —— 扫码的人落地的档位（`BoardPage::readTab` 的缺省是热门榜）；
+  //   `vote=1`   —— 当场弹出快速投票卡片；而 `BoardPage` 的落地 effect **只在 `sort` 缺失时**
+  //                 才决定缺省档，所以两个都得写全，否则「扫码 → 卡片根本没挂载」。
+  it("带上 sort 与 vote，且用调用方给的 origin", () => {
+    expect(voteUrl("https://biff.lcandy.co")).toBe(
+      "https://biff.lcandy.co/redblack?sort=red&vote=1",
+    );
+  });
+
+  it("origin 原样拼接，不在这里猜域名", () => {
+    expect(voteUrl("http://localhost:5173")).toBe("http://localhost:5173/redblack?sort=red&vote=1");
   });
 });

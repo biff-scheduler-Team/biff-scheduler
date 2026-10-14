@@ -34,7 +34,13 @@
    所以它必须能溢出容器还能被看见（`overflow: visible`），否则「飞出去」会被裁成「原地消失」。 */
 .qv-stage {
   position: relative;
-  width: min(78vw, 320px);
+  /* ⚠ `36vh` 这一项是 2026-10-14 加的（PLAN-20261014205414，用户「移动端海报太大了」）：
+   *   卡片高 = 宽 × 1.5（2/3 的竖版海报），而手机竖屏真正的瓶颈是**高度** ——
+   *   只按 `78vw` 算时，390px 宽的手机上卡片高约 456px，再叠上计数行 / 图例 / 按钮排 /
+   *   撤回条这几行，整个弹层就超过一屏了（390 × 667 实测：差 7px，最后一行要滚才够得着）。
+   *   取 `36vh` ⇒ 卡片高约 54vh，剩下 46vh 留给那几行；
+   *   ⚠ 桌面端（982 高）`36vh = 353px > 320px`，仍受 `320px` 约束 —— 逐像素不变。 */
+  width: min(78vw, 320px, 36vh);
   aspect-ratio: 2 / 3;
   /* 卡片与牌堆都要飞出 / 露到盒子外，所以这里不能裁切 */
   overflow: visible;
@@ -291,7 +297,35 @@
   }
 }
 
-/* ---------------- 按钮与撤销 ---------------- */
+/* ---------------- 方向图例 / 按钮 / 撤回 ---------------- */
+
+/* 常驻方向图例（2026-10-14，PLAN-20261014205414）：回答「左右**是什么**」。
+ * ⚠ 它与卡片上那两枚跟手标记（`.qv-mark`）**不是一回事**：那两枚说「这一下会投成什么」，
+ *   只在拖动时渐显；这一行不跟手、不带状态、每张卡都亮着 —— 用户朋友原话「不知道左右哪个是喜欢」。
+ * ⚠ 红黑两色仍取 `--rb-red` / `--rb-black`（与画布上那两枚贴纸同一个源，§5）。 */
+.qv-legend {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.qv-legend-left {
+  color: var(--rb-black);
+}
+
+.qv-legend-skip {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.qv-legend-right {
+  color: var(--rb-red);
+}
 
 .qv-actions {
   display: flex;
@@ -300,31 +334,43 @@
   justify-content: center;
 }
 
+/* 撤回区：**状态条**（2026-10-14 升级，见 `QuickVoteDeck.tsx` 那段注释）。
+ * ⚠ 高度固定住：空态（一句灰字）与有历史（回执 + 按钮）之间切换时不该让整块版面跳一下。 */
 .qv-undo-row {
   display: flex;
+  gap: 8px;
+  align-items: center;
   justify-content: center;
+  min-height: 32px;
 }
 
-/* 撤销是**弱按钮**：它是回头路，不该与那三颗并列抢视觉重心 */
+/* 「刚才那一下做成了什么」的回执 —— 它是**说明**（比正文弱），真正的按钮是右边那枚 */
+.qv-undo-text {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 空态那句「划错了可以撤回」：比回执更淡 —— 没划过时它在解释，划过之后位子要让给回执 */
+.qv-undo-idle {
+  font-size: 12px;
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+/* 撤回是**弱按钮**：它是回头路，不该与那三颗并列抢视觉重心 */
 .qv-undo {
   padding: 5px 12px;
-  border: 1px solid transparent;
+  border: 1px solid var(--line);
   border-radius: 8px;
   background: transparent;
-  color: var(--muted);
+  color: var(--brand);
   font-size: 12px;
   cursor: pointer;
 }
 
-.qv-undo:hover:not(:disabled) {
-  border-color: var(--line);
+.qv-undo:hover {
   background: var(--raised);
-  color: var(--brand);
-}
-
-.qv-undo:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  border-color: var(--brand);
 }
 
 .qv-help {
@@ -461,9 +507,34 @@
   }
 }
 
+/* 矮屏（≤ 700px 高）再收一档（2026-10-14，PLAN-20261014205414）。
+ * ⚠ 为什么不把主规则的 `36vh` 直接写小：`982px` 高的桌面上 `36vh = 353px > 320px`，
+ *   桌面卡片恰好只受 `320px` 约束（逐像素不变）—— 系数一旦低于 `33vh`，桌面就会跟着缩水。
+ *   矮屏这一档用 media query 单独收，桌面那侧就动不到。
+ * ⚠ 两件事一起做：卡片从 `36vh` 收到 `32vh`，同时**说明行让位** ——
+ *   它讲的三件事（左滑 / 右滑 / 上滑）常驻图例已经逐字说了，多出来的只有键盘快捷键，
+ *   而那在手机上本来就没有键盘可敲。实测 390 × 667：不收这两处，最后一行要滚才够得着。 */
+@media (max-height: 700px) {
+  .qv-help {
+    display: none;
+  }
+
+  .qv-stage {
+    width: min(78vw, 320px, 32vh);
+  }
+}
+
 /* 窄屏：两面板报墙叠成一列，别把格子挤到 30px 以下（那时海报已认不出是哪部） */
 @media (max-width: 560px) {
   .qv-walls {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* 窄屏不渲染简介（2026-10-14，PLAN-20261014205414）：卡片被 `38vh` 收小之后，
+     caption 里**最长**的那一段会把「红 N · 黑 N」挤出可视区（caption 是 `overflow: hidden`，
+     被裁掉的正是底部）。手机上认片靠海报 + 片名 + 场次，简介属于「在电脑上看」的那一层。
+     ⚠ 用 CSS 而不是在组件里判视口：组件不该知道屏幕多大，而这一条纯是版式取舍。 */
+  .qv-intro {
+    display: none;
   }
 }

@@ -150,6 +150,18 @@ export function deckStateOf(vote: StickerType | undefined): DeckState {
   return "undecided";
 }
 
+/** 「扫码投票」那个二维码里编的链接 —— **唯一**口径（2026-10-14，PLAN-20261014205414）。
+
+ *  ⚠ 为什么带 `sort=red&vote=1`：扫码的人目的就是**投票**，不是看榜。
+ *    `sort=red` 让落地档是红榜（`BoardPage::readTab` 的缺省），`vote=1` 让它当场弹出快速投票卡片
+ *    （`BoardPage` 的落地 effect 只在 `sort` 缺失时才决定，所以这里必须把两个都写全，
+ *    否则「扫码 → 落到热门榜 → 卡片根本没挂载」）。
+ *  ⚠ `origin` 由调用方给（含协议，如 `https://biff.lcandy.co`）—— 域名只有 `poster-brush.ts::SITE`
+ *    一处来源，纯函数不去猜它（与 `quickVoteOrder` / `pendingQueue` 同一条规矩）。 */
+export function voteUrl(origin: string): string {
+  return `${origin}/redblack?sort=red&vote=1`;
+}
+
 /** 卡片上那句「这部片现在是什么状态」的文案 —— **唯一**口径，别在 JSX 里另写一份三元链。 */
 export function voteStateLabel(vote: StickerType | undefined): string {
   if (vote === "red") return "已投红榜";

@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { keyOf, paintedTexts, ready, trackPaintedTexts } from "./helpers";
+import { keyOf, legacyData, paintedTexts, ready, seed, trackPaintedTexts } from "./helpers";
 
 // 电影红黑榜(2026-09-16,PLAN-20260916102339)。
 //
@@ -1499,4 +1499,131 @@ test("卡片上的「红 / 黑」按钮直接投票：点一下随机落一枚�
       { timeout: 8000 },
     )
     .toBe("black");
+});
+
+/* ⚠ 2026-10-14（`PLAN-20261014205414`）：下面是**本次**新增的三条，守着手机端那几条反馈 ——
+ * 「不知道左右哪个是喜欢」「需要指引和反悔机制」「把红黑榜链接做成一个二维码」。
+ * 它们对着的正是修订 6 之后那一套契约（卡片上的按钮 / 常驻图例 / 撤回条 / 扫码弹层）。 */
+
+/** 打开快速投票卡片所需的本地基线：**行程里有片**（`biff.picks.v2`）。
+ *  ⚠ 不种它的话 `deck` 会退到「热门榜 TOP50」兜底支 —— 那条路还要等 `want-counts` 接口，
+ *    而本文件里那些 stub 并不提供它（卡片会停在「正在取热门榜的候选…」）。 */
+const deckSeed = { "biff.picks.v2": legacyData["biff.picks.v2"] };
+
+test("快速投票：不拖动也能看出左右是什么 —— 常驻方向图例与「不喜欢 / 喜欢」按钮", async ({
+  page,
+}) => {
+  await stubEmpty(page);
+  await seed(page, deckSeed);
+  await ready(page, "/redblack?sort=red&vote=1");
+
+  await expect(page.locator(".qv-card")).toBeVisible();
+
+  // ① 常驻图例：它**不靠拖动**才出现 —— 用户朋友的问句「不知道左右哪个是喜欢」就是这条的由来
+  const legend = page.locator(".qv-legend");
+  await expect(legend).toBeVisible();
+  await expect(legend).toContainText("左滑 · 不喜欢");
+  await expect(legend).toContainText("右滑 · 喜欢");
+
+  // ② 三枚按钮把方向与语义一起写出来（「黑 / 红」是榜单术语，新用户读不出方向）
+  await expect(page.getByRole("button", { name: "不喜欢（投黑榜）" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "喜欢（投红榜）" })).toBeVisible();
+});
+
+test("快速投票：投完出现「已投红榜 · 撤回」，撤回后那一票被撤掉", async ({ page }) => {
+  await stubEmpty(page);
+  await seed(page, deckSeed);
+  await page.route("**/api/stats/film-votes-ping", (route) =>
+    route.fulfill({ json: { ok: true, count: 1, votes: {}, skins: {} } }),
+  );
+  await ready(page, "/redblack?sort=red&vote=1");
+
+  // ① 空态也把那句话说全：看不见的东西用户不会去用，而撤回恰恰最需要被看见
+  await expect(page.locator(".qv-undo-idle")).toHaveText("划错了可以撤回");
+  await expect(page.locator(".qv-undo")).toHaveCount(0);
+
+  const card = page.locator(".qv-card");
+  const first = await card.getAttribute("data-qv-key");
+  await page.getByRole("button", { name: "喜欢（投红榜）" }).click();
+
+  // ② 回执说清「刚才那一下做成了什么」—— 这正是 `Step.after` 存在的理由
+  await expect(page.locator(".qv-undo-text")).toHaveText("已投红榜");
+  await expect(page.locator(".qv-undo-text")).toHaveAttribute("data-qv-last", "red");
+
+  // ③ 撤回：先恢复数据、再退回上一张（`undo()` 的顺序没改）。
+  //    ⚠ 先等**落定动画**走完（`data-qv-index` 从 0 变 1）：那 300ms 里 `committing` 为真，
+  //      撤回会被按设计挡掉（动画期间不接受第二次推进）—— 真人不会在这 300ms 里点，
+  //      而这里必须按真人的节奏走，否则断言的是「并发竞态」而不是「撤回本身」。
+  await expect(card).toHaveAttribute("data-qv-index", "1");
+  await page.locator(".qv-undo").click();
+
+  await expect(page.locator(".qv-card")).toHaveAttribute("data-qv-key", first!);
+  await expect(page.locator('.qv [data-qv-mine="undecided"]')).toBeVisible();
+  await expect(page.locator(".qv-undo-idle")).toHaveText("划错了可以撤回");
+});
+
+test("快速投票：矮屏（390 × 667）里卡片不再顶满一屏 —— 海报高度受视口约束", async ({ page }) => {
+  // 用户原话「移动端海报太大了」。钉住它的判据不是「卡片多宽」而是**卡片多高**：
+  // 海报是 2/3 的竖版，高度 = 宽度 × 1.5，所以矮屏上「一屏放不下那几行」的根因在高度。
+  // ⚠ 用 667 高（iPhone SE 那一档）：Pixel 7（915）与 iPhone 13（844）的 `36vh` 恰好大于
+  //   `320px` 上限，这条在那两台机器上**测不出差别** —— 必须把视口压到矮屏才守得住。
+  await page.setViewportSize({ width: 390, height: 667 });
+  await stubEmpty(page);
+  await seed(page, deckSeed);
+  await ready(page, "/redblack?sort=red&vote=1");
+
+  // 两件事一起量：卡片**自身**的高度受没受约束、以及那几行够不够得着。
+  // ⚠ 用 `getBoundingClientRect().bottom ≤ innerHeight` 而不是 `toBeInViewport()`：
+  //   后者走 IntersectionObserver，会把**祖先的裁剪**也算进去，这个弹层里报出来是 ratio 0
+  //   （元素明明在窗口里）—— 断言的是「用户够不够得着」，那就直接量那个距离。
+  // ⚠ 视口高度也取 `innerHeight` 而不是写死的 667：移动端模拟里 `setViewportSize` 之后
+  //   真正参与布局的高度与桌面档并不相同（`vh` 也按它算），写死会把差异判成失败。
+  const measured = await page.evaluate(() => {
+    const rectOf = (selector: string) => document.querySelector(selector)!.getBoundingClientRect();
+    return {
+      stage: rectOf(".qv-stage").height,
+      // 卡片是 2/3 的竖版：高度 = 宽度 × 1.5，“一屏放不下”的根因在这里而不是宽度
+      lowest: Math.max(
+        rectOf(".qv-legend").bottom,
+        rectOf(".qv-actions").bottom,
+        rectOf(".qv-undo-row").bottom,
+        rectOf('[aria-label="喜欢（投红榜）"]').bottom,
+      ),
+      viewport: window.innerHeight,
+    };
+  });
+  expect(measured.stage, JSON.stringify(measured)).toBeLessThanOrEqual(measured.viewport * 0.65);
+  expect(measured.lowest, JSON.stringify(measured)).toBeLessThanOrEqual(measured.viewport);
+});
+
+test("扫码投票：控制栏那枚按钮打开弹层，里面是一枚画好了的二维码", async ({ page }) => {
+  await stubEmpty(page);
+  await ready(page, "/redblack?sort=red");
+
+  const entry = page.getByRole("button", { name: "打开扫码投票二维码" });
+  await entry.click();
+  const dialog = page.getByRole("dialog", { name: "扫码投票" });
+  await expect(dialog).toBeVisible();
+
+  // 二维码真的画上去了 —— canvas 手绘没有 DOM 可断言，只能读像素：
+  // 白底之外必须有**足够多的深色格**（全白 = 没画、全黑 = 画反了，两种都扫不出来）。
+  const darkRatio = await dialog.locator("canvas.qr-canvas").evaluate((node) => {
+    const canvas = node as HTMLCanvasElement;
+    const ctx = canvas.getContext("2d")!;
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let dark = 0;
+    for (let i = 0; i < data.length; i += 4) if (data[i] < 128) dark += 1;
+    return dark / (data.length / 4);
+  });
+  expect(darkRatio).toBeGreaterThan(0.1);
+  expect(darkRatio).toBeLessThan(0.7);
+
+  // 链接也亮出来了：同一台手机上自扫时靠它兜底；两个参数少一个落点就不对
+  await expect(dialog).toContainText("/redblack?sort=red&vote=1");
+  await expect(dialog.getByRole("button", { name: "下载 PNG 图片" })).toBeVisible();
+
+  // Esc 关闭 + 焦点归还那枚入口按钮（与分享图同一个手法）
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(entry).toBeFocused();
 });

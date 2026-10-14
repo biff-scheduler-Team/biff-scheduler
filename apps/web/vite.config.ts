@@ -206,6 +206,12 @@ export default defineConfig({
           // 该 chunk 因此**不进首屏**。
           // ⚠ `zrender` 是 ECharts 的渲染底座,不加进来它会落到 spectrum 里。
           if (/\/(echarts|zrender)\//.test(id)) return "charts";
+          // 二维码编码器(2026-10-14,PLAN-20261014205414):它**只**被「扫码投票」那个弹层用到,
+          // 而那个弹层是懒加载的(`RedBlackPage.tsx::LazyVoteQrDialog`)。
+          // ⚠ 不单独拆出来就会被下面那条兜底规则并进 `spectrum`,而 spectrum 是**首屏共享 chunk**
+          //   (几乎每个页面都 import 它)—— 等于让所有不扫码的人也下载一个二维码编码器(约 11KB gz)。
+          //   与 `charts` 是同一条理由,只是它更小、更容易被漏掉。
+          if (/\/qrcode-generator\//.test(id)) return "qrcode";
           return "spectrum";
         },
       },

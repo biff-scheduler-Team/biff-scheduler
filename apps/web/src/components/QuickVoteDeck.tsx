@@ -113,13 +113,17 @@ function shardVector(cardIndex: number, shardIndex: number): { dx: number; dy: n
   };
 }
 
-/** 撤销栈里的一条。`vote === null` = 那一次是**跳过**（没写东西，撤销只需退回去一张）。 */
+/** 撤销栈里的一条。`after === null` = 那一次是**跳过**（没写东西，撤销只需退回去一张）。 */
 interface Step {
   key: string;
   /** 操作**之前**的状态；`undefined` = 本来没有（撤销 = 把那一枚撤掉） */
   before: StickerType | undefined;
   /** 那一次真的写了状态没有（跳过就是 `false`） */
   wrote: boolean;
+  /** 那一次**写了哪一色**（`null` = 跳过）。
+   *  ⚠ 只用来把撤回区那句话写准（「已投红榜」）—— `wrote` 只说「写没写」，
+   *    说不出「写成什么」，而用户要看的正是后者（2026-10-14，PLAN-20261014205414）。 */
+  after: StickerType | null;
 }
 
 interface QuickVoteDeckProps {
@@ -210,14 +214,14 @@ export function QuickVoteDeck({
       setLeaving(axis);
       if (intent) {
         onVote(current.key, intent);
-        setHistory((prev) => [...prev, { key: current.key, before, wrote: true }]);
+        setHistory((prev) => [...prev, { key: current.key, before, wrote: true, after: intent }]);
         // ⚠ 触觉只在**真的写了一张票**时响：跳过不是一次表态，给它一次震动会读成「我投了」。
         buzz(12);
       } else {
         // ⚠ 跳过**不是**投票状态（红 / 黑那本账一个字都不动），但要记一笔「这一张我翻过」——
         //   否则下次打开又从它开始（修订 5）；撤销那一步时要把这一笔撤掉（见 `undo`）。
         onSkip(current.key);
-        setHistory((prev) => [...prev, { key: current.key, before, wrote: false }]);
+        setHistory((prev) => [...prev, { key: current.key, before, wrote: false, after: null }]);
       }
       const wait = reducedMotion() ? LEAVE_MS_REDUCED : LEAVE_MS;
       window.setTimeout(() => {
@@ -314,6 +318,8 @@ export function QuickVoteDeck({
   const blackGlow = delta.dx < 0 ? toward : 0;
 
   const done = round.length > 0 && index >= round.length;
+  /** 撤销栈顶那一步 —— 撤回区那句回执读它（`undefined` = 这一轮还没划过任何一张）。 */
+  const last = history[history.length - 1];
   const tally = useMemo(() => {
     let liked = 0;
     let passed = 0;
@@ -568,32 +574,56 @@ export function QuickVoteDeck({
                     <span className="qv-progress" data-qv-progress={progress.toFixed(2)} aria-hidden="true" />
                   </div>
                 </div>
+                {/* 常驻方向图例（2026-10-14，PLAN-20261014205414，用户朋友:「不知道左右哪个是喜欢」）。
+                    ⚠ 与卡片上那两枚跟手标记**分工不同**：常驻这行回答「左右**是什么**」，
+                      跟手那两枚回答「这一下**会投成什么**」。所以它不跟手、不带状态、每张卡都在。 */}
+                <p className="qv-legend">
+                  <span className="qv-legend-left">← 左滑 · 不喜欢</span>
+                  <span className="qv-legend-skip">上滑 · 跳过</span>
+                  <span className="qv-legend-right">右滑 · 喜欢 →</span>
+                </p>
                 {/* 指针之外的等价入口 —— 与手势走同一条 `commit`，所以口径不可能漂移。
-                    ⚠ 三颗按钮的**顺序与方向一致**（黑在左、红在右），跳过居中：这是手势的空间排布，
-                      反过来会让用户按错一次就投错一票。 */}
+                    ⚠ 三颗按钮的**顺序与方向一致**（不喜欢在左、喜欢在右），跳过居中：这是手势的空间排布，
+                      反过来会让用户按错一次就投错一票。
+                    ⚠ 文案是「不喜欢 / 喜欢」而不是「投黑榜 / 投红榜」：后者是榜单术语，新用户读不出方向
+                      （用户朋友的问句就是证据）；「黑 / 红」仍在跟手标记与总结页里，术语没有丢。 */}
                 <div className="qv-actions">
-                  <Button variant="secondary" onPress={() => commit("left")}>
-                    投黑榜
+                  <Button
+                    variant="secondary"
+                    aria-label="不喜欢（投黑榜）"
+                    onPress={() => commit("left")}
+                  >
+                    ← 不喜欢
                   </Button>
                   <Button variant="secondary" onPress={() => commit("up")}>
                     跳过
                   </Button>
-                  <Button onPress={() => commit("right")}>投红榜</Button>
+                  <Button aria-label="喜欢（投红榜）" onPress={() => commit("right")}>
+                    喜欢 →
+                  </Button>
                 </div>
-                <div className="qv-undo-row">
-                  <button
-                    type="button"
-                    className="qv-undo"
-                    onClick={undo}
-                    disabled={!history.length}
-                    data-qv-undo=""
-                  >
-                    撤销上一步
-                  </button>
+                {/* 撤回区（2026-10-14，PLAN-20261014205414 用户:「需要指引和反悔机制」）：
+                    从一枚弱按钮升级成**状态条** —— 投完说得清「刚才那一下做成了什么」。
+                    ⚠ 空态也照样占位，并且把那句话说全（「划错了可以撤回」）：看不见的东西用户不会去用，
+                      而撤回恰恰是投票类交互里最需要被看见的那个东西。
+                    ⚠ `undo()` 本身**一个字没改**（先恢复数据再退回一张，见上面那段注释）。 */}
+                <div className="qv-undo-row" role="status" aria-live="polite">
+                  {last ? (
+                    <>
+                      <span className="qv-undo-text" data-qv-last={last.after ?? "skip"}>
+                        {last.after ? voteStateLabel(last.after) : "已跳过"}
+                      </span>
+                      <button type="button" className="qv-undo" onClick={undo} data-qv-undo="">
+                        撤回
+                      </button>
+                    </>
+                  ) : (
+                    <span className="qv-undo-idle">划错了可以撤回</span>
+                  )}
                 </div>
                 <p className="qv-help">
-                  左滑投黑榜 · 右滑投红榜 · 上滑跳过（跳过不会改动已有的评价）。键盘：← → 评价，空格跳过，
-                  Cmd/Ctrl + Z 撤销。
+                  左滑 = 不喜欢（黑榜）· 右滑 = 喜欢（红榜）· 上滑跳过（跳过不会改动已有的评价）。键盘：← →
+                  评价，空格跳过，Cmd/Ctrl + Z 撤回。
                 </p>
               </>
             )}

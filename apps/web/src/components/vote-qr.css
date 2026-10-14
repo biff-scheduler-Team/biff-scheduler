@@ -1,0 +1,38 @@
+/**
+ * 「扫码投票」弹层(2026-10-14,PLAN-20261014205414)。
+ *
+ * ⚠ 颜色口径:`--text` / `--muted` 走 token(与全站一致);但**二维码那一块是写死的白底** ——
+ *   它是给相机读的,不是给眼睛读的,反色 / 半透明底会让很多相机扫不出来。
+ */
+
+.qr-lede {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* 白底 + 四周留白:这一层是二维码的「纸」,不跟主题走(见文件头) */
+.qr-box {
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.qr-canvas {
+  display: block;
+  width: min(64vw, 260px);
+  aspect-ratio: 1;
+  /* 一格一格是硬边,浏览器默认的抗锯齿会把细格糊成一团 */
+  image-rendering: pixelated;
+}
+
+/* 链接原文:二维码扫不出来的场合(同一台手机上自扫)靠它兜底 */
+.qr-url {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  word-break: break-all;
+}

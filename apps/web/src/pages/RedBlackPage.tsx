@@ -118,6 +118,12 @@ const LazyFilmCommentsDialog = lazy(() =>
 const LazyDiscussionBoardDialog = lazy(() =>
   import("../components/DiscussionBoardDialog").then((m) => ({ default: m.DiscussionBoardDialog })),
 );
+/** 「扫码投票」弹层（2026-10-14，PLAN-20261014205414）—— 懒加载在这里**不只是**省一次往返：
+ *  它一条链上带着 `qrcode-generator`（gzip 11KB）—— 那是「不扫码的人一辈子用不到」的东西，
+ *  同步 import 等于让每个进榜单的人先下载一个二维码编码器（与 `redblack-poster.ts` 同一处置）。 */
+const LazyVoteQrDialog = lazy(() =>
+  import("../components/VoteQrDialog").then((m) => ({ default: m.VoteQrDialog })),
+);
 
 /** 榜单档位（2026-10-12 起**只留两榜**，PLAN-20261011235624）。
  *  ⚠ 「总数」已撤：两榜都按**评分**排（红榜从高到低 / 黑榜从低到高），而评分口径下
@@ -313,6 +319,16 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
     if (shareWasOpenRef.current && !shareOpen) shareBtnRef.current?.focus();
     shareWasOpenRef.current = shareOpen;
   }, [shareOpen]);
+
+  // 「扫码投票」弹层（2026-10-14，PLAN-20261014205414）—— 与分享图**同一套**焦点归还手法
+  // （理由见上一段：必须在弹层真正卸载之后再做，S2 自己也会 restoreFocus）。
+  const [qrOpen, setQrOpen] = useState(false);
+  const qrBtnRef = useRef<HTMLButtonElement | null>(null);
+  const qrWasOpenRef = useRef(false);
+  useEffect(() => {
+    if (qrWasOpenRef.current && !qrOpen) qrBtnRef.current?.focus();
+    qrWasOpenRef.current = qrOpen;
+  }, [qrOpen]);
 
   /* 快速投票的开关（2026-10-14，PLAN-20261014190000 修订 2）。
    *
@@ -915,6 +931,18 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
             而它们不在本页里。这里于是只剩「看结果」那一排动作。
             出图曾经是这一排里唯一的主操作;现在整页的主操作在页头上，这里它仍是这一排里
             最重的一枚（`--brand` 实底）。 */}
+        {/* 「扫码投票」二维码（2026-10-14，PLAN-20261014205414，用户:「页面上嵌入一个按钮弹出
+            可保存的二维码 用于分享」）—— 与「生成分享图」并列：两者都是**往外发**的动作，
+            所以放在同一排；⚠ 它是**弱按钮**，这一排里唯一的主操作仍是「生成分享图」。 */}
+        <button
+          ref={qrBtnRef}
+          type="button"
+          className="rb-qr-btn"
+          aria-label="打开扫码投票二维码"
+          onClick={() => setQrOpen(true)}
+        >
+          扫码投票
+        </button>
         <button
           ref={shareBtnRef}
           type="button"
@@ -1020,6 +1048,13 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
             mine={{ placed: totals.placed }}
             onDismiss={() => setShareOpen(false)}
           />
+        </Suspense>
+      )}
+
+      {qrOpen && (
+        // ⚠ 与上面那几个弹层同一手法:`Suspense` 写在条件内部(不打开时连边界都不挂)
+        <Suspense fallback={null}>
+          <LazyVoteQrDialog onDismiss={() => setQrOpen(false)} />
         </Suspense>
       )}
 
