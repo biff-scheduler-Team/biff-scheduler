@@ -188,6 +188,74 @@ describe("groupByUnit", () => {
   });
 });
 
+describe("三档榜单（PLAN-20261014162246）", () => {
+  const films = [film("cat:a", "A", "甲单元"), film("cat:b", "B", "甲单元"), film("cat:c", "C", "甲单元")];
+
+  it("want 档（默认）：有信号才进榜 + 想看降序 —— 与加档位之前逐字一致", () => {
+    const rows = buildHotRows(films, { "cat:a": 5, "cat:b": 9 }, new Map(), PRIOR);
+    expect(rows.map((r) => r.key)).toEqual(["cat:b", "cat:a"]);
+    // c 没有任何信号 → 不进榜
+    expect(rows).toHaveLength(2);
+  });
+
+  it("rising 档：只留今日有新增的片，按新增降序；新增相同看累计想看", () => {
+    const rows = buildHotRows(films, { "cat:a": 1, "cat:b": 9, "cat:c": 40 }, new Map(), PRIOR, {
+      mode: "rising",
+      rising: { "cat:a": 3, "cat:b": 3, "cat:c": 0 },
+    });
+    // c 今天没人新增 → 不进「正在升温」，哪怕它累计想看 40（那是「最受关注」的事）
+    expect(rows.map((r) => r.key)).toEqual(["cat:b", "cat:a"]);
+    expect(rows.map((r) => r.rising)).toEqual([3, 3]);
+  });
+
+  it("rising 档：全站今天没人新增 → 空数组（界面据此给空态，**不补零行**）", () => {
+    const rows = buildHotRows(films, { "cat:a": 5 }, new Map(), PRIOR, { mode: "rising", rising: {} });
+    expect(rows).toEqual([]);
+  });
+
+  it("all 档：全量、目录序，不筛也不按热度重排", () => {
+    const rows = buildHotRows(films, { "cat:b": 9 }, new Map(), PRIOR, { mode: "all" });
+    // a / c 一部想看都没有，也照样在「全部影片」里，且保持**目录序**
+    expect(rows.map((r) => r.key)).toEqual(["cat:a", "cat:b", "cat:c"]);
+    expect(rows.map((r) => r.want)).toEqual([0, 9, 0]);
+  });
+});
+
+describe("名次变化：由日账本反推昨日累计（不是另存一份快照）", () => {
+  const films = [film("cat:a", "A", "U"), film("cat:b", "B", "U")];
+
+  it("昨日累计 = 当前累计 − 今日新增；反推出来的名次差就是 ▲▼", () => {
+    // 今天 b 反超 a：b 昨天 6、今天 12；a 昨天 10、今天 10
+    const rows = buildHotRows(films, { "cat:a": 10, "cat:b": 12 }, new Map(), PRIOR, {
+      rising: { "cat:b": 6 },
+    });
+    expect(rows.map((r) => r.key)).toEqual(["cat:b", "cat:a"]);
+    expect(rows.map((r) => r.rankDelta)).toEqual([1, -1]);
+  });
+
+  it("昨天还没人想看的片**不写变化**（null）—— 不把「新上榜」画成「上升 N 名」", () => {
+    const rows = buildHotRows([film("cat:c", "C", "U")], { "cat:c": 5 }, new Map(), PRIOR, {
+      rising: { "cat:c": 5 },
+    });
+    expect(rows[0].rankDelta).toBeNull();
+  });
+
+  it("没有账本数据时：「算得出、没动」是 0，不是 null（两者不同，界面都不画）", () => {
+    const rows = buildHotRows(films, { "cat:a": 10, "cat:b": 4 }, new Map(), PRIOR, { rising: {} });
+    expect(rows.map((r) => r.rankDelta)).toEqual([0, 0]);
+  });
+
+  it("其余档位不算名次变化（那一档的名次不是这份榜单的主线）", () => {
+    const rising = buildHotRows(films, { "cat:a": 10, "cat:b": 12 }, new Map(), PRIOR, {
+      mode: "rising",
+      rising: { "cat:b": 6 },
+    });
+    expect(rising.every((r) => r.rankDelta === null)).toBe(true);
+    const all = buildHotRows(films, { "cat:a": 10 }, new Map(), PRIOR, { mode: "all" });
+    expect(all.every((r) => r.rankDelta === null)).toBe(true);
+  });
+});
+
 describe("hotTotals", () => {
   it("汇总想让与票数", () => {
     const rows = buildHotRows(

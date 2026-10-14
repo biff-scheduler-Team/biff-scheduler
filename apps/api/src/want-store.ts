@@ -1,6 +1,6 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { database } from "./db";
-import { filmWantContribution, filmWantStat } from "./db/schema";
+import { filmWantContribution, filmWantStat, statDaily } from "./db/schema";
 import {
   clampAddText,
   flushStatBatch,
@@ -8,7 +8,7 @@ import {
   wouldGoNegativeText,
   type StatWrite,
 } from "./stat-batch";
-import { diffFilmKeys, formatWantCounts } from "./want-stats";
+import { diffFilmKeys, formatWantCounts, roundWantCount } from "./want-stats";
 import { kstDay } from "./day";
 import { dailyBucketWrites } from "./stat-daily";
 
@@ -157,4 +157,40 @@ export async function readWantCounts(db: Db, edition: string) {
     .where(eq(filmWantStat.edition, edition))
     .all();
   return formatWantCounts(rows);
+}
+
+/** 日账本（`stat_daily`）里 `want` 指标的**按影片**增量合计，`fromDay` 起（含）。
+ *
+ *  ★ 「正在升温」榜的数据源（2026-10-14，`PLAN-20261014162246`）：需求要「最近 24 小时的
+ *    新增关注」，而账本按 **KST 日**分桶（`day.ts`，日界只能服务端算）——
+ *    滚动 24 小时窗口在 D1 里**没有对应的存储形态**，硬凑只能靠客户端猜时间，那才是伪造。
+ *    所以这里如实返回「某天起的增量」，界面上也**写成「今日新增」**而不是「24 小时」。
+ *
+ *  ⚠ 只读**增量**表，绝不碰 `film_want_stat`（累计）：混用会把「今天新增 N」说成「总共 N」。
+ *  ⚠ 与累计数同一处取整（`want-stats.ts::roundWantCount`）—— 同一部片的两个数在界面上
+ *    必须像同一种数，各取一次整就会出现「累计 12、新增 0.75」这种读不通的组合。
+ *  ⚠ 只保留正增量：撤票（负增量）不进「升温」榜（那是降温，另一个榜单的事）。 */
+export async function readWantDailyDeltas(
+  db: Db,
+  edition: string,
+  fromDay: string,
+): Promise<Record<string, number>> {
+  const rows = await db
+    .select({
+      film_key: statDaily.target,
+      // 列以文本存（见 `db/schema.ts` 的说明），求和要显式 CAST 成 REAL
+      delta: sql<number>`SUM(CAST(${statDaily.weight_sum} AS REAL))`,
+    })
+    .from(statDaily)
+    .where(
+      and(eq(statDaily.edition, edition), eq(statDaily.metric, "want"), gte(statDaily.day, fromDay)),
+    )
+    .groupBy(statDaily.target)
+    .all();
+  const deltas: Record<string, number> = Object.create(null);
+  for (const row of rows) {
+    const value = roundWantCount(Number(row.delta) || 0);
+    if (value > 0) deltas[row.film_key] = value;
+  }
+  return deltas;
 }

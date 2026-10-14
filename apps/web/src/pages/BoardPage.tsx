@@ -22,7 +22,7 @@
  */
 
 import { useEffect } from "react";
-import { useSearchParams } from "react-router";
+import { Outlet, useSearchParams } from "react-router";
 import { HotBoardPanel } from "../components/HotBoardPanel";
 import { RedBlackPage } from "./RedBlackPage";
 import "./hot-board.css";
@@ -96,6 +96,12 @@ export function BoardPage() {
       </nav>
 
       {tab === "hot" ? <HotBoardPanel /> : <RedBlackPage hideSortBar />}
+
+      {/* ⚠ **必须渲染 `Outlet`**：路由表里本页挂了 `filmRoute()` 子路由（`films/:filmKey` →
+          `FilmDialog`），热门影片榜的海报点击就是走它打开详情。不渲染 Outlet 的话那条路由
+          永远不会命中 —— 点海报会「什么都没发生」（`RushAnalysisPage` 里记过同一个坑）。
+          ⚠ 位置在榜单之后、不影响任何既有布局：弹层挂在 `DialogContainer` 上，不占版面。 */}
+      <Outlet />
     </div>
   );
 }

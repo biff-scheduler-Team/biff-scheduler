@@ -230,6 +230,7 @@
         "apps/web/src/pages/BoardPage.tsx",
         "apps/web/src/pages/hot-board.css",
         "apps/web/src/hot-board.ts",
+        "apps/web/src/want-trend.ts",
         "apps/web/src/components/HotBoardPanel.tsx",
         "apps/web/src/hot-poster.ts",
         "apps/web/src/components/HotBoardShareDialog.tsx",

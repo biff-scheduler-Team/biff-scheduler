@@ -1486,7 +1486,12 @@ test("生成分享图:可以只分享部分榜单,一节都不勾时下载停用
   const dialog = page.getByRole("dialog");
   const download = dialog.getByRole("button", { name: "下载 PNG 图片" });
   await expect(download).toBeVisible();
-  await expect(dialog.getByRole("checkbox")).toHaveCount(3); // 红榜 / 黑榜 / 我贴过的
+  // 「长图内容」那**一组**正好三项：红榜 / 黑榜 / 我贴过的。
+  // ⚠ 必须限定在这一组里数：弹层里还有两个**范围**开关（画标题栏 / 画署名，
+  //   2026-10-14 加，见 `PLAN-20261014162246`）—— 拿整个弹层的 checkbox 数写死 3，
+  //   加任何一个开关都会让这条红（这正是它当时红掉的原因）。
+  const contents = dialog.getByRole("group", { name: "长图内容" });
+  await expect(contents.getByRole("checkbox")).toHaveCount(3);
 
   // 对照组:默认全选,第一张图里两榜都在
   // ⚠ 断言用的是各节的**口径说明**(「按评分从低到高」这种)而不是节名 —— 图里那个大标题
@@ -2283,8 +2288,10 @@ test("榜单页：默认落在热门榜；切到红榜后贴纸墙出现、热�
   await expect(page.locator('[data-board-tab="hot"]')).toHaveAttribute("aria-selected", "true");
   await expect(page.locator(".hb-panel")).toHaveCount(1);
   await expect(page.locator(".rb-page")).toHaveCount(0);
-  // 没有任何想看 / 票 → 榜单走空态，而不是画一串 0
-  await expect(page.locator(".hb-list")).toHaveCount(0);
+  // 没有任何想看 / 票 → 榜单走空态，而不是画一串 0（榜首主视觉与海报墙都不该出现）
+  await expect(page.locator(".hb-lead")).toHaveCount(0);
+  await expect(page.locator(".hb-grid")).toHaveCount(0);
+  await expect(page.locator(".hb-panel .empty-state")).toHaveCount(1);
 
   // ② 切红榜：贴纸墙出现，热门榜卸载
   await page.locator('[data-board-tab="red"]').click();
@@ -2310,11 +2317,14 @@ test("榜单页：想看数据到达后榜单**真的渲染出来**（回归 · 
   );
   await ready(page, "/redblack");
 
-  const rows = page.locator(".hb-row");
-  await expect(rows).toHaveCount(2);
-  // 按想看降序：120 的排在 30 的前面
-  await expect(rows.first()).toHaveAttribute("data-hot-row", "cat:f001");
-  await expect(rows.first().locator(".hb-want")).toContainText("120");
+  // 按想看降序：120 的这部是**榜首**（#01 主视觉），30 的那部进海报墙
+  const lead = page.locator(".hb-lead");
+  await expect(lead).toHaveAttribute("data-hot-row", "cat:f001");
+  await expect(lead.locator(".hb-lead-want")).toContainText("120");
+  const cards = page.locator(".hb-card");
+  await expect(cards).toHaveCount(1);
+  await expect(cards.first()).toHaveAttribute("data-hot-row", "cat:f002");
+  await expect(cards.first().locator(".hb-cap-want")).toContainText("30");
   // 只看得到有想看的这两部 —— 一票没有的片不该出现在热门榜上
   await expect(page.locator(".hb-panel .empty-state")).toHaveCount(0);
 });
@@ -2335,22 +2345,22 @@ test("榜单页：单元分组的键已归一，且「头部说 N 部」与列�
     }),
   );
   await ready(page, "/redblack");
-  await expect.poll(() => page.locator(".hb-row").count()).toBeGreaterThan(20);
+  await expect.poll(() => page.locator(".hb-card").count()).toBeGreaterThan(20);
 
   // ① 单元按钮不重名 —— 同义写法已归一到同一个键
   const labels = (await page.locator(".hb-unit-btn").allInnerTexts()).map((t) => t.trim());
   expect(labels.length).toBeGreaterThan(5);
   expect(new Set(labels).size).toBe(labels.length);
 
-  // ② 头的计数与列表同源：点进某个单元后，「N 部上榜」必须等于列表行数
+  // ② 头的计数与版面同源：点进某个单元后，「N 部影片」必须等于
+  //    榜首（1 部）+ 海报墙（首屏最多 GRID_STEP = 24 张）
   const button = page.locator(".hb-unit-btn").first();
   await button.click();
-  const filmsOf = async () => {
-    const text = await page.locator(".hb-hero").innerText();
-    return Number(text.match(/(\d+)\s*部上榜/)?.[1] ?? -1);
-  };
+  const filmsOf = async () => Number((await page.locator(".hb-count").getAttribute("data-hot-films")) ?? -1);
   await expect.poll(filmsOf).toBeGreaterThan(0);
-  await expect.poll(async () => page.locator(".hb-row").count()).toBe(await filmsOf());
+  const films = await filmsOf();
+  await expect(page.locator(".hb-card")).toHaveCount(Math.min(films - 1, 24));
+  await expect(page.locator(".hb-lead")).toHaveCount(1);
 });
 
 test("榜单页：从日程表格子带 `q` 跳进来时仍落在红榜（不是热门榜）", async ({ page }) => {
@@ -2408,10 +2418,13 @@ test("热门榜：生成分享图是 3:4 竖版；换单元后这张图只讲那
   );
   await ready(page, "/redblack");
 
-  // 前置事实：榜上真的够 8 行（出图默认就取 8 行 —— 3:4 那条比值断言靠它成立）。
+  // 前置事实：榜上真的够 8 部（出图默认就取 8 行 —— 3:4 那条比值断言靠它成立）。
   // ⚠ 必须用会重试的 `expect.poll`：想看数据是异步到达的（`want-counts` 拉回来才建榜），
-  //   一次性 `count()` 会抢在数据之前读到 0 行（与「榜单真的渲染出来」那条同一条纪律）。
-  await expect.poll(() => page.locator(".hb-row").count()).toBeGreaterThanOrEqual(8);
+  //   一次性 `count()` 会抢在数据之前读到 0 部（与「榜单真的渲染出来」那条同一条纪律）。
+  //   ⚠ 榜首（`.hb-lead`）也是榜上的一部，所以数的是「1 + 海报墙」。
+  await expect
+    .poll(async () => 1 + (await page.locator(".hb-card").count()))
+    .toBeGreaterThanOrEqual(8);
 
   const opener = page.getByRole("button", { name: "生成分享图" });
   await opener.click();
@@ -2515,5 +2528,195 @@ test("红黑榜分享图：可以只讲一个单元，也可以关头尾", async
   // 头尾都关掉了，图仍然出得来（不是 0 高、也不是空白失败），而且比「只关掉头尾之一」更矮
   expect(await dialog.locator(".rb-share-size").innerText()).toMatch(/\d+\s*×\s*\d+\s*px/);
   expect((await shareSize(dialog)).height).toBeLessThan(five.height);
+});
+
+/* ★ 「热门影片」编辑式排行榜（2026-10-14，PLAN-20261014162246）
+ *
+ * 这一组守的是**版式与交互**，不是排序（排序在 `apps/web/tests/hot-board.test.ts` 里断）。
+ * 重点三处：① 三档真的换数据；② 榜首是主视觉且点得开详情；③ hover 是**纯 CSS 的渐进揭示**，
+ * 不动版面、不吃点击，且在触屏 / 减少动态效果下都不掉信息。
+ */
+
+/** 「正在升温」的数据源（服务端日账本的按影片增量）。 */
+async function stubTrend(page: Page, deltas: Record<string, number>) {
+  await page.route("**/api/stats/want-trend**", (route) =>
+    route.fulfill({
+      json: { fromDay: "2026-10-14", toDay: "2026-10-14", days: 1, deltas },
+    }),
+  );
+}
+
+test("热门影片：三档榜单各自真的换数据（最受关注 / 正在升温 / 全部影片）", async ({ page }) => {
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  await page.route("**/api/stats/want-counts**", (route) =>
+    route.fulfill({ json: { counts: { "cat:f001": 120, "cat:f002": 30, "cat:f003": 7 } } }),
+  );
+  await stubTrend(page, { "cat:f003": 9, "cat:f001": 2 });
+  await ready(page, "/redblack");
+
+  // ① 最受关注：按想看降序 → 120 的那部是榜首
+  await expect(page.locator('[data-hot-mode="want"]')).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".hb-lead")).toHaveAttribute("data-hot-row", "cat:f001");
+
+  // ② 正在升温：按**今日新增**降序 → f003（今天 +9）顶到榜首，f002（今天没新增）整条出局
+  await page.locator('[data-hot-mode="rising"]').click();
+  await expect(page.locator('[data-hot-mode="rising"]')).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".hb-lead")).toHaveAttribute("data-hot-row", "cat:f003");
+  await expect(page.locator(".hb-card")).toHaveCount(1);
+  await expect(page.locator(".hb-card")).toHaveAttribute("data-hot-row", "cat:f001");
+
+  // ③ 全部影片：不管有没有人想看，目录里的片全在（stub 只给了 3 部有想看）
+  await page.locator('[data-hot-mode="all"]').click();
+  const films = Number(await page.locator(".hb-count").getAttribute("data-hot-films"));
+  expect(films).toBeGreaterThan(3);
+  await expect(page.locator(".hb-card")).toHaveCount(Math.min(films - 1, 24));
+  // 「显示更多」只在还有剩的时候出现，并报出还剩几部
+  await expect(page.locator(".hb-more-btn")).toContainText(`还有 ${films - 1 - 24} 部`);
+});
+
+test("热门影片：今日没人新增时「正在升温」给明确空态，名次变化也不伪造", async ({ page }) => {
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  await page.route("**/api/stats/want-counts**", (route) =>
+    route.fulfill({ json: { counts: { "cat:f001": 120, "cat:f002": 30 } } }),
+  );
+  await stubTrend(page, {});
+  await ready(page, "/redblack");
+
+  await page.locator('[data-hot-mode="rising"]').click();
+  const empty = page.locator(".hb-panel .empty-state");
+  await expect(empty).toContainText("今日新增");
+  await expect(page.locator(".hb-lead")).toHaveCount(0);
+  await expect(page.locator(".hb-grid")).toHaveCount(0);
+
+  // 「最受关注」照常有内容；而账本为空 → 昨日名次**算不出** → 一枚 ▲▼ 都不画
+  await page.locator('[data-hot-mode="want"]').click();
+  await expect(page.locator(".hb-lead")).toHaveCount(1);
+  await expect(page.locator(".hb-trend")).toHaveCount(0);
+});
+
+test("热门影片：榜首是 #01 主视觉，点它打开影片详情（守住 BoardPage 的 Outlet）", async ({ page }) => {
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  await page.route("**/api/stats/want-counts**", (route) =>
+    route.fulfill({ json: { counts: { "cat:f001": 120, "cat:f002": 30 } } }),
+  );
+  await stubTrend(page, {});
+  await ready(page, "/redblack");
+
+  const lead = page.locator(".hb-lead");
+  await expect(lead.locator(".hb-lead-rank")).toHaveText("#01");
+  await expect(lead.locator(".hb-lead-tag")).toContainText("TOP 01");
+  await expect(lead.locator(".hb-lead-title")).not.toBeEmpty();
+  // 榜首要占据主视觉：海报框比海报墙里任何一张都大
+  const leadBox = (await lead.locator(".hb-lead-media").boundingBox())!;
+  const cardBox = (await page.locator(".hb-card .hb-frame").first().boundingBox())!;
+  expect(leadBox.width).toBeGreaterThan(cardBox.width);
+  expect(leadBox.height / leadBox.width).toBeCloseTo(1.5, 1); // 2:3
+
+  // ⚠ 点开详情走的是路由表里已有的 `films/:filmKey` 子路由 —— BoardPage 不渲染 Outlet 的话
+  //   这里会「什么都没发生」（点完 URL 变了、弹层不出来），所以这条同时守住那个坑
+  await lead.locator(".hb-lead-cta").click();
+  await expect(page).toHaveURL(/\/redblack\/films\/cat(%3A|:)f001/);
+  await expect(page.getByRole("dialog")).toBeVisible();
+});
+
+test("热门影片：hover 是渐进揭示，移出复位、不动版面、不吃点击", async ({ page, isMobile }) => {
+  test.skip(isMobile, "hover 是鼠标行为；触屏那条见「手机上说明行常驻」");
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  await page.route("**/api/stats/want-counts**", (route) =>
+    route.fulfill({ json: { counts: { "cat:f001": 120, "cat:f002": 30, "cat:f003": 20 } } }),
+  );
+  await stubTrend(page, {});
+  await ready(page, "/redblack");
+
+  const card = page.locator(".hb-card").first();
+  const veil = card.locator(".hb-veil");
+  const hover = card.locator(".hb-hover");
+  const img = card.locator(".hb-frame-img");
+  const opacity = (locator: Locator) =>
+    locator.evaluate((el) => Number(getComputedStyle(el).opacity));
+
+  // 默认：遮罩透明、海报没有缩放、也不跑任何动画（需求：不添加持续运行动画）
+  expect(await opacity(veil)).toBe(0);
+  await expect(img).toHaveCSS("transform", "none");
+
+  // ⚠ 量版面之前先把它滚进视口：`hover()` 自己会滚动，滚动之后的坐标当然会变 ——
+  //   不先滚，这条会变成「测滚动」而不是「测有没有挤压邻格」
+  await card.scrollIntoViewIfNeeded();
+  const before = await card.boundingBox();
+  await card.locator(".hb-card-btn").hover();
+
+  // hover：遮罩渐显 + 提示淡入 + 海报轻微放大（1.03）
+  await expect.poll(() => opacity(veil)).toBeGreaterThan(0.9);
+  await expect.poll(() => opacity(hover)).toBeGreaterThan(0.9);
+  await expect.poll(async () => img.evaluate((el) => getComputedStyle(el).transform)).toContain("1.03");
+
+  // 放大发生在**海报框内**：邻格没有被挤走（版面零位移），也没有把父级顶出滚动条
+  expect(await card.boundingBox()).toEqual(before);
+
+  // 遮罩与提示都不吃点击（点得下去 = 详情打得开）
+  await expect(veil).toHaveCSS("pointer-events", "none");
+  await expect(hover).toHaveCSS("pointer-events", "none");
+
+  // 移出：平滑复位，不留残余状态
+  await page.mouse.move(0, 0);
+  await expect.poll(() => opacity(veil)).toBeLessThan(0.05);
+  await expect.poll(() => opacity(hover)).toBeLessThan(0.05);
+  await expect.poll(async () => img.evaluate((el) => getComputedStyle(el).transform)).toBe("none");
+});
+
+test("热门影片：手机上必要信息常驻、不依赖 hover，海报整格可点", async ({ page, isMobile }) => {
+  test.skip(!isMobile, "这一条只看移动端");
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  await page.route("**/api/stats/want-counts**", (route) =>
+    route.fulfill({ json: { counts: { "cat:f001": 120, "cat:f002": 30 } } }),
+  );
+  await stubTrend(page, {});
+  await ready(page, "/redblack");
+
+  const card = page.locator(".hb-card").first();
+  // 排名 / 片名 / 想看人数都在**说明行**里常驻可见
+  await expect(card.locator(".hb-cap-rank")).toBeVisible();
+  await expect(card.locator(".hb-cap-title")).toBeVisible();
+  await expect(card.locator(".hb-cap-want")).toContainText("30");
+  // 而 hover 那层在触屏上是关掉的（没有鼠标可用，留着只会多一层遮罩）
+  await expect(card.locator(".hb-hover")).toBeHidden();
+
+  // 整格可点：点海报进详情
+  await card.locator(".hb-card-btn").click();
+  await expect(page).toHaveURL(/\/redblack\/films\//);
+});
+
+test("热门影片：减少动态效果时关掉过渡（缩放不做，信息照旧）", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await stubEmpty(page);
+  await stubComments(page, { items: [] });
+  await page.route("**/api/stats/want-counts**", (route) =>
+    route.fulfill({ json: { counts: { "cat:f001": 120, "cat:f002": 30 } } }),
+  );
+  await stubTrend(page, {});
+  await ready(page, "/redblack");
+
+  const card = page.locator(".hb-card").first();
+  /** 过渡时长（秒）—— ⚠ 断言「**短到看不出来**」而不是写死 `0s`：
+   *  React Spectrum S2 在 reduced-motion 下自己会打一条 `1e-05s`，与我们的
+   *  `transition: none` 是同一个意思；写死 `0s` 会把「别人的正确实现」判成红。 */
+  const durationOf = (selector: string) =>
+    card
+      .locator(selector)
+      .evaluate((el) => parseFloat(getComputedStyle(el).transitionDuration) || 0);
+
+  expect(await durationOf(".hb-frame-img")).toBeLessThan(0.01);
+  expect(await durationOf(".hb-veil")).toBeLessThan(0.01);
+
+  // 揭示照旧发生（关的是动效，不是信息），但不再有缩放
+  await card.scrollIntoViewIfNeeded();
+  await card.locator(".hb-card-btn").hover();
+  await expect.poll(() => card.locator(".hb-veil").evaluate((el) => Number(getComputedStyle(el).opacity))).toBeGreaterThan(0.9);
+  await expect(card.locator(".hb-frame-img")).toHaveCSS("transform", "none");
 });
 

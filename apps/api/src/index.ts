@@ -11,7 +11,7 @@ import {
   PING_RATE_LIMIT,
   createRateLimiter,
 } from "./rate-limit";
-import { readWantCounts, replaceContributorWants } from "./want-store";
+import { readWantCounts, readWantDailyDeltas, replaceContributorWants } from "./want-store";
 import {
   clampCommentLimit,
   decodeCommentCursor,
@@ -667,6 +667,23 @@ app.get("/api/stats/want-counts", async (c) => {
   if (!edition) return c.json({ error: "INVALID_EDITION" }, 422);
   const counts = await readWantCounts(database(c.env.DB), edition);
   return c.json({ edition, counts });
+});
+/** 「正在升温」的数据源：日账本里 `want` 指标的**按影片增量合计**（`PLAN-20261014162246`）。
+ *
+ *  ⚠ 这是**按 KST 日分桶**的增量，不是滚动 24 小时窗口 —— 口径与理由见
+ *    `want-store.ts::readWantDailyDeltas`；返回里也带上 `fromDay` / `toDay`，
+ *    好让前端把「哪一天到哪一天」如实写出来，而不是自己猜。
+ *  ⚠ `days` 夹在 1–7：这个接口是给榜单用的（今日 / 近两天），不是趋势图接口，
+ *    不设上限等于让外部随便扫全表；趋势图走 `/api/admin/*` 那一套（要管理员）。 */
+app.get("/api/stats/want-trend", async (c) => {
+  const edition = editionParam(c.req.query("edition"));
+  if (!edition) return c.json({ error: "INVALID_EDITION" }, 422);
+  const raw = Number(c.req.query("days"));
+  const days = Number.isFinite(raw) ? Math.min(7, Math.max(1, Math.trunc(raw))) : 1;
+  const now = Date.now();
+  const fromDay = kstDayMinus(days - 1, now);
+  const deltas = await readWantDailyDeltas(database(c.env.DB), edition, fromDay);
+  return c.json({ edition, fromDay, toDay: kstDay(now), days, deltas });
 });
 app.post("/api/stats/want-ping", limited(pingLimiter), async (c) => {
   const parsed = wantPingSchema.safeParse(await c.req.json().catch(() => null));

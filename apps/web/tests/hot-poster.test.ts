@@ -19,6 +19,9 @@ function row(want: number, over: Partial<HotRow> = {}): HotRow {
     title: `片${want}`,
     units: ["甲单元"],
     unitName: "甲单元",
+    // 分享图不读这两个字段（它们属于榜单页本体的呈现），这里给中性值
+    rising: 0,
+    rankDelta: null,
     want,
     red: 0,
     black: 0,
