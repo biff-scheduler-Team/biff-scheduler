@@ -115,8 +115,8 @@ export function parseBackupText(text: string): BackupParse {
  * 但每条 VEVENT 的 `UID:<code>@biff-2026` 里就藏着场次 code —— 故可以「反解出场次清单」。
  * 语义 = **导入一份排片**(朋友把他的 .ics 发你),**不是**「恢复备份」。
  *
- * ⚠ 只认 `<纯数字>@biff-2026`:开票日历的 UID 是 `biff-ticket-<n>@biff-2026`
- *   (见 `ics.ts::buildTicketIcs`),不过滤就会把抢票提醒当成场次。 */
+ * ⚠ 只认 `<纯数字>@biff-2026`:历史上开票提醒的 UID 是 `biff-ticket-<n>@biff-2026`
+ *   (该导出入口已于 2026-10-14 随票务横幅下线),不过滤就会把用户旧日历里的抢票提醒当成场次。 */
 
 export type IcsParse = { ok: true; codes: string[] } | { ok: false; error: string };
 

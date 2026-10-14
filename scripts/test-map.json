@@ -22,8 +22,17 @@
     {
       "id": "guest",
       "note": "官方 GUEST/WEB 余票、目录场次资料、想看人数与独立查询页",
-      "paths": ["apps/web/src/pages/GuestPage.tsx", "apps/web/src/pages/guest.css", "apps/web/src/want-counts.ts", "apps/api/src/guest.ts", "apps/api/src/ticket-snapshots.ts", "packages/contracts/src/guest.ts"],
-      "specs": ["guest"]
+      "paths": [
+        "apps/web/src/pages/GuestPage.tsx",
+        "apps/web/src/pages/guest.css",
+        "apps/web/src/want-counts.ts",
+        "apps/api/src/guest.ts",
+        "apps/api/src/ticket-snapshots.ts",
+        "packages/contracts/src/guest.ts"
+      ],
+      "specs": [
+        "guest"
+      ]
     },
     {
       "id": "schedule-grid",
@@ -57,7 +66,6 @@
         "apps/web/src/timeline.ts"
       ],
       "specs": [
-        "parity-agenda",
         "agenda-gantt",
         "review-schedule",
         "combined-screenings"
@@ -100,7 +108,6 @@
         "apps/web/src/components/screening-actions.ts"
       ],
       "specs": [
-        "parity-agenda",
         "parity-library",
         "screening-popover",
         "gv-popover",
@@ -337,7 +344,6 @@
       "specs": [
         "ticket-info",
         "screening-social",
-        "parity-agenda",
         "agenda-gantt",
         "parity-dialogs",
         "compatibility"

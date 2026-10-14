@@ -317,21 +317,6 @@ html:has(.update-banner) {
   background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
-/* 票务通知条(2026-09-22,`PLAN-20260922105228`):售票信息从 top bar 右侧移到这里 ——
-   它是一届一次的**全局状态**,不该占导航右边的黄金位,但仍要在首屏可见
-   (与 `.update-banner` 同一取舍:靠 sticky 贴边,不常驻浮层)。
-   ⚠ 左右内距与 `.app-header` / `.app-toolbar` 逐档对齐(24 / 16 / 12),否则三个断点上会错位。 */
-.ticket-banner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 24px 6px;
-  background: var(--surface);
-}
-.ticket-banner-label {
-  color: var(--muted);
-  font-size: 12px;
-}
 .main-nav {
   display: flex;
   gap: 24px;
@@ -1155,15 +1140,6 @@ html:has(.update-banner) {
   margin: 0;
   line-height: 1.7;
 }
-.ticket-batch {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 14px;
-  margin-bottom: 12px;
-}
-.ticket-batch h3 {
-  margin-bottom: 8px;
-}
 .app-footer {
   display: flex;
   flex-wrap: wrap;
@@ -1254,9 +1230,6 @@ html:has(.update-banner) {
   .app-toolbar {
     padding: 0 16px;
   }
-  .ticket-banner {
-    padding: 0 16px 6px;
-  }
 }
 @media (max-width: 768px) {
   .app-header {
@@ -1274,9 +1247,6 @@ html:has(.update-banner) {
   }
   .app-toolbar {
     padding: 0 12px;
-  }
-  .ticket-banner {
-    padding: 0 12px 4px;
   }
   .main-nav {
     gap: 20px;
@@ -1547,10 +1517,6 @@ html:has(.update-banner) {
   }
   .viewing-fab { right: 16px; }
 }
-.ticket-countdown { display: inline-flex; align-items: center; gap: 12px; }
-.ticket-countdown-label { font-size: 12px; color: var(--muted); }
-.ticket-countdown-digits { display: inline-flex; align-items: baseline; gap: 8px; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: .025em; }
-.ticket-countdown-digits small { margin-left: 4px; font-size: 11px; font-weight: 400; }
 /* ⚠ `.workspace` 是 `display:flex`，页面元素是它的 flex 子项：**不显式给宽度就会被内容挤窄**
  *   （`flex-basis:auto` 取内容宽度）。2026-09-20 数据分析页实测只铺开约 620px，右侧整片空 ——
  *   修法与既有三个整页完全一致，故这里只是把 `.ra-page` 加进同一份名单，不新写一套。 */

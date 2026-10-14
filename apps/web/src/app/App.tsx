@@ -25,17 +25,12 @@ import {
   ActionButton,
   ActionMenu,
   DialogContainer,
-  DialogTrigger,
   MenuItem,
   ToastContainer,
 } from "../components/spectrum";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { ExportDialog } from "../components/ExportDialog";
-import {
-  GuideDialog,
-  TicketDialog,
-  TicketLabel,
-} from "../components/InfoDialogs";
+import { GuideDialog } from "../components/InfoDialogs";
 import { UpdateBanner } from "../components/UpdateBanner";
 import { SchedulePage } from "../pages/SchedulePage";
 import { navSearch } from "./nav-query";
@@ -247,20 +242,6 @@ function Shell() {
           </ActionMenu>
         </div>
       </header>
-      {/* 售票信息从 top bar 移出(2026-09-22,`PLAN-20260922105228`,用户「避免占用 Top Bar 的黄金位置」):
-          改成头部下方一条独立通知条。⚠ 触发件与弹层**原样保留** —— 可访问名(「距第 N 批开票」/
-          「BIFF 2026 售票中」)与「购票信息」弹层一字未改,只是换了宿主,既有断言不受影响。 */}
-      <div className="ticket-banner">
-        <span className="ticket-banner-label">票务</span>
-        <DialogTrigger>
-          {/* `size="S"`:这是一条**状态**提示,不是主操作 —— 用小一号按钮能把通知条压到 ~28px,
-              给下面真正的内容让出高度(2026-09-22,`PLAN-20260922105228`) */}
-          <ActionButton size="S">
-            <TicketLabel />
-          </ActionButton>
-          <TicketDialog />
-        </DialogTrigger>
-      </div>
       {exportOpen && (
         <DialogContainer onDismiss={closeHeaderDialog(setExportOpen)}>
           <ExportDialog key={exportSession} />

@@ -1,8 +1,8 @@
-// 官网「排期之外」的辅助信息:售票批次 / 节目嘉宾 / 开闭幕式。
+// 官网「排期之外」的辅助信息:票价 / 节目嘉宾 / 开闭幕式。
 //
 // 数据源 = 静态产物 `public/festival-extras.json`(离线抓取,见 `tools/scrape_biff_extras.py`)。
 // 与 `data.ts` 的分工:那个加载**排期**(时间 / 厅 / 片名),这里加载排期页上不印的补充信息。
-// 文件缺失 / 解析失败一律**静默降级**(横幅 / 票价 / 嘉宾区自动消失),绝不阻塞主流程 ——
+// 文件缺失 / 解析失败一律**静默降级**(票价 / 嘉宾区自动消失),绝不阻塞主流程 ——
 // 它只是增强,不是运行前提。
 
 import type { ExtraProgram, FestivalExtras, Screening } from "./types";
@@ -34,103 +34,6 @@ export function extras(): FestivalExtras | null {
 /** 该场次的活动补充信息(非活动场次 → undefined) */
 export function programOf(code: string): ExtraProgram | undefined {
   return programByCode.get(code);
-}
-
-/* ---------------- 开票时间 ---------------- */
-
-const MONTHS: Record<string, number> = {
-  JAN: 1,
-  FEB: 2,
-  MAR: 3,
-  APR: 4,
-  MAY: 5,
-  JUN: 6,
-  JUL: 7,
-  AUG: 8,
-  SEP: 9,
-  OCT: 10,
-  NOV: 11,
-  DEC: 12,
-};
-
-const KST_OFFSET_H = 9;
-const BJ_OFFSET_H = 8;
-
-export interface TicketOpen {
-  /** 官网原文(如 `Sep 17(Thu) 14:00 (KST)`) */
-  raw: string;
-  /** 该批包含什么(官网原文) */
-  includes: string;
-  /** 开票时刻(UTC 毫秒) */
-  at: number;
-  /** 韩国时间文本 `9/17 14:00` */
-  kst: string;
-  /** 北京时间文本 `9/17 13:00` */
-  bj: string;
-}
-
-function pad2(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-/** UTC 毫秒 → 某固定偏移时区的 `M/D HH:MM`(倒计时跨时区显示的唯一口径) */
-function fmtInZone(utcMs: number, offsetH: number): string {
-  const d = new Date(utcMs + offsetH * 3600_000);
-  return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
-}
-
-/** 解析官网批次文本 → 绝对开票时刻。`year` 来自 festival(官网只印月/日,不带年)。
- *  解析不出来的批次**直接丢弃**(宁可少一条,也不显示一个错的时间)。 */
-export function ticketOpens(year: number): TicketOpen[] {
-  const batches = data?.ticketing.batches ?? [];
-  const out: TicketOpen[] = [];
-  for (const b of batches) {
-    const m = /^([A-Za-z]{3})\s+(\d{1,2})\([A-Za-z]{3}\)\s+(\d{1,2}):(\d{2})/.exec(b.openText);
-    if (!m) continue;
-    const mon = MONTHS[m[1].toUpperCase()];
-    if (!mon) continue;
-    const at = Date.UTC(year, mon - 1, Number(m[2]), Number(m[3]), Number(m[4])) - KST_OFFSET_H * 3600_000;
-    out.push({
-      raw: b.openText,
-      includes: b.includes,
-      at,
-      kst: fmtInZone(at, KST_OFFSET_H),
-      bj: fmtInZone(at, BJ_OFFSET_H),
-    });
-  }
-  return out.sort((a, b) => a.at - b.at);
-}
-
-/** 批次节头文案 —— 「第 1 批 · 9/17 14:00 KST / 北京 13:00」。
- *  购票信息弹层(`InfoDialogs.tsx::TicketDialog`)与顶栏倒计时共用同一份,别在两处各拼一次。
- *  ⚠ 原先还与「抢票」页横幅 / 分享文案的批次分节共用 —— 那两处已于 2026-09-22 下线
- *  (`PLAN-20260922102751`),批次现在只作为**开票时间**的标签存在。
- *  extras 缺文件 / 该批次解析不出来(旧部署 / 首次离线)→ 退化成「第 N 批」,**绝不编造时间**。 */
-export function batchHeading(year: number, batch: number): string {
-  const open = ticketOpens(year)[batch - 1];
-  if (!open) return `第 ${batch} 批`;
-  // 北京时刻与韩国时刻**同日**时省掉重复日期(`9/17 14:00 KST / 北京 13:00`);
-  // 跨日(开票点在深夜)才把日期带上 —— 一行标题里印两遍 9/17 是噪声。
-  const day = open.kst.split(" ")[0];
-  return `第 ${batch} 批 · ${open.kst} KST / 北京 ${open.bj.replace(`${day} `, "")}`;
-}
-
-/** 下一个尚未到达的开票时刻;全部已过 → null(横幅切「售票中」态) */
-export function nextTicketOpen(year: number, nowMs: number): TicketOpen | null {
-  return ticketOpens(year).find((t) => t.at > nowMs) ?? null;
-}
-
-/** 倒计时文案:`6 天 3 小时` / `3 小时 12 分` / `12 分 05 秒`(逐级细化,临近开票看得到秒) */
-export function countdownText(remainMs: number): string {
-  const s = Math.max(0, Math.floor(remainMs / 1000));
-  const d = Math.floor(s / 86400);
-  const h = Math.floor((s % 86400) / 3600);
-  const mi = Math.floor((s % 3600) / 60);
-  const se = s % 60;
-  if (d > 0) return `${d} 天 ${h} 小时`;
-  if (h > 0) return `${h} 小时 ${mi} 分`;
-  if (mi > 0) return `${mi} 分 ${pad2(se)} 秒`;
-  return `${se} 秒`;
 }
 
 /* ---------------- 票价 ---------------- */
