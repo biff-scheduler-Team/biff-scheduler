@@ -364,7 +364,13 @@
    *   顶动右边「红榜」两个字（这一行是**常驻**的，跳动比不高亮更刺眼）。
    *   解法：平时就留好药丸的 `padding`，只是颜色透明、边框透明 —— 高亮时只切 `background-color`
    *   / `border-color`，盒子尺寸**从头到尾不变**，不需要负 margin 补偿。
-   *   ⚠ `inline-block` 是 `transform` 生效的前提，缩放幅度收到 1.04（药丸比纯文字更怕放大溢出）。 */
+   *   ⚠ `inline-block` 是那圈 `padding` / `border-radius` 成形的前提（inline 盒竖向 padding 不进行盒）。
+   *   ⚠ 2026-10-15（修订 3）：原来这里还配了一个 `transform: scale(1.04)` 做强调，**已删** ——
+   *   它是这条规则（含下面那条高亮规则）里**唯一**会改变渲染盒的声明。CI 的 chromium 上
+   *   `.qv-legend-right` 的 x 位移 **3.671875px**，恰好 = 4% × 药丸宽（91.796875）＝ 那一放大
+   *   的增长量（本机 Δx = 0，把字号拉宽 12.5% 也仍是 0 —— 只在 CI 环境成立，见 `PLAN-20261015172642`
+   *   修订 1）。强调现在**只由实心底色承担**；要再加强就走 `box-shadow` 那类**不进布局、
+   *   也不进可滚动溢出区**的属性，别再碰 `transform` / `padding` / `font-weight`。 */
   display: inline-block;
   padding: 2px 8px;
   border: 1px solid transparent;
@@ -373,18 +379,20 @@
   transition:
     color 120ms ease-out,
     background-color 120ms ease-out,
-    border-color 120ms ease-out,
-    transform 120ms ease-out;
+    border-color 120ms ease-out;
 }
 
 /* 正在往上滑（`hint === "up"`）：跳过那两个字亮起来。
  * ⚠ **这里就是「跳过提示」**（2026-10-15）：它在海报下面，卡片往上飞走时它还在 ——
- *   原来那两个字压在卡片顶部，一往上滑就看不见了（用户原话见 `QuickVoteDeck.tsx` 文件头）。 */
+ *   原来那两个字压在卡片顶部，一往上滑就看不见了（用户原话见 `QuickVoteDeck.tsx` 文件头）。
+ * ⚠ 这条规则**只许切颜色**（2026-10-15 修订 3）：三行 `color/border-color/background-color`
+ *   都不改盒子尺寸，所以高亮前后右边「右滑 · 红榜」**一个像素都不动**（E2E
+ *   `快速投票：…跳过药丸高亮不顶动右边「红榜」` 就钉这一条）。原来是多了一句
+ *   `transform: scale(1.04)` 的，删因见上面 `.qv-legend-skip` 那段注释。 */
 .qv-legend-skip[data-qv-skip-live] {
   color: #fff;
   border-color: var(--brand);
   background-color: var(--brand);
-  transform: scale(1.04);
 }
 
 .qv-legend-right {
