@@ -195,8 +195,12 @@ describe("票务补充字段", () => {
 // `tools/apply_event_titles.py` 共用同一份匹配。三条断言分别钉:①补了、②表与产物没漂、
 // ③译文不与任何片名撞车(撞车会让 `filmNodeKey` 把活动误当归并到某部片)。
 describe("活动场次的中文名(人工活动译名表)", () => {
+  // ⚠ 801(Actors' House: LEE Minho,10/07)已于 2026-10-15 重抓时从官网排期消失
+  //   (不在 removeCodes 里,但官网 10/07 页面连格子都没有了)→ 已从产物剔除,
+  //   故这里不再列入。人工译名表 `event-titles-2026.json` 里的 801 条目**保留**
+  //   (表是场次 code → 中文名的历史映射,表里有、产物里没有是允许的)。
   const ACTIVITY_CODES = [
-    "801", "802", "803", "804", "805", "806", // Actors' House
+    "802", "803", "804", "805", "806", // Actors' House
     "811", "812", "813", "814", "815", // Master Class(815 = 2026-09-19 官网新增的 Alfonso CUARÓN)
     "821", "822", "823", "824", "825", "826", "827", // Cine Class(827 = 同上新增的 Charlotte GAINSBOURG)
     "831", // Special Talk
@@ -206,7 +210,7 @@ describe("活动场次的中文名(人工活动译名表)", () => {
   };
   const zhOf = (code: string): string => (byCode.get(code)?.title_zh ?? "").trim();
 
-  it("19 场活动场次都有中文名(全空 = 本轮需求原先的症状)", () => {
+  it("18 场活动场次都有中文名(全空 = 本轮需求原先的症状)", () => {
     const missing = ACTIVITY_CODES.filter((c) => !zhOf(c));
     expect(missing.map((c) => `${c} ${byCode.get(c)?.title_en ?? "?"}`)).toEqual([]);
   });

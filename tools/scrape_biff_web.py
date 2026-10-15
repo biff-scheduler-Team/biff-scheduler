@@ -18,6 +18,9 @@
 * 场馆代码:官网英文页只给影院全名,不给 B1/C3/L10 这类代码 —— 由
   `VENUE_TABLE` 静态映射(与 2025 口径一致);表外的新厅会**报错退出**,
   逼你补表而不是静默丢数据。
+* 取消场次:日期页里的 `var removeCodes = [...]` 是**官方下架**的场次编号 ——
+  这些格子仍然印在 HTML 里,官网靠前端 JS 摘掉。解析时剔除,并写
+  `<out>/cancelled.json` 供 `merge_schedule.py` 使用(否则册子会把它们补回公开排期)。
 
 三类特殊条目(都是官网真实存在、但结构不同的格子)
 ----------------------------------------------
@@ -41,6 +44,7 @@
     <out-dir>/schedule.json        与 apps/web/public/schedule.json 同契约
     <out-dir>/venues.json          与 apps/web/public/venues.json 同契约
     <out-dir>/film-meta.json       idx → 片名 / 单元 / 年份 / 国家 / 片长(交叉核对用)
+    <out-dir>/cancelled.json       官网 removeCodes(已取消的场次编号;merge_schedule.py 消费)
     <out-dir>/_cache/*.html        原始页缓存(--offline 复用;可随时删)
 
 抓完直接看自检输出(场次总数 / 编号唯一性 / 未知场馆),再决定要不要
@@ -130,6 +134,10 @@ RE_ADDON = re.compile(r"addon/10000001/page\.asp\?page_num=(\d+)")
 # 活动页(`Actors' House` / `Master Class` / `Special Talk` 这类非影片场次)印的是时间区间:
 #   <em>Date</em> <span>Oct 7 (Wed) 18:50 - 19:50</span>
 RE_ADDON_RANGE = re.compile(r"<em>Date</em>\s*<span>[^<]*?(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})</span>")
+# 官网下架 / 取消的场次编号:`var removeCodes = ['510', '633'];`
+# 排期页 HTML 里这些格子**仍然在**,官方靠前端 JS 把它们摘掉 ——
+# 只抓 HTML 会把已取消的场次当成正常场次收进来(2026-10-09 `Red Thread` 撤片即此例)。
+RE_REMOVE_CODES = re.compile(r"var\s+removeCodes\s*=\s*\[([^\]]*)\]")
 
 RATING_MAP = {"g": "ALL", "12": "12", "15": "15", "19": "19"}
 
@@ -238,6 +246,21 @@ def parse_schedule_page(page_html: str, day: date) -> list[dict[str, Any]]:
                 "remark": html.unescape(remark_m.group(1)).strip() if remark_m else "",
             })
     return rows
+
+
+def parse_remove_codes(page_html: str) -> list[str]:
+    """日期页 → 官方下架的场次编号(`var removeCodes = ['510', '633'];`)。
+
+    返回该页声明的编号列表(按出现顺序、去重);页面没有这行时返回空列表。
+    调用方对所有日期页取**并集** —— 官网目前逐页印同一份清单,取并集在口径上更安全
+    (某天真按日期分页列,也不会漏掉)。
+    """
+    codes: list[str] = []
+    for m in RE_REMOVE_CODES.finditer(page_html):
+        for raw in re.findall(r"['\"](\d+)['\"]", m.group(1)):
+            if raw not in codes:
+                codes.append(raw)
+    return codes
 
 
 def infer_tags(title: str, remark: str) -> list[str]:
@@ -455,16 +478,26 @@ def main() -> int:
 
     # 1) 抓 10 个日期页
     pages: list[tuple[date, str]] = []
+    cancelled: list[str] = []
     for day_num in range(args.day_from, args.day_to + 1):
         day = date(args.year, args.month, day_num)
         text = fetch(DATE_URL.format(day=day_num), cache_dir, args.sleep, args.offline)
         pages.append((day, text))
+        for code in parse_remove_codes(text):
+            if code not in cancelled:
+                cancelled.append(code)
         print(f"[抓取] {day.isoformat()}  {len(text):>7} bytes")
 
     # 2) 解析排期 + 给官网未编号的场次补合成编号(X01…,与 2025 口径一致)
+    #    官网下架的场次(`removeCodes`)在解析这一步就剔除 —— 它们的格子还在 HTML 里。
     rows: list[dict[str, Any]] = []
+    dropped = 0
     for day, text in pages:
         got = parse_schedule_page(text, day)
+        if cancelled:
+            kept = [r for r in got if r["code"] not in cancelled]
+            dropped += len(got) - len(kept)
+            got = kept
         rows.extend(got)
         print(f"[解析] {day.isoformat()}  {len(got):>3} 场")
     auto_code = 0
@@ -473,6 +506,8 @@ def main() -> int:
             auto_code += 1
             r["code"] = f"X{auto_code:02d}"
     print(f"[合计] {len(rows)} 场 / {len({r['venue_name'] for r in rows})} 厅 / 合成编号 {auto_code} 条")
+    if cancelled:
+        print(f"[取消] 官网 removeCodes {','.join(sorted(cancelled))} → 剔除 {dropped} 场")
 
     # 3) 回填片长 / 韩文名 / 单元(按 film_idx 去重,只抓一次)
     sections = parse_sections(pages[0][1])
@@ -602,6 +637,8 @@ def main() -> int:
     dup = sorted({c for c in codes if codes.count(c) > 1})
     print("\n===== 自检 =====")
     print(f"场次总数      : {len(screenings)}")
+    print(f"取消场次      : "
+          + ("无" if not cancelled else f"{','.join(sorted(cancelled))}(官网 removeCodes,已剔除 {dropped} 场)"))
     print(f"编号唯一      : {'OK' if not dup else '重复 ' + ','.join(dup)}")
     print(f"编号范围      : {min(codes)} ~ {max(codes)}" if codes else "编号范围      : -")
     print(f"厅数          : {len({s['venue_id'] for s in screenings})}")
@@ -627,6 +664,20 @@ def main() -> int:
     }
     (out_dir / "schedule.json").write_text(
         json.dumps({"festival": festival, "screenings": screenings}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    # 取消清单单独成文件:merge_schedule.py 要用它挡住「册子里有、官网没有 → 补进来」那条规则
+    # (册子 9/10 付印时 510/633 还在,不挡就会被补回公开排期)。
+    (out_dir / "cancelled.json").write_text(
+        json.dumps(
+            {
+                "source": DATE_URL.format(day=args.day_from),
+                "generated_at": festival["generated_at"],
+                "codes": sorted(cancelled),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ) + "\n",
         encoding="utf-8",
     )
     (out_dir / "venues.json").write_text(

@@ -22,6 +22,10 @@
 1. **骨架 = 官网**。它是活的:改时间、加场、活动场次、`title_zh` 都在它这一侧;
    拿册子当骨架会把 9/10 之后的变更打回去(实测 831 Special Talk 册子印 60′、官网已改 120′)。
 2. **补官网没有的场次**(按 code 判):册子里有、官网没有的一律补进来。
+   ⚠ **例外 = 官网 `removeCodes`(已下架场次)**:册子付印在先,这些编号册子里还有,
+   不挡就会被这条规则原样补回公开排期 → 由 `--cancelled`(`scrape_biff_web.py` 的
+   `cancelled.json`)挡住,合并后再断言它们不出现在结果里。
+   (2026-10-09 `Red Thread` 撤片 = 510 / 633,即此例。)
 3. **共有 code 一律保留官网值**,只有 `CATALOGUE_WINS_DURATION` 里显式登记的例外 ——
    那些是官网**兜底值**的场次(见 `scrape_biff_web.py::FALLBACK_DURATION_MIN = 120`):
    册子印了真实片长,官网只能填 120。**不写通用规则**(「两源取大 / 取小」无口径依据),
@@ -40,6 +44,9 @@
         --web apps/web/public/schedule.json --web-venues apps/web/public/venues.json \\
         --films apps/web/public/films.json \\
         --out apps/web/public/schedule.json --venues-out apps/web/public/venues.json
+
+`--cancelled` 不传时自动取 `--web` 同目录的 `cancelled.json`(即 `scrape_biff_web.py`
+的产物,通常与 `schedule.json` 同目录);显式传参则读指定路径,文件不存在即退出码 1。
 
 P&I(Press & Industry,记者 / 业界场)走**单独一份产物** `apps/web/public/pni.json`:
 前端「设置 → 显示 P&I 场次」勾选后才并进排期表,公开 `schedule.json` / `venues.json` 不含它们。
@@ -167,16 +174,29 @@ def build_title_index(films: list[dict]) -> dict[str, str]:
 
 
 def merge_screenings(
-    web: list[dict], cat: list[dict], title_index: dict[str, str], strict: bool
+    web: list[dict],
+    cat: list[dict],
+    title_index: dict[str, str],
+    strict: bool,
+    cancelled: set[str] | None = None,
 ) -> tuple[list[dict], Counter]:
-    """官网为骨架 + 册子补缺 / 补片长。返回 (合并结果, 统计)。"""
+    """官网为骨架 + 册子补缺 / 补片长。返回 (合并结果, 统计)。
+
+    `cancelled` = 官网 `removeCodes` 里**已下架**的场次编号(见 `scrape_biff_web.py`)。
+    ⚠ 必须在**补册子场次**这一步也挡一道:册子 9/10 付印时这些场次还在,
+    否则「册子里有、官网没有 → 补进来」会把已取消的场次原样退回公开排期。
+    """
     stats: Counter = Counter()
+    cancel_set = set(cancelled or ())
     cat_by_code = {s["code"]: s for s in cat}
     web_codes = {s["code"] for s in web}
 
     merged: list[dict] = []
     conflicts: list[str] = []
     for item in web:
+        if item["code"] in cancel_set:
+            stats["cancelled_dropped"] += 1
+            continue
         row = dict(item)
         if row["venue_id"] in VENUE_RENAMES:
             # 场馆 id 统一到官方 2026 图例口径后再比对,否则每条 Roof Theater 场次都成「冲突」
@@ -229,6 +249,9 @@ def merge_screenings(
     for s in cat:
         if s["code"] in web_codes:
             continue
+        if s["code"] in cancel_set:
+            stats["cancelled_skipped"] += 1
+            continue
         row = dict(s)
         row["venue_id"] = VENUE_RENAMES.get(row["venue_id"], row["venue_id"])
         row["title_zh"] = title_index.get(norm_title(row.get("title_en", "")), "")
@@ -248,6 +271,9 @@ def merge_screenings(
         log("FAIL", f"有 {stats['unregistered_conflict']} 条未登记冲突(--strict)")
     log("SANITY", f"合并场次: 官网 {len(web)} + 册子新增 {len(added)} "
                   f"(另有 {stats['duplicate_dropped']} 条与官网同场次重复被丢弃) = {len(merged)}")
+    if cancel_set:
+        log("SANITY", f"取消清单 {sorted(cancel_set)}:骨架剔除 {stats['cancelled_dropped']} 条、"
+                      f"册子补齐跳过 {stats['cancelled_skipped']} 条")
     log("SANITY", f"册页号补齐 {stats['filled_page']} 条; title_kr 补齐 {stats['filled_title_kr']} 条; "
                   f"片长取册子 {stats['duration_from_catalogue']} 条; "
                   f"片名排版差异(保留官网){stats['title_differs']} 条; "
@@ -296,6 +322,11 @@ def main() -> int:
     ap.add_argument("--pni-in", default=None, help="extract_schedule.py --pni-out 的产物")
     ap.add_argument("--pni-out", default=None, help="P&I 上线产物(如 apps/web/public/pni.json)")
     ap.add_argument("--strict", action="store_true", help="有未登记冲突时退出码 1")
+    ap.add_argument(
+        "--cancelled",
+        default=None,
+        help="取消清单(scrape_biff_web.py 的 cancelled.json);缺省 = --web 同目录下的 cancelled.json",
+    )
     args = ap.parse_args()
 
     cat_file = load_json(args.catalogue)
@@ -304,15 +335,31 @@ def main() -> int:
     web = web_file["screenings"]
     films = load_json(args.films).get("films", [])
 
+    # 官网 removeCodes(已取消场次)—— 缺省自动找 --web 同目录的 cancelled.json,找不到就当没有。
+    cancel_set: set[str] = set()
+    cancel_path = Path(args.cancelled) if args.cancelled else Path(args.web).parent / "cancelled.json"
+    if cancel_path.exists():
+        cancel_set = set(load_json(cancel_path).get("codes") or [])
+        log("INFO", f"取消清单 {cancel_path}:{sorted(cancel_set) or '空'}")
+    elif args.cancelled:
+        log("FAIL", f"--cancelled 指定的文件不存在:{cancel_path}")
+        return 1
+
     log("INFO", f"册子 {len(cat)} 场 / 官网 {len(web)} 场")
     title_index = build_title_index(films)
 
-    merged, stats = merge_screenings(web, cat, title_index, args.strict)
+    merged, stats = merge_screenings(web, cat, title_index, args.strict, cancel_set)
 
     # code 唯一性:前端 byCode / slots / cardEls 都以 code 为键
     dup = [c for c, n in Counter(s["code"] for s in merged).items() if n > 1]
     if dup:
         log("FAIL", f"code 重复 {dup[:10]}")
+        return 1
+
+    # 已取消的场次绝不允许进公开产物 —— 骨架 / 册子两条路径上面都已过滤,这里是兜底断言
+    leftover = sorted({s["code"] for s in merged} & cancel_set)
+    if leftover:
+        log("FAIL", f"已取消场次出现在合并结果里:{leftover}")
         return 1
 
     per_day = Counter(s["date"] for s in merged)

@@ -15,7 +15,7 @@
       "2026-10-15"
     ],
     "note": "数据来源:官方排期页 www.biff.kr/eng/html/schedule/date.asp(由 tools/scrape_biff_web.py 抓取) ∪ 2026 官方 Ticket Catalogue PDF(2026-09-10 付印,由 tools/extract_schedule.py 解析,由 tools/merge_schedule.py 合成)。以官网为骨架(活数据:改时间/加场/活动场次),册子补官网完全没有的场次(MEGABOX Busan Theater 1–4 Community BIFF,官方编号 901–942)与册页号;**不含 P&I(Press & Industry)场次** —— 册子排期页的 BD/C7 两列是记者/业界场,不对外售票;场馆按「厅」建 id(id = 官方影院代码小写,如 b1/c3/l10);GV 场次的 end_time 已含 25min 映后谈;联映块(묶)的 duration_min 为块内成员片长之和;开闭幕式与获奖片重映的片长以册子印的为准(官网无详情页时是 120min 兜底值);两源会持续变动,以开映前官方页面为准。",
-    "generated_at": "2026-09-19T23:16:28+08:00"
+    "generated_at": "2026-10-15T14:32:51+08:00"
   },
   "screenings": [
     {
@@ -230,8 +230,8 @@
       "title_zh": "终极面试",
       "date": "2026-10-07",
       "start_time": "10:00",
-      "end_time": "12:11",
-      "duration_min": 106,
+      "end_time": "12:13",
+      "duration_min": 108,
       "venue_id": "l6",
       "venue_display": "LOTTE CINEMA Centum City 6",
       "is_gv": true,
@@ -652,8 +652,8 @@
       "title_zh": "",
       "date": "2026-10-07",
       "start_time": "15:30",
-      "end_time": "17:48",
-      "duration_min": 113,
+      "end_time": "17:53",
+      "duration_min": 118,
       "venue_id": "b1",
       "venue_display": "Busan Cinema Center Cinema 1",
       "is_gv": true,
@@ -985,24 +985,6 @@
       "rating": "15",
       "subs": null,
       "page": 174
-    },
-    {
-      "code": "801",
-      "title_en": "Actors’ House: LEE Minho",
-      "title_kr": "",
-      "title_zh": "演员之家：李敏镐",
-      "date": "2026-10-07",
-      "start_time": "18:50",
-      "end_time": "19:50",
-      "duration_min": 60,
-      "venue_id": "sc",
-      "venue_display": "Culture Hall(9F), Shinsegae Centum City",
-      "is_gv": false,
-      "tags": [
-        "event"
-      ],
-      "rating": null,
-      "subs": null
     },
     {
       "code": "021",
@@ -1918,8 +1900,8 @@
       "title_zh": "蓝色夜晚的恋人",
       "date": "2026-10-08",
       "start_time": "12:20",
-      "end_time": "14:07",
-      "duration_min": 107,
+      "end_time": "14:05",
+      "duration_min": 105,
       "venue_id": "bcm",
       "venue_display": "Busan Community Media Center Open Hall",
       "is_gv": false,
@@ -1937,8 +1919,8 @@
       "title_zh": "终极面试",
       "date": "2026-10-08",
       "start_time": "12:30",
-      "end_time": "14:41",
-      "duration_min": 106,
+      "end_time": "14:43",
+      "duration_min": 108,
       "venue_id": "l4",
       "venue_display": "LOTTE CINEMA Centum City 4",
       "is_gv": true,
@@ -2098,9 +2080,9 @@
     },
     {
       "code": "827",
-      "title_en": "[Cine Class] Charlotte GAINSBOURG: The Muse of French Chic",
+      "title_en": "[Cine Class] Charlotte GAINSBOURG: A Quiet Passion",
       "title_kr": "",
-      "title_zh": "[电影课] 夏洛特·甘斯布：法式优雅的缪斯",
+      "title_zh": "[电影课] 夏洛特·甘斯布：宁静的热情",
       "date": "2026-10-08",
       "start_time": "13:30",
       "end_time": "14:30",
@@ -3433,8 +3415,8 @@
       "title_zh": "权镇圭：艺术家的生命",
       "date": "2026-10-09",
       "start_time": "09:40",
-      "end_time": "12:12",
-      "duration_min": 127,
+      "end_time": "12:04",
+      "duration_min": 119,
       "venue_id": "c2",
       "venue_display": "CGV Centum City 2",
       "is_gv": true,
@@ -3912,8 +3894,8 @@
       "title_zh": "终极面试",
       "date": "2026-10-09",
       "start_time": "13:10",
-      "end_time": "14:56",
-      "duration_min": 106,
+      "end_time": "14:58",
+      "duration_min": 108,
       "venue_id": "l7",
       "venue_display": "LOTTE CINEMA Centum City 7",
       "is_gv": false,
@@ -5079,8 +5061,8 @@
       "title_zh": "",
       "date": "2026-10-09",
       "start_time": "23:59",
-      "end_time": "29:56",
-      "duration_min": 332,
+      "end_time": "30:05",
+      "duration_min": 341,
       "venue_id": "bh",
       "venue_display": "Busan Cinema Center Haneulyeon Theatre",
       "is_gv": true,
@@ -5092,7 +5074,7 @@
         "KE"
       ],
       "midnight_members": [
-        "Red Thread",
+        "Spirit Guardians: The Last Secret Of The First Emperor",
         "The Scar-Faced Cat: Way of Asura",
         "L’Autre"
       ],
@@ -5384,11 +5366,11 @@
       "title_zh": "你心中的火",
       "date": "2026-10-10",
       "start_time": "10:00",
-      "end_time": "11:58",
+      "end_time": "11:33",
       "duration_min": 93,
       "venue_id": "b1",
       "venue_display": "Busan Cinema Center Cinema 1",
-      "is_gv": true,
+      "is_gv": false,
       "tags": [],
       "rating": "15",
       "subs": [
@@ -6233,6 +6215,24 @@
       "page": 59
     },
     {
+      "code": "806",
+      "title_en": "Actors’ House: SHIN Mina",
+      "title_kr": "",
+      "title_zh": "演员之家：申敏儿",
+      "date": "2026-10-10",
+      "start_time": "16:30",
+      "end_time": "17:30",
+      "duration_min": 60,
+      "venue_id": "sc",
+      "venue_display": "Culture Hall(9F), Shinsegae Centum City",
+      "is_gv": false,
+      "tags": [
+        "event"
+      ],
+      "rating": null,
+      "subs": null
+    },
+    {
       "code": "337",
       "title_en": "A New Dawn",
       "title_kr": "파리스 그린이 밝는 날에",
@@ -6288,24 +6288,6 @@
       "page": 158
     },
     {
-      "code": "806",
-      "title_en": "Actors’ House: SHIN Mina",
-      "title_kr": "",
-      "title_zh": "演员之家：申敏儿",
-      "date": "2026-10-10",
-      "start_time": "17:00",
-      "end_time": "18:00",
-      "duration_min": 60,
-      "venue_id": "sc",
-      "venue_display": "Culture Hall(9F), Shinsegae Centum City",
-      "is_gv": false,
-      "tags": [
-        "event"
-      ],
-      "rating": null,
-      "subs": null
-    },
-    {
       "code": "304",
       "title_en": "ACROSS: Anatomy of the Forgotten War",
       "title_kr": "어크로스: 전쟁은 어떻게 잊혀지는가",
@@ -6350,8 +6332,8 @@
       "title_zh": "蓝色夜晚的恋人",
       "date": "2026-10-10",
       "start_time": "18:40",
-      "end_time": "20:52",
-      "duration_min": 107,
+      "end_time": "20:50",
+      "duration_min": 105,
       "venue_id": "l4",
       "venue_display": "LOTTE CINEMA Centum City 4",
       "is_gv": true,
@@ -7488,8 +7470,8 @@
       "title_zh": "权镇圭：艺术家的生命",
       "date": "2026-10-11",
       "start_time": "12:00",
-      "end_time": "14:32",
-      "duration_min": 127,
+      "end_time": "14:24",
+      "duration_min": 119,
       "venue_id": "l5",
       "venue_display": "LOTTE CINEMA Centum City 5",
       "is_gv": true,
@@ -7955,11 +7937,11 @@
       "title_zh": "你心中的火",
       "date": "2026-10-11",
       "start_time": "15:30",
-      "end_time": "17:28",
+      "end_time": "17:03",
       "duration_min": 93,
       "venue_id": "b1",
       "venue_display": "Busan Cinema Center Cinema 1",
-      "is_gv": true,
+      "is_gv": false,
       "tags": [],
       "rating": "15",
       "subs": [
@@ -8643,7 +8625,9 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null,
+      "subs": [
+        "KE"
+      ],
       "page": 161
     },
     {
@@ -9357,8 +9341,8 @@
       "title_zh": "权镇圭：艺术家的生命",
       "date": "2026-10-12",
       "start_time": "12:00",
-      "end_time": "14:07",
-      "duration_min": 127,
+      "end_time": "13:59",
+      "duration_min": 119,
       "venue_id": "l10",
       "venue_display": "LOTTE CINEMA Centum City 10",
       "is_gv": false,
@@ -9884,25 +9868,6 @@
       "page": 147
     },
     {
-      "code": "510",
-      "title_en": "Red Thread",
-      "title_kr": "붉은 실",
-      "title_zh": "红线",
-      "date": "2026-10-12",
-      "start_time": "15:30",
-      "end_time": "18:01",
-      "duration_min": 126,
-      "venue_id": "l2",
-      "venue_display": "LOTTE CINEMA Centum City 2",
-      "is_gv": true,
-      "tags": [],
-      "rating": "15",
-      "subs": [
-        "KE"
-      ],
-      "page": 167
-    },
-    {
       "code": "526",
       "title_en": "I Rarely Wake Up Dreaming",
       "title_kr": "올랴와 올레흐: 난 좀처럼 꿈에서 깨어나지 않지",
@@ -10281,8 +10246,8 @@
       "title_zh": "蓝色夜晚的恋人",
       "date": "2026-10-12",
       "start_time": "18:40",
-      "end_time": "20:27",
-      "duration_min": 107,
+      "end_time": "20:25",
+      "duration_min": 105,
       "venue_id": "l7",
       "venue_display": "LOTTE CINEMA Centum City 7",
       "is_gv": false,
@@ -10546,7 +10511,9 @@
       "is_gv": true,
       "tags": [],
       "rating": "15",
-      "subs": null,
+      "subs": [
+        "KE"
+      ],
       "page": 161
     },
     {
@@ -10796,25 +10763,6 @@
       "page": 120
     },
     {
-      "code": "633",
-      "title_en": "Red Thread",
-      "title_kr": "붉은 실",
-      "title_zh": "红线",
-      "date": "2026-10-13",
-      "start_time": "10:00",
-      "end_time": "12:06",
-      "duration_min": 126,
-      "venue_id": "kt",
-      "venue_display": "KOFIC Theater",
-      "is_gv": false,
-      "tags": [],
-      "rating": "15",
-      "subs": [
-        "KE"
-      ],
-      "page": 167
-    },
-    {
       "code": "563",
       "title_en": "Parallel Tales",
       "title_kr": "패러렐 테일즈: 데칼로그",
@@ -10914,8 +10862,8 @@
       "title_zh": "终极面试",
       "date": "2026-10-13",
       "start_time": "10:20",
-      "end_time": "12:06",
-      "duration_min": 106,
+      "end_time": "12:08",
+      "duration_min": 108,
       "venue_id": "l4",
       "venue_display": "LOTTE CINEMA Centum City 4",
       "is_gv": false,
@@ -11550,8 +11498,8 @@
       "title_zh": "蓝色夜晚的恋人",
       "date": "2026-10-13",
       "start_time": "16:00",
-      "end_time": "18:12",
-      "duration_min": 107,
+      "end_time": "18:10",
+      "duration_min": 105,
       "venue_id": "b3",
       "venue_display": "Busan Cinema Center Cinematheque",
       "is_gv": true,

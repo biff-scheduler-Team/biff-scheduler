@@ -1,6 +1,7 @@
 {
   "_note": "人工活动译名表：官网**活动场次**英文名 → 中文名。只放「纯活动」场次（Actors' House / Master Class / Cine Class / Special Talk）—— 这批场次在影片目录（films.json）里没有条目，scrape_biff_web.py 的目录反查必然落空，title_zh 会一直是空，站上只显示英文名。本表由 scrape_biff_web.py --event-titles 与 tools/apply_event_titles.py 共用（同一份实现，不各写一套匹配）。键按 official norm_title 归一化后匹配，故原样抄官网英文名即可。",
   "_why_2026_09_16": "用户 2026-09-16 需求原话「Actors' House: RYU Seung-ryong 这种只有英文的 能不能也翻译成中文」。人名走**通行中文译名**，并与站内已有口径对齐（罗泓轸 / 拉夫·迪亚兹 / 林太郎 / 朱迪丝·戈德雷什 / 张律 / 毕赣 / 沈恩京 / 许鞍华，见 data/films-catalog-2026.json 的 director 字段）。两处由用户拍板：① 824 用韩文口径「张元锡」（官网英文写 Billy ACUMEN、韩文写 장원석）；② Master Class 定译「大师班」。值不得与 data/films-catalog-2026.json 任何 title_zh 相同 —— 否则前端 filmNodeKey 会把活动误当某部片归并到 cat:<id>（哨兵见 apps/web/tests/catalogue-data.test.ts）。",
+  "_changelog_2026_10_15": "① 827 的官网英文标题已从 'The Muse of French Chic' 改为 'A Quiet Passion'（2026-10-15 重抓发现）—— 键按 norm_title 精确匹配，标题一改旧键就整条落空、中文名会**静默消失**，故键与译名同步更新。② 801（Actors' House: LEE Minho）已随官网下架从产物剔除，此处**保留**该条：本表是「场次 → 中文名」的映射，表里有、产物里没有是允许的（哨兵只查产物侧的场次）。",
   "events": {
     "Actors' House: LEE Minho": "演员之家：李敏镐",
     "Actors' House: KIM Goeun": "演员之家：金高银",
@@ -19,7 +20,7 @@
     "[Cine Class] Billy ACUMEN: The Box-Office Producer′s Secret Behind The King’s Warden, The Outlaws, The Roundup Series": "[电影课] 张元锡：《和王一起生活的男人》《犯罪都市》系列背后的卖座秘诀",
     "[Cine Class] BI Gan: On Making Strange and Beautiful Films": "[电影课] 毕赣：如何拍出奇异而美丽的电影",
     "[Cine Class] SHIM Eun-kyung: Transcending Borders, Discovering Craft": "[电影课] 沈恩京：跨越边界，发现技艺",
-    "[Cine Class] Charlotte GAINSBOURG: The Muse of French Chic": "[电影课] 夏洛特·甘斯布：法式优雅的缪斯",
+    "[Cine Class] Charlotte GAINSBOURG: A Quiet Passion": "[电影课] 夏洛特·甘斯布：宁静的热情",
     "[Special Talk] The Cinematic Life of Ann HUI, Winner of the Camellia Award": "[特别对谈] 山茶花奖得主许鞍华：与电影共生的人生"
   }
 }

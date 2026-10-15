@@ -31,8 +31,11 @@ beforeEach(async () => {
 describe("legacy library search and section parity", () => {
   it("finds activity types and Chinese guests stored only in festival extras", () => {
     expect(nodes.filter((n) => searchFilm(n, "范冰冰")).map((n) => n.key)).toEqual(["cat:f072"]);
-    expect(nodes.filter((n) => searchFilm(n, "李敏镐")).map((n) => n.shows[0].code)).toEqual(["801"]);
-    expect(nodes.filter((n) => searchFilm(n, "演员之家"))).toHaveLength(6);
+    // 801(Actors' House: LEE Minho)已于 2026-10-15 随官网下架剔除 —— 该场次与它的
+    // 嘉宾都不该再出现在模型里(否则能搜到一场根本买不到的放映)
+    expect(nodes.filter((n) => searchFilm(n, "李敏镐"))).toHaveLength(0);
+    // 5 = 802–806;原为 6,少的那一场就是下架的 801
+    expect(nodes.filter((n) => searchFilm(n, "演员之家"))).toHaveLength(5);
     // 5 = 811–815;815(Alfonso CUARÓN)是 2026-09-19 官网新增的第 5 场大师班
     expect(nodes.filter((n) => searchFilm(n, "大师班"))).toHaveLength(5);
     // 7 = 821–827;827(Charlotte GAINSBOURG)是同日官网新增的第 7 场电影课
@@ -153,7 +156,8 @@ describe("红黑榜榜单", () => {
     // 判同仍与影片库同源(`filmNodeKey` + `buildFilms`)→ 不该出现重复 key
     expect(new Set(keys).size).toBe(keys.length);
     // 299 部有排期 - 8 个「短片竞赛 / 双片连映」合集 + 28 部成员片(实测)
-    expect(board).toHaveLength(319);
+    // 2026-10-15:再 -2 —— Red Thread(510/633 撤片,该片整片下架)与 801(官网下架)
+    expect(board).toHaveLength(317);
     expect(keys).not.toContain("sched:asian short film competition 1");
     expect(board.find((f) => f.key === "cat:f228")!.zh).toBe("她说");
   });
