@@ -4,7 +4,9 @@
 > 完整版(含示例与论证)见 [`docs/DEVELOPMENT-STANDARDS.md`](./docs/DEVELOPMENT-STANDARDS.md);
 > 具体口径细节见 [`docs/CONVENTIONS.md`](./docs/CONVENTIONS.md);当前状态与决策见 [`PLAN.md`](./PLAN.md)。
 > 三者冲突时以 `docs/DEVELOPMENT-STANDARDS.md` 为准。
-> 本机 CodeBuddy 另有一份自动加载副本:`.codebuddy/rules/biff-development-standards/RULE.mdc`(该目录被 gitignore,需手动同步)。
+> **规范只有这一份。** `.codebuddy/rules/biff-development-standards/RULE.mdc` 自 2026-10-16 起只是
+> 一个**指针**(保留 `alwaysApply` 让它把注意力指回本文件),**不再复制条文** —— 双份规范必然漂移,
+> 每次改口径还要改两遍。「只对本机成立」的约定落 `.scratch/local-conventions.md`(gitignore,非规范)。
 
 ## 0. 总纲
 
@@ -20,6 +22,15 @@ typecheck / lint / 单测仍是**部署前**门禁。详见 §2。
 1. **写 PLAN**:`docs/plans/PLAN-<YYYYMMDDHHMMSS>.md`,必含 目标 / 范围(含「不做什么」)/ 方案取舍 / 验收标准
    (模板见 §9.3)。需求变了改 PLAN 文件,不要只在对话里改。**只读本需求的 PLAN,不整读 `PLAN.md` 活文档。**
    需求**怎么提**、AI **必须交什么**见 §9。
+   ⚠ **免 PLAN 档(2026-10-16 增)**:下面这几类**不写 PLAN**,直接在 commit body 写三行
+   (改了什么 / 为什么 / 怎么验)即可 ——
+   · **数据产物**(`*.json`:海报、场次、排期数据,含 `apps/web/public/*.json` / `data/*.json`);
+   · **纯文案**(用户可见文字的字面量增删改,不动逻辑);
+   · **纯样式值**(颜色 / 字号 / 间距 token 的取值调整,不动结构与类名);
+   · **单文件且 diff < 20 行**(含注释、文档)。
+   依据:实测 231 份 PLAN / 37 天、平均 78 行,而其中相当一部分提交是「改一个半径值」「补一张海报」
+   这种一行改动 —— 给一行改动写 78 行 PLAN 是纯开销,还会让**真正需要 PLAN 的改动**被稀释。
+   ⚠ 豁免的**只是 PLAN**;**测试 / 回归用例 / 验证证据照旧**(§3 / §9.4)。
 2. **实现**:代码 + 同步单测 / E2E。
 3. **验证(可选)**:默认交给云端(Cloudflare 构建 + GitHub CI),见 §2;本地想提前看结果才自己跑。
 4. **提交推送**:Conventional Commits → **直接推**,见 §4。
@@ -34,25 +45,36 @@ typecheck / lint / 单测仍是**部署前**门禁。详见 §2。
 | 管线 | 跑什么 | 性质 |
 |---|---|---|
 | **Cloudflare Workers Builds**(push `main` 后) | `npm run build` = typecheck → lint → 单测 → 各 workspace 构建 | **部署前门禁**,失败不上线 |
-| **GitHub CI**(`.github/workflows/ci.yml`) | PR:`verify:quick` + 受影响 spec(chromium);`main`:全量三浏览器 E2E | **PR 门禁 + 事后体检**,不回滚 |
+| **GitHub CI**(`.github/workflows/ci.yml`) | push `main`:`check:ci` + 全量三浏览器 E2E;PR:`check:ci` + **PR 专用** typecheck/lint/单测 + 受影响 spec | **PR 门禁 + 事后体检**,不回滚 |
+
+> ⚠ **2026-10-16 去重**:`main` 上 CI **不再重跑 typecheck / lint / 单测** —— 同一批命令 Workers Builds
+> 已在**部署前**跑过,再跑一遍零信息增量,只是让你多等一轮 job。CI 只留 CF 不跑的两样
+> (`check:repo` / `check:test-map`)。PR 分支没有「部署前门禁」兜底,所以 PR 上仍由 CI 自己跑那三样。
 
 | 时机 | 做什么 | 命令 |
 |---|---|---|
 | 日常改完 | **什么都不用跑**,直接提交 push | — |
 | 想 push 前先知道结果 | 跑一次快速门禁 | `npm run verify:quick` |
 | 改了 UI 且自己没底 | 单 spec 桌面端 | `npm run verify:ui -- e2e/react/<spec>.spec.ts --project=desktop-chromium` |
+| 只是**想看真实效果** | **推 `main` 后在真站上看**(常规路径,CF 构建失败即不上线) | `git push origin main` |
+| UI 大改、光看真站不够 | 起**一次** dev server,看完即停(**不要每轮重启**) | `npm run dev` |
 | 排查 CI 上的 E2E 失败 | **先单文件 + 单浏览器**,不要拿全量重跑做二分 | `npx playwright test -c playwright.react.config.ts e2e/react/<spec>.spec.ts --project=desktop-chromium` |
 
 - `verify` / `verify:ui` / `verify:full` 仍是**按需可用**的工具(没有删),只是不再「必跑」。
 - **要跑就只跑一条**:`verify:ui` = typecheck + lint + 单测 + `build -w @biff/web` + 指定 spec,
   不要再补 `npm run verify`(除非本轮动到了 `apps/api`,需要验证 worker 打包);
   `verify:full`(5–9 min 三浏览器)只在**确认修复后**跑一次。
-- `check:repo` / `check:test-map` 仍在 `verify:quick` 里,CI 的 gate 也跑它们 —— 本地不跑就会被 CI 挡。
+- `check:repo` / `check:test-map` 仍在 `verify:quick` 里(单独跑用 `npm run check:ci`),CI 的 gate 也跑它们
+  —— 本地不跑就会被 CI 挡。`verify:quick` = `check:ci` + `verify:code`(`typecheck` + `lint` + 单测)。
 - **「受影响 spec」有表可查**:`docs/TEST-MAP.md`(机读源 `scripts/test-map.json`)。
   ⚠ `npm run specs:affected` 无参数时按 `origin/main...HEAD`(已提交差异)算,未提交的改动要用 `--files <path>`。
 - **CI / Cloudflare 红了先修再叠改动**(§8 红线 1);报告结果要**贴证据**(CI 链接 / 测试计数),别说「应该没问题」。
 - 若选择本地跑,则「测试通过 → push 之间代码必须冻结」—— 跑完又改了任何文件,那次结果即失效。
 - **交付口径**:§6 部署核对(asset hash 相同 + 自增字符串 + 阴性对照)完成,**即视为上线成功**。
+  核对方式 = 一条命令:`npm run verify:deploy -- --new "<本轮新增的字符串>"`(可选 `--negative "<本轮删掉的字符串>"`);
+  它输出**一行**可直接贴进报告的结论(`✓ 上线已核实 —— 线上 asset main-xxx / 期望 main-xxx · 新字符串 1/1 命中 · 阴性对照 1/1 未命中`),
+  失败给 `exit 1` 并逐条列原因。本轮**没改应用产物**(纯文档 / 工具链)时没有新字符串可传 →
+  改用 `--hash <入口 hash>`(输出会显式标注「未给 --new」,不静默降级);两条判据都不给则 `exit 2`。
   `main` 上的全量 E2E 是**非阻塞的事后体检** —— 交付时**不写「等 CI 跑完」**(那会让人误以为它是瓶颈),
   正确写法是「部署已核实(贴证据);`main` 全量 E2E 仍在跑,**非阻塞**」。它红了按 §8 红线 1 **优先修**,
   但**不回滚**已上线版本、也**不改变**本次交付结论(完整版见 `DEVELOPMENT-STANDARDS.md` §2.4)。
@@ -72,6 +94,13 @@ typecheck / lint / 单测仍是**部署前**门禁。详见 §2。
   审查本轮改动(`git diff` / `git diff --staged`),按结论**修完再提交**;不得跳过,也不得「先提交再补 review」。
   **终止条件**:同一提交内最多两轮(第 1 轮全量 → 第 2 轮只审修复产生的增量),第 2 轮仍有问题就**停下来问人**,不递归。
   **自指豁免**:改动本身就是 code review 规则 / 这个 SKILL 时,只做一次静态一致性检查,不递归(完整版见 `DEVELOPMENT-STANDARDS.md` §4.7.1)。
+  **免审档(2026-10-16 增)**:diff **只含**下面几类时**跳过** `code-review-skill` ——
+  ① **数据产物**(`*.json` 的字面量增删改);② **纯文案**;③ **纯样式 token 取值**;④ **`*.md` 与代码注释**。
+  理由:review 的清单(代码质量 / 安全 / 性能 / 架构)针对的是**可执行逻辑**,这四类无从着手 ——
+  跑了也只是把同一份 diff 再读一遍,而每轮的成本是一次完整的 skill 调用。
+  ⚠ 判据是「**只含**」:同一提交里只要夹进一行逻辑改动,整份 diff 就得走完整 review。
+  ⚠ **它与 §1 的免 PLAN 档不是同一张名单**:「单文件且 diff < 20 行」**免 PLAN 但免不了 review** ——
+  20 行完全可能是一处逻辑改动。两张名单的关系是:免审档 ⊆ 免 PLAN 档(数据 / 文案 / 样式值两边都免)。
 - 一次提交只做一件事;body 写「为什么 + 验证结果」。
 - 禁止:提交临时文件 / `dist/` / `data/_cache/` / 密钥;`push --force` 到 `main`;amend 已推送提交;`--no-verify`;把他人改动搭车提交。
 - **会话草稿不落仓库根**:一律落 `.scratch/`(已 gitignore)。落点必须**工具中立** ——
@@ -81,13 +110,15 @@ typecheck / lint / 单测仍是**部署前**门禁。详见 §2。
   只留 `commit-msg`(校验本节格式,即时);**`pre-push` 已于 2026-09-16 删除** —— 它原来跑的 `verify:quick`
   在 Cloudflare 构建里**部署前**已经跑过一遍(§2),本地再跑只是让每次 push 多等 40 秒。
   安装脚本会连带**清理已下线的托管钩子**(只碰它自己装过的名字)。
-- **哪些改动走 PR**(完整版见 `DEVELOPMENT-STANDARDS.md` §4.5):**先按 `docs/TEST-MAP.md` 判** ——
-  用 `node scripts/affected-specs.mjs --files <本轮改的路径…>` 查必跑 spec:
-  · **≥1 个业务 spec**(非仅 `smoke`)或命中 **`allOn`(全量)** → **走 PR**,拿「合并前 CI」;
-  · **仅 `smoke` / 无映射**(纯文档、内部重构且无 spec 覆盖)→ **直接 push main**。
-  另有**三类无条件走 PR**:大规模重构 / 跨视图改造、涉及 `apps/api` 或 D1 迁移、依赖升级。
-  ⚠ PR 买到的只是「受影响 spec 在**合并前**跑(Review 记录 + Verified 签名)」——
-  **它不等于「合并前跑过全量」**,也不能让全量在部署前跑完(§2 交付口径)。
+- **哪些改动走 PR**(完整版见 `DEVELOPMENT-STANDARDS.md` §4.5;2026-10-16 **再收一档**):
+  **只保留四类** —— ① 大规模重构 / 跨视图改造(§9.1 第二档);② 涉及 `apps/api`;
+  ③ **D1 迁移**;④ **依赖升级**。**其余一律直接 push `main`**。
+  ⚠ 与旧口径的差别:此前「命中 `allOn` 全量」或「有业务 spec 覆盖」也要走 PR,现已取消 ——
+  因为 `main` 上的全量 E2E 本来就是**非阻塞的事后体检**(§2 交付口径),PR 在这里买不到额外保障,
+  只付出分支 / rebase / 等合并这些摩擦。受影响 spec 仍可**本地按需跑**(§2 时机表),
+  它有表可查(`docs/TEST-MAP.md`,机读源 `scripts/test-map.json`)。
+  ⚠ PR 买到的仍然只是「受影响 spec 在**合并前**跑(Review 记录 + Verified 签名)」——
+  **不等于「合并前跑过全量」**,也不能让全量在部署前跑完(§2)。
   `prepare-cloudflare.mjs` 只在 `WORKERS_CI_BRANCH=main` 时迁移 + 部署,PR 分支天然不碰生产;
   merge 到 main 才部署,§2「推的时候直接推」不变。
 - **大重构前先打 checkpoint**(完整版见 §4.6):`chore(<scope>): checkpoint before <重构名>`,
@@ -134,7 +165,10 @@ typecheck / lint / 单测仍是**部署前**门禁。详见 §2。
   (它是 `build → 迁移 → api → web` 的手动兜底,只在 Cloudflare 侧不可用时才用)。
 - 生效域名是 `https://biff.lcandy.co`;`biff.iff.day` 已进 `APP_ORIGIN` 白名单与账号系统回调登记,
   但**自定义域名尚未挂到 Worker 上**(该子域无 DNS 解析),需人工在 CF 控制台挂载,详见 `docs/account-integration.md`。
-- 线上核对带 cache-buster;最强判据 = **asset hash 相同**(不是内容 grep)+ 自己新增字符串 + 阴性对照。
+- 线上核对:**一条命令** ——
+  `npm run verify:deploy -- --new "<本轮新增的字符串>" [--negative "<本轮删掉的字符串>"]`,
+  即带 cache-buster 拉 `https://biff.lcandy.co/`,比对 asset hash + grep 新字符串 + 跑阴性对照,输出一行结论。
+  判据强度与实现见 `scripts/verify-deploy.mjs` 文件头;**最强的是 asset hash 相同**(不是内容 grep)。
 - **用户约定:每次改动完成后必须重新部署,无需再问。**
 
 ## 7. 并行协作(多会话 / 多 agent 同工作区)
@@ -148,10 +182,11 @@ typecheck / lint / 单测仍是**部署前**门禁。详见 §2。
 
 ## 8. 红线(违反即返工)
 
-1. **云端红了(Cloudflare 构建 / CI)还继续叠改动** —— 先修再往下做。2. 无 PLAN 直接动手。3. 修 bug 不带回归测试。4. 为测试变绿改实现。
+1. **云端红了(Cloudflare 构建 / CI)还继续叠改动** —— 先修再往下做。2. 无 PLAN 直接动手(除 §1 的**免 PLAN 档**)。3. 修 bug 不带回归测试。4. 为测试变绿改实现。
 5. 同一口径写第二份实现。6. 改 `biff.*` 结构不带迁移 / 不删旧 key。7. 未经登录就上传片单,或把片单写入共享 / 非本人云端位置。8. 对小时取模。
 9. 动态拼 Tailwind 类名 / `text-[Npx]`。10. 未量化就引新依赖。11. 提交临时文件 / `dist/` / 密钥。
-12. `wrangler pages deploy` 直传。13. `push --force` 到 `main`。14. 为「看效果」反复起 dev server。
+12. `wrangler pages deploy` 直传。13. `push --force` 到 `main`。
+14. 为「看效果」**反复重启** dev server(同一轮一次即可 —— 常规路径是推 `main` 在真站上看,§2)。
 15. 把流水账堆进 `PLAN.md`(应进 `docs/history/` 或本需求 PLAN)。
 
 ## 9. 与 AI 协作的约定(需求怎么提 / AI 交什么)
@@ -166,6 +201,7 @@ typecheck / lint / 单测仍是**部署前**门禁。详见 §2。
 
 | 档位 | 人怎么说 | AI 必须先交 | 收口证据 |
 |---|---|---|---|
+| **微小改动 / 免 PLAN 档**(§1) | 直接说改哪儿 | **不写 PLAN** —— commit body 三行(改了什么 / 为什么 / 怎么验) | commit body 里的验证结果 |
 | **普通功能 / bug** | 「<入口> 现在 <现象>,应该 <期望>;不要动 <范围>」+ 截图或原话 | PLAN(四节,见 §9.3)→ 代码 + 回归测试 | 单测计数 + 受影响 spec 全绿 |
 | **大规模重构 / 跨视图改造** | 「<症状>」+「硬约束:不能影响 <X>」+「先出 PLAN 再实现」 | 现状(代码事实 + 行号,**禁止推测**)/「为什么当初这么设计」/ 形态取舍表(采纳 vs 否决 + 理由)/ 集成点清单(既有机制逐条怎么处理)/ 复用清单 / 明确不做 / 「零影响」的核对手段 | 单一开关 + 逐处守卫 + 逐 hunk 复核 |
 | **推送 / 发布** | 不用提 —— 按 §2 / §6 默认执行 | 无(测试已在开发阶段跑完) | 测试计数 / asset hash |
@@ -208,7 +244,7 @@ typecheck / lint / 单测仍是**部署前**门禁。详见 §2。
 
 ### 9.4 交付物清单(缺一即返工)
 
-- PLAN 文件(§9.3 模板);**需求变更 = 追加修订段**,不是新开 PLAN。
+- PLAN 文件(§9.3 模板);**需求变更 = 追加修订段**,不是新开 PLAN —— **免 PLAN 档除外**(§1)。
 - 回归测试,且**先红后绿** —— 红的那次要把失败值贴出来。
 - 验证证据(测试计数 / 断言汇总 / asset hash),不许说「应该没问题」。
 - 「不做」清单 —— 没写「不做」等于范围无限。

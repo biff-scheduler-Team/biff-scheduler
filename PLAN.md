@@ -5,7 +5,11 @@
 > API `biff-scheduler` + 静态资源 `biff-scheduler-web`)+ React / Router / Spectrum S2 + Vite + TS
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-10-15：**快速投票卡片的海报上叠回中英文名 / 导演 / CODE 四行**，且**每次从热门榜
+> 最后更新:2026-10-16：**削固定开销**（用户：「我总觉得太慢了」）—— 规范 **v12** 七条：① 免 PLAN 档
+> ② PR 判据收窄到四类 ③ code review 免审档 ④ CI 门禁去重（`main` 上不再重跑 typecheck / lint / 单测）
+> ⑤ 部署核对脚本化（`npm run verify:deploy`）⑥ 「本地验收 vs 红线 14」二选一（改完直接推 `main` 看真站）
+> ⑦ 规范单一来源（`.codebuddy` 的 `RULE.mdc` 降级为指针，不再手工同步）。见 `docs/DEVELOPMENT-STANDARDS.md` 变更记录 v12。
+> 前次:2026-10-15：**快速投票卡片的海报上叠回中英文名 / 导演 / CODE 四行**，且**每次从热门榜
 > 切进红 / 黑榜都自动弹出**（判据从「行程非空」改成「有没有从热门榜进来」；`?q=` 去评分那条路径
 > 仍排除在外）（见 `docs/plans/PLAN-20261015005652.md` 修订 1）；**跟手标记与跳过提示改实心底色**，
 > 解决「左滑加入红黑榜不明显 / 上滑跳过不明显」（同 PLAN 修订 2）；海报上那一行改印**全部场次编号**
@@ -795,7 +799,7 @@ public/douban-related.json = {
 | 文件 | 用途 |
 |---|---|
 | `PLAN.md`(本文件) | 当前状态/决策/待办/架构 —— 每轮开发**按需读章节**;**新需求不回写 §0**,只在文档头更新一行「最后更新」 |
-| `AGENTS.md` | 规范**入口**(受版本控制,对所有协作者与 AI 生效);`.codebuddy/rules/…/RULE.mdc` 是本机自动加载的等价副本 |
+| `AGENTS.md` | 规范**唯一来源**(受版本控制,对所有协作者与 AI 生效);`.codebuddy/rules/…/RULE.mdc` 自 2026-10-16 起只是指回它的**指针**(不再复制条文) |
 | `docs/DEVELOPMENT-STANDARDS.md` | 规范**完整版**(含论证与范例);与 `CONVENTIONS.md` 冲突时以它为准 |
 | `docs/CONVENTIONS.md` | 具体口径细节(弹层 / 渲染 / 数据契约 / 踩坑) |
 | `docs/TEST-MAP.md` | **改动路径 → 必跑 spec**(机读源 `scripts/test-map.json`);`npm run specs:affected` 按 diff 输出 |

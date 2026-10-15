@@ -5,14 +5,20 @@
 # 这条规范完全取决于当天有没有人偷懒 —— 本文件是它的兜底。
 #
 # 两档:
-#   PR              → check:repo + check:test-map + typecheck + lint + 单测 + **受影响 spec**(chromium,快)
-#   push main / 手动 → 全量三浏览器体检(chromium + webkit,5–9 min)
+#   PR              → check:ci + **PR 专用** typecheck/lint/单测 + 受影响 spec(chromium,快)
+#   push main / 手动 → check:ci + 全量三浏览器体检(chromium + webkit,5–9 min)
 #
-# ⚠ 与 §2 的关系(2026-09-16 订正,PLAN-20260916003228):测试职责**已经全部移到云端** ——
+# ⚠ 与 §2 的关系(2026-09-16 订正,PLAN-20260916003228;2026-10-16 去重):测试职责**已经全部移到云端** ——
 #   本地不再跑门禁(§2 / §4.3 已删掉 `pre-push`)。分工是:
 #     · Cloudflare Workers Builds = **部署前门禁**(`npm run build`:typecheck / lint / 单测,失败不上线);
 #     · 本文件 = **PR 门禁 + 事后体检** —— ⚠ `main` 上的 E2E 红了**不会回滚已经上线的版本**,
 #       所以它报红之后要**优先修**,别继续叠改动(§8 红线 1)。
+#
+# ⚠ 2026-10-16:gate job **不再在 push main 时重跑 typecheck / lint / 单测** ——
+#   Workers Builds 已经在**部署前**跑过同一批命令(§2),CI 再跑一遍只是把同一批命令等第二次,
+#   零信息增量。这里只留 CF 不跑的两样(check:repo / check:test-map)。
+#   PR 例外:PR 分支的 Workers Builds 不保证存在(它只负责 main 的部署前门禁),
+#   所以 `pull_request` 上 CI 必须自己把 typecheck / lint / 单测补上 —— 见 gate 的第二个 step。
 
 name: CI
 
@@ -31,7 +37,7 @@ permissions:
 
 jobs:
   gate:
-    name: 门禁(check:repo · check:test-map · typecheck · lint · 单测)
+    name: 门禁(仓库卫生 · 测试映射 · PR 才跑 typecheck/lint/单测)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +47,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run verify:quick
+      # Cloudflare Workers Builds 不跑的那两样(见文件头「去重」说明)。
+      - run: npm run check:ci
+      # PR 专用:见文件头 —— PR 分支没有「部署前门禁」兜底,所以这三样得 CI 自己跑。
+      - name: typecheck / lint / 单测(PR 专用)
+        if: github.event_name == 'pull_request'
+        run: npm run verify:code
 
   e2e:
     name: E2E
@@ -65,8 +76,8 @@ jobs:
       - name: 全量三浏览器(push main / 手动触发)
         # 不调 `npm run verify:full`:那会再 build 一遍,而 `build --workspaces` 里的
         # `@biff/api` 走的是 `wrangler deploy --dry-run` —— GitHub Actions 没有 Cloudflare
-        # 凭据,不该在 CI 里赌它能不能跑。typecheck / lint / 单测已由 gate 覆盖,
-        # api 的打包由 Cloudflare 自己的构建负责。
+        # 凭据,不该在 CI 里赌它能不能跑。typecheck / lint / 单测由 Cloudflare 在**部署前**覆盖
+        # (PR 上则由 gate 的第二个 step 覆盖),api 的打包由 Cloudflare 自己的构建负责。
         if: github.event_name != 'pull_request'
         run: npx playwright test -c playwright.react.config.ts
 

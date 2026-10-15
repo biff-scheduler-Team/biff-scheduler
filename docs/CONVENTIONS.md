@@ -27,20 +27,24 @@ GUEST 查票（`/guest`，PLAN-20261009150124）：scheduler API 直连官方 GU
 榜单页与分享图（2026-10-14，PLAN-20261014150805 修订 1/2/4）：主导航首项为「榜单」，`/redblack` 路由名不变（书签 / PWA / TEST-MAP 契约）；页内 tab = 热门榜 / 红榜 / 黑榜，档位**显式**走 `?sort=`（外壳 `BoardPage` 会把隐含档位固化成参数，否则清掉 `q` 时视图会翻转），带 `?q=` 进来自日程表格子「去评分」的仍落红榜、否则落热门榜。「数据分析」从导航下线，`/rush-analysis` 路由与页面保留为**暗门**（与 `/admin` 同一做法）。两个查票合并成一项「查票」，`/guest` 与 `/general` 两条路由都保留，页内分段控件用 `navigate` 同步 URL。热门榜 = **按想看人数**（`want-counts.ts`，不是 `rush-analysis` 的 `demand`）排的纯 CSS 排名榜：`hot-board.ts::buildHotRows` / `compareByWant` / `groupByUnit` 是排序与分组的唯一实现（`RushCrowdPanel` 复用同一支比较器），口碑评分逐字复用 `redblack.ts::scoreOf`；榜单页**不得**引 ECharts（该链 gzip 193.9 KB，会把图表库拖进「断网也要能打开」的首屏主包），故它保持非 lazy。**单元身份与归属的单一来源 = `units.ts::unitKey` / `unitsOfFilm`**（2026-10-14 从 `app/model.ts` 搬来，那边原样转出）：**不得**再按目录原串分组——同义写法（`亚洲电影人奖` / `年度亚洲电影人奖-杨紫琼专题` / `2026年度…`、`On Screen 单元3部…`）会解到同一个键，按原串分组的结果就是「下拉里 4 个同名选项」。影片层取归属走 `util.ts::filmUnitKeys`（主单元 ∪ 联映块 `also_units`，故一部片可同属两个单元，与影片库 `filmInUnit` / `libraryUnits` 同源）；展示名走 `util.ts::unitLabel`，未标单元统一是 `未标注单元`。榜单的组、分享图的切分、弹层下拉三处都读同一支 `filmUnitKeys`，**计数与筛选必须同源**（否则「头部说 N 部、列表少几行」）。两张分享图（`redblack-poster.ts` / `hot-poster.ts`）共用同一套范围开关：`unit?`（空 = 全部单元，选了连「我贴过的」一起切）、`topN?`（≤0 = 不截断；榜里不足时**全列**，不补零）、`showHeader?` / `showFooter?`（关掉即**不占高度**，不留白）；四个参数全不传时产物与参数化之前**逐像素一致**。热门榜分享图的**图高只跟行数走**（`hot-poster.ts::hotPosterHeight`，绝不补白）：`HOT_POSTER_ROWS = 8` 行时正好 1080 × 1440（宽:高 = 3:4，即高是宽的 4/3）。⚠ 但弹层 2026-10-14 起只给 **TOP3 / TOP10** 两档（默认 TOP10，用户：「取前几名 改成 TOP3 TOP10」），所以那个 3:4 尺寸**只在不传 `topN` 的模块 API 调用里成立**——弹层实际出图是 1080 × 765（TOP3）/ 1080 × 1710（TOP10）。网站 / 作者署名常量 `SITE` / `CREDIT_BY` 定义在 `poster-brush.ts`（`redblack-poster.ts` 原样转出），与 `App.tsx` 页脚**逐字一致**。
 
 > 从 `.workbuddy/memory/MEMORY.md` 拆出(该文件有 3,000 字上限)。**改代码前先读这份**。
-> 关联 SKILL:仓库内 **`.codebuddy/skills/biff-catalogue-pdf-to-schedule/`**(PDF→JSON)、
-> 用户级 `parallel-agent-safe-commit`(并行提交)、`web-ui-headless-interaction-qa`(无头交互验收)、
-> `tailwind-v4-built-css-verify`(产物类名核对)。
+> 关联 SKILL:仓库内 [`skills/`](../skills/README.md)(随代码版本化,索引见其 README)——
+> `biff-catalogue-pdf-to-schedule`(PDF→JSON)、`parallel-agent-safe-commit`(并行提交)、
+> `web-ui-headless-interaction-qa`(无头交互验收)、`tailwind-v4-built-css-verify`(产物类名核对)、
+> `cloudflare-pages-d1-deploy`(部署与产物核对)。
 
 ## 一、工作流与协作纪律
 
-- **★ 所有改动必须先读 [`docs/DEVELOPMENT-STANDARDS.md`](DEVELOPMENT-STANDARDS.md)(规范 v1,2026-09-13 定稿)——
-  五步工作流 / push 前门禁 / 提交格式 / 红线 15 条都在那里;本文只讲口径细节。两份冲突时以那份为准。**
-- **需求五步(规范 v1)**:① 独立 PLAN `docs/plans/PLAN-<YYYYMMDDHHMMSS>.md`(只读本需求的 PLAN,不整读 PLAN.md 活文档)
-  → ② 实现 + **同步单测 / E2E** → ③ **跑门禁** `npm run verify`(改 UI / 交互用 `npm run verify:full`)
-  → ④ `git add`+commit+push(**未全绿禁止推送**) → ⑤ 回写文档:只更新 `PLAN.md` 文档头一行「最后更新」,
+- **★ 所有改动必须先读 [`docs/DEVELOPMENT-STANDARDS.md`](DEVELOPMENT-STANDARDS.md)(现行 **v12**,2026-10-16)——
+  五步工作流 / 门禁分工 / 提交格式 / 红线 都在那里;本文只讲口径细节。两份冲突时以那份为准。**
+- **需求五步(v12)**:① PLAN `docs/plans/PLAN-<YYYYMMDDHHMMSS>.md`(只读本需求的 PLAN,不整读 PLAN.md 活文档;
+  **免 PLAN 档** = 数据产物 / 纯文案 / 纯样式值 / 单文件 diff < 20 行 → 走 commit body 三行)
+  → ② 实现 + **同步单测 / E2E** → ③ 验证**交云端**(Cloudflare 构建 = 部署前门禁;本地不必跑,想提前看就跑 `npm run verify:quick`)
+  → ④ `git add`+commit+push(**推的时候直接推**) → ⑤ 回写文档:只更新 `PLAN.md` 文档头一行「最后更新」,
   **不再追加 §0 条目**(§0 = 已完成快照,只减不增;细节留在本需求 PLAN)。
-  ⚠ 旧口径的 ④ `npm run deploy`(Pages production)**已作废** —— 常规部署 = 推 `main` 触发 Workers Builds(见下)。
-- **本地服务克制**:排查/改代码直接读代码,**不要**为「看效果」起 dev server 或浏览器;确需验证才起最小必要服务,用完即停。
+  部署核对 = `npm run verify:deploy -- --new "<本轮新增的字符串>"`(输出一行结论,见规范 §6)。
+  ⚠ 旧口径的 ④ `npm run deploy`(Pages production)**已作废**;「push 前必须本地全绿」**同样已作废** —— 常规部署 = 推 `main` 触发 Workers Builds(见下)。
+- **本地服务克制**:排查/改代码直接读代码;**常规的「看效果」= 推 `main` 在真站上看**(CF 构建失败即不上线,这本就是它的职责);
+  UI 大改确需本地时才起 dev server,**同一轮起一次**,用完即停。
 - **git 签名(1Password SSH)**:`commit.gpgsign=true` + `gpg.format=ssh` + `op-ssh-sign`。
   先 `export SSH_AUTH_SOCK="$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"`。
   **两种报错含义不同**:沙箱内 `failed to fill whole buffer` = 没跑出沙箱;加 `dangerouslyDisableSandbox` 后

@@ -20,6 +20,10 @@ npx playwright test -c playwright.react.config.ts \
 
 输出是**最少必跑集**,不是「跑了这些就一定够」。命中 `allOn` 或无法归类时返回全量。
 
+> ⚠ **本表只回答「该跑哪些 spec」,不回答「该不该走 PR」**。2026-10-16 起 PR 判据已与本表解耦
+> (规范 §4.5:只有大重构 / `apps/api` / D1 迁移 / 依赖升级四类走 PR)—— 命中 `allOn` 不再意味着要开分支,
+> 只是意味着「别只看这一个 spec」。
+
 ## 映射表
 
 <!-- 下面这一块由 `node scripts/affected-specs.mjs --write-doc` 生成,不要手改 -->

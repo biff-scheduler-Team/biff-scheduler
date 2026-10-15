@@ -338,7 +338,8 @@ npm run deploy              # 构建 + wrangler deploy
 - [`docs/DEVELOPMENT-STANDARDS.md`](./docs/DEVELOPMENT-STANDARDS.md) —— 规范完整版（含示例与论证）。
 - [`docs/CONVENTIONS.md`](./docs/CONVENTIONS.md)（数据契约 / 弹层交互 / 渲染约定 / 基础设施踩坑）与 [`PLAN.md`](./PLAN.md)（当前状态与决策记录）。
 
-> AI 助手会自动加载 `.codebuddy/rules/biff-development-standards/RULE.mdc`（`alwaysApply`，内容与 `AGENTS.md` 等价）。
+> **规范只有一份**：`AGENTS.md`。`.codebuddy/rules/biff-development-standards/RULE.mdc` 只是指回它的一句指针
+> （保留 `alwaysApply` 让 IDE 把注意力引到 `AGENTS.md`），**不再复制条文** —— 双份规范必然漂移，改一次口径要改两遍。
 
 ---
 
