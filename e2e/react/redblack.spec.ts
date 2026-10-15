@@ -2120,8 +2120,15 @@ test("分享出去的 /redblack?rank=1:落在红榜、只弹排行榜,关掉后�
 // 用户原话：「排行榜的没有复制图片的 点击分享后会跳到红黑榜的分享」「红黑榜的排行榜两个榜单
 // 需要两张图 单独复制按钮吧」—— 于是 2026-10-15 那条「交接给分享图」作废：点「生成图片」当场出
 // **两张**（红榜 / 黑榜），每张各有自己的「下载 PNG 图片 / 复制图片」，全程不再出现分享图弹层。
-// ⚠ 出图**不新画一条路径**：模型与绘制仍是 `redblack-poster.ts` 那一份，`sections` 收成单榜而已。
+// ⚠ 出图**不新画一条路径**：模型与绘制仍是 `redblack-poster.ts` 那一份，只是走了**榜图档**
+//   （`buildRankPosterModel`，`mode: "rank"`）。
+// ★ 2026-10-16 修订 1（用户：「排行榜生成的图片为什么是和红黑榜一样带评分的图片 而不是排行榜的
+//   图片?」「排行榜生成什么样的图就分享出来的也是什么样的图」）：图与**屏上那一列**同版式 ——
+//   名次 / 海报 / 片名(中英) / 红 N · 黑 N；**不印评分、不画贴纸区、不画分享图的头尾**。
+//   ⚠ 下面那三条 `paintedTexts` 断言就是本轮的回归点：改回分享图档（印评分 + 画分享图头部）会当场红。
 test("排行榜弹层：点「生成图片」当场出红榜 / 黑榜两张图，各自带复制与下载", async ({ page }) => {
+  // 画布手绘没有 DOM 可断言 —— 挂 `fillText` 补丁，事后读「这张图里画了哪些字」
+  await trackPaintedTexts(page);
   // 两榜各自有票才会各出一张（票只给一处的话另一个榜是空的，那一张不该出现）
   await stubVotes(page, {
     [keyOf("008")]: { red: 5, black: 0 },
@@ -2163,11 +2170,28 @@ test("排行榜弹层：点「生成图片」当场出红榜 / 黑榜两张图�
     await expect(shot.locator(".rbr-shot-size")).toContainText(/\d+\s*×\s*\d+\s*px/);
   }
 
-  // ④ **不跳分享图**：排行榜还在，分享图弹层从来没出现过（这条正是本轮要修的那个现象）
+  // ④ **图 = 屏上那一列**（2026-10-16 修订 1）—— 三条断言合起来就是「这不是分享图」：
+  //   · 屏上不印评分 ⇒ 图里也不印（分享图档会画 `8.5 分`，改回去这条当场红）；
+  //   · 屏上那一列的节标题右边是**行数**（`红榜 1`），不是分享图那句口径说明；
+  //   · 分享图的头部整块（届次 / 大字「红黑榜」/ 全站三格 / `我的：已贴 N 枚`）与页脚署名都不该出现。
+  const painted = await paintedTexts(page);
+  expect(painted).not.toContain(" 分");
+  expect(painted).not.toContain("全站贴纸");
+  expect(painted).not.toContain("观影红黑榜");
+  //   页脚署名同理（`biff.lcandy.co` 只由分享图的 `drawFooter` 画）
+  expect(painted).not.toContain("biff.lcandy.co");
+  //  行里该有的三样：名次（补零两位）/ 红黑数（分段上色那串标签）。
+  //  ⚠ 「红榜」「黑榜」这两个词两项都命中：分节头各画一次
+  expect(painted).toContain("红榜");
+  expect(painted).toContain("黑榜");
+  expect(painted).toContain("01");
+  expect(painted).toContain("红 ");
+
+  // ⑤ **不跳分享图**：排行榜还在，分享图弹层从来没出现过（这条正是本轮要修的那个现象）
   await expect(page.getByRole("dialog", { name: "红黑榜分享图" })).toHaveCount(0);
   await expect(dialog.locator(".rbr-row").first()).toBeVisible();
 
-  // ⑤ Esc 关掉 → 弹层不在（URL 上那个 `rank` 由调用方 `closeRank` 一并清掉）。
+  // ⑥ Esc 关掉 → 弹层不在（URL 上那个 `rank` 由调用方 `closeRank` 一并清掉）。
   //    ⚠ 它同时是「出好图之后焦点仍在弹层里」的看门测试：那枚「生成图片」若在出图后卸载 /
   //      在出图中被禁用，焦点会落到 `body`，而 Esc 是弹层容器的 keydown ⇒ 这里会一直红。
   await page.keyboard.press("Escape");

@@ -117,7 +117,21 @@ export interface RbPosterBoard {
   rows: RbPosterRow[];
 }
 
+/** 这一张图画的是**哪一档版式**（2026-10-16，`PLAN-20261016000441` 修订 1）。
+ *
+ *  · `"share"`（缺省）= **分享图**：头部（届次 / 大字标题 / 日期 / 全站三格 / 我的已贴 N 枚）+
+ *    榜节 / 「我贴过的」+ 每行**评分与贴纸区** + 页脚署名。
+ *  · `"rank"`  = **榜图**：「排行榜」弹层里那份读数的图 —— 与屏上那一列**同序同内容**：
+ *    名次 / 海报 / 片名(中英) / 红 N · 黑 N；**没有评分、没有贴纸区、没有头尾**。
+ *    用户 2026-10-16：「排行榜生成什么样的图就分享出来的也是什么样的图」。
+ *
+ *  ⚠ 它由**入口函数**决定（`buildRbPosterModel` → `"share"` / `buildRankPosterModel` → `"rank"`），
+ *    在 `RbPosterInput` 里**没有**对应的开关 —— 分享图那条路径的入参因此一个都没变。 */
+export type RbPosterMode = "share" | "rank";
+
 export interface RbPosterModel {
+  /** 版式档位 —— 绘制层据此分流（见 `RbPosterMode`）。 */
+  mode: RbPosterMode;
   eyebrow: string;
   title: string;
   subtitle: string;
@@ -340,6 +354,7 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
     : [];
 
   return {
+    mode: "share",
     eyebrow: `${EDITION.replace("-", " ").toUpperCase()} · 观影红黑榜`,
     title: "红黑榜",
     // 日期走全站唯一口径（`OCT 8`），此前直接印 `isoDate` 的 `2026-10-08` —— 同一张海报两种写法
@@ -363,6 +378,111 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
     unitName,
     showHeader,
     showFooter,
+  };
+}
+
+/** 榜图的一行（`mode: "rank"`）—— **只有**海报 / 片名(中英) / 红黑数。
+ *
+ *  ⚠ `stickers` 恒为空、`mine` 恒为 `null`、`mineIndex` 恒为 -1：榜图里**没有**贴纸区，
+ *    也**没有**「我贴的那一色」那一列（与屏上 `.rbr-row` 同口径）。这不是「省掉不画」，
+ *    而是这一档**不含**这两样东西 —— 入口处就不接 `board` / `skins` / `syncedFaces`。
+ *  ⚠ `score` 仍然算：榜单**按它排**（同票数比评分，`sortByVotes`），只是**不印**在图里。
+ *    不印是版式决定，不是数据缺失 —— 所以不填 `null`（那会让「没有评分」与「不印评分」混作一谈）。 */
+function toRankRow(film: FilmNode, crowd: CrowdCounts, priorRate: number): RbPosterRow {
+  const counts: StickerCounts = crowd.get(film.key) ?? { total: 0, red: 0, black: 0 };
+  return {
+    key: film.key,
+    title: film.zh,
+    // 与卡片 / 分享图同一条**展示**规则：中英名相同不重复画一遍
+    en: film.en && film.en !== film.zh ? film.en : "",
+    red: counts.red,
+    black: counts.black,
+    score: scoreOf(counts, priorRate),
+    mine: null,
+    stickers: [],
+    mineIndex: -1,
+    poster: film.poster,
+  };
+}
+
+/** 「榜图」的入参 —— **只有**这份读数需要的几样（2026-10-16，`PLAN-20261016000441` 修订 1）。
+ *
+ *  ⚠ 这里**没有** `board` / `skins` / `syncedFaces` / `site` / `mine` / `today`：
+ *    榜图不画贴纸、不画「我的」、不画日期 —— **传不进来就不可能画错**。
+ *    这正是「排行榜与分享图是两条口径」这条事实在类型上的落点。 */
+export interface RbRankPosterInput {
+  films: readonly FilmNode[];
+  crowd: CrowdCounts;
+  /** 评分先验（全站红占比）。**不传**按 `crowd` 现算（与分享图同一条）。
+   *  ⚠ 它仍然参与**排序**（同票数比评分），只是**不印**在图里。 */
+  priorRate?: number;
+  /** 要画哪几榜（`red` / `black`）。**不传 = 两榜都画**。
+   *  ⚠ 传 `"mine"` 无效：榜图没有「我贴过的」那一节（屏上也没有）。 */
+  sections?: ReadonlySet<RbPosterSection>;
+  /** 每榜取前几名。**不传 = `TOP_N`(10)**；`<= 0` = 不截断。
+   *  ⚠ 排行榜弹层传的是 `redblack-rank.ts::RANK_LIMIT`（50）——
+   *    「图要与这一屏的读数一致」这条由**调用方**给，本函数不替它决定。 */
+  topN?: number;
+}
+
+/**
+ * 构建**榜图**模型 —— 「排行榜」弹层自己往外发的那张图。
+ *
+ * ★ 与分享图的**唯一差别是版式**（见 `RbPosterMode`）：同一支 `drawRbPoster` 画，
+ *   门槛（`boardHasVotes`）与排序（`sortByVotes`）**逐字复用**同一支 ——
+ *   所以图里的名次与屏上那一列一字不差（§5 口径单一来源）。
+ *
+ * ⚠ 头尾一律不画（`showHeader` / `showFooter` 恒 `false`）：「排行榜什么样，分享出来就什么样」。
+ *   于是 `rbPosterHeight` **不必分档** —— 它本来就读这两个开关（几何仍然只有一份）。
+ * ⚠ 「我贴过的」那一节不参与（`myRows` 恒空）：榜图只有榜。
+ */
+export function buildRankPosterModel(input: RbRankPosterInput): RbPosterModel {
+  const { films, crowd, priorRate: given, sections, topN = TOP_N } = input;
+  // 缺省两榜都画。⚠ 不复用 `allSections()` —— 它含 `"mine"`，而榜图没有那一节
+  const picked = sections ?? new Set<RbPosterSection>(["red", "black"]);
+  const priorRate = given ?? priorOf(crowd);
+  // 候选 = `boardFilms`（合集场次拆成成员片），与卡片栅格 / 分享图同一道门槛；
+  // 榜图**不做单元切分**（屏上没有单元下拉，多一个范围就多一处会与读数不一致的地方）
+  const candidates = boardFilms(films);
+
+  const boards: RbPosterBoard[] = BOARDS.filter((entry) => picked.has(entry.mode))
+    .map((entry) => {
+      const ranked = sortByVotes(
+        candidates.filter((film) => boardHasVotes(crowd.get(film.key), entry.mode)),
+        crowd,
+        entry.mode,
+        priorRate,
+      );
+      const shown = topN > 0 ? ranked.slice(0, topN) : ranked;
+      return {
+        ...entry,
+        rows: shown.map((film) => toRankRow(film, crowd, priorRate)),
+      };
+    })
+    .filter((entry) => entry.rows.length > 0);
+
+  return {
+    mode: "rank",
+    // 头部的三行文案与「全站 / 我的」两组数字在图里**没有落点**（头尾不画）——
+    // 留空 / 留 0，而不是编一个看着像真的数
+    eyebrow: "",
+    title: "",
+    subtitle: "",
+    site: { total: 0, red: 0, black: 0, films: candidates.length },
+    mine: { placed: 0 },
+    boards,
+    myTitle: "",
+    myHint: "",
+    myRows: [],
+    myCount: 0,
+    // ⚠ 本档**不读** `emptyText`（榜图没有头部，空模型画不出可读的东西 —— 见 `drawRbPoster` 那一支）；
+    //   它由 `RbPosterModel` 的字段要求而来，写一句话而不是空串：真要去画时至少有话可说
+    emptyText: "榜上还没有贴纸",
+    credit: { site: SITE, by: CREDIT_BY },
+    unit: "",
+    unitName: "",
+    showHeader: false,
+    showFooter: false,
   };
 }
 
@@ -448,10 +568,19 @@ export function rbPosterHeight(model: RbPosterModel): number {
 
 /** 一行里的第三行:**评分 +「红 N · 黑 N」**,分段上色(整串一个颜色就丢了红黑的可读性)。
  *  ⚠ 评分排在最前 —— 榜单**按它排**,只印红黑数的话读图的人看不出「为什么这部在前面」。
- *    还没有人贴过时是 `null`(榜单里不会有这种行,但「我贴过的」那一节可能有),那一档只印红黑数。 */
-function drawCounts(ctx: CanvasRenderingContext2D, row: RbPosterRow, x: number, baseline: number): void {
+ *    还没有人贴过时是 `null`(榜单里不会有这种行,但「我贴过的」那一节可能有),那一档只印红黑数。
+ *  ⚠ `withScore = false` 给**榜图**用（2026-10-16，`PLAN-20261016000441` 修订 1）：
+ *    屏上那一列不印评分，分享出来的就该与它一致 —— 于是这一支不再关心「评分是什么」，
+ *    两档的差别只剩这一个布尔（**不是**第二份「怎么印红黑数」的实现）。 */
+function drawCounts(
+  ctx: CanvasRenderingContext2D,
+  row: RbPosterRow,
+  x: number,
+  baseline: number,
+  withScore: boolean,
+): void {
   const segs: Array<[string, string]> = [];
-  if (row.score !== null) {
+  if (withScore && row.score !== null) {
     segs.push([`${row.score.toFixed(1)} 分`, C.ink], [" · ", C.muted]);
   }
   segs.push(["红 ", C.muted], [`${row.red}`, C.red2], [" · 黑 ", C.muted], [`${row.black}`, C.ink2]);
@@ -588,6 +717,7 @@ function drawField(ctx: CanvasRenderingContext2D, row: RbPosterRow, x: number, t
 function drawThumb(
   ctx: CanvasRenderingContext2D,
   row: RbPosterRow,
+  x: number,
   top: number,
   images: ReadonlyMap<string, HTMLImageElement>,
 ): void {
@@ -596,14 +726,14 @@ function drawThumb(
   const img = row.poster ? images.get(row.poster) : undefined;
   if (img) {
     ctx.save();
-    roundRectPath(ctx, PAD, y, THUMB_W, THUMB_H, THUMB_R);
+    roundRectPath(ctx, x, y, THUMB_W, THUMB_H, THUMB_R);
     ctx.clip();
-    ctx.drawImage(img, PAD, y, THUMB_W, THUMB_H);
+    ctx.drawImage(img, x, y, THUMB_W, THUMB_H);
     ctx.restore();
     return;
   }
   ctx.fillStyle = C.card;
-  roundRectPath(ctx, PAD, y, THUMB_W, THUMB_H, THUMB_R);
+  roundRectPath(ctx, x, y, THUMB_W, THUMB_H, THUMB_R);
   ctx.fill();
   ctx.strokeStyle = C.line;
   ctx.lineWidth = 1;
@@ -613,7 +743,7 @@ function drawThumb(
     ctx.font = font(24, 700);
     ctx.fillStyle = C.muted;
     ctx.textAlign = "center";
-    ctx.fillText(head, PAD + THUMB_W / 2, y + THUMB_H / 2 + 8);
+    ctx.fillText(head, x + THUMB_W / 2, y + THUMB_H / 2 + 8);
     ctx.textAlign = "left";
   }
 }
@@ -681,10 +811,60 @@ function drawRow(
     ctx.fillText(fitText(ctx, row.en, titleW), titleX, textBase + 26);
   }
   // 红黑数落在第三行:右列让出了 360px,再挤在片名右边就会把片名压短
-  drawCounts(ctx, row, titleX, textBase + 54);
+  drawCounts(ctx, row, titleX, textBase + 54, true);
 
-  drawThumb(ctx, row, top, images);
+  drawThumb(ctx, row, PAD, top, images);
   drawField(ctx, row, POSTER_W - PAD - FIELD_W, top + FIELD_TOP);
+}
+
+/* ---------------- 榜图那一档的版式（`mode: "rank"`，2026-10-16） ----------------
+ * 与分享图的差别**只有版式**：名次在**最左**、没有评分列、没有右侧贴纸区。
+ * ⚠ 顺序照屏上 `.rbr-row`（28px 名次 → 40px 海报 → 文字），本图按 1080 的宽度等比放大；
+ *   行高**沿用** `ROW_H`（海报缩略图仍是 `THUMB_H` = 88），两档的视觉节奏一致。 */
+
+/** 名次列宽度（屏上那一列是 28px，两侧还要留白，故取 72） */
+const RANK_MARK_W = 72;
+/** 行内海报的横坐标 —— 分享图是「海报在最左」，榜图是「名次在最左」 */
+const RANK_THUMB_X = PAD + RANK_MARK_W;
+/** 文字列起点（名次列 + 海报 + 间距） */
+const RANK_TEXT_X = RANK_THUMB_X + THUMB_W + THUMB_GAP;
+
+/** 榜图的一行 —— **名次 / 海报 / 片名(中英)/ 红 N · 黑 N**，与屏上那一列逐条对得上。
+ *
+ *  ⚠ 它**不是**第二份「画一行」的实现：海报缩略图走同一个 `drawThumb`、截断走同一个 `fitText`、
+ *    红黑数走同一个 `drawCounts`（只是不传评分）、字体 / 配色 / 名次补零与前三名着色
+ *    与分享图逐字相同。不同的只有**这一行怎么排** —— 而版式本来就是这两样产物的唯一差别。 */
+function drawRankRow(
+  ctx: CanvasRenderingContext2D,
+  row: RbPosterRow,
+  rank: number,
+  top: number,
+  images: ReadonlyMap<string, HTMLImageElement>,
+): void {
+  const textBase = top + 38;
+
+  // 名次：补零两位、前三名用海报红 —— 与 `.rbr-rank` / 分享图的 `drawRow` 逐字一致
+  ctx.font = font(28, 700);
+  ctx.fillStyle = rank <= 3 ? C.red2 : C.muted;
+  ctx.textAlign = "center";
+  ctx.fillText(`${rank}`.padStart(2, "0"), PAD + RANK_MARK_W / 2, textBase);
+  ctx.textAlign = "left";
+
+  drawThumb(ctx, row, RANK_THUMB_X, top, images);
+
+  // 少了右侧 360px 的贴纸区，文字列比分享图宽得多（片名因此能多显示好几个字）
+  const titleX = RANK_TEXT_X;
+  const titleW = POSTER_W - PAD - titleX;
+  ctx.font = font(29, 600);
+  ctx.fillStyle = C.ink;
+  ctx.fillText(fitText(ctx, row.title, titleW), titleX, textBase);
+  if (row.en) {
+    ctx.font = font(20, 400);
+    ctx.fillStyle = C.muted;
+    ctx.fillText(fitText(ctx, row.en, titleW), titleX, textBase + 26);
+  }
+  // ⚠ `withScore = false`：屏上不印评分，图里就不印（用户「图与榜单一致」那条）
+  drawCounts(ctx, row, titleX, textBase + 54, false);
 }
 
 /** 分节头:左侧一小段品牌红竖条 + 标题 + 口径说明。 */
@@ -785,6 +965,29 @@ export function drawRbPoster(
   ctx.fillStyle = C.bg;
   ctx.fillRect(0, 0, POSTER_W, h);
   drawAccentBars(ctx, POSTER_W, h);
+
+  // ★ **榜图**（`mode: "rank"`，见 `RbPosterMode`）：名次 / 海报 / 片名(中英)/ 红黑数 ——
+  //   分享图的头部（届次 / 大字标题 / 全站三格 / 我的已贴 N 枚）、「我贴过的」那一节、
+  //   页脚署名与每行右侧贴纸区，**这一档一个都没有**（用户：「排行榜什么样，分享出来就什么样」）。
+  //   ⚠ 分流写在**这里**（最高一层）而不是塞进 `drawRow`：两档的差别是「整张图有什么」＋
+  //     「一行怎么排」；共用的件（品牌红条 / 分节头 / 缩略图 / 截断 / 红黑数 / 超采样）一件都没重写。
+  if (model.mode === "rank") {
+    let ry = ACCENT_H;
+    for (const b of model.boards) {
+      ry += BLOCK_GAP;
+      // 节标题右边那枚 = **行数**（屏上 `.rbr-col-count` 也是裸数字），不是口径说明句
+      drawSection(ctx, b.label, `${b.rows.length}`, ry);
+      ry += SECTION_H;
+      b.rows.forEach((row, i) => {
+        drawRankRow(ctx, row, i + 1, ry, images);
+        ry += ROW_H;
+      });
+    }
+    // ⚠ 空榜**不画空态**：弹层那一拍已经把「生成图片」禁用了（`isDisabled={boards.length === 0}`），
+    //   而榜图没有头部 ⇒ 空模型的高度只有上下两条红条（20px），在这上面写字只会画到画布外面去
+    //   （看不见的死代码）。`model.emptyText` 在本档因此**不被读取** —— 它只在分享图那一档有落点。
+    return;
+  }
 
   // ⚠ 上下品牌红条恒在（它是这张图的「边框」，不是内容）；关掉的只是头部信息块与尾部署名。
   if (model.showHeader) drawHeader(ctx, model);

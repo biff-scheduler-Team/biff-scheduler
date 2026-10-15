@@ -19,10 +19,15 @@
  *   「排行榜的没有复制图片的 点击分享后会跳到红黑榜的分享」「红黑榜的排行榜两个榜单需要两张图
  *   单独复制按钮吧」。于是本弹层**自己**往外发：点「生成图片」→ 红榜 / 黑榜**各一张**，
  *   每张各有自己的「下载 PNG 图片 / 复制图片」。
- *   ⚠ 这**不是**第二条出图实现：模型与绘制仍然是 `redblack-poster.ts` 那一份 ——
- *     两张图 = `buildRbPosterModel({ sections: 只留该榜, topN: RANK_LIMIT })` + `drawRbPoster`，
- *     同一个出图器换了个入参。（`PLAN-20261015170310` 当初否掉「弹层内嵌出图」的理由是
- *     「等于把模型 / 勾选 / 预览再实现一遍」——复用 `sections` 之后那条理由不成立了。）
+ *   ⚠ 这**不是**第二条出图实现：模型与绘制仍然是 `redblack-poster.ts` 那一份。
+ *   ⚠ **图与这一屏同版式**（2026-10-16，本 PLAN 修订 1）：用户 ——
+ *     「排行榜生成的图片为什么是和红黑榜一样带评分的图片 而不是排行榜的图片?」
+ *     「排行榜生成什么样的图就分享出来的也是什么样的图」。于是走**榜图档**
+ *     `buildRankPosterModel`（`mode: "rank"`）：每行 = 名次 / 海报 / 片名(中英) / 红 N · 黑 N，
+ *     **不印评分、不画贴纸区、不画分享图的头尾** —— 与屏上那一列逐条对得上。
+ *     ⚠ 本弹层因此**不再接收** `board` / `skins` / `syncedFaces` / `site` / `mine`：
+ *       榜图里没有贴纸与「我的」，**传不进来就不可能画错**。
+ *     ⚠ 也不再需要 `today`（头尾不画 ⇒ 图里没有日期）。
  *   ⚠ 「点了才出图」与两个分享图弹层**同一口径**（用户「都要点击确认后再生成图片」）：打开不出图。
  *   ⚠ 出好的两张图**不再随票数刷新作废**（与分享图弹层那条「选项一改就作废」不同）：
  *     这里没有「选项」，而票数是活的 —— 中途作废只会把用户正要复制的那张抽走。它们是**快照**
@@ -39,18 +44,12 @@ import { download } from "../app/download";
 import type { FilmNode } from "../app/model";
 import { COLORS, loadPosterImages, POSTER_W, posterBlob, posterPixels } from "../poster-brush";
 import {
-  buildRbPosterModel,
+  buildRankPosterModel,
   drawRbPoster,
   rbPosterHeight,
   type RbPosterSection,
 } from "../redblack-poster";
-import type {
-  CrowdCounts,
-  FilmSkinCounts,
-  SortMode,
-  StickerBoard,
-  SyncedStickerFace,
-} from "../redblack";
+import type { CrowdCounts, SortMode } from "../redblack";
 import { buildRankRows, RANK_BOARDS, RANK_LIMIT } from "../redblack-rank";
 import { copyImageOrDownload } from "./share-image";
 import { ActionButton, Button, ButtonGroup, Content, Dialog, DialogContainer, Heading } from "./spectrum";
@@ -85,31 +84,10 @@ interface RedBlackRankDialogProps {
   crowd: CrowdCounts;
   /** 评分先验（全站红占比）—— 排序里「同票数比评分」要用它，与卡片角标同一个数 */
   priorRate: number;
-  /** 我贴过的（`RedBlackPage::board`）—— 出图时用它标出「我那一枚」的琥珀圈，
-   *  也给群点扣掉我自己那一枚。⚠ 必须是**页面那一份**：自己再算一份会与卡片 / 分享图给出两套票数。 */
-  board: StickerBoard;
-  /** 影片 key → 该片**按款**票数（含我）。缺席 = 没有款数据 → 群点按 id 兜底（同 `RedBlackShareDialog`） */
-  skins?: FilmSkinCounts;
-  /** 影片 key → **服务端已确认**的我那一枚 —— 扣减基准，与卡片 / 分享图**同一份** */
-  syncedFaces?: ReadonlyMap<string, SyncedStickerFace>;
-  /** 页面 hero 那份「全站」统计（**传进来而不是重算**，图里与页面上才会是同一些数字） */
-  site: { total: number; red: number; black: number };
-  /** 页面 hero 那份「我的」统计（今天只有 `placed`） */
-  mine: { placed: number };
   onDismiss: () => void;
 }
 
-export function RedBlackRankDialog({
-  films,
-  crowd,
-  priorRate,
-  board,
-  skins,
-  syncedFaces,
-  site,
-  mine,
-  onDismiss,
-}: RedBlackRankDialogProps) {
+export function RedBlackRankDialog({ films, crowd, priorRate, onDismiss }: RedBlackRankDialogProps) {
   // ⚠ 两榜**同一拍**算完（同一个 useMemo）：分成两个 useMemo 会让它们在票数刷新时错开一拍，
   //   而这一屏里两列是并排看的，「红榜已经更新、黑榜还是旧数」比两边都旧更刺眼。
   const boards = useMemo(
@@ -122,27 +100,20 @@ export function RedBlackRankDialog({
     [films, crowd, priorRate],
   );
 
-  /** 出图日期 —— 与分享图同一条：**挂载时取一次**（不读时钟、不随重渲染变）。 */
-  const [today] = useState(() => new Date());
-
   // 出图用的模型：**每榜一张**（见文件头）。⚠ 与上面那两列读的是同一份 `films` / `crowd` / `priorRate`，
   // 连门槛与排序都是同一支（`redblack-rank.ts` 与分享图本来就同源），所以图里的名次与列里的一字不差。
+  // ⚠ 走 `buildRankPosterModel`（`"rank"` 档）而不是分享图入口：屏上那一列只有 名次 / 海报 / 片名 / 红黑数，
+  //   图里就**只有**这几样 —— 不印评分、不画右侧贴纸区、不画分享图的头尾（2026-10-16，PLAN 修订 1）。
   const shots = useMemo(
     () =>
       RANK_BOARDS.map((entry) => {
-        const model = buildRbPosterModel({
+        const model = buildRankPosterModel({
           films,
           crowd,
-          board,
-          skins,
-          syncedFaces,
-          site,
-          mine,
           priorRate,
-          today,
-          // 只留这一榜：`sections` 是分享图既有的入参（勾掉哪节就不画哪节），这里只是把它收成一节。
+          // 只留这一榜：`sections` 是两档共用的入参（要画哪几节），这里把它收成一节。
           sections: new Set<RbPosterSection>([entry.mode]),
-          // 条数取排行榜**自己的**口径（TOP50），不是分享图的默认档 —— 图要与这一屏的读数一致。
+          // 条数取排行榜**自己的**口径（TOP50），不是 `TOP_N` 那个默认档 —— 图要与这一屏的读数一致。
           topN: RANK_LIMIT,
         });
         const rows = model.boards[0]?.rows ?? [];
@@ -156,7 +127,7 @@ export function RedBlackRankDialog({
           fileName: `BIFF2026-红黑榜-${entry.label}.png`,
         };
       }).filter((shot) => shot.model.boards.length > 0),
-    [films, crowd, board, skins, syncedFaces, site, mine, priorRate, today],
+    [films, crowd, priorRate],
   );
 
   /** 点了第几次「生成图片」——出图由它触发（见文件头：确认之前不画）。 */

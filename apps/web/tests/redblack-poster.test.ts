@@ -6,6 +6,7 @@
 import { describe, expect, it } from "vitest";
 import type { FilmNode } from "../src/app/model";
 import {
+  buildRankPosterModel,
   buildRbPosterModel,
   CREDIT_BY,
   posterUnitOptions,
@@ -15,6 +16,7 @@ import {
   TOP_N,
   type RbPosterInput,
   type RbPosterSection,
+  type RbRankPosterInput,
 } from "../src/redblack-poster";
 import type { CrowdCounts, StickerBoard } from "../src/redblack";
 import type { FilmItem } from "../src/types";
@@ -569,5 +571,100 @@ describe("posterUnitOptions:弹层那个「单元」下拉的选项", () => {
       input({ films, crowd: crowd({ sapiens: [1, 0], "in-unit": [1, 0] }), unit: midnight.id }),
     );
     expect(model.boards[0].rows.map((r) => r.key).sort()).toEqual(["in-unit", "sapiens"]);
+  });
+});
+
+/* ---- 榜图档（`mode: "rank"`，2026-10-16 `PLAN-20261016000441` 修订 1）----
+ * 用户原话：「排行榜生成的图片为什么是和红黑榜一样带评分的图片 而不是排行榜的图片?」
+ *          「排行榜生成什么样的图就分享出来的也是什么样的图」。
+ * ⚠ 这里断言的是**模型**；「图上真的没印评分」由 E2E 的 `paintedTexts` 断言
+ *   （绘制是像素，模型层看不见 —— 与文件头那条分工一致）。 */
+describe("buildRankPosterModel:榜图与屏上那一列同版式", () => {
+  const films = [film("a"), film("b")];
+  const c = crowd({ a: [9, 1], b: [0, 4] });
+  const rank = (over: Partial<RbRankPosterInput> = {}) =>
+    buildRankPosterModel({ films, crowd: c, priorRate: 0.5, ...over });
+
+  it("档位是 rank 且头尾一律不画（「排行榜什么样，分享出来就什么样」）", () => {
+    const model = rank();
+    expect(model.mode).toBe("rank");
+    expect(model.showHeader).toBe(false);
+    expect(model.showFooter).toBe(false);
+    // 头部那三行文案在图里没有落点 —— 留空，而不是编一个看着像真的
+    expect([model.eyebrow, model.title, model.subtitle]).toEqual(["", "", ""]);
+  });
+
+  it("没有「我贴过的」那一节 —— 榜图只有榜（屏上也没有）", () => {
+    const model = rank();
+    expect(model.myRows).toEqual([]);
+    expect(model.myCount).toBe(0);
+  });
+
+  it("行里**没有贴纸**、也没有「我贴的那一色」—— 这一档不含，不是省掉不画", () => {
+    const row = rank().boards[0].rows[0];
+    expect(row.stickers).toEqual([]);
+    expect(row.mine).toBeNull();
+    expect(row.mineIndex).toBe(-1);
+  });
+
+  it("评分**仍然算出来**（榜单按它排），只是不印 —— 不填 null", () => {
+    // 与分享图那一档**逐字同一个数**（`redblack.ts::scoreOf`，先验 0.5）：两条口径共用一支
+    expect(rank().boards[0].rows[0].score).toBe(7.7);
+    expect(buildRbPosterModel(input({ films, crowd: c, priorRate: 0.5 })).boards[0].rows[0].score).toBe(7.7);
+  });
+
+  it("门槛与排序与屏上那一列同源：两榜各看自己那一色", () => {
+    const model = rank();
+    expect(model.boards.map((b) => b.mode)).toEqual(["red", "black"]);
+    expect(model.boards[0].rows.map((r) => r.key)).toEqual(["a"]);
+    // ⚠ 黑榜里 `a` 也在（它有 1 张黑贴纸）—— 门槛是「**该榜那一色**至少一票」，不是「只有它一色」
+    expect(model.boards[1].rows.map((r) => r.key)).toEqual(["b", "a"]);
+  });
+
+  it("能只画一榜（调用方按榜各出一张图）", () => {
+    const model = rank({ sections: new Set<RbPosterSection>(["black"]) });
+    expect(model.boards.map((b) => b.mode)).toEqual(["black"]);
+  });
+
+  it("topN 由调用方给：排行榜要的是 TOP50，不是分享图那个 TOP10 缺省档", () => {
+    const many = Array.from({ length: 12 }, (_, i) => film(`f${i}`));
+    const counts = crowd(
+      Object.fromEntries(many.map((f, i) => [f.key, [20 - i, 0] as [number, number]])),
+    );
+    expect(buildRankPosterModel({ films: many, crowd: counts, topN: 50 }).boards[0].rows).toHaveLength(12);
+    expect(buildRankPosterModel({ films: many, crowd: counts }).boards[0].rows).toHaveLength(TOP_N);
+  });
+
+  it("几何仍然是同一支 rbPosterHeight：多一行恰好多一个 ROW_H", () => {
+    const one = rank({ sections: new Set<RbPosterSection>(["red"]), films: [film("a")], crowd: crowd({ a: [1, 0] }) });
+    const two = rank({
+      sections: new Set<RbPosterSection>(["red"]),
+      films: [film("a"), film("b")],
+      crowd: crowd({ a: [1, 0], b: [2, 0] }),
+    });
+    expect(rbPosterHeight(two) - rbPosterHeight(one)).toBe(ROW_H);
+  });
+
+  it("头尾不画 ⇒ 与同数据的分享图差**整整一截**，且这一截与行数无关（不是画了但留白）", () => {
+    const oneFilm = [film("a")];
+    const oneCrowd = crowd({ a: [1, 0] });
+    const red = new Set<RbPosterSection>(["red"]);
+    const gapOne =
+      rbPosterHeight(buildRbPosterModel(input({ films: oneFilm, crowd: oneCrowd, priorRate: 0.5, sections: red }))) -
+      rbPosterHeight(rank({ films: oneFilm, crowd: oneCrowd, sections: red }));
+
+    const twoFilms = [film("a"), film("b")];
+    const twoCrowd = crowd({ a: [1, 0], b: [2, 0] });
+    const gapTwo =
+      rbPosterHeight(buildRbPosterModel(input({ films: twoFilms, crowd: twoCrowd, priorRate: 0.5, sections: red }))) -
+      rbPosterHeight(rank({ films: twoFilms, crowd: twoCrowd, sections: red }));
+
+    expect(gapOne).toBe(gapTwo);
+    expect(gapOne).toBeGreaterThan(0);
+  });
+
+  it("两榜都没票 → 一节都不出现（弹层那一拍据此把出图按钮禁用）", () => {
+    const model = buildRankPosterModel({ films: [film("a")], crowd: new Map() });
+    expect(model.boards).toEqual([]);
   });
 });

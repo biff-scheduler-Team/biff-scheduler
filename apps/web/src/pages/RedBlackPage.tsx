@@ -1140,9 +1140,10 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
           —— 页头那枚「排行榜」打开它。
           ⚠ 给它的是**全量**影片库与**同一份**修正过的票数（与卡片 / hero / 分享图同源）：
             只给榜单当前那几部的话，弹层里会出现一份「榜单自己缩过水」的排名。
-          ⚠ 出图那两张要用**同一组**原始输入（`board` / `filmSkins` / `syncedFaceByKey` / hero 数字）——
-            与下面 `RedBlackShareDialog` 收到的是同一批变量：各传一份的话，同一部片在排行榜的图上
-            与卡片上会给出两套票数（那正是 2026-10-05 那次「换自己的皮肤把别人的也换了」的同款错）。
+          ⚠ 它只要这三样（2026-10-16，本 PLAN 修订 1）：榜图 = 屏上那一列（名次 / 海报 / 片名 / 红黑数），
+            里面**没有**贴纸、没有「我的」、没有日期 —— 于是 `board` / `filmSkins` / `syncedFaceByKey` /
+            hero 那两份数字**都不该传进来**（传了也只能被忽略，不如让类型挡住）。
+            「图与卡片给出两套票数」那类错因此在结构上不可能发生，不再是靠纪律防。
           ⚠ `Suspense` 写在条件**内部**：不开排行榜时连边界都不挂（与上面几个弹层同一手法）。 */}
       {rankOpen && (
         <Suspense fallback={null}>
@@ -1150,11 +1151,6 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
             films={films}
             crowd={reconciledCrowd}
             priorRate={priorRate}
-            board={board}
-            skins={filmSkins}
-            syncedFaces={syncedFaceByKey}
-            site={{ total: totals.total, red: totals.red, black: totals.black }}
-            mine={{ placed: totals.placed }}
             onDismiss={closeRank}
           />
         </Suspense>
