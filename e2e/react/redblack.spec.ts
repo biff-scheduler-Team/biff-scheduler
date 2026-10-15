@@ -141,6 +141,36 @@ test("按场次编号搜索时,hero 的全站总览数字不变", async ({ page 
 });
 
 
+// 窄屏上 hero 必须收成**一条**(2026-10-15,PLAN-20261015152928)。
+// 用户原话(配 390px 手机截图):「这个榜单占移动端太多的内容了基本其他都不可见了」——
+// 那块红底 hero(标题 + 一句规则 + 全站卡 + 已贴徽章)在竖屏里原样**竖着堆**,占掉约三分之一可视高,
+// 把真正的栅格整个顶到首屏之外。
+// ⚠ 判据取**高度预算**而不是某个像素值:它守的是「首屏要留得出内容」这件事本身 ——
+//   hero 上的文案例行会变(加一行就是几十像素),钉死像素值只会让改文案的人莫名其妙变红。
+test("窄屏上 hero 收成一条:高度不超过 150px", async ({ page }) => {
+  // 数字用**用户截图里那一组**(全站 676 / 红 475 / 黑 201):它是最宽的一档,
+  // 「全站卡片 + 徽章」要不要换行正是由这几个数字的宽度决定的。
+  await stubVotes(page, {
+    [keyOf("008")]: { red: 300, black: 0 },
+    [keyOf("033")]: { red: 175, black: 100 },
+    [keyOf("003")]: { red: 0, black: 101 },
+  });
+  // ⚠ 显式钉到 390×844、而不是借用 projects 的移动视口:这条口径是「窄屏」的,
+  //   桌面那一支也要跑同一条判据(否则它在桌面永远是绿的,等于没守)。
+  await page.setViewportSize({ width: 390, height: 844 });
+  await ready(page, "/redblack?sort=red");
+
+  // 收版面**不是删信息**:那几个数是 E2E 的机读契约,一个都还在
+  await expect(page.locator(".rb-global-num")).toHaveText("676");
+  await expect(page.locator(".rb-global-split")).toHaveText("红 475 · 黑 201");
+  await expect(page.locator(".rb-badge")).toHaveText("已贴 0");
+
+  const box = await page.locator(".rb-hero").boundingBox();
+  expect(box, "hero 没渲染出来").not.toBeNull();
+  expect(box!.height).toBeLessThanOrEqual(150);
+});
+
+
 test("点卡片上的「红」：画布上立刻出现一枚，并上报给服务端", async ({ page }) => {
   const pings: Array<{ ops?: unknown }> = [];
   await page.route("**/api/stats/film-votes**", async (route) => {

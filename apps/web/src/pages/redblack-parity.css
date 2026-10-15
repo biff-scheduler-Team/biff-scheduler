@@ -253,6 +253,85 @@
   font-weight: 600;
 }
 
+/* 窄屏:hero 收成**一条**(2026-10-15,PLAN-20261015152928)。
+ *
+ * 用户原话(配 390px 手机截图):「这个榜单占移动端太多的内容了基本其他都不可见了」。
+ * 症状不是信息不对,是**版面**——`.rb-hero` 那四块(眉标 / 标题 / 规则 / 总览)在窄屏上
+ * 原样竖着堆,实测 390×844 上高 **293.7px**(≈ 35% 可视高),真正的栅格被整个顶出首屏。
+ *
+ * ⚠ **一个信息都不删**:全站票数、红黑拆分、已贴数、`?` 完整规则入口全都还在,
+ *   只是把「标题一段 + 总览卡一段 + 徽章一段」压成「标题一段 + 总览一行」:
+ *   · 眉标 / 标题 / 规则降一档字号与间距(它们是小字说明,不是版面主角);
+ *   · `.rb-totals` 由**竖排 grid** 改**横排 flex**:总览卡与「已贴」徽章并成一行,
+ *     这一处省下的正是原来那两行之间的一整个卡高;
+ *   · 总览卡自身由**竖排 grid** 改**可换行的 flex + baseline 对齐**:
+ *     「全站 676 枚贴纸 红 475 · 黑 201」排成一行(窄到放不下时仍会自然折行)。
+ *
+ * ⚠ 断点仍取 **560px**(与 `.rb-card` / `.rb-talk` 那两条同拍,见文件末):同一处物理宽度
+ *   在整页里只能有一个名字,多一个断点就会多一种「半收不收」的中间态。
+ * ⚠ 只覆盖排布与间距,**不碰任何颜色 / 字号 token**(§5:「配色与字阶只有一处来源」)——
+ *   这里改的是「多大、多密」,不是「长什么样」。 */
+@media (max-width: 560px) {
+  .rb-hero {
+    /* `22px 24px` → `10px 14px`:省下的是上下各 12px、左右各 10px —— 它们纯粹是留白 */
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 14px;
+  }
+
+  /* 行高一并收掉:这三块在窄屏上是**说明文字**,不是版面主角 ——
+   * 默认行高按「正文可读」给的那一档,在这里只剩「让它占地方」这一个效果。 */
+  .rb-eyebrow {
+    margin-bottom: 2px;
+    font-size: 10px;
+    line-height: 1.2;
+  }
+
+  .rb-hero h1 {
+    font-size: 22px;
+  }
+
+  .rb-lede {
+    margin-top: 3px;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  /* 总览:竖排(两行)→ 横排(一行)。
+   * ⚠ `width: 100%` 不能省:它原来靠「内容撑不下才折行」落到第二行 —— 那是不确定的,
+   *   而现在这**一行**就是本块唯一的形态。 */
+  .rb-totals {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .rb-stat-card {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 8px;
+    padding: 5px 10px;
+    border-radius: 12px;
+  }
+
+  .rb-global {
+    gap: 6px;
+  }
+
+  .rb-global-num {
+    font-size: 22px;
+  }
+
+  .rb-badges {
+    /* 已经在 `.rb-totals` 那行里,不该再被压窄 */
+    flex: none;
+  }
+}
+
 /* ---------- 搜索 / 排序 / 筛选 ---------- */
 
 .rb-controls {
