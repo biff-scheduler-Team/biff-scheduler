@@ -2035,3 +2035,49 @@ test("分享出去的 /redblack?rank=1:落在红榜、只弹排行榜,关掉后�
   await expect(page.getByRole("dialog", { name: "红黑榜排行" })).toHaveCount(0);
   await expect(page.getByRole("dialog", { name: "快速投票" })).toHaveCount(0);
 });
+
+// ★ 排行榜 → 分享图**交接**（2026-10-15，PLAN-20261015170310）。
+// 用户原话：「但是还是没有完全和分享一样 因为没有分享按钮吧无法分享结果」——
+// 排行榜弹层此前只有「关闭」，看到一份 TOP50 读数却没有任何往外发的入口。
+// ⚠ 交接**不新画一条出图路径**：分享图仍然只有 `RedBlackShareDialog` 那一份（§5），
+//   这里钉住的是「两张弹层换手」+「档位跟着走」（用户看的是 TOP50，图里就该是那一份）。
+test("排行榜弹层点「生成分享图」:交接给分享图,并带上「前 50」档", async ({ page }) => {
+  await stubVotes(page, { [keyOf("008")]: { red: 5, black: 2 } });
+  await ready(page, "/redblack?sort=red&rank=1");
+
+  await page
+    .getByRole("dialog", { name: "红黑榜排行" })
+    .getByRole("button", { name: "生成分享图" })
+    .click();
+
+  // ① 排行榜**让位**：两张弹层不叠在同一屏（与「快速投票 / 排行榜互斥」同一条）
+  await expect(page.locator(".rbr-row")).toHaveCount(0);
+  // ② 分享图顶上，且档位 = 「前 50」（不传的话会落到分享图自己的默认档 10）
+  const share = page.getByRole("dialog", { name: "红黑榜分享图" });
+  await expect(share).toBeVisible();
+  await expect(share.getByRole("button", { name: /每榜条数/ })).toContainText("前 50");
+  // ③ 焦点落在**分享图弹层内** —— 交接那一刻 `BoardPage` 的「排行榜关掉 → 焦点还给那枚按钮」
+  //    副作用仍会跑，靠 S2 `DialogContainer` 的 focus scope 把它抓回来（PLAN §已知风险）。
+  //    ⚠ 用 `contains(activeElement)` 而不是「某个按钮获焦」：焦点可能停在弹层容器本身。
+  await expect
+    .poll(() => share.evaluate((node) => node.contains(document.activeElement)))
+    .toBe(true);
+  // ④ 排行榜的 URL 开关不残留（`closeRank` 连带清掉自动补上的 `vote`）
+  await expect(page).not.toHaveURL(/rank/);
+
+  // 关掉分享图 → 两个弹层都不在（交接没有留下后手）
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+// 一票都没有 → 没有排行可分享，那枚按钮**禁用**（点开只会得到一张「一节都没勾」的图）。
+test("排行榜弹层空榜时「生成分享图」禁用", async ({ page }) => {
+  await stubVotes(page, {});
+  await ready(page, "/redblack?sort=red&rank=1");
+
+  await expect(
+    page
+      .getByRole("dialog", { name: "红黑榜排行" })
+      .getByRole("button", { name: "生成分享图" }),
+  ).toBeDisabled();
+});

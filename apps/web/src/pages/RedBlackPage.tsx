@@ -96,6 +96,9 @@ import {
 } from "../film-votes";
 // 快速投票的候选兜底：榜上有票的与我的行程都为空时改用热门榜（同一份 `buildHotRows`，见 `deck`）
 import { buildHotRows } from "../hot-board";
+// 「从排行榜交接去分享图」那一次要拿它的档位（`RANK_LIMIT = 50`）——
+// ⚠ 从 `redblack-rank.ts` 取而不是在页面里再写一个 50（那是排行榜自己的口径，§5）
+import { RANK_LIMIT } from "../redblack-rank";
 import { loadWantCounts, onWantCountsChange, peekWantCounts } from "../want-counts";
 import { quickVoteOrder, votedQueue, type DeckSource } from "../quick-vote";
 import { store } from "../state";
@@ -360,6 +363,29 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
    * ⚠ 焦点归还同样交给 `BoardPage`（按钮在它那里，只有它知道该还给谁）。 */
   const rankOpen = params.get("rank") === "1";
   const closeRank = useCallback(() => update({ rank: null, vote: null }), [update]);
+
+  /** 排行榜弹层里那枚「生成分享图」——**交接**给分享图（2026-10-15，`PLAN-20261015170310`，
+   *  用户「没有分享按钮吧无法分享结果」）。
+   *
+   *  ⚠ 两件事一起做：排行榜**让位**（两张弹层不叠在同一屏，与「快速投票 / 排行榜互斥」同一条），
+   *    并把 `RANK_LIMIT` 作为分享图的初始档 —— 用户点它时眼前是 TOP50，
+   *    图里按默认档画 10 行的话，分享出去的**不是他刚看到的那份结果**。
+   *  ⚠ 交接那一拍 `BoardPage` 会把焦点还给页头那枚「排行榜」，而分享图同时挂载 ——
+   *    react-aria 的 focus scope 会把它抓回弹层里（同一句在下面 `searchFilm` 上也记着），
+   *    所以这里不额外抑制；E2E 直接断言「焦点落在分享图弹层内」。
+   *  ⚠ 这里**不新画一条出图路径**：分享图仍然只有 `RedBlackShareDialog` 那一份（§5）。 */
+  const [shareTopN, setShareTopN] = useState<number | undefined>(undefined);
+  /** 页头那枚「生成分享图」——`shareTopN` 必须显式清掉：从排行榜交接过来那一趟把它设成了 50，
+   *  不清就会**串档**（下次从页头打开也默认 50）。 */
+  const openShare = useCallback(() => {
+    setShareTopN(undefined);
+    setShareOpen(true);
+  }, []);
+  const openShareFromRank = useCallback(() => {
+    closeRank();
+    setShareTopN(RANK_LIMIT);
+    setShareOpen(true);
+  }, [closeRank]);
 
   /** 总结页那枚「关掉卡片去搜索」（2026-10-15，`PLAN-20261015005652`）——
    *  **关掉卡片 + 把焦点送到页面上的搜索框**，两件事一起做。
@@ -1047,12 +1073,9 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
         >
           扫码投票
         </button>
-        <button
-          ref={shareBtnRef}
-          type="button"
-          className="rb-share-btn"
-          onClick={() => setShareOpen(true)}
-        >
+        {/* ⚠ 走 `openShare` 而不是直接 `setShareOpen(true)`：它会**显式清掉** `shareTopN`
+            （从排行榜交接过来那一趟设成了 50）—— 否则下次从页头打开也会默认 50（「串档」）。 */}
+        <button ref={shareBtnRef} type="button" className="rb-share-btn" onClick={openShare}>
           生成分享图
         </button>
         {/* 说明文字**独占一行**(CSS 里靠 `flex-basis: 100%` 换行):
@@ -1136,6 +1159,7 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
           films={films}
           crowd={reconciledCrowd}
           priorRate={priorRate}
+          onShare={openShareFromRank}
           onDismiss={closeRank}
         />
       )}
@@ -1165,6 +1189,9 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
                `unseen` 随上滑改纯跳过也撤掉了 —— 现在只剩「已贴 N 枚」这一项
                (海报上那行小字见 `redblack-poster.ts`) */
             mine={{ placed: totals.placed }}
+            /* 只有从**排行榜弹层**交接过来那一次带档位(它分享的就是刚看的那份 TOP50);
+               页头那枚「生成分享图」不传 → 走分享图自己的默认档(10) */
+            initialTopN={shareTopN}
             onDismiss={() => setShareOpen(false)}
           />
         </Suspense>

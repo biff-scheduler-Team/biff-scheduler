@@ -15,6 +15,11 @@
  *   本文件只管取数 + 编排。⚠ 票数**由页面传进来**（`reconciledCrowd`，见 `RedBlackPage`）——
  *   自己再算一份的话，弹层上的数字会与同一屏里卡片上的数字对不上。
  *
+ * ★ 底部 `ButtonGroup` 里那枚「生成分享图」是**交接**、不是第二条出图路径（2026-10-15，
+ *   `PLAN-20261015170310`，用户「没有分享按钮吧无法分享结果」）：本弹层让位、
+ *   `RedBlackShareDialog` 接手，并带上 `RANK_LIMIT` 作为分享图的默认档 ——
+ *   分享的就是刚看到的这份 TOP50。
+ *
  * ⚠ a11y 不自造：`role=dialog` / aria-modal / focus trap / Esc 全由 S2 的 `Dialog` 提供（§5）；
  *   **焦点归还**由调用方负责（那枚按钮的主人 `BoardPage` 才知道该还给谁，与「快速投票」同一手法）。
  * ⚠ 刻意**不懒加载**：本弹层只 import 已在页面里的 `redblack.ts` / `poster-brush.ts`（后者是纯常量，
@@ -51,6 +56,9 @@ interface RedBlackRankDialogProps {
   crowd: CrowdCounts;
   /** 评分先验（全站红占比）—— 排序里「同票数比评分」要用它，与卡片角标同一个数 */
   priorRate: number;
+  /** 「生成分享图」——**交接**给分享图弹层（`RedBlackShareDialog`），本弹层由调用方关掉。
+   *  ⚠ 不在这里内嵌出图：分享图只有一份实现（§5），这里只负责把「我要分享这份排行」这件事交出去。 */
+  onShare: () => void;
   onDismiss: () => void;
 }
 
@@ -58,6 +66,7 @@ export function RedBlackRankDialog({
   films,
   crowd,
   priorRate,
+  onShare,
   onDismiss,
 }: RedBlackRankDialogProps) {
   // ⚠ 两榜**同一拍**算完（同一个 useMemo）：分成两个 useMemo 会让它们在票数刷新时错开一拍，
@@ -149,6 +158,13 @@ export function RedBlackRankDialog({
           </div>
         </Content>
         <ButtonGroup>
+          {/* 往外发的入口 —— 用户原话：「没有分享按钮吧无法分享结果」。
+              与页头那枚同名同义（`RedBlackPage` 的「生成分享图」），落到**同一个**分享图弹层。
+              ⚠ 空榜时禁用：一票都没有就没有排行可分享，点开只会得到一张「一节都没勾」的图。
+              ⚠ 它是这一层的主操作，所以是实底 `Button`（「关闭」退成 secondary）。 */}
+          <Button isDisabled={boards.length === 0} onPress={onShare}>
+            生成分享图
+          </Button>
           <Button variant="secondary" onPress={onDismiss}>
             关闭
           </Button>
