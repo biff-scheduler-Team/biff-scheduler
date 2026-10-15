@@ -4,12 +4,12 @@
  * ★ 用户原话：「红黑榜有直观的榜单吗 在快速投票旁边加一个榜单 简单展示红榜 黑榜 TOP50
  *   因为现在贴纸区 只需要显示影片的名称海报 以及红黑贴纸数 只需要样式参考分享图就行」。
  *
- * ★ 版式**参考分享图那一行**（`redblack-poster.ts::drawRow`）：从左到右
- *   **名次 → 行内海报 → 片名（中 / 英）→ 红 N · 黑 N**，一行的信息层级与那张长图一致，
- *   看过图的人不用重新学一遍。
- *   ⚠ 颜色**不照抄**：长图是 canvas 画的深底海报，而这一层活在应用里、要跟着亮 / 暗主题走 ——
- *     所以只沿用它的**版式与字阶层级**，配色一律走 token；红 / 黑那两个数字复用既有的
- *     `.rb-tally__*`（全站唯一那份红黑字色，见 `redblack-parity.css`）。
+ * ★ 版式与配色**照着分享图那一行做**（`redblack-poster.ts` 的 `drawRow` / `drawSection` /
+ *   `drawCounts`）：从左到右 **名次 → 行内海报 → 片名（中 / 英）→ 红 N · 黑 N**，
+ *   深底 + 海报色、分节头是一根红竖条 —— 看过那张长图的人不用重新学一遍。
+ *   ⚠ 2026-10-15（`PLAN-20261015161935`）用户看过第一版后的话：「排行样式应该参考红黑榜的分享样式」
+ *     —— 第一版只借了**版式顺序**、配色走的是应用 token（白底），观感与那张图差得远。
+ *   ⚠ 色值一律从 `COLORS` 注入（`POSTER_SKIN`），本文件与 `rank-board.css` 都不写死色值。
  *
  * ★ 两层分开：排序与门槛在 `redblack-rank.ts`（纯逻辑、可单测，且与分享图同一支），
  *   本文件只管取数 + 编排。⚠ 票数**由页面传进来**（`reconciledCrowd`，见 `RedBlackPage`）——
@@ -17,17 +17,32 @@
  *
  * ⚠ a11y 不自造：`role=dialog` / aria-modal / focus trap / Esc 全由 S2 的 `Dialog` 提供（§5）；
  *   **焦点归还**由调用方负责（那枚按钮的主人 `BoardPage` 才知道该还给谁，与「快速投票」同一手法）。
- * ⚠ 刻意**不懒加载**（与文件头那条「参考分享图」无关，是一条体积判断）：本弹层只 import
- *   已在页面里的 `redblack.ts` 与两个 `@biff/contracts` 类型，懒加载只换来一次无谓的往返。
+ * ⚠ 刻意**不懒加载**：本弹层只 import 已在页面里的 `redblack.ts` / `poster-brush.ts`（后者是纯常量，
+ *   无 DOM 副作用、可被 tree-shake）与两个 `@biff/contracts` 类型，懒加载只换来一次无谓的往返。
  *   对比：`RedBlackShareDialog` 懒加载是因为一条链上带着 `redblack-poster.ts`（KB 级）。
  */
 
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
 import type { FilmNode } from "../app/model";
+import { COLORS } from "../poster-brush";
 import type { CrowdCounts } from "../redblack";
 import { buildRankRows, RANK_BOARDS, RANK_LIMIT } from "../redblack-rank";
 import { Button, ButtonGroup, Content, Dialog, DialogContainer, Heading } from "./spectrum";
 import "./rank-board.css";
+
+/** 分享图那一套**固定深色**（`poster-brush.ts::COLORS`——分享图是对外成品，底色不随应用主题翻，
+ *  理由见那里的注释）。这里把它注入成 CSS 变量，而不是在 `rank-board.css` 里再抄一份色值：
+ *  同一含义只允许有一处定义，抄第二份就会在改调色板时静默分叉（§5）。 */
+const POSTER_SKIN = {
+  "--rbr-bg": COLORS.bg,
+  "--rbr-card": COLORS.card,
+  "--rbr-line": COLORS.line,
+  "--rbr-ink": COLORS.ink,
+  "--rbr-ink2": COLORS.ink2,
+  "--rbr-muted": COLORS.muted,
+  "--rbr-red": COLORS.red,
+  "--rbr-red2": COLORS.red2,
+} as CSSProperties;
 
 interface RedBlackRankDialogProps {
   /** 影片库（**全量**，与卡片栅格同一份）—— `buildRankRows` 内部再走 `boardFilms` 把它拆成成员片 */
@@ -62,69 +77,76 @@ export function RedBlackRankDialog({
       <Dialog size="L">
         <Heading slot="title">红黑榜排行</Heading>
         <Content>
-          <p className="rbr-lede">
-            红榜 / 黑榜各取前 {RANK_LIMIT} 名 · 按该榜自己的贴纸数排（同数量比评分）。
-          </p>
-          {boards.length === 0 ? (
-            /* 空榜只说一句「怎么开始」—— 两列都空时**不**渲染两个空标题 */
-            <p className="rbr-empty" role="status">
-              榜上还没有贴纸 —— 点「快速投票」投一枚，这里就有排名了。
+          {/* 这一块 = 「把分享图那一屏搬进来」：深底、海报色、分节头是一根红竖条。
+              色值全部来自 `POSTER_SKIN`（见文件头），本组件不写死任何一个色值。 */}
+          <div className="rbr-sheet" style={POSTER_SKIN}>
+            <p className="rbr-lede">
+              红榜 / 黑榜各取前 {RANK_LIMIT} 名 · 按该榜自己的贴纸数排（同数量比评分）。
             </p>
-          ) : (
-            <div className="rbr-cols" data-rbr-boards={boards.length}>
-              {boards.map((board) => (
-                <section className="rbr-col" data-rbr-board={board.mode} key={board.mode}>
-                  {/* 标题里带上这一列的行数：红榜第 37 名之后就没了，读者得知道「这是全部」 */}
-                  <h3 className="rbr-col-title">
-                    {board.label}
-                    <span className="rbr-col-count">{board.rows.length}</span>
-                  </h3>
-                  <ol className="rbr-list">
-                    {board.rows.map((row, index) => {
-                      const rank = index + 1;
-                      return (
-                        <li
-                          className="rbr-row"
-                          key={row.key}
-                          data-rbr-key={row.key}
-                          data-rbr-rank={rank}
-                        >
-                          <span className="rbr-rank">{String(rank).padStart(2, "0")}</span>
-                          {row.poster ? (
-                            /* `decoding="async"` 与卡片同一处置：一屏最多 100 张海报，
-                               同步解码会在主线程上抢滚动（它只影响解码时机，不改变布局与优先级） */
-                            <img
-                              className="rbr-poster"
-                              src={row.poster}
-                              loading="lazy"
-                              decoding="async"
-                              alt=""
-                            />
-                          ) : (
-                            /* 缺图是常态 —— 走统一的占位块（印片名首字），**不编一个路径** */
-                            <span className="rbr-poster rbr-poster--none" aria-hidden="true">
-                              {row.title.trim().charAt(0)}
+            {boards.length === 0 ? (
+              /* 空榜只说一句「怎么开始」—— 两列都空时**不**渲染两个空标题 */
+              <p className="rbr-empty" role="status">
+                榜上还没有贴纸 —— 点「快速投票」投一枚，这里就有排名了。
+              </p>
+            ) : (
+              <div className="rbr-cols" data-rbr-boards={boards.length}>
+                {boards.map((board) => (
+                  <section className="rbr-col" data-rbr-board={board.mode} key={board.mode}>
+                    {/* 分节头 = 红色竖条 + 标题 + 行数（形态照分享图的 `drawSection`）。
+                        行数带上是因为：红榜第 37 名之后就没了，读者得知道「这是全部」 */}
+                    <h3 className="rbr-col-title">
+                      <span className="rbr-bar" aria-hidden="true" />
+                      <span className="rbr-col-label">{board.label}</span>
+                      <span className="rbr-col-count">{board.rows.length}</span>
+                    </h3>
+                    <ol className="rbr-list">
+                      {board.rows.map((row, index) => {
+                        const rank = index + 1;
+                        return (
+                          <li
+                            className="rbr-row"
+                            key={row.key}
+                            data-rbr-key={row.key}
+                            data-rbr-rank={rank}
+                          >
+                            <span className="rbr-rank">{String(rank).padStart(2, "0")}</span>
+                            {row.poster ? (
+                              /* `decoding="async"` 与卡片同一处置：一屏最多 100 张海报，
+                                 同步解码会在主线程上抢滚动（它只影响解码时机，不改变布局与优先级） */
+                              <img
+                                className="rbr-poster"
+                                src={row.poster}
+                                loading="lazy"
+                                decoding="async"
+                                alt=""
+                              />
+                            ) : (
+                              /* 缺图是常态 —— 走统一的占位块（印片名首字），**不编一个路径** */
+                              <span className="rbr-poster rbr-poster--none" aria-hidden="true">
+                                {row.title.trim().charAt(0)}
+                              </span>
+                            )}
+                            <span className="rbr-body">
+                              <span className="rbr-title">{row.title}</span>
+                              {row.en && <span className="rbr-en">{row.en}</span>}
+                              {/* 分段上色（分享图 `drawCounts`）：标签与分隔符走次级色，
+                                  只有两个数字上色。⚠ 深底上用的是**海报那一对**
+                                  （`COLORS.red2` / `COLORS.ink2`），不是浅底的 `.rb-tally__*` */}
+                              <span className="rbr-counts">
+                                <span className="rbr-red">红 {row.red}</span>
+                                <span>{" · "}</span>
+                                <span className="rbr-black">黑 {row.black}</span>
+                              </span>
                             </span>
-                          )}
-                          <span className="rbr-body">
-                            <span className="rbr-title">{row.title}</span>
-                            {row.en && <span className="rbr-en">{row.en}</span>}
-                            {/* 红 / 黑的字色复用页面那颗合并胶囊里那两段（`.rb-tally__*`）——
-                                同一屏里「红」的颜色只允许有一处定义（§5） */}
-                            <span className="rbr-counts">
-                              <span className="rb-tally__red">红 {row.red}</span>
-                              <span className="rb-tally__sep">{" · "}</span>
-                              <span className="rb-tally__black">黑 {row.black}</span>
-                            </span>
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                </section>
-              ))}
-            </div>
-          )}
+                          </li>
+                        );
+                      })}
+                    </ol>
+                  </section>
+                ))}
+              </div>
+            )}
+          </div>
         </Content>
         <ButtonGroup>
           <Button variant="secondary" onPress={onDismiss}>

@@ -1,15 +1,29 @@
-/* 红黑榜「排行榜」弹层（2026-10-15，PLAN-20261015153233）。
+/* 红黑榜「排行榜」弹层（2026-10-15，PLAN-20261015153233；同日 PLAN-20261015161935 改皮肤）。
  *
- * 版式参考分享图那一行（`redblack-poster.ts::drawRow`）：名次 → 行内海报 → 片名（中 / 英）→ 红黑数。
- * ⚠ **颜色不照抄**：那张长图是 canvas 画的深底海报（`poster-brush.ts::COLORS`），
- *   而这一层活在应用里、要跟着亮 / 暗主题走 —— 所以这里只沿用它的版式与字阶层级，
- *   配色一律走 token（§5：配色只有一处来源）。红 / 黑那两个数字复用 `.rb-tally__*`
- *   （`redblack-parity.css`，全站唯一那份红黑字色），本文件不再定义第二份。
+ * ★ 这一块**照着分享图做**（用户 2026-10-15：「排行样式应该参考红黑榜的分享样式」）——
+ *   版式与配色都取自 `redblack-poster.ts` 的那一行（`drawRow` / `drawSection` / `drawCounts`）：
+ *   名次（补零、前三名红）→ 行内海报（带描边）→ 片名（中 / 英）→ 红黑数（分段上色）。
+ *
+ * ⚠ **色值不在本文件里出现**：它们由 `RedBlackRankDialog.tsx` 从 `poster-brush.ts::COLORS`
+ *   注入成 `--rbr-*`（`POSTER_SKIN`）。在这里写死一份 = 把那份调色板抄第二份，改一处忘一处
+ *   就会静默分叉（§5 红线 5）。
+ * ⚠ 深底上的「红 / 黑」**不用** `.rb-tally__*`：那是**浅底**那一对；海报恒为深底，用的是
+ *   `COLORS.red2` / `COLORS.ink2`。`redblack-parity.css` 里已有同一句先例
+ *   （「海报恒为深底、页面卡片底随主题翻，底色不同就该取不同值」）。
+ * ⚠ 弹层外壳（`Dialog` / `Content`）仍然跟随应用主题，深底只在这一块 ——
+ *   它就是「把分享图那一屏搬进来看看」的那张纸。
  */
 
+.rbr-sheet {
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--rbr-bg);
+  color: var(--rbr-ink);
+}
+
 .rbr-lede {
-  margin: 0 0 12px;
-  color: var(--muted);
+  margin: 0 0 14px;
+  color: var(--rbr-muted);
   font-size: 12px;
 }
 
@@ -27,20 +41,34 @@
   min-width: 0;
 }
 
-/* 列标题：与列表留一道 6px 的呼吸位，别让它跟第一行粘在一起 */
+/* 分节头 = 「红色小竖条 + 标题 + 行数」—— 形态照分享图的 `drawSection`
+ * （那边是 6×30 圆角 3 的品牌红竖条；这里整体小一号，故 3×16 / 圆角 2）。
+ * ⚠ `align-items: center`（不是 baseline）：竖条要跟文字**光学居中对齐**，
+ *   按基线对齐会让竖条重心明显偏下。 */
 .rbr-col-title {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
-  margin: 0 0 6px;
-  font-size: 14px;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.rbr-bar {
+  flex: none;
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--rbr-red);
+}
+
+.rbr-col-label {
+  color: var(--rbr-ink);
+  font-size: 15px;
   font-weight: 700;
-  color: var(--text);
 }
 
 /* 这一列有几行 —— 小字、次级色：它是刻度，不是标题的一部分 */
 .rbr-col-count {
-  color: var(--muted);
+  color: var(--rbr-muted);
   font-size: 12px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
@@ -83,42 +111,45 @@
   border-radius: 10px;
 }
 
-/* hover 只给一层极轻的底 —— 行本身不可点（本版不做「点开影片详情」），
- * 所以这层底色只是「读到哪一行」的辅助，不该读成一个按钮。 */
+/* hover 只给一层极轻的**提亮** —— 行本身不可点（本版不做「点开影片详情」），
+ * 所以这层底色只是「读到哪一行」的辅助，不该读成一个按钮。
+ * ⚠ 深底上提亮只能用半透明白：`var(--raised)` 是**浅底**那一档，铺上去会把行刷成一块白砖。 */
 .rbr-row:hover {
-  background: var(--raised);
+  background: rgb(255 255 255 / 5%);
 }
 
+/* 名次：补零两位（`01`，与分享图 `padStart(2, "0")` 同一条），前三名用海报红 */
 .rbr-rank {
-  color: var(--muted);
+  color: var(--rbr-muted);
   font-size: 13px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
 
-/* 前三名给品牌色（与分享图里「名次 ≤ 3 用红色」是同一条口径，只是这里用 token 表达） */
 .rbr-row:nth-child(-n + 3) .rbr-rank {
-  color: var(--brand);
+  color: var(--rbr-red2);
 }
 
-/* 行内海报：**2:3**（与卡片 / 分享图同一比例），圆角 6
+/* 行内海报：**2:3**（与卡片 / 分享图同一比例），圆角 8，一圈 `line` 描边
+ * （分享图 `drawThumb` 就是「card 底 + 1px `line` 边」—— 深底上缺了这圈边，
+ *   浅色海报会跟背景糊在一起）。
  * ⚠ 只给宽、高交给 `aspect-ratio`：字号变了要改尺寸时，也只需要动 `width` 这一个数。
  * ⚠ 40px 是「两列并排时还撑得住 50 行」那个上限 —— 再宽一点，窄屏上片名只剩两三个字。 */
 .rbr-poster {
   width: 40px;
   aspect-ratio: 2 / 3;
-  border-radius: 6px;
-  background: var(--raised);
+  border: 1px solid var(--rbr-line);
+  border-radius: 8px;
+  background: var(--rbr-card);
   object-fit: cover;
 }
 
-/* 缺图占位块：中性底 + 片名首字（与卡片 / 分享图同一条「不留空洞、也不编路径」） */
+/* 缺图占位块：海报底 + 片名首字（与卡片 / 分享图同一条「不留空洞、也不编路径」） */
 .rbr-poster--none {
   display: grid;
   place-items: center;
-  border: 1px solid var(--line);
-  color: var(--muted);
+  color: var(--rbr-muted);
   font-size: 14px;
   font-weight: 600;
   line-height: 1;
@@ -141,25 +172,37 @@
 }
 
 .rbr-title {
-  color: var(--text);
+  color: var(--rbr-ink);
   font-size: 14px;
   font-weight: 600;
 }
 
 .rbr-en {
-  color: var(--muted);
+  color: var(--rbr-muted);
   font-size: 11px;
 }
 
+/* 红黑数：**分段上色**（分享图 `drawCounts` 的 `segs`）—— 标签与分隔符走次级色，
+ * 只有那两个数字上色。整串一个颜色就丢了「红 / 黑」的可读性，那正是这一行要传达的信息。 */
 .rbr-counts {
   margin-top: 1px;
-  color: var(--muted);
+  color: var(--rbr-muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
+.rbr-red {
+  color: var(--rbr-red2);
+  font-weight: 600;
+}
+
+.rbr-black {
+  color: var(--rbr-ink2);
+  font-weight: 600;
+}
+
 .rbr-empty {
   margin: 0;
-  color: var(--muted);
+  color: var(--rbr-muted);
   font-size: 13px;
 }

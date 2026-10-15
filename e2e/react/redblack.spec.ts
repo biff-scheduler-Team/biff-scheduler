@@ -1956,6 +1956,35 @@ test("排行榜弹层:红榜按红票降序,且该榜 0 票的片不进该榜", 
   await expect(black.locator(".rbr-row").first().locator(".rbr-counts")).toHaveText("红 0 · 黑 3");
 });
 
+// 皮肤：那一块**照着分享图做**（2026-10-15，`PLAN-20261015161935` —— 用户看过第一版后的原话
+// 「排行样式应该参考红黑榜的分享样式」）。第一版只借了版式顺序、配色走应用 token（白底）。
+// ⚠ 断的是 `getComputedStyle` 的**实际颜色**，不是「class 在不在」—— 样式没生效时 class 照样在；
+//   期望值逐字来自 `poster-brush.ts::COLORS`（`#101013` / `#ce1e36` / `#e8455c` / `#c7c7d0`）。
+test("排行榜弹层的皮肤取自分享图:深底 + 红竖条 + 红黑数分段上色", async ({ page }) => {
+  const a = keyOf("008");
+  await stubVotes(page, { [a]: { red: 5, black: 2 } });
+  await ready(page, "/redblack?sort=red&rank=1");
+
+  const dialog = page.getByRole("dialog", { name: "红黑榜排行" });
+  // 深底 = `COLORS.bg`；弹层外壳仍跟随主题，深底只在这一块
+  await expect(dialog.locator(".rbr-sheet").first()).toHaveCSS("background-color", "rgb(16, 16, 19)");
+  // 分节头：每榜一根品牌红竖条（`drawSection`）
+  await expect(dialog.locator(".rbr-bar")).toHaveCount(2);
+  await expect(dialog.locator(".rbr-bar").first()).toHaveCSS("background-color", "rgb(206, 30, 54)");
+
+  const top = dialog.locator('.rbr-row[data-rbr-rank="1"]').first();
+  // 名次补零两位，前三名用海报红 `COLORS.red2`
+  await expect(top.locator(".rbr-rank")).toHaveText("01");
+  await expect(top.locator(".rbr-rank")).toHaveCSS("color", "rgb(232, 69, 92)");
+  // 红黑数分段上色：红 = `COLORS.red2`、黑 = `COLORS.ink2`（都是**海报**那一对，不是浅底的 `.rb-tally__*`）
+  await expect(top.locator(".rbr-red")).toHaveCSS("color", "rgb(232, 69, 92)");
+  await expect(top.locator(".rbr-black")).toHaveCSS("color", "rgb(199, 199, 208)");
+  // 换皮**不动内容**：一行仍然只有名次 / 海报 / 片名 / 红黑数（评分不在里面，见 PLAN 的「不做」）
+  await expect(top.locator(".rbr-counts")).toHaveText("红 5 · 黑 2");
+  await expect(top.locator(".rbr-poster")).toHaveCount(1);
+  await expect(top.locator(".rbr-title")).not.toHaveText("");
+});
+
 test("从热门榜点「排行榜」:落到红榜并打开弹层", async ({ page }) => {
   await stubVotes(page, { [keyOf("008")]: { red: 2, black: 1 } });
   await ready(page, "/redblack?sort=hot");
