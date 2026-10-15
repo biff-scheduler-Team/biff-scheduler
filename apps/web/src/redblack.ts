@@ -26,6 +26,7 @@
 
 import { STICKER_SKIN_KEYS, type StickerSkin } from "@biff/contracts/sticker";
 import { searchFilm, type FilmNode } from "./app/model";
+import type { Screening } from "./types";
 import { normText } from "./util";
 import { removeWorkspaceItem, writeWorkspaceItem } from "./workspace-storage";
 
@@ -881,7 +882,14 @@ export function saveSkipped(keys: ReadonlySet<string>): void {
  *   「未决定」**就是** `board` 里没有这个 key,不需要第二本账,也不需要第二次读写。
  *   与它对应的 `biff.redblack.unseen.v1` 现在只在 `purgeDemoLeavings` 里被清一次。 */
 
-/** 榜单影片候选 —— **一部片一张卡**,两条规则(`PLAN-20261014112444`):
+/** 榜单卡片集:`films` = 「一部片一张卡」的候选,`blocks` = 每张卡**所属的合集 / 联映块场次**
+ *  (可多个:同一节目排了好几场)。`blocks` 只服务搜索(`searchBoardFilm`),卡片上不印它。 */
+export interface BoardCards {
+  films: FilmNode[];
+  blocks: Map<string, Screening[]>;
+}
+
+/** 榜单影片候选 —— **一部片一张卡**,两条规则:
  *
  *  ① 有排期的影片照旧上榜(连场次都没有的目录片谈不上看过没看过);
  *  ② **「合集场次」自己不占卡,改由它的成员片各占一张**。
@@ -889,32 +897,47 @@ export function saveSkipped(keys: ReadonlySet<string>): void {
  *  ★ 起因(用户原话):「我在红黑榜搜索 062 …出现的是 'Asian Short Film Competition 1',
  *    我希望出现的是和影片库一样是『她说』」——`062` 是「Asian Short Film Competition 1」
  *    这个短片竞赛合集场次的编号(一张票连看 5 部,官方排期没给中文名),合集里那 5 部
- *    (含《她说》)在榜上**既搜不到也贴不了票**(它们是「只在合集里放映」的目录片,`shows` 为空)。
+ *    (含《她说》)在榜上**既搜不到也贴不了票**。
  *
- *  ★ 成员片怎么找:**只用榜单自己那份 `films`,不查目录索引** —— 成员片的 `FilmNode.block`
- *    就是它所属的那个合集场次(`app/model.ts:100`),按它倒排即可。
- *    这同时**天然排除**了午夜联映块(`Midnight Passion 1/2/3`):它们的成员片
- *    (Sapiens / Angel′s Egg …)自己就有场次,节点是排期节点、**没有** `block`,
- *    倒排查不到成员 → 原样保留那张合集卡。这一条是**刻意**的,不是巧合:那些片在榜上
- *    本来就有落脚点,拆了只是把卡片弄没,还会让「搜合集编号」落空
- *    (成员片只认自己的场次编号,而它与合集编号不同)。判据因此可以一句话概括:
- *    **「成员片在榜上别无落脚点」的合集才拆。**
+ *  ★ 2026-10-15(`PLAN-20261015155041`)扩到**午夜联映块**:用户要的形态从
+ *    「成员片在榜上别无落脚点才拆」改成「**块卡不再单独计票**」—— `Midnight Passion 1/2/3`
+ *    的 9 部成员自己就有场次、本来就在榜上,块卡只是一张重复计票的卡。
+ *    它们的节点是**排期节点**(`buildFilms` 只在「纯目录片」那一支挂 `block`),
+ *    靠 `block.code` 倒排查不到 —— 所以补了第二支判据(见 `resolveBlockMembers`)。
  *
- *  ⚠ **只拆能全部解析出成员的合集**:官方列出的成员名数与解析出的成员卡片数不一致时
- *    原样保留 —— 宁可少拆一次,也不能拆出一张「合集卡没了、某部成员片也没出现」的静默空洞。
+ *  ⚠ **只拆能全部解析出成员的块**:官方列出的成员名数与解析出的成员卡片数不一致时
+ *    原样保留 —— 宁可少拆一次,也不能拆出一张「块卡没了、某部成员片也没出现」的静默空洞。
  */
 export function boardFilms(films: readonly FilmNode[]): FilmNode[] {
-  // 成员片 → 所属合集场次 code 倒排。没有 `block` 的节点(排期片)天然不在表里。
-  const membersOf = new Map<string, FilmNode[]>();
+  return boardCards(films).films;
+}
+
+/** `boardFilms` 的完整形态(卡片 + 每张卡的所属块索引)。分享图 / 排行榜只要卡片,走 `boardFilms`。 */
+export function boardCards(films: readonly FilmNode[]): BoardCards {
+  // 支 ①:纯目录片侧 —— 成员片的 `FilmNode.block` 就是它所属的合集场次(`app/model.ts`),
+  //        按 code 倒排即可。没有 `block` 的节点(排期片)天然不在表里。
+  const byBlockCode = new Map<string, FilmNode[]>();
   for (const film of films) {
     const code = film.block?.code;
     if (!code) continue;
-    const list = membersOf.get(code);
+    const list = byBlockCode.get(code);
     if (list) list.push(film);
-    else membersOf.set(code, [film]);
+    else byBlockCode.set(code, [film]);
   }
+  // 支 ②:排期片侧 —— 联映块成员自己就有场次、节点上没有 `block`,只能按**官方成员名单**
+  //        (`screening.midnight_members`)里的片名认。归一化走 `normText`(小写 + 去空白)。
+  //        ⚠ 索引建在 `en` / `names` 上;同名取先出现的那个(`films` 的顺序即目录序)。
+  const byName = new Map<string, FilmNode>();
+  for (const film of films) {
+    for (const name of [film.en, ...film.names]) {
+      const key = normText(name);
+      if (key && !byName.has(key)) byName.set(key, film);
+    }
+  }
+
   const out: FilmNode[] = [];
   const seen = new Set<string>();
+  const blocks = new Map<string, Screening[]>();
   // 同一部片只出现一次:成员片来自多个场次(同一节目排了好几场),会被数到多次。
   const push = (film: FilmNode): void => {
     if (seen.has(film.key)) return;
@@ -923,39 +946,91 @@ export function boardFilms(films: readonly FilmNode[]): FilmNode[] {
   };
   for (const film of films) {
     if (film.shows.length === 0) continue;
-    const members: FilmNode[] = [];
-    const memberKeys = new Set<string>();
-    for (const s of film.shows) {
-      for (const member of membersOf.get(s.code) ?? []) {
-        if (memberKeys.has(member.key)) continue;
-        memberKeys.add(member.key);
-        members.push(member);
-      }
-    }
     const memberNames = new Set(film.shows.flatMap((s) => s.midnight_members ?? []));
-    if (members.length === 0 || members.length !== memberNames.size) {
+    const members = resolveBlockMembers(film, memberNames, byBlockCode, byName);
+    if (!members) {
       push(film);
       continue;
     }
-    for (const member of members) push(member);
+    for (const member of members) {
+      // 「这张成员卡属于哪个块」—— 搜索认块编号 / 块名的唯一来源
+      const list = blocks.get(member.key) ?? [];
+      const known = new Set(list.map((s) => s.code));
+      for (const s of film.shows) {
+        if (known.has(s.code)) continue;
+        known.add(s.code);
+        list.push(s);
+      }
+      blocks.set(member.key, list);
+      push(member);
+    }
   }
-  return out;
+  return { films: out, blocks };
+}
+
+/** 块节点的成员解析 —— 两支判据**互斥**(先 ① 后 ②),谁先「数对得上」用谁:
+ *
+ *  ① `block.code` 倒排 —— 适用于纯目录片成员(合集成员唯一现成出口,`PLAN-20261014112444`);
+ *  ② **官方成员名单按片名匹配** —— 适用于成员自己就有场次的联映块(`Midnight Passion`,
+ *     `PLAN-20261015155041`)。为什么不改走 `FilmItem.block_code`:它在 `films.json` 里
+ *     **会过期** —— `168` 的成员已由 `Red Thread` 换成 `Spirit Guardians…`,而该片没有
+ *     `block_code`(换片只同步了 `schedule.json`),倒排只能解出 2 / 3,块卡拆不掉。
+ *
+ *  返回 `null` = **不拆**(宁可少拆,也不能拆出一张「块卡没了、某部成员片也没出现」的静默空洞)。 */
+function resolveBlockMembers(
+  block: FilmNode,
+  memberNames: ReadonlySet<string>,
+  byBlockCode: ReadonlyMap<string, FilmNode[]>,
+  byName: ReadonlyMap<string, FilmNode>,
+): FilmNode[] | null {
+  if (memberNames.size === 0) return null;
+  const dedup = (list: readonly FilmNode[]): FilmNode[] => {
+    const keys = new Set<string>();
+    const members: FilmNode[] = [];
+    for (const member of list) {
+      if (keys.has(member.key)) continue;
+      keys.add(member.key);
+      members.push(member);
+    }
+    return members;
+  };
+  // 支 ①
+  const byPointer = dedup(block.shows.flatMap((s) => byBlockCode.get(s.code) ?? []));
+  if (byPointer.length === memberNames.size) return byPointer;
+  // 支 ②
+  const byOfficialName = dedup(
+    [...memberNames].flatMap((name) => {
+      const member = byName.get(normText(name));
+      return member ? [member] : [];
+    }),
+  );
+  if (byOfficialName.length === memberNames.size) return byOfficialName;
+  return null;
 }
 
 /** 榜单搜索:影片自身的字段走 `app/model.ts::searchFilm`(片名 / 其余片名 / 元信息 / 场次编号),
  *  再补一条 —— **这张卡所属的合集场次**(`PLAN-20261014112444`)。
  *
- *  ★ 为什么必须有:榜单上的合集已被 `boardFilms` 拆成成员片,而成员片自己是「只在合集里放映」
- *    的目录片 —— `shows` 为空,`searchFilm` 的「场次编号」那一段**恒不命中**。
- *    不补的话,改动前「搜 062」只是搜到一张顶着英文单元名的卡,改动后会变成**一张都不剩**。
- *  ⚠ 只认场次编号与合集片名(中 / 英),不把合集当成可贴票的对象 —— 它只是成员片的入口。 */
-export function searchBoardFilm(film: FilmNode, query: string): boolean {
+ *  ★ 为什么必须有:榜单上的合集 / 联映块已被 `boardCards` 拆成成员片,而成员片的场次编号
+ *    与块编号**不同** —— 纯目录片连 `shows` 都没有(「场次编号」那一段恒不命中);
+ *    联映块成员虽然有自己的场次,但「搜 269」要找的是**块**。不补的话,改动前「搜 062 / 269」
+ *    只是搜到一张块卡,改动后会变成**一张都不剩**(比原问题更糟)。
+ *  ⚠ `blocks` = 这张卡所属的块(`boardCards(films).blocks.get(film.key)`)—— 排期片节点上
+ *    没有 `block`,只能由调用方从那份索引里取;纯目录片成员仍有 `film.block`,两处都认。
+ *  ⚠ 只认场次编号与块片名(中 / 英),不把块当成可贴票的对象 —— 它只是成员片的入口。 */
+export function searchBoardFilm(
+  film: FilmNode,
+  query: string,
+  blocks: readonly Screening[] = [],
+): boolean {
   if (searchFilm(film, query)) return true;
-  const block = film.block;
-  if (!block) return false;
+  const related = film.block ? [film.block, ...blocks] : blocks;
+  if (related.length === 0) return false;
   const keyword = normText(query);
   if (!keyword) return true;
-  return [block.code, block.title_en, block.title_zh].some((value) => normText(value).includes(keyword));
+  return related.some((block) =>
+    [block.code, block.title_en, block.title_zh].some((value) => normText(value).includes(keyword)),
+  );
 }
 
 /* ---------------- 清理「示例铺底」的残留(2026-09-16) ----------------

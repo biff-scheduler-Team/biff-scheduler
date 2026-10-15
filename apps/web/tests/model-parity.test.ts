@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildFilmIndex, loadDoubanMappings } from "../src/data";
 import { loadExtras } from "../src/extras";
-import { boardFilms, searchBoardFilm } from "../src/redblack";
+import { boardCards, boardFilms, searchBoardFilm } from "../src/redblack";
 import { buildFilms, filmInUnit, libraryUnits, searchFilm, unitKey } from "../src/app/model";
 import type { Catalog, FilmsFile, Mapping, ScheduleFile, VenuesFile } from "../src/types";
 import { filmInfoOf } from "../src/util";
@@ -157,7 +157,9 @@ describe("红黑榜榜单", () => {
     expect(new Set(keys).size).toBe(keys.length);
     // 299 部有排期 - 8 个「短片竞赛 / 双片连映」合集 + 28 部成员片(实测)
     // 2026-10-15:再 -2 —— Red Thread(510/633 撤片,该片整片下架)与 801(官网下架)
-    expect(board).toHaveLength(317);
+    // 2026-10-15:再 -3 —— 午夜联映 `Midnight Passion 1/2/3` 三张块卡不再单独计票
+    //            (9 部成员自己就有场次,本来就在榜上,见 `PLAN-20261015155041`)
+    expect(board).toHaveLength(314);
     expect(keys).not.toContain("sched:asian short film competition 1");
     expect(board.find((f) => f.key === "cat:f228")!.zh).toBe("她说");
   });
@@ -168,10 +170,39 @@ describe("红黑榜榜单", () => {
     ]);
   });
 
-  it("午夜联映的卡片与搜索都不受影响(那些成员片自己就有卡片)", () => {
-    expect(board.map((f) => f.key)).toContain("sched:midnight passion 1");
-    expect(board.filter((f) => searchBoardFilm(f, "269")).map((f) => f.key)).toEqual([
+  // 2026-10-15(`PLAN-20261015155041`):用户「jim queen 在 midnight passion 里有场次,
+  // 但是可以单独打分,这种打分也要拆下」—— 午夜联映块卡也不再单独计票,只留 9 部成员片。
+  it("午夜联映块也拆开:块卡不在榜上,9 部成员片各占一张", () => {
+    const keys = board.map((f) => f.key);
+    for (const block of [
+      "sched:midnight passion 1",
+      "sched:midnight passion 2",
       "sched:midnight passion 3",
-    ]);
+    ]) {
+      expect(keys).not.toContain(block);
+    }
+    for (const member of [
+      "cat:f008", // Angel′s Egg
+      "cat:f034", // The Chain of Roses
+      "cat:f037", // Sapiens
+      "cat:f078", // Welcome to Dolly′s House
+      "cat:f109", // The Scar-Faced Cat: Way of Asura
+      "cat:f113", // Spirit Guardians(2026-10-15 换片后的成员)
+      "cat:f115", // The Spiral
+      "cat:f208", // L’Autre
+      "cat:f211", // Jim Queen
+    ]) {
+      expect(keys).toContain(member);
+    }
+  });
+
+  it("搜午夜联映块编号 269 → 命中的是那 3 部成员片(含 Jim Queen),而不是块卡", () => {
+    const cards = boardCards(nodes);
+    expect(
+      cards.films
+        .filter((f) => searchBoardFilm(f, "269", cards.blocks.get(f.key)))
+        .map((f) => f.key)
+        .sort(),
+    ).toEqual(["cat:f008", "cat:f078", "cat:f211"]);
   });
 });

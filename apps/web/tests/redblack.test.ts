@@ -12,6 +12,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { FilmNode } from "../src/app/model";
 import {
+  boardCards,
   boardFilms,
   boardHasVotes,
   clampSpot,
@@ -813,7 +814,41 @@ describe("boardFilms:榜单影片候选", () => {
       ).toEqual(["cat:f228", "cat:f221"]);
     });
 
-    it("成员片自己就有场次的合集(午夜联映)原样保留 —— 那些片在榜上已有落脚点", () => {
+    // 2026-10-15(`PLAN-20261015155041`):午夜联映块**也拆** —— 用户原话「jim queen 在
+    // midnight passion 里有场次,但是可以单独打分,这种打分也要拆下」。它的成员自己就有场次、
+    // 节点上没有 `block`,所以走第二支判据:按官方成员名单(`midnight_members`)的片名认。
+    it("成员片自己就有场次的联映块,按官方成员名单拆开", () => {
+      const midnight = film("sched:midnight passion 3", [
+        show({
+          code: "269",
+          title_en: "Midnight Passion 3",
+          midnight_members: ["Jim Queen", "Angel′s Egg"],
+        }),
+      ]);
+      const jimQueen = { ...film("cat:f211", [show({ code: "414" })]), en: "Jim Queen" };
+      const angelEgg = { ...film("cat:f008", [show({ code: "009" })]), en: "Angel′s Egg" };
+      expect(boardFilms([midnight, jimQueen, angelEgg]).map((f) => f.key)).toEqual([
+        "cat:f211",
+        "cat:f008",
+      ]);
+    });
+
+    it("官方成员名解析不全的联映块原样保留(宁可少拆,也不能拆出一张空洞)", () => {
+      const midnight = film("sched:midnight passion 3", [
+        show({
+          code: "269",
+          title_en: "Midnight Passion 3",
+          midnight_members: ["Jim Queen", "Not In This Edition"],
+        }),
+      ]);
+      const jimQueen = { ...film("cat:f211", [show({ code: "414" })]), en: "Jim Queen" };
+      expect(boardFilms([midnight, jimQueen]).map((f) => f.key)).toEqual([
+        "sched:midnight passion 3",
+        "cat:f211",
+      ]);
+    });
+
+    it("块里一部成员都认不出时原样保留(块卡不能凭一个名字凭空消失)", () => {
       const midnight = film("sched:midnight passion 1", [
         show({ code: "075", title_en: "Midnight Passion 1", midnight_members: ["Sapiens"] }),
       ]);
@@ -852,6 +887,30 @@ describe("searchBoardFilm:榜单搜索", () => {
 
   it("没挂在合集上的片不受影响", () => {
     expect(searchBoardFilm(film("cat:f001", []), "062")).toBe(false);
+  });
+
+  // 2026-10-15(`PLAN-20261015155041`):午夜联映块同样拆开后,「搜 269」必须落到成员片 ——
+  // 成员卡的场次编号是它自己的(414),块编号只能从 `boardCards(films).blocks` 那份索引里拿。
+  it("联映块成员卡认「所属块」的编号与块名(blocks 索引)", () => {
+    const midnight = show({
+      code: "269",
+      title_en: "Midnight Passion 3",
+      midnight_members: ["Jim Queen"],
+    });
+    const jimQueen = {
+      ...film("cat:f211", [show({ code: "414" })]),
+      title: "Jim Queen · 吉姆皇后",
+      zh: "吉姆皇后",
+      en: "Jim Queen",
+    };
+    const cards = boardCards([film("sched:midnight passion 3", [midnight]), jimQueen]);
+    expect(cards.films.map((f) => f.key)).toEqual(["cat:f211"]);
+    const blocks = cards.blocks.get("cat:f211");
+    expect(blocks?.map((b) => b.code)).toEqual(["269"]);
+    expect(searchBoardFilm(cards.films[0], "269", blocks)).toBe(true);
+    expect(searchBoardFilm(cards.films[0], "midnight passion", blocks)).toBe(true);
+    // 不传索引 = 只按影片自己的字段搜(排期片节点上没有 `block`,块编号不命中)
+    expect(searchBoardFilm(cards.films[0], "269")).toBe(false);
   });
 
   it("空搜索词恒命中(与 searchFilm 同一条)", () => {

@@ -710,17 +710,31 @@ GUEST 查票（`/guest`，PLAN-20261009150124）：scheduler API 直连官方 GU
     由 `data-rb-spent` 表达(CSS 里那一档淡到底、去投影)。
     ⚠ `.rb-src` **不再挂 `touch-action: none`**:那一条是拖拽时代为「按住往画布上拖」加的,
       纯点击按钮挂它只会让手指按上去时页面滚不动。
-  · **★ 榜单上「一部」= 一部影片:合集场次按成员片拆开**(2026-10-14,`PLAN-20261014112444`)。
-    `redblack.ts::boardFilms` 不再让「合集场次」自己占一张卡,而是**改由它的成员片各占一张** ——
-    合集 = 一张票连看多部(`screening.midnight_members` 标记的 Asian / Korean Short Film Competition、
-    `A + B` 双片连映),它的成员片是「只在合集里放映」的目录片(`FilmItem.block_code`,
-    节点上 `shows` 为空),拆之前**既搜不到也贴不了票**(用户原话:「搜 062 出现的是
-    'Asian Short Film Competition 1',我希望出现的是『她说』」)。
-    ⚠ 判据是「**成员片在榜上别无落脚点**」:成员片自己就有场次的合集(午夜联映 `Midnight Passion 1/2/3`)
-    原样保留 —— 拆了只是把卡片弄没,还会让「搜合集编号」落空。
-    ⚠ 搜索必须走 `redblack.ts::searchBoardFilm`(在 `model.ts::searchFilm` 之外**再认这张卡所属合集场次**
-    的编号 / 中英片名)—— 成员片自己 `shows` 为空,不补这一步「搜 062」会**一张都不剩**。
-    ⚠ 换口径后榜单卡片数 299 → 319;此前贴在合集卡上的贴纸不再有卡片显示(本地 / 服务端数据都不删)。
+  · **★ 榜单上「一部」= 一部影片:合集场次 / 午夜联映块按成员片拆开**(2026-10-14 `PLAN-20261014112444`,
+    2026-10-15 `PLAN-20261015155041` 扩到午夜联映)。`redblack.ts::boardFilms` 不让「块卡」自己占一张,
+    而是**改由它的成员片各占一张** —— 块 = 一张票连看多部(`screening.midnight_members` 标记的
+    Asian / Korean Short Film Competition、`A + B` 双片连映、`Midnight Passion 1/2/3`)。
+    两次的起因都是用户看到「块卡顶着单元名、里面的片无处可寻 / 无处贴票」:
+    ① 2026-10-14「搜 062 出现的是 'Asian Short Film Competition 1',我希望出现的是『她说』」(合集成员是
+    「只在合集里放映」的目录片,`shows` 为空,拆之前**既搜不到也贴不了票**);
+    ② 2026-10-15「jim queen 在 midnight passion 里有场次,但是可以单独打分」—— 午夜联映的 9 部成员
+    **自己就有场次、本来就在榜上**,块卡只是一张重复计票的卡。
+    ⚠ **两支判据互斥,谁先「数对得上」用谁**(`redblack.ts::resolveBlockMembers`):
+    ① 成员片的 `FilmNode.block.code` 倒排(纯目录片成员的唯一现成出口);
+    ② 官方成员名单 `midnight_members` 按片名匹配(`en` / `names`,归一化走 `normText`)—— 覆盖
+       「成员自己就有场次、节点上没有 `block`」的联映块。
+    ⚠ ② 不能改走 `FilmItem.block_code`:它在 `films.json` 里**会过期** —— `168` 的成员已由 `Red Thread`
+    换成 `Spirit Guardians…`,而该片没有 `block_code`(换片只同步了 `schedule.json`),倒排只能解出 2 / 3、
+    块卡拆不掉。
+    ⚠ 两支都要求「解析出的成员卡数 == 官方成员名数」,否则**原样保留块卡** —— 宁可少拆,也不能拆出
+    「块卡没了、某部成员片也没出现」的静默空洞。
+    ⚠ 搜索必须走 `redblack.ts::searchBoardFilm`(在 `model.ts::searchFilm` 之外**再认这张卡所属块场次**
+    的编号 / 中英片名)—— 纯目录片成员连 `shows` 都没有,联映块成员的场次编号又与块编号不同,
+    不补这一步「搜 062 / 269」会**一张都不剩**。块索引由 `boardCards(films).blocks` 给出
+    (`boardFilms` = 只要卡片时的薄封装;分享图 / 排行榜走它)。
+    ⚠ 换口径后榜单卡片数 299 → 319 → **314**(2026-10-15 再 -3 张块卡);此前贴在块卡上的贴纸
+    不再有卡片显示(本地 / 服务端数据都不删,hero 的「全站」小计因此少掉这部分)。
+
 - **★ 分享图(2026-09-22,PLAN-20260922164728)**:应用有**两张**对外出图的分享图 ——
   「看片计划海报」(`poster.ts` + `components/PosterPreview.tsx`)与「红黑榜分享图」
   (`redblack-poster.ts` + `components/RedBlackShareDialog.tsx`)。

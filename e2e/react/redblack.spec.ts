@@ -95,6 +95,22 @@ test("搜合集场次编号 062 → 出现的是 5 部成员片(含《她说》)
   ).toHaveCount(0);
 });
 
+// 午夜联映块也拆开(2026-10-15,PLAN-20261015155041)。
+// 用户原话:「jim queen 在 midnight passion 里有场次,但是可以单独打分,这种打分也要拆下」——
+// `269` =`Midnight Passion 3` 的块编号,3 部成员(Jim Queen / Welcome to Dolly′s House /
+// Angel′s Egg)自己就有场次、本来就在榜上;块卡只是一张**重复计票**的卡。
+test("搜午夜联映块编号 269 → 出现的是 3 部成员片(含 Jim Queen),不再是一张块卡", async ({ page }) => {
+  await stubEmpty(page);
+  await ready(page, "/redblack?sort=red");
+
+  await page.getByRole("searchbox").fill("269");
+  // ⚠ 与 062 那条同一个坑:成员片本来就在整份榜单里,先断数量再断可见性(否则「还没过滤」也通过)
+  await expect(page.locator(".rb-card")).toHaveCount(3);
+  await expect(page.locator('.rb-card[data-film-key="cat:f211"]')).toBeVisible();
+  // 块卡本身已不在榜上(它被拆成了那 3 张)
+  await expect(page.locator('.rb-card[data-film-key="sched:midnight passion 3"]')).toHaveCount(0);
+});
+
 // hero 上那行「全站」数字是**整份榜单**的口径,不该被搜索词牵动
 // (用户 2026-10-12 报:「输入编号搜索后 总览上面的这个数字会变化」)。
 // 根因:`totals` 的全站红 / 黑原来是从 `filmCounts` 累加的,而 `filmCounts` 只覆盖当前
