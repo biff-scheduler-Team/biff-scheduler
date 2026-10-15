@@ -20,6 +20,18 @@
  *   重算 `useMemo` 都会造一个新数组（票数刷新就是其中之一），拿引用当判据会让用户划到一半
  *   被甩回第 1 张（2026-10-14 用户报的「5/50 → 1/50」）。
  *
+ * ⚠ **2026-10-15（`PLAN-20261015005652`，用户四条）**：
+ *  ① **不叫「喜欢 / 不喜欢」**：这一屏是红黑榜的投票入口，所以图例与那三枚按钮一律用
+ *     「黑榜 / 红榜」（用户：「不能叫喜欢/不喜欢 应该叫红黑吧 因为是红黑榜的」）；
+ *  ② **默认候选 = 全站有过票的影片**（`DeckSource = "voted"`），用户有行程时给一枚
+ *     「换成我的行程」的切换（用户：「默认直接所有有过票的都作为滑动的片单…如果用户有片单
+ *     你可以提示他 切换成自己的行程片单」）；
+ *  ③ **「跳过」那两个字挪到海报下面**（常驻图例那一行，`data-qv-skip-live`）——
+ *     它原来压在卡片顶部，而卡片整张会往上飞出屏幕，那两个字的提示当场就没了
+ *     （用户：「往上滑就看不到跳过那两个字了」）。那一行不跟手飞走，所以它在；
+ *  ④ **总结页给一条「去搜索」的出口**：划完还没看到自己看过的那部（多半是冷门片不在候选里）时，
+ *     提示可以用片名 / 场次编号搜，并给一枚按钮关掉卡片、把焦点送到页面上的搜索框。
+ *
  * ⚠ a11y 不自造：`role=dialog` / aria-modal / focus trap / Esc 由 S2 的 `Dialog` 提供（§5）。
  *   滑动**只是快捷方式**：下面那排按钮与方向键走的是同一条 `commit`，所以不存在「只有能手滑才能用」。
  *   ⚠ **输入框聚焦时不接键盘**（`isTypingTarget`）：这条卡片是弹层，弹层里将来可能长出输入框
@@ -35,11 +47,13 @@ import type { FilmNode } from "../app/model";
 import {
   axisVote,
   deckSignature,
+  deckSourceLabel,
   deckStateOf,
   pendingQueue,
   resolveSwipe,
   swipeProgress,
   voteStateLabel,
+  type DeckSource,
   type SwipeAxis,
 } from "../quick-vote";
 import type { StickerType } from "../redblack";
@@ -126,11 +140,19 @@ interface Step {
 }
 
 interface QuickVoteDeckProps {
-  /** 候选：已排好序。⚠ **顺序由调用方定**（行程里有片就用行程、行程为空则用热门榜 TOP50）。
+  /** 候选：已排好序。⚠ **顺序与成员都由调用方定**
+   *  （默认「全站有过票的影片」，用户切过来时是「我的行程」，两者都空才是热门榜 TOP50）。
    *  这里给的是**全量候选** —— 「已经处理过的不再出现」由本文件按 `handledOf` 在**一轮开始时**过滤。 */
   queue: readonly FilmNode[];
-  /** 队列的来源，只用来显示一句说明。`false` = 这不是我的行程，而是热门榜兜底 */
-  fromAgenda: boolean;
+  /** 这一轮按哪一份候选划 —— 只用来显示来源说明与切换入口（口径在 `quick-vote.ts::DeckSource`）。 */
+  source: DeckSource;
+  /** 候选**还没到**（票数还没结算 / 兜底那份还在路上）。⚠ 与「候选是空的」必须分开说：
+   *  混成一句话会让用户以为「真的没有候选」，跑去加片，其实再等一秒就有。 */
+  loading: boolean;
+  /** 还能切到哪一份候选（`null` = 没有另一份可切，那一行就不渲染）。 */
+  switchTo: DeckSource | null;
+  /** 切过去。⚠ 换来源 = 换整轮候选，`deckSignature` 会变、卡片从第 1 张重开（那是应然）。 */
+  onSwitchSource: (next: DeckSource) => void;
   /** 影片 key → 我当前的票；`undefined` = 未决定 */
   voteOf: (key: string) => StickerType | undefined;
   /** 影片 key → **已经处理过没有**（投过红黑 / 跳过过）—— 只在**一轮开始时**读一次，见文件头。 */
@@ -143,18 +165,24 @@ interface QuickVoteDeckProps {
   onSkip: (key: string) => void;
   /** 撤销那笔跳过（撤销一步是跳过时要跟着撤，否则「撤回了却再也不出现」）。 */
   onUnskip: (key: string) => void;
+  /** 总结页那条出口：关掉卡片并去搜索（关卡片与送焦点都由调用方做，本文件只管叫一声）。 */
+  onSearchFilm: () => void;
   onDismiss: () => void;
 }
 
 export function QuickVoteDeck({
   queue,
-  fromAgenda,
+  source,
+  loading,
+  switchTo,
+  onSwitchSource,
   voteOf,
   handledOf,
   onVote,
   onRestore,
   onSkip,
   onUnskip,
+  onSearchFilm,
   onDismiss,
 }: QuickVoteDeckProps) {
   /** 这一轮要走过的卡片 = 候选去掉**已经处理过**的片（投过 / 跳过过，修订 5）。
@@ -332,6 +360,24 @@ export function QuickVoteDeck({
   const likedFilms = round.filter((film) => voteOf(film.key) === "red");
   const passedFilms = round.filter((film) => voteOf(film.key) === "black");
 
+  /** 「候选是空的」那句说明 —— 按**来源**分别说（口径在 `quick-vote.ts::DeckSource`）。
+   *
+   *  ⚠ 三种「空」必须分开说（修订 5 加了第三种）：
+   *    ① **候选还没到**（`loading`）—— 票数 / 兜底数据是**异步**来的，说成「没有候选」
+   *       会把用户支去加片，其实再等一秒就有了；
+   *    ② **候选本身是空的** —— 按来源说清「该去哪儿加片」，含糊一句会让人以为哪儿都没片；
+   *    ③ **候选有、但都被过滤掉了** = 这一批我全划过一遍了（投过 / 跳过过，见上面的分支）。 */
+  const emptyMessage = (): string => {
+    if (loading) return "正在取候选…稍等一下。";
+    if (source === "agenda") {
+      return "「我的行程」还是空的 —— 先把想看的场次加进行程，再回来快速投票。";
+    }
+    if (source === "voted") {
+      return "榜上还没有人投票 —— 先去「我的行程」挑几部，或者到榜单上点一枚贴纸。";
+    }
+    return "榜上还没有人投票，你的行程也是空的 —— 先去「我的行程」挑几部。";
+  };
+
   /** 「重新浏览未评价影片」：把范围收窄到**还没决定**的那些。一片都没剩时按钮禁用。 */
   const undecided = round.filter((film) => voteOf(film.key) === undefined);
   const restartUndecided = () => {
@@ -349,16 +395,45 @@ export function QuickVoteDeck({
     setHistory([]);
   };
 
-  /** 卡片上的**唯一**内容（2026-10-14 起文字层已整层删掉，见下面那段注释）。
-   *  ⚠ `alt` 必须是片名：卡片上不再有别的字，这是读屏用户唯一的来源。
-   *  ⚠ 没有海报时兜底画**完整片名**（不是首字母）—— 那张卡上没有别的东西了。
-   *    背后那叠 `.qv-ghost` 复用同一个渲染，但它外层 `aria-hidden`，不会重复朗读。 */
+  /** 叠在海报底部的那四行信息（2026-10-15，`PLAN-20261015005652` 修订 1）——
+   *  对 `73bb53f`（「最好只保留纯海报」）的**部分收回**：用户这次明确要
+   *  「中英文名 导演名称 然后 code」，不是把整层文字都要回来（单元 / 国家 / 年份 / 场次时间 /
+   *  全站票数 / 简介**仍然不印**）。
+   *  ⚠ CODE 取 `shows[0]?.code`（场次编号，如 "008-1"），**不是** `map?.subject_id`
+   *    （那是豆瓣 subject id）；没有排期的目录片这一行不渲染。
+   *  ⚠ 导演取 `cats[0]?.director`：`FilmNode.cats` 是这部片命中的全部目录条目，
+   *    同一部片不会有两个不同导演，取第一条即可（与 `util.ts::catMetaLine` 同一来源）。 */
+  const infoOf = (film: FilmNode) => {
+    const director = film.cats[0]?.director;
+    const code = film.shows[0]?.code;
+    return (
+      <div className="qv-info" aria-hidden="true">
+        <p className="qv-info-zh">{film.zh}</p>
+        {film.en && film.en !== film.zh && <p className="qv-info-en">{film.en}</p>}
+        {director && <p className="qv-info-director">导演 {director}</p>}
+        {code && <p className="qv-info-code">CODE {code}</p>}
+      </div>
+    );
+  };
+
+  /** 只画海报本身（背后那叠 `.qv-ghost` 用它 —— 被压在最前面那张卡下面、大半截挡住，
+   *  叠信息层只会看着像乱码，而且它本来就 `aria-hidden`，不需要额外内容）。
+   *  ⚠ `alt` 必须是片名：这是读屏用户在**当前**那张卡上的来源（见下面 `cardFaceOf`）。
+   *  ⚠ 没有海报时兜底画**完整片名**（不是首字母）—— 那张卡的底色上没有别的东西了。 */
   const posterOf = (film: FilmNode) =>
     film.poster ? (
       <img className="qv-poster" src={film.poster} alt={film.zh} draggable={false} />
     ) : (
       <span className="qv-poster qv-poster--none">{film.zh}</span>
     );
+
+  /** **当前**那张卡的内容：海报 + 叠在底部的那四行信息。只给最前面这一张用 —— 见上。 */
+  const cardFaceOf = (film: FilmNode) => (
+    <>
+      {posterOf(film)}
+      {infoOf(film)}
+    </>
+  );
 
   return (
     <DialogContainer onDismiss={onDismiss}>
@@ -368,11 +443,9 @@ export function QuickVoteDeck({
           <div className="qv" data-qv-done={done ? "" : undefined}>
             {round.length === 0 ? (
               /* ⚠ 三种「空」必须分开说（修订 5 加了第三种）：
-                 ① 候选本身是空的 —— `fromAgenda` 为真 = 真的没有候选（我的行程是空的）；
-                    为假 = 兜底那份（热门榜）还没到 —— 而这一支是**异步**来的。
-                    混成一句话会让用户以为「行程是空的」，跑去加片，其实再等一秒就有了。
-                 ② **候选有、但都被过滤掉了** = 这一批我全划过一遍了（投过 / 跳过过）——
-                    这种说成「行程是空的」会把用户支去加片，说成「正在取候选」会让他一直干等。 */
+                 ① 候选有、但都被过滤掉了 = 这一批我全划过一遍了（投过 / 跳过过）——
+                    这种说成「没有候选」会把用户支去加片，说成「正在取候选」会让他一直干等；
+                 ② 候选本身是空的 / 还没到 —— 两者的区分在 `emptyMessage` 里，见它的注释。 */
               queue.length > 0 ? (
                 <>
                   <p className="qv-empty">这一批候选你都划过一遍了。想改票，去榜单上点那一枚贴纸。</p>
@@ -383,11 +456,7 @@ export function QuickVoteDeck({
                   </ButtonGroup>
                 </>
               ) : (
-                <p className="qv-empty">
-                  {fromAgenda
-                    ? "还没有可以投票的影片。先去「我的行程」把想看的场次加进来，再回来快速投票。"
-                    : "正在取热门榜的候选…稍等一下。若一直不动，先把想看的场次加进「我的行程」。"}
-                </p>
+                <p className="qv-empty">{emptyMessage()}</p>
               )
             ) : done ? (
               /* ---------------- 总结页 ----------------
@@ -431,6 +500,19 @@ export function QuickVoteDeck({
                     </ul>
                   </section>
                 </div>
+                {/* 「我划完了还是没看到我看过的那部」—— 冷门片多半两边都没沾上（候选是「榜上有票的」
+                    与「我的行程」）。用户 2026-10-15：「你需要提示他 类似于没有找到自己看过的电影吗
+                    尝试通过 CODE 搜索」。
+                    ⚠ 那枚按钮**不能只关卡片**：卡片是弹层、搜索框在它后面，只关掉的话用户还得自己找一圈。
+                      所以它叫的是 `onSearchFilm`（关卡片 + 把焦点送进搜索框），两件事都由调用方做。 */}
+                <div className="qv-missing">
+                  <p className="qv-missing-text">
+                    没找到你看过的那部？用<strong>片名或场次编号（CODE）</strong>搜一下，搜得到就能投。
+                  </p>
+                  <button type="button" className="qv-missing-btn" onClick={onSearchFilm}>
+                    关掉卡片去搜索
+                  </button>
+                </div>
                 <ButtonGroup>
                   <Button variant="secondary" onPress={restartUndecided} isDisabled={!undecided.length}>
                     重新浏览未评价影片
@@ -446,9 +528,34 @@ export function QuickVoteDeck({
                 <p className="qv-counter">
                   第 {index + 1} / {round.length} 部 · {card.title}
                 </p>
-                {fromAgenda ? null : (
-                  <p className="qv-source">我的行程还是空的 —— 先按热门榜 TOP 50 给你划。</p>
-                )}
+                {/* 候选来源那一行（2026-10-15，用户：「如果用户有片单 你可以提示他 切换成自己的行程片单」）。
+                    ⚠ **只在有得切、或要说清兜底时才渲染**：它是给用户的一句提示 + 一个入口，
+                      不是「当前状态仪表盘」—— 恒显会让这一屏白白多占一行，而矮屏上
+                      「整块不用滚」的预算很紧（见 `quick-vote.css` 里那几档 `dvh`）。 */}
+                {switchTo !== null || source === "hot" ? (
+                  <p className="qv-source">
+                    {switchTo === null ? (
+                      <span className="qv-source-label">
+                        榜上还没有人投票 —— 先按「{deckSourceLabel(source)}」给你划。
+                      </span>
+                    ) : (
+                      <>
+                        <span className="qv-source-label">
+                          {source === "voted" ? "正在按全部有票的影片划" : "正在按你的行程划"}
+                        </span>
+                        {/* 换来源 = 换整轮候选（`deckSignature` 变、卡片从第 1 张重开）——
+                            这是**用户主动点**的，所以可以接受；被动换（票数到达）才是要避免的。 */}
+                        <button
+                          type="button"
+                          className="qv-source-switch"
+                          onClick={() => onSwitchSource(switchTo)}
+                        >
+                          {switchTo === "agenda" ? "换成我的行程" : "换成全部有票的"}
+                        </button>
+                      </>
+                    )}
+                  </p>
+                ) : null}
                 <div className="qv-stage" data-qv-state={deckStateOf(voteOf(card.key))}>
                   {/* 后面那两张：**只是影子**（`aria-hidden`），作用是说清「还有下一张」。
                       它们不接指针 —— 真正的落点判定全在当前那张卡上。 */}
@@ -488,7 +595,7 @@ export function QuickVoteDeck({
                     onPointerUp={onPointerUp}
                     onPointerCancel={onPointerUp}
                   >
-                    {posterOf(card)}
+                    {cardFaceOf(card)}
                     {leaving === "left" &&
                       card.poster &&
                       Array.from({ length: SHARD_COUNT }, (_, shard) => {
@@ -520,7 +627,11 @@ export function QuickVoteDeck({
                     {leaving === "right" && <span className="qv-stamp" aria-hidden="true" />}
                     {/* 「加入红榜 / 加入黑榜」两枚标记：**跟着拖动距离渐显**（用户明确要求
                         「颜色、透明度和标记强度随拖动距离渐进变化，而不是等松手后才出现」）。
-                        ⚠ 强度由 `redGlow` / `blackGlow` 给，而它只读**朝那一侧**的位移 —— 见上面。 */}
+                        ⚠ 强度由 `redGlow` / `blackGlow` 给，而它只读**朝那一侧**的位移 —— 见上面。
+                        ⚠ 第三枚「跳过」**已撤**（2026-10-15，用户：「跳过的那个提示 应该显示在海报下面
+                          不然往上滑就看不到跳过那两个字了」）—— 它原来压在卡片顶部，而卡片整张会往上
+                          飞出屏幕，那两个字的提示当场就没了。现在由下面那一行常驻图例承担
+                          （`data-qv-skip-live`），它不跟手飞走。 */}
                     <span
                       className="qv-mark qv-mark--right"
                       data-qv-mark="liked"
@@ -537,54 +648,55 @@ export function QuickVoteDeck({
                     >
                       加入黑榜
                     </span>
-                    <span
-                      className="qv-mark qv-mark--up"
-                      data-qv-mark="skip"
-                      style={{ opacity: hint === "up" ? 0.95 : 0 }}
-                      aria-hidden="true"
-                    >
-                      跳过
-                    </span>
-                    {/* ⚠ 2026-10-14（用户：「海报上的信息太多了 …… 最好只保留纯海报」）：
-                        卡片上**只剩海报本身** —— 原来压在底部的片名 / 英文名 / 元信息 / 场次 /
-                        票数 / 简介整层删掉。理由：这一屏的用途是「看海报、凭直觉划一下」，
-                        七八行字会把海报挤成一张小图，而现场观众认片靠的正是海报本身
-                        （那上面本来就印着片名）。
-                        ⚠ 删掉文字层之后，「这是哪一部」只剩海报一条通道，所以有两处必须跟着改：
-                          ① `posterOf` 的 `alt` 从 `""` 改成片名（读屏用户的唯一来源）；
-                          ② 没有海报时兜底画**完整片名**而不是首字母（否则那张卡就是一片空白）。
-                        ⚠ 票数（`data-qv-mine`）随之从卡片上消失 —— 它本来只是个参照；
+                    {/* ⚠ 2026-10-14（用户：「海报上的信息太多了 …… 最好只保留纯海报」）→
+                        2026-10-15 部分收回（用户：「中英文名 导演名称 然后 code 就行」）：
+                        单元 / 国家 / 年份 / 场次时间 / 全站票数 / 简介**仍然不印**，只叠回
+                        中文名 / 英文名 / 导演 / CODE 这四行（见上面 `infoOf`），且整块 `aria-hidden`
+                        （纯视觉叠层，读屏仍走 `posterOf` 的 `alt`，不会把片名念两遍）。
+                        ⚠ 票数（`data-qv-mine`）仍不在卡片上 —— 它本来只是个参照；
                           要核对某部落在哪一档，退出弹层看榜单更直接（那里的卡片信息是全的）。 */}
                     <span className="qv-progress" data-qv-progress={progress.toFixed(2)} aria-hidden="true" />
                   </div>
                 </div>
                 {/* 常驻方向图例（2026-10-14，PLAN-20261014205414，用户朋友:「不知道左右哪个是喜欢」）。
                     ⚠ 与卡片上那两枚跟手标记**分工不同**：常驻这行回答「左右**是什么**」，
-                      跟手那两枚回答「这一下**会投成什么**」。所以它不跟手、不带状态、每张卡都在。 */}
+                      跟手那两枚回答「这一下**会投成什么**」。所以它不跟手、不带状态、每张卡都在。
+                    ⚠ 2026-10-15 两处改（`PLAN-20261015005652`）：
+                      ① 措辞从「喜欢 / 不喜欢」改成「红榜 / 黑榜」—— 这一屏是红黑榜的投票入口
+                         （用户：「不能叫喜欢/不喜欢 应该叫红黑吧 因为是红黑榜的」）；「黑」在左、
+                         「红」在右，与卡片上那两枚跟手标记的方向一致；
+                      ② 「上滑 · 跳过」这半段**兼作跳过提示**（`data-qv-skip-live`）：它就在海报下面，
+                         卡片往上飞走时它还在 —— 原来那两个字压在卡片顶部，一滑就看不见了。 */}
                 <p className="qv-legend">
-                  <span className="qv-legend-left">← 左滑 · 不喜欢</span>
-                  <span className="qv-legend-skip">上滑 · 跳过</span>
-                  <span className="qv-legend-right">右滑 · 喜欢 →</span>
+                  <span className="qv-legend-left">← 左滑 · 黑榜</span>
+                  <span
+                    className="qv-legend-skip"
+                    data-qv-skip-live={hint === "up" ? "" : undefined}
+                  >
+                    上滑 · 跳过
+                  </span>
+                  <span className="qv-legend-right">右滑 · 红榜 →</span>
                 </p>
                 {/* 指针之外的等价入口 —— 与手势走同一条 `commit`，所以口径不可能漂移。
-                    ⚠ 三颗按钮的**顺序与方向一致**（不喜欢在左、喜欢在右），跳过居中：这是手势的空间排布，
+                    ⚠ 三颗按钮的**顺序与方向一致**（黑榜在左、红榜在右），跳过居中：这是手势的空间排布，
                       反过来会让用户按错一次就投错一票。
-                    ⚠ 文案是「不喜欢 / 喜欢」而不是「投黑榜 / 投红榜」：后者是榜单术语，新用户读不出方向
-                      （用户朋友的问句就是证据）；「黑 / 红」仍在跟手标记与总结页里，术语没有丢。 */}
+                    ⚠ 2026-10-15：文案从「不喜欢 / 喜欢」改成「黑榜 / 红榜」（用户：「不能叫喜欢/不喜欢
+                      应该叫红黑吧 因为是红黑榜的」）。箭头保留 —— 它才是「往哪边划」那半句；
+                      可访问名写成「投黑榜 / 投红榜」，读屏与 E2E 都读它。 */}
                 <div className="qv-actions">
                   <Button
                     size="S"
                     variant="secondary"
-                    aria-label="不喜欢（投黑榜）"
+                    aria-label="投黑榜"
                     onPress={() => commit("left")}
                   >
-                    ← 不喜欢
+                    ← 黑榜
                   </Button>
                   <Button size="S" variant="secondary" onPress={() => commit("up")}>
                     跳过
                   </Button>
-                  <Button size="S" aria-label="喜欢（投红榜）" onPress={() => commit("right")}>
-                    喜欢 →
+                  <Button size="S" aria-label="投红榜" onPress={() => commit("right")}>
+                    红榜 →
                   </Button>
                 </div>
                 {/* 撤回区（2026-10-14，PLAN-20261014205414 用户:「需要指引和反悔机制」）：

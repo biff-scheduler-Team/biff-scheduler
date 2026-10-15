@@ -1,14 +1,16 @@
 /**
  * 快速投票 —— 红黑榜投票入口的**纯逻辑**（2026-10-14，PLAN-20261014190000）。
  *
- * 这一层只管三件事，件件都可以脱开 DOM 单测：
- *  ① **候选与顺序**：从我的行程里取片单（`store.picks` 的 key 集合 → `films` 里对应的那些）；
- *     行程为空时由调用方改用热门榜候选；
+ * 这一层只管四件事，件件都可以脱开 DOM 单测：
+ *  ① **候选与顺序**：两个来源共用同一套骨架（`orderedByFirstScreening`）——
+ *     `quickVoteOrder`（我的行程 = `store.picks` 的 key 集合）与 `votedQueue`
+ *     （**全站有过票的影片**，2026-10-15 起是缺省来源）；两者都空时才由调用方改用热门榜候选；
  *     ⚠ 2026-10-14 修订 5（用户拍板）：**已经处理过的片（投过 / 跳过过）不再进队列** ——
  *     过滤归 `pendingQueue`，而且只在**一轮开始时**做一次；改票入口挪到榜单上那一枚，
- *     所以 `quickVoteOrder` 这一层仍然**不看** `board`（它只回答「候选是谁」）；
+ *     所以这两个函数**不看** `board`（它们只回答「候选是谁」）；
  *  ② **手势 → 意图**：位移落在哪一档（左 = 黑 / 右 = 红 / 上 = **跳过**），不到阈值就是「什么也没发生」；
- *  ③ **状态的对外命名**：`undecided` / `liked` / `passed` —— 卡片角标与 E2E 都读它。
+ *  ③ **状态的对外命名**：`undecided` / `liked` / `passed` —— 卡片角标与 E2E 都读它；
+ *  ④ **候选来源的对外命名**：`voted` / `agenda` / `hot`（`DeckSource`）—— 来源说明条与切换按钮读它。
  *
  * ⚠ 这里**不碰** `StickerBoard`（那是 `redblack.ts` 的事），也**不碰** DOM。
  *
@@ -90,9 +92,38 @@ export function swipeProgress(dx: number, dy: number, unit: number): number {
  *    这里是复用同一份口径（AGENTS §5「同一口径只允许一处实现」）。
  *  ⚠ 行程为空时返回空数组，由调用方改用热门榜候选（见组件里的 `deckQueue`）—— 纯函数不猜数据来源。 */
 export function quickVoteOrder(films: readonly FilmNode[], keys: ReadonlySet<string>): FilmNode[] {
+  return orderedByFirstScreening(films, (film) => keys.has(film.key));
+}
+
+/** 全站**有过票**的影片 → 投票队列（2026-10-15，`PLAN-20261015005652`）。
+ *
+ *  用户原话：「打开之后默认直接所有有过票的都作为滑动的片单吧这样也不会遗漏 反正划一下也很快」。
+ *  规则：`hasVote(key)` 认的那些（**服务端聚合**里红 + 黑 > 0，与我自己的行程无关）。
+ *
+ *  ⚠ 顺序**刻意不看票数**：按票数降序时，「我自己那一票上报成功 → 服务端聚合多一枚」就会让
+ *    顺序当场变化 —— 而 `deckSignature` 判的正是 key 序列，一变 `QuickVoteDeck` 就重开这一轮、
+ *    `index` 归零（用户报过的「划了五部又从 5/50 变成 1/50」）。所以顺序只由**片单本身**决定。
+ *  ⚠ 与 `quickVoteOrder` 共用同一个排序骨架：两个来源的顺序口径一旦分叉，「换来源」就会把
+ *    用户划到的位置甩到别处。 */
+export function votedQueue(
+  films: readonly FilmNode[],
+  hasVote: (key: string) => boolean,
+): FilmNode[] {
+  return orderedByFirstScreening(films, (film) => hasVote(film.key));
+}
+
+/** 两个候选来源**共用**的挑选 + 排序骨架：留下 `keep` 认的那些，按**最早一场**升序
+ *  （没有场次的目录片排最后），并列按目录序。
+ *
+ *  ⚠ 这是「候选怎么排」的**唯一**实现（AGENTS §5）—— `quickVoteOrder` / `votedQueue` 都只是
+ *    各自给一个 `keep` 判据，不另写一遍排序。 */
+function orderedByFirstScreening(
+  films: readonly FilmNode[],
+  keep: (film: FilmNode) => boolean,
+): FilmNode[] {
   const picked: Array<{ film: FilmNode; index: number }> = [];
   films.forEach((film, index) => {
-    if (keys.has(film.key)) picked.push({ film, index });
+    if (keep(film)) picked.push({ film, index });
   });
   return picked
     .sort((a, b) => compareByFirstScreening(a.film, b.film) || a.index - b.index)
@@ -167,4 +198,20 @@ export function voteStateLabel(vote: StickerType | undefined): string {
   if (vote === "red") return "已投红榜";
   if (vote === "black") return "已投黑榜";
   return "还没决定";
+}
+
+/** 这一轮**按哪一份候选**划（2026-10-15，`PLAN-20261015005652`）。
+ *
+ *  ⚠ 来源只有三种，且**第三种是兜底**：
+ *    · `voted` —— **全站有过票的影片**（缺省。用户：「默认直接所有有过票的都作为滑动的片单」）；
+ *    · `agenda` —— **我的行程**（用户有行程时可切过来：「切换成自己的行程片单」）；
+ *    · `hot`   —— 热门榜 TOP 50（榜上一票都没有、行程也空时才有的一条路，原行为）。
+ *  ⚠ 它只是**对外命名**：卡片的来源说明条、切换按钮的文案、E2E 都读它，别在 JSX 里另写一份字面量。 */
+export type DeckSource = "voted" | "agenda" | "hot";
+
+/** 来源的说明文案（唯一口径）。 */
+export function deckSourceLabel(source: DeckSource): string {
+  if (source === "agenda") return "我的行程";
+  if (source === "hot") return "热门榜 TOP 50";
+  return "全部有票的影片";
 }

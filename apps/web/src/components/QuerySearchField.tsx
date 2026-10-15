@@ -19,11 +19,18 @@ export function QuerySearchField({
   label,
   placeholder,
   param = "q",
+  focusToken = 0,
 }: {
   label: string;
   placeholder: string;
   /** URL 上的参数名。三个页面都用 `q`,留成参数只为将来复用。 */
   param?: string;
+  /** 「把光标送到这个框里」的信号:**值一变**就聚焦一次(`0` = 从未请求过)。
+   *
+   *  ⚠ 为什么是**计数**而不是布尔:聚焦是一次性动作,而调用方(红黑榜快速投票的「去搜索」)
+   *    要在**关掉弹层之后**再请求一次 —— 布尔量第二次就没有「变化」了,收不到第二次聚焦。
+   *  ⚠ 三个使用点都不传它时行为逐字不变(默认 `0`,不聚焦)。 */
+  focusToken?: number;
 }) {
   const { params, update } = useQuery();
   const urlValue = params.get(param) ?? "";
@@ -76,6 +83,17 @@ export function QuerySearchField({
 
   // 卸载时丢掉挂起的提交:组件都没了,不该再导航
   useEffect(() => () => committer.dispose(), [committer]);
+
+  // `focusToken` 一变就把光标送进输入框(红黑榜总结页那枚「去搜索」)。
+  // ⚠ 延到下一个宏任务再聚焦:请求聚焦的那一刻弹层正在卸载,而 S2 的 `Dialog` 与
+  //   `BoardPage` 的焦点归还**都在同一拍**把焦点交给别人 —— 抢在它们前面聚焦会被顶掉。
+  useEffect(() => {
+    if (focusToken <= 0) return undefined;
+    const timer = setTimeout(() => {
+      inputRef.current?.getInputElement()?.focus();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [focusToken]);
 
   return (
     <SearchField

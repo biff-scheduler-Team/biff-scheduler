@@ -2,7 +2,9 @@
 //
 // ⚠ 2026-10-14(PLAN-20261014190000):**投票入口换成了「快速投票」滑动卡片**。
 //   · 控制栏上的「快速投票」→ 一张一张划:左滑 = 黑、右滑 = 红、上滑 = **跳过**(不写任何状态);
-//   · 候选来自**我的行程**(`quick-vote.ts::quickVoteOrder`),行程为空时用热门榜 TOP50 兜底;
+//   · ⚠ 2026-10-15(PLAN-20261015005652)候选的**默认来源换了**:打开就是**全站有过票的影片**
+//     (`quick-vote.ts::votedQueue`,清单全、不会遗漏);用户自己**有行程**时给一枚
+//     「换成我的行程」的切换(`quickVoteOrder`)。两者都空(榜上一票没有、行程也空)才用热门榜 TOP50 兜底;
 //     **划过一遍的片(投过 / 跳过过)不再进队列**(2026-10-14 修订 5,「跳过」那本本地账在
 //     `biff.redblack.skipped.v1`);
 //   · **每张卡片上还有两枚「红 / 黑」按钮**(修订 6,用户:「保留按钮直接投票」)—— 点一下就投,
@@ -91,10 +93,10 @@ import {
   type FilmSkinCounts,
   type FilmVoteCounts,
 } from "../film-votes";
-// 快速投票的候选兜底：我的行程为空时改用热门榜（同一份 `buildHotRows`，见 `deckQueue`）
+// 快速投票的候选兜底：榜上有票的与我的行程都为空时改用热门榜（同一份 `buildHotRows`，见 `deck`）
 import { buildHotRows } from "../hot-board";
 import { loadWantCounts, onWantCountsChange, peekWantCounts } from "../want-counts";
-import { quickVoteOrder } from "../quick-vote";
+import { quickVoteOrder, votedQueue, type DeckSource } from "../quick-vote";
 import { store } from "../state";
 import { resolveSkin } from "../sticker-skin";
 import { useInView } from "../use-in-view";
@@ -343,6 +345,30 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
   const deckOpen = params.get("vote") === "1";
   const closeDeck = useCallback(() => update({ vote: null }), [update]);
 
+  /** 总结页那枚「关掉卡片去搜索」（2026-10-15，`PLAN-20261015005652`）——
+   *  **关掉卡片 + 把焦点送到页面上的搜索框**，两件事一起做。
+   *
+   *  ⚠ 为什么不是「只关卡片」：卡片是**弹层**，搜索框在它后面 —— 只关掉的话用户还得自己找一圈，
+   *    而这一步的用途恰恰是「划完了没看到我看过的那部，换个入口去找」。
+   *  ⚠ 为什么是**计数**而不是布尔：聚焦是一次性动作，而用户可能反复走到总结页、反复点它 ——
+   *    布尔量第二次就没有「变化」了。
+   *  ⚠⚠ 令牌**必须等弹层真的卸载之后再递增**（见下面那个 effect）：弹层还在的那一拍里，
+   *    react-aria 的 focus scope 会把跑到弹层外的焦点抓回去 —— 实测（E2E 首跑）焦点根本落不到
+   *    搜索框上（stay `inactive`），而且那**不是**「再等一会儿就好」，是被按住了。 */
+  const [searchFocus, setSearchFocus] = useState(0);
+  const [wantSearch, setWantSearch] = useState(false);
+  const searchFilm = useCallback(() => {
+    setWantSearch(true);
+    closeDeck();
+  }, [closeDeck]);
+  /** 弹层**卸载之后**才把令牌递增（理由见上）。⚠ 顺带把那个意图清掉：不清的话它会一直挂着，
+   *  下一次关闭弹层（哪怕走的是别的入口）又会莫名其妙把焦点送进搜索框。 */
+  useEffect(() => {
+    if (deckOpen || !wantSearch) return;
+    setWantSearch(false);
+    setSearchFocus((count) => count + 1);
+  }, [deckOpen, wantSearch]);
+
   // 全体票数(服务端聚合,见 `film-votes.ts`)。节奏与「想看人数」完全一致:
   // 拉一次 → 我贴 / 收之后 1200ms 防抖上报 → 上报成功后再拉一次。
   // ⚠ 数字**不再**等这一秒(2026-09-23):页面拿 `reconcile` 把「我这一票」当场算进去 / 减出来,
@@ -448,12 +474,15 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 故意不依赖 board,见上一行
   }, [votesKey]);
 
+  /** 榜单那一份片子（合集拆成成员片）—— `candidates` / `boardKeys` / 快速投票的默认候选都从它出。
+   *  ⚠ 只算一次：`boardFilms` 每次都要建两张 Map，而它在本文件里原来被调了三处。 */
+  const boardFilmList = useMemo(() => boardFilms(films), [films]);
   // ⚠ 搜索走 `redblack.ts::searchBoardFilm`(不是 `app/model.ts::searchFilm` 直接上):
   //   榜单上的合集已被 `boardFilms` 拆成成员片,而成员片自己 `shows` 为空 ——
   //   不认「所属合集场次」的话,「搜 062」会一张都不剩(见 `PLAN-20261014112444`)。
   const candidates = useMemo(
-    () => boardFilms(films).filter((film) => searchBoardFilm(film, query)),
-    [films, query],
+    () => boardFilmList.filter((film) => searchBoardFilm(film, query)),
+    [boardFilmList, query],
   );
   // ⚠ **顺序不跟票数走**(用户反馈「跳动很频繁」)。按数量降序时,别人贴一枚就让那张卡跳到榜首、
   //   整页两列跟着重排 —— 而排序本来就是用户主动想看才需要的动作。
@@ -496,7 +525,7 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
   /** 总览里「能跳过去」的片子 —— 判据与榜单**同一处**(`boardFilms`:合集拆成成员片)。
    *  ⚠ 评语可能属于一届里已经没有排期的目录片 / 旧届残留:那些行只能读、不能跳,
    *    否则会把用户滚到一张根本不存在的卡上。 */
-  const boardKeys = useMemo(() => new Set(boardFilms(films).map((film) => film.key)), [films]);
+  const boardKeys = useMemo(() => new Set(boardFilmList.map((film) => film.key)), [boardFilmList]);
 
   /** 待定位的片子。⚠ 用 **ref** 而不是 state:它是「一次性意图」,不该参与渲染;
    *  真正驱动重试的是下面那个 `locateTick`(见 `jumpToFilm` 的说明)。 */
@@ -765,7 +794,7 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
     [],
   );
 
-  /** 候选队列 ①：**我的行程**（🎫 是否已投过由 `handledOf` 在卡片里过滤，这里不管）。
+  /** 候选来源 ①：**我的行程**（是否已投过由 `handledOf` 在卡片里过滤，这里不管）。
    *  ⚠ 依赖 `storeRevision`：`films` 与选片无关（它是目录 + 豆瓣映射的函数），
    *    所以「我加了一部片到行程」不会换掉 `films` 的引用 —— 不跟这个修订号就永远不重算。 */
   const agendaQueue = useMemo(
@@ -773,7 +802,38 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- storeRevision 就是 picks 的「变了没有」
     [films, storeRevision],
   );
-  /** 候选队列 ② 的数据源：热门榜那份「想看人数」。 */
+
+  /** 候选来源 ②（**缺省**，2026-10-15，`PLAN-20261015005652`）：**全站有过票的影片**。
+   *  用户原话：「打开之后默认直接所有有过票的都作为滑动的片单吧这样也不会遗漏 反正划一下也很快」。
+   *
+   *  ⚠⚠ 它在**开卡片那一刻快照一次**，整轮不再变（`votedDeck`），**不能**在渲染里直接算 ——
+   *    `crowd` 会在**我自己投完那一票、上报落地之后**多出这个 key（服务端聚合这时含我了），
+   *    队列成员一变 `deckSignature` 就变 ⇒ `QuickVoteDeck` 把这一轮重开、`index` 归零，
+   *    正是用户报过的「划了五部又从 5/50 变成 1/50」。
+   *  ⚠ 票数没结算（`votesSettled` 为假）时**不造候选**：先给行程顶上再翻成「有票的」，
+   *    队列会换两次，用户刚划掉的那张会被甩回去 —— 与下面热门榜兜底那条是同一条规矩
+   *    （「等它到了再给，队列于是只出现一次」）。
+   *  ⚠ 顺序不含票数（见 `votedQueue`）：只由片单本身决定，所以「票数变了」不该换队列。 */
+  const [votedDeck, setVotedDeck] = useState<readonly FilmNode[] | null>(null);
+  useEffect(() => {
+    if (!deckOpen || !votesSettled) {
+      setVotedDeck(null);
+      return;
+    }
+    setVotedDeck(
+      (prev) => prev ?? votedQueue(boardFilmList, (key) => (crowd.get(key)?.total ?? 0) > 0),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在「开卡片那一刻」取一次，理由见上
+  }, [deckOpen, votesSettled]);
+  const votedFilms = votedDeck ?? EMPTY_DECK;
+
+  /** 这一轮按哪一份候选划。默认 `voted`；关掉卡片就复位（下次打开仍是「有票的」）。 */
+  const [deckSource, setDeckSource] = useState<DeckSource>("voted");
+  useEffect(() => {
+    if (!deckOpen) setDeckSource("voted");
+  }, [deckOpen]);
+
+  /** 候选来源 ③ 的数据源：热门榜那份「想看人数」（只在① ②都空时才要）。 */
   const [wants, setWants] = useState(() => peekWantCounts());
   useEffect(() => {
     // ⚠ 只在**真的要弹兜底卡片**时才去拉：那是另一条接口。
@@ -783,12 +843,12 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
     void loadWantCounts();
     return onWantCountsChange(() => setWants(peekWantCounts()));
   }, [agendaQueue.length, deckOpen]);
-  /** 候选队列 ②（用户 2026-10-14）：「如果行程没有**主动点击**就改成 TOP50 给用户进行滑动吧」。
-   *  ⚠ 这一支只在**行程为空**且用户主动点了「快速投票」时才走到（落地自动弹出的那条路
-   *    要求行程非空，见 `BoardPage`）—— 所以「兜底」不会伪装成默认候选。
+  /** 候选来源 ③（用户 2026-10-14）：「如果行程没有**主动点击**就改成 TOP50 给用户进行滑动吧」。
+   *  ⚠ 2026-10-15 起它是**最后一档兜底**：榜上有票的优先、行程次之，两个都空才轮到它 ——
+   *    所以「兜底」不会伪装成默认候选，它只在「这一届还没人投票」时出现。
    *  ⚠ 用的是 `buildHotRows`（热门榜面板**同一支**），不是在红黑榜里再写一遍按想看人数排序 ——
    *    两处口径分叉的症状是「热门榜第一和兜底第一不是同一部」，而那种错没人会立刻看出来。
-   *  ⚠ 组件那边会显示一句「行程还是空的」：兜底候选必须**说得出自己是兜底**。
+   *  ⚠ 组件那边会显示一句来源说明：兜底候选必须**说得出自己是兜底**。
    *
    *  ⚠⚠ **`crowd` / `priorRate` 不能进这个 useMemo 的依赖**（2026-10-14 修订 5 修的 bug）：
    *    它们只进 `buildHotRows` 的**展示列**（红 / 黑 / 评分），而 TOP50 的**顺序**由 `want` 决定
@@ -802,21 +862,40 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
   crowdRef.current = crowd;
   const priorRateRef = useRef(priorRate);
   priorRateRef.current = priorRate;
-  const deck = useMemo(() => {
-    if (agendaQueue.length) return { films: agendaQueue, fromAgenda: true };
+  /** 这一轮要划的那一份候选 + 它的来源 + 「候选还没到」。
+   *  ⚠ `pending` 与「候选是空的」必须分开说：混成一句话会让用户以为真的没有候选，跑去加片。 */
+  const deck = useMemo((): {
+    films: readonly FilmNode[];
+    source: DeckSource;
+    pending: boolean;
+  } => {
+    if (deckSource === "agenda" && agendaQueue.length) {
+      return { films: agendaQueue, source: "agenda", pending: false };
+    }
+    // ⚠ 缺省来源是「有票的」，而它在票数结算之前**还不存在** —— 先给一句「正在取候选…」，
+    //   不要在那一刻拿行程顶上（顶上再翻回去就是换两次队列）。
+    if (!votesSettled) return { films: EMPTY_DECK, source: "voted", pending: true };
+    if (votedFilms.length) return { films: votedFilms, source: "voted", pending: false };
+    if (agendaQueue.length) return { films: agendaQueue, source: "agenda", pending: false };
     // ⚠ 「想看人数」还没到 → **先不造候选**，而不是拿一份 want 全为 0 的榜单硬排：
     //   那样排出来的顺序与数据到了之后**完全不同**，而队列一换 `QuickVoteDeck` 就会重开这一轮 ——
     //   用户划到第 6 张时数据到了，会被当场甩回第 1 张（正是规格里那句「不要闪烁 / 布局跳动」）。
-    //   等它到了再给，队列于是**只出现一次**、也只会被排一次序。
-    if (!Object.keys(wants).length) return { films: EMPTY_DECK, fromAgenda: false };
+    if (!Object.keys(wants).length) return { films: EMPTY_DECK, source: "hot", pending: true };
     const byKey = new Map(films.map((film) => [film.key, film]));
     const fallback: FilmNode[] = [];
     for (const row of buildHotRows(films, wants, crowdRef.current, priorRateRef.current).slice(0, 50)) {
       const film = byKey.get(row.key);
       if (film) fallback.push(film);
     }
-    return { films: fallback, fromAgenda: false };
-  }, [agendaQueue, films, wants]);
+    return { films: fallback, source: "hot", pending: false };
+  }, [deckSource, agendaQueue, votedFilms, votesSettled, films, wants]);
+  /** 还能切到哪一份候选 —— 只把**真的有**的那一份给出去（给了就得切得动）。
+   *  ⚠ 热门榜那一档**不给**切换入口：它本来就是「另外两份都空」时才走到的一条兜底路。 */
+  const switchTo: DeckSource | null = useMemo(() => {
+    if (deck.source === "voted" && agendaQueue.length) return "agenda";
+    if (deck.source === "agenda" && votedFilms.length) return "voted";
+    return null;
+  }, [deck.source, agendaQueue.length, votedFilms.length]);
 
   return (
     <section className="rb-page" aria-label="榜单" ref={pageRef}>
@@ -871,7 +950,13 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
 
       <div className="rb-controls">
         {/* ⚠ 文案按用户 2026-09-29 的建议收短(`label` 是同一句话的长版本,留给读屏) */}
-        <QuerySearchField label="搜索影片或场次编号" placeholder="搜索影片 / 场次编号" />
+        {/* `focusToken`：总结页那枚「关掉卡片去搜索」把光标送到这里（2026-10-15，
+            见 `searchFilm` 的说明）—— 卡片是弹层，不送焦点的话用户还得自己找这个框。 */}
+        <QuerySearchField
+          label="搜索影片或场次编号"
+          placeholder="搜索影片 / 场次编号"
+          focusToken={searchFocus}
+        />
         {/* 排序:两档互斥（2026-10-12 撤了「总数」）→ **一个**分段控件(Segmented Control),
             不再是几个各自带边框的胶囊。
             ⚠ `role=group` + `aria-pressed` 一个都不能少:分段控件只是视觉形态,语义上它仍是
@@ -1009,13 +1094,17 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
       {deckOpen && (
         <QuickVoteDeck
           queue={deck.films}
-          fromAgenda={deck.fromAgenda}
+          source={deck.source}
+          loading={deck.pending}
+          switchTo={switchTo}
+          onSwitchSource={setDeckSource}
           voteOf={voteOf}
           handledOf={handledOf}
           onVote={vote}
           onRestore={restoreVote}
           onSkip={markSkipped}
           onUnskip={unmarkSkipped}
+          onSearchFilm={searchFilm}
           onDismiss={closeDeck}
         />
       )}

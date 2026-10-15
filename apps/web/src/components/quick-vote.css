@@ -28,11 +28,35 @@
   white-space: nowrap;
 }
 
-/* 兜底候选的一句说明（我的行程为空时）—— 它是**状态说明**，不是警告，所以用中性色弱化 */
+/* 候选来源那一行（2026-10-15）：一句状态说明 +（有得切时）一枚「换成…」的弱按钮。
+ * ⚠ 它是**说明**，不是警告，所以一律用中性色弱化；而切换按钮是**动作**，用品牌色。
+ * ⚠ 只在「有得切 / 要说清兜底」时才渲染（见 `QuickVoteDeck.tsx`），所以它不占常态高度。 */
 .qv-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+  justify-content: center;
   margin: 0;
   font-size: 12px;
   color: var(--muted);
+}
+
+/* 换来源那枚按钮：与 `.qv-undo` 同一个量级（弱按钮，不是主操作）；
+ * 触控目标按全站口径给足 44px，见文件末那段 `pointer: coarse`。 */
+.qv-source-switch {
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--brand);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.qv-source-switch:hover {
+  background: var(--raised);
+  border-color: var(--brand);
 }
 
 /* 舞台：给卡片一个**确定大小**的容器。卡片在里面绝对定位 —— 三个方向的出场动画都靠 transform，
@@ -105,6 +129,45 @@
   -webkit-user-drag: none;
 }
 
+/* 叠在海报底部的信息条（2026-10-15，`PLAN-20261015005652` 修订 1）—— 用户：
+ * 「中英文名 导演名称 然后 code 就行」。只叠这四行，不恢复整层旧信息（单元 / 国家 / 年份 /
+ * 场次时间 / 全站票数 / 简介）。
+ * ⚠ 渐变底色**只垫在文字这一段**（`position: absolute` + `inset: auto 0 0 0`），
+ *   不是整张海报调暗 —— 海报本身仍然是「划一眼就认出来」的主体，渐变只保证文字能看清。 */
+.qv-info {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 28px 12px 10px;
+  background: linear-gradient(180deg, transparent, rgb(0 0 0 / 72%) 55%);
+  color: #fff;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 50%);
+  pointer-events: none;
+}
+
+.qv-info-zh {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.qv-info-en {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.88;
+}
+
+.qv-info-director,
+.qv-info-code {
+  margin: 0;
+  font-size: 11px;
+  opacity: 0.78;
+}
+
 /* 没有海报的目录片：一条空底色 + **完整片名**。
  * ⚠ 2026-10-14 之前这里只画**首字**（那时卡片底部还有一行片名兜着）；
  *   现在文字层整层删掉了，只画首字母等于给用户一张空白卡 —— 所以改成整条片名，长名自己折行。 */
@@ -155,12 +218,9 @@
   transform: rotate(-10deg);
 }
 
-.qv-mark--up {
-  left: 50%;
-  top: 12px;
-  transform: translateX(-50%);
-  color: var(--brand);
-}
+/* ⚠ 2026-10-15（`PLAN-20261015005652`）：`.qv-mark--up`（卡片上那枚「跳过」）**已删** ——
+ *   卡片整张会往上飞出屏幕，压在它顶部的两个字跟着一起没了。跳过提示改由下面那行常驻图例承担
+ *   （`.qv-legend-skip[data-qv-skip-live]`），它在**海报下面**、不跟手飞走。不留死规则。 */
 
 /* 拖动进度：只用来做边缘高亮，不参与判定（判定是 `quick-vote.ts::resolveSwipe`） */
 .qv-progress {
@@ -294,6 +354,21 @@
 .qv-legend-skip {
   color: var(--muted);
   font-weight: 400;
+  /* 跟手高亮**只改颜色与大小**，绝不改字重 / 内边距 —— 后者会把这一行左右顶动一下，
+     而这一行是**常驻**的（每张卡都在），跳动比不高亮更刺眼。
+     ⚠ `inline-block` 是 `transform` 生效的前提。 */
+  display: inline-block;
+  transition:
+    color 120ms ease-out,
+    transform 120ms ease-out;
+}
+
+/* 正在往上滑（`hint === "up"`）：跳过那两个字亮起来。
+ * ⚠ **这里就是「跳过提示」**（2026-10-15）：它在海报下面，卡片往上飞走时它还在 ——
+ *   原来那两个字压在卡片顶部，一往上滑就看不见了（用户原话见 `QuickVoteDeck.tsx` 文件头）。 */
+.qv-legend-skip[data-qv-skip-live] {
+  color: var(--brand);
+  transform: scale(1.08);
 }
 
 .qv-legend-right {
@@ -378,6 +453,45 @@
   font-size: 13px;
   color: var(--text);
   opacity: 0.8;
+}
+
+/* 总结页那条出口（2026-10-15）：划完了还没看到自己看过的那部 —— 多半是冷门片两边都没沾上
+ * （候选是「榜上有票的」与「我的行程」），提示用片名 / 场次编号搜得到。
+ * ⚠ 虚线框 + 中性色：它是**提示**，不该抢下面那排按钮（「重新浏览未评价影片」等）的戏。 */
+.qv-missing {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  max-width: 100%;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+}
+
+.qv-missing-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* 与 `.qv-undo` 同一个量级：它是一条「换个入口去找」的回头路，不是这一页的主操作。
+ * ⚠ 但它会**关掉弹层**（区别于撤回那种原地动作），所以给个边框让它看着像可以按的东西。 */
+.qv-missing-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--brand);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.qv-missing-btn:hover {
+  background: var(--raised);
+  border-color: var(--brand);
 }
 
 .qv-walls {
@@ -466,7 +580,13 @@
 
 /* 触控目标下限 44px（与 redblack-parity.css / hot-board.css 同一条口径 —— 电影节现场主要用手机） */
 @media (pointer: coarse) {
-  .qv-undo {
+  .qv-undo,
+  /* 2026-10-15 新加的两枚（`PLAN-20261015005652`）——它们是**动作**，不是纯文字：
+   * 「换来源」与「关掉卡片去搜索」。前者在卡片视图里，会给那一行顶到 44px；
+   * 代价是「有票 + 有行程」这一档在超矮屏上可能要多滚一下 —— 宁可多滚，也不能给一枚
+   * 手指按不准的按钮（现场就是拿手机划这一屏）。 */
+  .qv-source-switch,
+  .qv-missing-btn {
     min-height: 44px;
   }
 }

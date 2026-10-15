@@ -10,6 +10,7 @@ import type { FilmNode } from "../src/app/model";
 import {
   axisVote,
   deckSignature,
+  deckSourceLabel,
   deckStateOf,
   pendingQueue,
   quickVoteOrder,
@@ -17,6 +18,7 @@ import {
   SWIPE_RATIO,
   voteStateLabel,
   voteUrl,
+  votedQueue,
 } from "../src/quick-vote";
 
 const UNIT = 300;
@@ -113,6 +115,58 @@ describe("quickVoteOrder:候选与顺序", () => {
     // 混成一个函数的话，「再划一遍」（要拿回全量候选）就没有入口了。
     const queue = quickVoteOrder(films, new Set(["cat:b", "cat:c"]));
     expect(queue.map((f) => f.key)).toEqual(["cat:b", "cat:c"]);
+  });
+});
+
+describe("votedQueue:默认候选 = 全站有过票的影片", () => {
+  // 2026-10-15（PLAN-20261015005652）。用户的四条里，这条是「默认直接所有有过票的都作为滑动的片单」。
+  const films = [
+    film("cat:a", [["2026-10-10", "12:00"]]),
+    film("cat:b", [["2026-10-08", "20:00"]]),
+    film("cat:c", []), // 目录片：没有场次
+    film("cat:d", [["2026-10-12", "09:00"]]),
+  ];
+
+  it("只收有票的，没票的一个都不进来", () => {
+    const voted = new Set(["cat:a", "cat:d"]);
+    const queue = votedQueue(films, (key) => voted.has(key));
+    expect(queue.map((f) => f.key)).toEqual(["cat:a", "cat:d"]);
+  });
+
+  it("顺序与 `quickVoteOrder` **同一套**（最早一场升序，目录片排最后）", () => {
+    // 两个来源共用 `orderedByFirstScreening`：顺序口径一旦分叉，「换成我的行程」就会把
+    // 用户划到的位置甩到别处 —— 这条同时钉住「同一组 key 一定得到同一个顺序」。
+    const keys = new Set(["cat:a", "cat:b", "cat:c"]);
+    expect(votedQueue(films, (key) => keys.has(key)).map((f) => f.key)).toEqual(
+      quickVoteOrder(films, keys).map((f) => f.key),
+    );
+    expect(votedQueue(films, (key) => keys.has(key)).map((f) => f.key)).toEqual([
+      "cat:b",
+      "cat:a",
+      "cat:c",
+    ]);
+  });
+
+  it("★ 顺序**与票数多少无关** —— 票数一变不能换队列", () => {
+    // 反例写在这里：`cat:a` 有 99 票、`cat:b` 只有 1 票。
+    // 按票数降序（很容易想到、也很容易顺手加上去的那一条）会得到 ["cat:a", "cat:b"]；
+    // 而票数一变顺序就变 —— `deckSignature` 判的是 key 序列 ⇒ 卡片被甩回第 1 张
+    // （用户报过的 5/50 → 1/50）。所以判据必须是**片单本身**：最早一场升序。
+    const counts: Record<string, number> = { "cat:a": 99, "cat:b": 1 };
+    const queue = votedQueue(films, (key) => (counts[key] ?? 0) > 0);
+    expect(queue.map((f) => f.key)).toEqual(["cat:b", "cat:a"]);
+  });
+
+  it("一票都没有 → 空数组（兜底交给调用方，纯函数不猜数据来源）", () => {
+    expect(votedQueue(films, () => false)).toEqual([]);
+  });
+});
+
+describe("deckSourceLabel:候选来源的说法", () => {
+  it("三个来源各有一句话（切换按钮 / 来源说明条读它）", () => {
+    expect(deckSourceLabel("voted")).toBe("全部有票的影片");
+    expect(deckSourceLabel("agenda")).toBe("我的行程");
+    expect(deckSourceLabel("hot")).toBe("热门榜 TOP 50");
   });
 });
 

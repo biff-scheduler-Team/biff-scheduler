@@ -1517,15 +1517,16 @@ test("快速投票：不拖动也能看出左右是什么，且卡片上只剩�
 
   await expect(page.locator(".qv-card")).toBeVisible();
 
-  // ① 常驻图例：它**不靠拖动**才出现 —— 用户朋友的问句「不知道左右哪个是喜欢」就是这条的由来
+  // ① 常驻图例：它**不靠拖动**才出现 —— 用户朋友的问句「不知道左右哪个是喜欢」就是这条的由来。
+  //    ⚠ 2026-10-15 措辞改成「黑榜 / 红榜」（用户：「不能叫喜欢/不喜欢 应该叫红黑吧 因为是红黑榜的」）
   const legend = page.locator(".qv-legend");
   await expect(legend).toBeVisible();
-  await expect(legend).toContainText("左滑 · 不喜欢");
-  await expect(legend).toContainText("右滑 · 喜欢");
+  await expect(legend).toContainText("左滑 · 黑榜");
+  await expect(legend).toContainText("右滑 · 红榜");
 
-  // ② 三枚按钮把方向与语义一起写出来（「黑 / 红」是榜单术语，新用户读不出方向）
-  await expect(page.getByRole("button", { name: "不喜欢（投黑榜）" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "喜欢（投红榜）" })).toBeVisible();
+  // ② 三枚按钮把方向与语义一起写出来：箭头给方向，「黑榜 / 红榜」给语义
+  await expect(page.getByRole("button", { name: "投黑榜" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "投红榜" })).toBeVisible();
 
   // ③ 卡片上只剩海报（2026-10-14 用户：「海报上的信息太多了 …… 最好只保留纯海报」）。
   //    ⚠ 逐条钉住那六块文字，而不是断言整块 `.qv-caption` 不存在 —— 后者只能证明「容器没了」，
@@ -1551,7 +1552,7 @@ test("快速投票：投完出现「已投红榜 · 撤回」，撤回后那一�
 
   const card = page.locator(".qv-card");
   const first = await card.getAttribute("data-qv-key");
-  await page.getByRole("button", { name: "喜欢（投红榜）" }).click();
+  await page.getByRole("button", { name: "投红榜" }).click();
 
   // ② 回执说清「刚才那一下做成了什么」—— 这正是 `Step.after` 存在的理由
   await expect(page.locator(".qv-undo-text")).toHaveText("已投红榜");
@@ -1597,7 +1598,7 @@ test("快速投票：矮屏（390 × 667）里卡片不再顶满一屏 —— �
         rectOf(".qv-legend").bottom,
         rectOf(".qv-actions").bottom,
         rectOf(".qv-undo-row").bottom,
-        rectOf('[aria-label="喜欢（投红榜）"]').bottom,
+        rectOf('[aria-label="投红榜"]').bottom,
       ),
       viewport: window.innerHeight,
     };
@@ -1634,9 +1635,9 @@ test("快速投票：手机上整块内容完整可见 —— 不用滚，且每
       const hidden: string[] = [];
       const targets: Array<[string, Element | null]> = [
         ["图例", document.querySelector(".qv-legend")],
-        ["不喜欢", document.querySelector('[aria-label="不喜欢（投黑榜）"]')],
+        ["黑榜", document.querySelector('[aria-label="投黑榜"]')],
         ["跳过", [...document.querySelectorAll(".qv-actions button")][1] ?? null],
-        ["喜欢", document.querySelector('[aria-label="喜欢（投红榜）"]')],
+        ["红榜", document.querySelector('[aria-label="投红榜"]')],
         ["撤回条", document.querySelector(".qv-undo-row")],
       ];
       for (const [label, el] of targets) {
@@ -1660,6 +1661,137 @@ test("快速投票：手机上整块内容完整可见 —— 不用滚，且每
     // 按钮折成两行时高度会翻倍（实测「不喜欢」折成「不喜 / 欢」是 65px）
     for (const height of report.buttons) expect(height, tag).toBeLessThanOrEqual(48);
   }
+});
+
+/* ⚠ 2026-10-15（`PLAN-20261015005652`）：候选的**默认来源**从「我的行程」换成了
+ * 「全站有过票的影片」（用户：「打开之后默认直接所有有过票的都作为滑动的片单吧这样也不会遗漏
+ * 反正划一下也很快」），而用户自己**有行程**时给一枚「换成我的行程」的入口
+ * （用户：「如果用户有片单 你可以提示他 切换成自己的行程片单」）。
+ * 判据取**计数行**（`第 1 / N 部`）：它直接回答「这一轮的候选是谁」，比盯某一张卡更硬。 */
+/* 「跳过的那个提示 应该显示在海报下面 不然往上滑就看不到跳过那两个字了」（用户 2026-10-15）。
+ * 原来那两个字压在卡片顶部（`.qv-mark--up`，已删），而卡片整张会往上飞出屏幕 —— 一滑就没了。
+ * 现在它由**海报下面那一行常驻图例**承担，往上滑时高亮（`data-qv-skip-live`）。 */
+test("快速投票：「跳过」提示在海报下面，往上滑时亮起且不跟卡片飞走", async ({ page }) => {
+  await stubVotes(page, { [keyOf("008")]: { red: 1, black: 1 }, [keyOf("033")]: { red: 1 } });
+  await ready(page, "/redblack?sort=red&vote=1");
+  await expect(page.locator(".qv-card")).toBeVisible();
+
+  // ① 它在**卡片外面、且在海报下方** —— 判据取几何位置，比类名硬
+  const stage = (await page.locator(".qv-stage").boundingBox())!;
+  const hint = (await page.locator(".qv-legend-skip").boundingBox())!;
+  expect(hint.y).toBeGreaterThanOrEqual(stage.y + stage.height);
+  // ② 卡片上那枚已经没有了（两处口径不许同时存在）
+  await expect(page.locator('.qv-card [data-qv-mark="skip"]')).toHaveCount(0);
+
+  // ③ 往上拖 → 它当场亮起（位移 120px 远过阈值：unit = 卡片较短边，桌面 320 × 0.28 ≈ 90px）
+  await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2 - 120, { steps: 8 });
+  const skipHint = page.locator(".qv-legend-skip");
+  await expect(skipHint).toHaveAttribute("data-qv-skip-live", "");
+  await page.mouse.up();
+
+  // ④ 松手之后卡片飞走，这一行**留在原位**（这正是把提示挪下来的理由），高亮跟着复位
+  await expect(skipHint).toBeVisible();
+  await expect(skipHint).not.toHaveAttribute("data-qv-skip-live", "");
+});
+
+test("快速投票：默认按「全部有票的影片」划，并可换成我的行程", async ({ page }) => {
+  const a = keyOf("008");
+  const b = keyOf("033");
+  // 榜上有票的只有这 2 部；而 `deckSeed` 的行程里有 5 部（001 / 008 / 033 / 037 / 蓦然回首）
+  await stubVotes(page, { [a]: { red: 3, black: 1 }, [b]: { red: 0, black: 2 } });
+  await seed(page, deckSeed);
+  await ready(page, "/redblack?sort=red&vote=1");
+
+  await expect(page.locator(".qv-card")).toBeVisible();
+  // ① 默认来源 = 有票的（2 部），**不是**行程（5 部）
+  await expect(page.locator(".qv-counter")).toContainText("第 1 / 2 部");
+  await expect(page.locator(".qv-source")).toContainText("换成我的行程");
+
+  // ② 换来源 = 换整轮候选：计数行跟着变（换来源是用户主动点的，重开一轮是应然）
+  await page.locator(".qv-source-switch").click();
+  await expect(page.locator(".qv-counter")).toContainText("第 1 / 5 部");
+  await expect(page.locator(".qv-source")).toContainText("换成全部有票的");
+
+  // ③ 换得回去 —— 只给单向入口的话，用户切过去就回不来了
+  await page.locator(".qv-source-switch").click();
+  await expect(page.locator(".qv-counter")).toContainText("第 1 / 2 部");
+});
+
+/* 划完了还没看到自己看过的那部（冷门片多半两边都没沾上）——
+ * 用户 2026-10-15：「你需要提示他 类似于没有找到自己看过的电影吗 尝试通过 CODE 搜索」。
+ * ⚠ 那枚按钮**不能只关卡片**：卡片是弹层、搜索框在它后面，所以断言**焦点真的落在搜索框上**。 */
+test("快速投票：划完给一条「去搜索」的出口，关掉卡片后焦点落在搜索框", async ({ page }) => {
+  await stubVotes(page, { [keyOf("008")]: { red: 2, black: 1 } });
+  await ready(page, "/redblack?sort=red&vote=1");
+
+  // 候选只有 1 部 → 投完就是总结页
+  await expect(page.locator(".qv-counter")).toContainText("第 1 / 1 部");
+  await page.getByRole("button", { name: "投红榜" }).click();
+
+  const missing = page.locator(".qv-missing");
+  await expect(missing).toBeVisible();
+  await expect(missing).toContainText("没找到你看过的那部");
+  await expect(missing).toContainText("场次编号");
+
+  await page.locator(".qv-missing-btn").click();
+  // ① 卡片真的关掉了（不是只把焦点挪走）
+  await expect(page.getByRole("dialog", { name: "快速投票" })).toHaveCount(0);
+  // ② 焦点落在页面上的搜索框 —— 这一步的用途就是「换个入口去找」，不送焦点等于让用户自己找一圈
+  await expect(page.getByRole("searchbox")).toBeFocused();
+});
+
+/* 「还是把影片信息放到海报上吧 中英文名 导演名称 然后 code 就行」（用户 2026-10-15，
+ * `PLAN-20261015005652` 修订 1）—— 对「只保留纯海报」的部分收回，只叠这四样。
+ * 场次 008《宛如星辰的你》（title_en: "You, Like a Star"、director: "藤井道人"）来自
+ * 真实目录数据（见 PLAN 修订 1 的数据核对），不是桩出来的，所以这里断言**具体文字**。 */
+test("快速投票：海报上叠着中英文名 / 导演 / CODE 四行", async ({ page }) => {
+  await stubVotes(page, { [keyOf("008")]: { red: 2, black: 1 } });
+  await ready(page, "/redblack?sort=red&vote=1");
+
+  const info = page.locator(".qv-card .qv-info");
+  await expect(info).toBeVisible();
+  await expect(info.locator(".qv-info-zh")).toHaveText("宛如星辰的你");
+  await expect(info.locator(".qv-info-en")).toHaveText("You, Like a Star");
+  await expect(info.locator(".qv-info-director")).toContainText("藤井道人");
+  await expect(info.locator(".qv-info-code")).toContainText("008");
+});
+
+/* 「每次进入红黑榜就是直接默认弹出快速投票」（用户 2026-10-15，`PLAN-20261015005652` 修订 1）——
+ * 判据从「有没有行程」换成「有没有从热门榜切进来」。这条钉住三步：
+ * 落地在热门榜不弹 → 切到红榜自动弹 → 切回热门榜关掉 → 再切回红榜又弹一次。 */
+test("快速投票：从热门榜切到红 / 黑榜会自动弹出卡片，切回热门榜会关掉", async ({ page }) => {
+  // ⚠ 必须有**候选**：空候选时卡片渲染的是 `.qv-empty` 那句说明，不是 `.qv-card`
+  // （这条要断言的是「自动弹」本身，不该被「候选是空的」那条分支干扰）。
+  await stubVotes(page, { [keyOf("008")]: { red: 2, black: 1 } });
+  await ready(page, "/redblack");
+
+  // ① 落地在热门榜，不弹
+  await expect(page.locator('[data-board-tab="hot"]')).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".qv-card")).toHaveCount(0);
+
+  // ② 切到红榜：自动弹出（不用先点「快速投票」按钮）
+  await page.locator('[data-board-tab="red"]').click();
+  await expect(page.locator(".qv-card")).toBeVisible();
+
+  // ③ 卡片是模态弹层，挡住了下面的 tab 栏（现实中必须先关掉才能切 tab）——
+  //    先 Esc 关掉，再切回热门榜：`vote` 被清掉。
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".qv-card")).toHaveCount(0);
+  await page.locator('[data-board-tab="hot"]').click();
+  await expect(page.locator(".qv-card")).toHaveCount(0);
+
+  // ④ 再切回红榜：又弹一次（不是「只有第一次有效」）
+  await page.locator('[data-board-tab="red"]').click();
+  await expect(page.locator(".qv-card")).toBeVisible();
+
+  // ⑤ 用户在红黑榜里自己关掉卡片后，红 ↔ 黑之间来回切**不会**把它弹回来
+  //    （两者都已经在红黑榜里，不算「进入」；见 `BoardPage.tsx::pick` 的注释）
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".qv-card")).toHaveCount(0);
+  await page.locator('[data-board-tab="black"]').click();
+  await expect(page.locator(".qv-card")).toHaveCount(0);
 });
 
 test("扫码投票：控制栏那枚按钮打开弹层，里面是一枚画好了的二维码", async ({ page }) => {
