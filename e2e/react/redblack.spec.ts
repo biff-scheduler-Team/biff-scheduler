@@ -1696,6 +1696,48 @@ test("快速投票：「跳过」提示在海报下面，往上滑时亮起且�
   await expect(skipHint).not.toHaveAttribute("data-qv-skip-live", "");
 });
 
+/* 「左滑加入红榜黑榜不明显 / 上滑跳过不明显」（用户 2026-10-15，修订 2）。
+ * 原来跟手标记只是描边、跳过提示只是变色 —— 压在海报或默认文字色上都容易被吃掉。
+ * 改成实心底色后，这里直接断言 `background-color` 不是 transparent，而不是看截图。
+ * ⚠ 「跳过」药丸高亮用的是 `transform: scale()`（视觉放大，不触发重排），所以自身
+ *   `getBoundingClientRect` 的宽度本来就会跟着放大 —— 真正要守住的是**不顶动右边「红榜」**，
+ *   判据要取右边那枚图例的横向起点（`.qv-legend-right` 的 `x`），而不是药丸自己的宽度。 */
+test("快速投票：左滑 / 右滑的跟手标记是实心底色，跳过药丸高亮不顶动右边「红榜」", async ({ page }) => {
+  await stubVotes(page, { [keyOf("008")]: { red: 1, black: 1 }, [keyOf("033")]: { red: 1 } });
+  await ready(page, "/redblack?sort=red&vote=1");
+  await expect(page.locator(".qv-card")).toBeVisible();
+  const stage = (await page.locator(".qv-stage").boundingBox())!;
+
+  // ① 跳过药丸未高亮时先确认是透明底（既有常态），同时量一次「红榜」图例的横向起点
+  const skipHint = page.locator(".qv-legend-skip");
+  const rightLegend = page.locator(".qv-legend-right");
+  const bgIdle = await skipHint.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(bgIdle).toBe("rgba(0, 0, 0, 0)");
+  const rightXIdle = (await rightLegend.boundingBox())!.x;
+
+  // ② 左滑：拖够距离，`.qv-mark--left`（加入黑榜）应该是实心底色，不是透明描边
+  await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(stage.x + stage.width / 2 - 120, stage.y + stage.height / 2, { steps: 8 });
+  const leftMark = page.locator('[data-qv-mark="passed"]');
+  const leftBg = await leftMark.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(leftBg).not.toBe("rgba(0, 0, 0, 0)");
+  await page.mouse.up();
+
+  // ③ 上滑：跳过药丸高亮时同样是实心底色，且右边「红榜」图例的横向起点**几乎不变**（没被顶动）
+  await ready(page, "/redblack?sort=red&vote=1");
+  await expect(page.locator(".qv-card")).toBeVisible();
+  const stage2 = (await page.locator(".qv-stage").boundingBox())!;
+  await page.mouse.move(stage2.x + stage2.width / 2, stage2.y + stage2.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(stage2.x + stage2.width / 2, stage2.y + stage2.height / 2 - 120, { steps: 8 });
+  const bgLive = await skipHint.evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(bgLive).not.toBe("rgba(0, 0, 0, 0)");
+  const rightXLive = (await rightLegend.boundingBox())!.x;
+  expect(Math.abs(rightXLive - rightXIdle)).toBeLessThanOrEqual(1);
+  await page.mouse.up();
+});
+
 test("快速投票：默认按「全部有票的影片」划，并可换成我的行程", async ({ page }) => {
   const a = keyOf("008");
   const b = keyOf("033");

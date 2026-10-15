@@ -191,16 +191,21 @@
 
 /* ---------------- 拖动中的两枚标记 ----------------
  * 「加入红榜 / 加入黑榜」：**强度跟着拖动距离走**（透明度由组件内联给）。
- * ⚠ 它们必须压在 caption 之上、且不吃指针 —— 拖动中它们就在手指附近。 */
+ * ⚠ 它们必须压在 caption 之上、且不吃指针 —— 拖动中它们就在手指附近。
+ * ⚠ 2026-10-15（修订 2，用户：「左滑加入红榜黑榜不明显」）：原来是纯描边、无底色 ——
+ *   压在花哨海报上经常被同色背景吃掉。改成**实心色块 + 白字 + 投影**，不再依赖底图反差；
+ *   字号 / 内边距也一并加大，拖动早期就能一眼认出要投成什么。 */
 .qv-mark {
   position: absolute;
   top: 18px;
-  padding: 6px 12px;
-  border: 2px solid currentcolor;
+  padding: 7px 14px;
   border-radius: 8px;
-  font-size: 13px;
-  font-weight: 700;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
   letter-spacing: 0.06em;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 35%);
+  box-shadow: 0 4px 10px rgb(0 0 0 / 30%);
   pointer-events: none;
   /* 起始态由内联 `opacity` 控制，这里不做 transition —— 
      跟手的东西加过渡会「慢半拍」，正是规格里要避免的那种手感 */
@@ -208,13 +213,13 @@
 
 .qv-mark--right {
   right: 14px;
-  color: var(--rb-red);
+  background-color: var(--rb-red);
   transform: rotate(10deg);
 }
 
 .qv-mark--left {
   left: 14px;
-  color: var(--rb-black);
+  background-color: var(--rb-black);
   transform: rotate(-10deg);
 }
 
@@ -354,12 +359,21 @@
 .qv-legend-skip {
   color: var(--muted);
   font-weight: 400;
-  /* 跟手高亮**只改颜色与大小**，绝不改字重 / 内边距 —— 后者会把这一行左右顶动一下，
-     而这一行是**常驻**的（每张卡都在），跳动比不高亮更刺眼。
-     ⚠ `inline-block` 是 `transform` 生效的前提。 */
+  /* ⚠ 2026-10-15（修订 2，用户：「上滑跳过不明显」）：原来只靠颜色切换，强度不够 ——
+   *   改成**实心药丸底色**，但代价是 padding/background 一改就会把占位盒撑大、
+   *   顶动右边「红榜」两个字（这一行是**常驻**的，跳动比不高亮更刺眼）。
+   *   解法：平时就留好药丸的 `padding`，只是颜色透明、边框透明 —— 高亮时只切 `background-color`
+   *   / `border-color`，盒子尺寸**从头到尾不变**，不需要负 margin 补偿。
+   *   ⚠ `inline-block` 是 `transform` 生效的前提，缩放幅度收到 1.04（药丸比纯文字更怕放大溢出）。 */
   display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background-color: transparent;
   transition:
     color 120ms ease-out,
+    background-color 120ms ease-out,
+    border-color 120ms ease-out,
     transform 120ms ease-out;
 }
 
@@ -367,8 +381,10 @@
  * ⚠ **这里就是「跳过提示」**（2026-10-15）：它在海报下面，卡片往上飞走时它还在 ——
  *   原来那两个字压在卡片顶部，一往上滑就看不见了（用户原话见 `QuickVoteDeck.tsx` 文件头）。 */
 .qv-legend-skip[data-qv-skip-live] {
-  color: var(--brand);
-  transform: scale(1.08);
+  color: #fff;
+  border-color: var(--brand);
+  background-color: var(--brand);
+  transform: scale(1.04);
 }
 
 .qv-legend-right {
