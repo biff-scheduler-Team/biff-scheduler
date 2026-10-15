@@ -58,6 +58,10 @@ const TOP_N_CHOICES: ReadonlyArray<{ id: string; label: string }> = [
   { id: "5", label: "前 5" },
   { id: "10", label: "前 10" },
   { id: "20", label: "前 20" },
+  // 2026-10-15（`PLAN-20261015170310`）：从**排行榜弹层**交接过来时默认取 `RANK_LIMIT`（50）——
+  // 这一档就是为了让那个 `value` 落在一个**真实存在的选项**上（否则 Picker 会显示空白）。
+  // 它同时也填了「前 20」与「全部」之间那个空档（红榜有票的往往在 20–60 部之间）。
+  { id: "50", label: "前 50" },
   { id: "0", label: "全部" },
 ];
 
@@ -82,6 +86,11 @@ interface RedBlackShareDialogProps {
    *  ⚠ 2026-10-14 两轮修订：`marked` / `quota` 随「标记看过」那道闸门撤掉，`unseen` 随上滑改
    *    纯跳过撤掉 —— 现在只剩 `placed`（我贴了几枚）。 */
   mine: { placed: number };
+  /** 「每榜取前几名」的**初始档**。**不传 = `TOP_N`（10）**。
+   *  ⚠ 只有「从排行榜弹层点进来」那一条路会传（`RANK_LIMIT`）—— 用户眼前是 TOP50，
+   *    图里按默认档画 10 行的话，分享出去的就不是他看到的那份结果
+   *    （2026-10-15，`PLAN-20261015170310`）。 */
+  initialTopN?: number;
   onDismiss: () => void;
 }
 
@@ -94,6 +103,7 @@ export function RedBlackShareDialog({
   site,
   priorRate,
   mine,
+  initialTopN,
   onDismiss,
 }: RedBlackShareDialogProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -116,7 +126,9 @@ export function RedBlackShareDialog({
   // 三个「范围」开关（2026-10-14，`PLAN-20261014150805`）：单元 / 每榜条数 / 头尾。
   // ⚠ 它们是**活**的（与 `sections` 同性质）：改了当场重组这张图，不必关掉弹层重开。
   const [unit, setUnit] = useState("");
-  const [topN, setTopN] = useState(TOP_N);
+  // ⚠ 惰性初值就够（这就是个初值，不是派生量）：弹层**只在打开时挂载**（见文件头），
+  //   所以下一次从别的入口打开时会重新读一遍 `initialTopN`。
+  const [topN, setTopN] = useState(initialTopN ?? TOP_N);
   const [showHeader, setShowHeader] = useState(true);
   const [showFooter, setShowFooter] = useState(true);
   const unitOptions = useMemo(() => posterUnitOptions(snapshot.films), [snapshot]);
