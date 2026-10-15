@@ -811,6 +811,15 @@
   background: var(--raised);
 }
 
+/* ⚠ **[hidden] 守卫必须写**（2026-10-16，`PLAN-20261016000441`）：本仓库没引 Tailwind preflight
+ *   （只 `@import "tailwindcss/utilities"`），UA 的 `[hidden] { display: none }` 会被上面那句
+ *   `display: block` 盖掉。以前弹层一打开就自动出图、`hidden` 只闪一下，这个坑看不出来；
+ *   现在「确认之前不出图」是常态 —— 少了这一条，弹层里会顶着一个 300×150 的空白画布。
+ *   `.poster-preview[hidden]` 是同一处坑的既有先例。 */
+.rb-share-preview[hidden] {
+  display: none;
+}
+
 /* 「讨论区」入口(2026-09-29,PLAN-20260929195500 —— 它取代了原来那个「看全部 N 枚」)。
  * 沿用那一档小按钮的成色:**查看**动作,不是表态,所以不抢红 / 黑那两个贴纸按钮的视觉权重。
  * ⚠ 三处一起给足:常态字色用 `--text`(与身边那些**真的**死标签 `.rb-chip` 拉开一档)、

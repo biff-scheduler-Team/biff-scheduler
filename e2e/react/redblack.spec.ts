@@ -589,6 +589,15 @@ test("生成分享图:两榜各 TOP10、我贴过的全部、底部署名", asyn
 
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
+  // ★ 2026-10-16（`PLAN-20261016000441`，用户「都要点击确认后再生成图片」）：
+  //   打开时**还没有图** —— 预览画布收着、两个出口按钮都不在，只有一枚「生成图片」。
+  //   ⚠ `toBeHidden`（不是 `toHaveCount(0)`）：画布**常驻挂载**（出图那一刻要往它上面画），
+  //     它的「没有图」是由 `hidden` 属性 + `.rb-share-preview[hidden]` 那条守卫表达的。
+  await expect(dialog.locator(".rb-share-preview")).toBeHidden();
+  await expect(dialog.getByRole("button", { name: "下载 PNG 图片" })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "复制图片" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "生成图片" }).click();
+
   await expect(dialog.locator(".rb-share-preview")).toBeVisible();
   // 出图是异步的(画完才 toBlob),这里等按钮出来即代表图已生成
   await expect(dialog.getByRole("button", { name: "下载 PNG 图片" })).toBeVisible();
@@ -651,6 +660,9 @@ test("生成分享图:可以只分享部分榜单,一节都不勾时下载停用
   await page.getByRole("button", { name: "生成分享图" }).click();
   const dialog = page.getByRole("dialog");
   const download = dialog.getByRole("button", { name: "下载 PNG 图片" });
+  // ★ 2026-10-16（`PLAN-20261016000441`）：打开不出图，点「生成图片」才画
+  await expect(download).toHaveCount(0);
+  await dialog.getByRole("button", { name: "生成图片" }).click();
   await expect(download).toBeVisible();
   // 「长图内容」那**一组**正好三项：红榜 / 黑榜 / 我贴过的。
   // ⚠ 必须限定在这一组里数：弹层里还有两个**范围**开关（画标题栏 / 画署名，
@@ -684,9 +696,14 @@ test("生成分享图:可以只分享部分榜单,一节都不勾时下载停用
   //   状态照旧断言在 `checkbox` 角色上。
   const check = (name: string | RegExp) =>
     dialog.getByRole("checkbox", { name, exact: typeof name === "string" });
+  // ★ 2026-10-16（`PLAN-20261016000441`）：改一次选项 → 已经出的那张**作废**（两个出口按钮一起收起），
+  //   要再点一次「重新生成图片」才会重画。这里把这两步绑在一起，后面对「重画」的断言才有对象。
   const toggle = async (label: string | RegExp) => {
     await dialog.getByText(label, { exact: typeof label === "string" }).click();
     await expect(check(label)).not.toBeChecked();
+    await expect(dialog.getByRole("button", { name: "复制图片" })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "重新生成图片" }).click();
+    await expect(dialog.getByRole("button", { name: "复制图片" })).toBeVisible();
   };
 
   // 勾掉「黑榜」→ 重画。⚠ `paintedTexts` 跨多次出图**累加**:要判断「这一张图上有什么」,
@@ -1214,8 +1231,19 @@ test("热门榜：分享图默认 TOP10、换 TOP3 矮一截；换单元后这�
   await opener.click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
+  // ★ 2026-10-16（`PLAN-20261016000441`）：热门榜分享图与红黑榜那一张**同一口径** ——
+  //   打开不出图，点「生成图片」才画（用户说的是「都要」，三个分享入口不能各一套）。
+  await expect(dialog.getByRole("button", { name: "下载 PNG 图片" })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "生成图片" }).click();
   // 出图是异步的（画完才 toBlob），等按钮出来即代表图已生成
   await expect(dialog.getByRole("button", { name: "下载 PNG 图片" })).toBeVisible();
+
+  // ★ 改了任一选项 → 已出的那张**作废**（两个出口按钮一起收起），要再点一次「重新生成图片」才重画。
+  const regenerate = async () => {
+    await expect(dialog.getByRole("button", { name: "复制图片" })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "重新生成图片" }).click();
+    await expect(dialog.getByRole("button", { name: "复制图片" })).toBeVisible();
+  };
 
   // ★ 档位（2026-10-14 用户：「取前几名 改成 TOP3 TOP10」）：两档、默认 TOP10，
   //   换 TOP3 之后图**矮一截**。
@@ -1238,11 +1266,13 @@ test("热门榜：分享图默认 TOP10、换 TOP3 矮一截；换单元后这�
     .getByRole("option", { name: "TOP3", exact: true })
     .click();
   await expect(topPicker).toContainText("TOP3");
+  await regenerate();
   await expect.poll(async () => (await shareSize(dialog)).height).toBeLessThan(ten.height);
 
   // 换单元 → 图**当场重画**（不必关掉弹层重开），而且这张图只讲那个单元
   const before = (await paintedTexts(page)).length;
   const unitName = await pickFirstUnit(page, dialog);
+  await regenerate();
   await expect
     .poll(async () => (await paintedTexts(page)).slice(before))
     .toContain(`${unitName} 热门榜`);
@@ -1251,6 +1281,7 @@ test("热门榜：分享图默认 TOP10、换 TOP3 矮一截；换单元后这�
   // 关掉署名 → 新画的那一段里不该再有网站那行（⚠ 头部也印 `by @…`，所以判据用网站域名）
   const mark = (await paintedTexts(page)).length;
   await dialog.getByText("画署名", { exact: true }).click();
+  await regenerate();
   await expect
     .poll(async () => {
       const seg = (await paintedTexts(page)).slice(mark);
@@ -1259,6 +1290,8 @@ test("热门榜：分享图默认 TOP10、换 TOP3 矮一截；换单元后这�
     .toBe(true);
 
   // Esc 关闭 + 焦点归还给打开它的那个按钮（§5 硬约束）
+  // ⚠ 这一条同时是「出好图之后焦点不能掉出弹层」的看门测试：那枚「生成图片」若按「出好就卸载 /
+  //   出图中禁用」写，焦点会落到 `body`，Esc 就再也收不到（2026-10-16 实测踩过一次）。
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(opener).toBeFocused();
@@ -1282,7 +1315,16 @@ test("红黑榜分享图：可以只讲一个单元，也可以关头尾", async
   const opener = page.getByRole("button", { name: "生成分享图" });
   await opener.click();
   const dialog = page.getByRole("dialog");
+  // ★ 2026-10-16（`PLAN-20261016000441`）：打开不出图，点「生成图片」才画。
+  await dialog.getByRole("button", { name: "生成图片" }).click();
   await expect(dialog.getByRole("button", { name: "下载 PNG 图片" })).toBeVisible();
+
+  // ★ 改一次选项 → 已出的那张作废，得再点一次「重新生成图片」才重画（下面每次改选项后都调它）。
+  const regenerate = async () => {
+    await expect(dialog.getByRole("button", { name: "复制图片" })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "重新生成图片" }).click();
+    await expect(dialog.getByRole("button", { name: "复制图片" })).toBeVisible();
+  };
 
   // ① 每榜条数改成 5 → 图**矮一截**（两榜各少 5 行）
   const full = await shareSize(dialog);
@@ -1294,6 +1336,7 @@ test("红黑榜分享图：可以只讲一个单元，也可以关头尾", async
   // ② 选一个单元 → 副标题里点明范围（只印几行却不说哪一单元，读图的人会误读成全站）
   const beforeUnit = (await paintedTexts(page)).length;
   const unitName = await pickFirstUnit(page, dialog);
+  await regenerate();
   await expect
     .poll(async () => (await paintedTexts(page)).slice(beforeUnit))
     .toContain(unitName);
@@ -1303,6 +1346,7 @@ test("红黑榜分享图：可以只讲一个单元，也可以关头尾", async
   //     拿同一个起点去比「最终那一段」会把中间那次画的残留也算进来（永远红）。
   const a = (await paintedTexts(page)).length;
   await dialog.getByText("画标题栏", { exact: true }).click();
+  await regenerate();
   await expect
     .poll(async () => {
       const seg = (await paintedTexts(page)).slice(a);
@@ -1312,6 +1356,7 @@ test("红黑榜分享图：可以只讲一个单元，也可以关头尾", async
 
   const b = (await paintedTexts(page)).length;
   await dialog.getByText("画署名", { exact: true }).click();
+  await regenerate();
   await expect
     .poll(async () => {
       const seg = (await paintedTexts(page)).slice(b);
@@ -2071,48 +2116,72 @@ test("分享出去的 /redblack?rank=1:落在红榜、只弹排行榜,关掉后�
   await expect(page.getByRole("dialog", { name: "快速投票" })).toHaveCount(0);
 });
 
-// ★ 排行榜 → 分享图**交接**（2026-10-15，PLAN-20261015170310）。
-// 用户原话：「但是还是没有完全和分享一样 因为没有分享按钮吧无法分享结果」——
-// 排行榜弹层此前只有「关闭」，看到一份 TOP50 读数却没有任何往外发的入口。
-// ⚠ 交接**不新画一条出图路径**：分享图仍然只有 `RedBlackShareDialog` 那一份（§5），
-//   这里钉住的是「两张弹层换手」+「档位跟着走」（用户看的是 TOP50，图里就该是那一份）。
-test("排行榜弹层点「生成分享图」:交接给分享图,并带上「前 50」档", async ({ page }) => {
-  await stubVotes(page, { [keyOf("008")]: { red: 5, black: 2 } });
+// ★ 排行榜**自己出图**（2026-10-16，`PLAN-20261016000441`）。
+// 用户原话：「排行榜的没有复制图片的 点击分享后会跳到红黑榜的分享」「红黑榜的排行榜两个榜单
+// 需要两张图 单独复制按钮吧」—— 于是 2026-10-15 那条「交接给分享图」作废：点「生成图片」当场出
+// **两张**（红榜 / 黑榜），每张各有自己的「下载 PNG 图片 / 复制图片」，全程不再出现分享图弹层。
+// ⚠ 出图**不新画一条路径**：模型与绘制仍是 `redblack-poster.ts` 那一份，`sections` 收成单榜而已。
+test("排行榜弹层：点「生成图片」当场出红榜 / 黑榜两张图，各自带复制与下载", async ({ page }) => {
+  // 两榜各自有票才会各出一张（票只给一处的话另一个榜是空的，那一张不该出现）
+  await stubVotes(page, {
+    [keyOf("008")]: { red: 5, black: 0 },
+    [keyOf("033")]: { red: 0, black: 3 },
+  });
   await ready(page, "/redblack?sort=red&rank=1");
 
-  await page
-    .getByRole("dialog", { name: "红黑榜排行" })
-    .getByRole("button", { name: "生成分享图" })
-    .click();
+  const dialog = page.getByRole("dialog", { name: "红黑榜排行" });
+  await expect(dialog).toBeVisible();
+  const red = dialog.locator('[data-rbr-shot="red"]');
+  const black = dialog.locator('[data-rbr-shot="black"]');
 
-  // ① 排行榜**让位**：两张弹层不叠在同一屏（与「快速投票 / 排行榜互斥」同一条）
-  await expect(page.locator(".rbr-row")).toHaveCount(0);
-  // ② 分享图顶上，且档位 = 「前 50」（不传的话会落到分享图自己的默认档 10）
-  const share = page.getByRole("dialog", { name: "红黑榜分享图" });
-  await expect(share).toBeVisible();
-  await expect(share.getByRole("button", { name: /每榜条数/ })).toContainText("前 50");
-  // ③ 焦点落在**分享图弹层内** —— 交接那一刻 `BoardPage` 的「排行榜关掉 → 焦点还给那枚按钮」
-  //    副作用仍会跑，靠 S2 `DialogContainer` 的 focus scope 把它抓回来（PLAN §已知风险）。
-  //    ⚠ 用 `contains(activeElement)` 而不是「某个按钮获焦」：焦点可能停在弹层容器本身。
-  await expect
-    .poll(() => share.evaluate((node) => node.contains(document.activeElement)))
-    .toBe(true);
-  // ④ 排行榜的 URL 开关不残留（`closeRank` 连带清掉自动补上的 `vote`）
-  await expect(page).not.toHaveURL(/rank/);
+  // ① 两张图的**位置**先就位（画布常驻挂载 —— 出图那一刻要往它上面画），但打开时都没有图
+  await expect(red).toHaveCount(1);
+  await expect(black).toHaveCount(1);
+  await expect(red.locator(".rbr-shot-preview")).toBeHidden();
+  await expect(black.locator(".rbr-shot-preview")).toBeHidden();
+  await expect(dialog.getByRole("button", { name: "复制图片" })).toHaveCount(0);
 
-  // 关掉分享图 → 两个弹层都不在（交接没有留下后手）
+  // ② 点一下才出图（用户「都要点击确认后再生成图片」）
+  await dialog.getByRole("button", { name: "生成图片" }).click();
+
+  // ③ 两张**各自**的预览 + 各自的出口 —— 这就是「单独复制按钮」那句原话
+  await expect(red.locator(".rbr-shot-preview")).toBeVisible();
+  await expect(black.locator(".rbr-shot-preview")).toBeVisible();
+  //  画布手绘没有 DOM 可断言 → 读锚点属性，确认两张图里真的带了海报（而不是整张在画占位块）
+  await expect(red.locator(".rbr-shot-preview")).toHaveAttribute(
+    "data-poster-count",
+    /^[1-9]\d*$/,
+  );
+  await expect(black.locator(".rbr-shot-preview")).toHaveAttribute(
+    "data-poster-count",
+    /^[1-9]\d*$/,
+  );
+  for (const shot of [red, black]) {
+    await expect(shot.getByRole("button", { name: "复制图片" })).toBeVisible();
+    await expect(shot.getByRole("button", { name: "下载 PNG 图片" })).toBeVisible();
+    // 题注报的是**这张图**的尺寸（出完图才印：它是与这张快照一起定下来的）
+    await expect(shot.locator(".rbr-shot-size")).toContainText(/\d+\s*×\s*\d+\s*px/);
+  }
+
+  // ④ **不跳分享图**：排行榜还在，分享图弹层从来没出现过（这条正是本轮要修的那个现象）
+  await expect(page.getByRole("dialog", { name: "红黑榜分享图" })).toHaveCount(0);
+  await expect(dialog.locator(".rbr-row").first()).toBeVisible();
+
+  // ⑤ Esc 关掉 → 弹层不在（URL 上那个 `rank` 由调用方 `closeRank` 一并清掉）。
+  //    ⚠ 它同时是「出好图之后焦点仍在弹层里」的看门测试：那枚「生成图片」若在出图后卸载 /
+  //      在出图中被禁用，焦点会落到 `body`，而 Esc 是弹层容器的 keydown ⇒ 这里会一直红。
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
-// 一票都没有 → 没有排行可分享，那枚按钮**禁用**（点开只会得到一张「一节都没勾」的图）。
-test("排行榜弹层空榜时「生成分享图」禁用", async ({ page }) => {
+// 一票都没有 → 没有排行可出图，那枚按钮**禁用**（点开只会得到两张空图）。
+test("排行榜弹层空榜时「生成图片」禁用", async ({ page }) => {
   await stubVotes(page, {});
   await ready(page, "/redblack?sort=red&rank=1");
 
   await expect(
     page
       .getByRole("dialog", { name: "红黑榜排行" })
-      .getByRole("button", { name: "生成分享图" }),
+      .getByRole("button", { name: "生成图片" }),
   ).toBeDisabled();
 });

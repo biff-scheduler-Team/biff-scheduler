@@ -618,6 +618,13 @@
   background: var(--surface);
 }
 
+/* ⚠ **[hidden] 守卫必须写**（2026-10-16，`PLAN-20261016000441`，理由与 `.rb-share-preview[hidden]`
+ *   逐字相同）：`display: block` 会盖掉 UA 的 `[hidden] { display: none }`，
+ *   而「确认之前不出图」让「收起」成了常态 —— 少了这一条就是一块空白画布顶在那里。 */
+.hb-share-preview[hidden] {
+  display: none;
+}
+
 /* ---------------- 窄屏 ---------------- */
 
 @media (max-width: 1100px) {

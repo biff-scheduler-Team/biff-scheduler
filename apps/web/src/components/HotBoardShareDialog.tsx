@@ -13,7 +13,14 @@
  * ⚠ **焦点归还**由调用方（热门榜那个按钮）负责，见 `HotBoardPanel.tsx`。
  *
  * ★ **数据是快照，选项是活的**：打开那一刻的榜单行就是这张图的内容；换单元 / 条数 / 头尾
- *   只重组这张图，不再回去重新读数据（出图不该因为别人又点了几个「想看」而变样）。
+ *   只重算模型，不再回去重新读数据（出图不该因为别人又点了几个「想看」而变样）。
+ *
+ * ★ **出图要用户点一下**（2026-10-16，`PLAN-20261016000441`，用户「都要点击确认后再生成图片」）：
+ *   与「红黑榜分享图」弹层逐字同一套 —— 打开**不出图**，选好范围后点「生成图片」才画；
+ *   改了任一选项就把已出的那张作废，按钮变「重新生成图片」。
+ *   ⚠ 三个分享入口（红黑榜 / 排行榜 / 热门榜）**必须同一口径**：只改两个的话，
+ *     第三个入口就是下一条 bug 报告（用户原话是「都要」）。
+ *   ⚠ 「这张图：W × H px」那行照旧是活的（它只读模型，不读画布）。
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -74,7 +81,11 @@ export function HotBoardShareDialog({
   onDismiss,
 }: HotBoardShareDialogProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
+  /** 点了第几次「生成图片」—— 出图由它触发（见文件头：确认之前不画）。 */
+  const [genNonce, setGenNonce] = useState(0);
+  /** 已经画好的那一张（只代表**与当前选项一致**的那张图，见下面第一个 effect）。 */
   const [blob, setBlob] = useState<Blob | null>(null);
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   // 数据快照：只在挂载时取一次（见文件头）。`today` 同理 —— 出图日期不该随重渲染变。
   const [snapshot] = useState(() => ({ rows, units, today: new Date() }));
@@ -116,11 +127,23 @@ export function HotBoardShareDialog({
   const px = posterPixels(POSTER_W, hotPosterHeight(model));
   const fileName = `BIFF2026-热门榜${unitName ? `-${safeName(unitName)}` : ""}.png`;
 
+  // ① 选项一改，上一张**作废**（理由与 `RedBlackShareDialog` 同一处，见文件头）。
+  //    ⚠ 首帧这两个 `set` 都是初值：React 按 `Object.is` 比过会 bail out，不会多渲染一次。
   useEffect(() => {
+    setBlob(null);
+    setError("");
+  }, [model]);
+
+  // ② 只有点过「生成图片」才真的画（`doneRef` 挡住「同一个 nonce 被 model 变化再触发一次」）。
+  const doneRef = useRef(0);
+  useEffect(() => {
+    if (!genNonce || doneRef.current === genNonce) return;
+    doneRef.current = genNonce;
     const element = canvas.current;
     if (!element) return;
     let canceled = false;
-    // 重画前先清掉上一次的失败提示：换了选项之后它还挂着，会与这张**已经画好了**的图同时显示
+    setPending(true);
+    // 重画前先清掉上一次的失败提示：再点一次生成之后它还挂着，会与这张**正在画**的图同时显示
     setError("");
     void (async () => {
       try {
@@ -137,12 +160,16 @@ export function HotBoardShareDialog({
         setBlob(next);
       } catch {
         if (!canceled) setError("图片生成失败，请重新生成。");
+      } finally {
+        if (!canceled) setPending(false);
       }
     })();
     return () => {
       canceled = true;
+      // ⚠ 「选项改了」也会走到这里：不复位的话按钮会永远停在「正在生成…」（见 `RedBlackShareDialog` 同处）。
+      setPending(false);
     };
-  }, [model]);
+  }, [model, genNonce]);
 
   return (
     <DialogContainer onDismiss={onDismiss}>
@@ -197,7 +224,15 @@ export function HotBoardShareDialog({
             px · {Math.round(px.scale * 100) / 100}× 出图
             {blob ? ` · PNG 约 ${(blob.size / 1048576).toFixed(1)} MB` : ""}
           </p>
-          {!blob && !error && <p role="status">正在生成图片…</p>}
+          {/* 还没出图的两态（见文件头）：还没点过 / 点过之后又改了选项。 */}
+          {!blob && pending && <p role="status">正在生成图片…</p>}
+          {!blob && !pending && !error && (
+            <p role="status" className="hb-share-lede">
+              {genNonce
+                ? "选项改过了，这张图已作废 —— 点「重新生成图片」出图。"
+                : "还没出图 —— 选好上面的范围后点「生成图片」。"}
+            </p>
+          )}
           {error && (
             <p role="alert" className="error-text">
               {error}
@@ -217,6 +252,12 @@ export function HotBoardShareDialog({
           />
         </Content>
         <ButtonGroup>
+          {/* 「生成图片」——与「红黑榜分享图」逐字同一处口径（2026-10-16，见文件头）：
+              出图要用户点一下；它是**常驻**的（只换文案），且**不 `isDisabled`** ——
+              卸载或禁用都会把焦点从弹层里赶走，而 Esc 是弹层容器的 keydown ⇒「Esc 关不掉」。 */}
+          <Button onPress={() => setGenNonce((count) => count + 1)}>
+            {pending ? "正在生成…" : genNonce > 0 ? "重新生成图片" : "生成图片"}
+          </Button>
           {blob && (
             <Button isDisabled={!hasContent} onPress={() => download(blob, fileName)}>
               下载 PNG 图片

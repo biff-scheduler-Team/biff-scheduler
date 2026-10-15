@@ -37,7 +37,6 @@ import {
 import { ToastQueue } from "../components/spectrum";
 import { QuerySearchField } from "../components/QuerySearchField";
 import { QuickVoteDeck } from "../components/QuickVoteDeck";
-import { RedBlackRankDialog } from "../components/RedBlackRankDialog";
 import { StickerCanvas } from "../components/StickerCanvas";
 import { StickerFace } from "../components/StickerFace";
 
@@ -96,9 +95,6 @@ import {
 } from "../film-votes";
 // 快速投票的候选兜底：榜上有票的与我的行程都为空时改用热门榜（同一份 `buildHotRows`，见 `deck`）
 import { buildHotRows } from "../hot-board";
-// 「从排行榜交接去分享图」那一次要拿它的档位（`RANK_LIMIT = 50`）——
-// ⚠ 从 `redblack-rank.ts` 取而不是在页面里再写一个 50（那是排行榜自己的口径，§5）
-import { RANK_LIMIT } from "../redblack-rank";
 import { loadWantCounts, onWantCountsChange, peekWantCounts } from "../want-counts";
 import { quickVoteOrder, votedQueue, type DeckSource } from "../quick-vote";
 import { store } from "../state";
@@ -129,6 +125,13 @@ const LazyDiscussionBoardDialog = lazy(() =>
  *  同步 import 等于让每个进榜单的人先下载一个二维码编码器（与 `redblack-poster.ts` 同一处置）。 */
 const LazyVoteQrDialog = lazy(() =>
   import("../components/VoteQrDialog").then((m) => ({ default: m.VoteQrDialog })),
+);
+/** 「排行榜」弹层（2026-10-16，`PLAN-20261016000441`）。
+ *  ⚠ 它从这一轮起**自己出图**（红榜 / 黑榜各一张），一条链上因此带上了 `redblack-poster.ts`
+ *    （≈9KB gz）—— 于是与上面几个同一个处置：**点了才挂**（JSX 里的 `rankOpen && …`），
+ *    懒加载只是把那次往返挪到「打开排行榜」那一刻；再点第二次时模块已在缓存里。 */
+const LazyRedBlackRankDialog = lazy(() =>
+  import("../components/RedBlackRankDialog").then((m) => ({ default: m.RedBlackRankDialog })),
 );
 
 /** 榜单档位（2026-10-12 起**只留两榜**，PLAN-20261011235624）。
@@ -364,28 +367,12 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
   const rankOpen = params.get("rank") === "1";
   const closeRank = useCallback(() => update({ rank: null, vote: null }), [update]);
 
-  /** 排行榜弹层里那枚「生成分享图」——**交接**给分享图（2026-10-15，`PLAN-20261015170310`，
-   *  用户「没有分享按钮吧无法分享结果」）。
-   *
-   *  ⚠ 两件事一起做：排行榜**让位**（两张弹层不叠在同一屏，与「快速投票 / 排行榜互斥」同一条），
-   *    并把 `RANK_LIMIT` 作为分享图的初始档 —— 用户点它时眼前是 TOP50，
-   *    图里按默认档画 10 行的话，分享出去的**不是他刚看到的那份结果**。
-   *  ⚠ 交接那一拍 `BoardPage` 会把焦点还给页头那枚「排行榜」，而分享图同时挂载 ——
-   *    react-aria 的 focus scope 会把它抓回弹层里（同一句在下面 `searchFilm` 上也记着），
-   *    所以这里不额外抑制；E2E 直接断言「焦点落在分享图弹层内」。
-   *  ⚠ 这里**不新画一条出图路径**：分享图仍然只有 `RedBlackShareDialog` 那一份（§5）。 */
-  const [shareTopN, setShareTopN] = useState<number | undefined>(undefined);
-  /** 页头那枚「生成分享图」——`shareTopN` 必须显式清掉：从排行榜交接过来那一趟把它设成了 50，
-   *  不清就会**串档**（下次从页头打开也默认 50）。 */
-  const openShare = useCallback(() => {
-    setShareTopN(undefined);
-    setShareOpen(true);
-  }, []);
-  const openShareFromRank = useCallback(() => {
-    closeRank();
-    setShareTopN(RANK_LIMIT);
-    setShareOpen(true);
-  }, [closeRank]);
+  /** 页头那枚「生成分享图」。
+   *  ⚠ 2026-10-16（`PLAN-20261016000441`）：这里原来还带着一个 `shareTopN`（排行榜弹层把
+   *    `RANK_LIMIT` 交给分享图当初始档）—— 那条**交接**随排行榜自己出图一起作废了
+   *    （排行榜不再打开分享图弹层，它出的是自己的两张 TOP50 图）。
+   *    少了它，「打开分享图前必须先清掉上次的档」那条**串档**纪律也就没有存在的地方了。 */
+  const openShare = useCallback(() => setShareOpen(true), []);
 
   /** 总结页那枚「关掉卡片去搜索」（2026-10-15，`PLAN-20261015005652`）——
    *  **关掉卡片 + 把焦点送到页面上的搜索框**，两件事一起做。
@@ -1073,8 +1060,6 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
         >
           扫码投票
         </button>
-        {/* ⚠ 走 `openShare` 而不是直接 `setShareOpen(true)`：它会**显式清掉** `shareTopN`
-            （从排行榜交接过来那一趟设成了 50）—— 否则下次从页头打开也会默认 50（「串档」）。 */}
         <button ref={shareBtnRef} type="button" className="rb-share-btn" onClick={openShare}>
           生成分享图
         </button>
@@ -1151,17 +1136,28 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
         />
       )}
 
-      {/* 排行榜（2026-10-15，PLAN-20261015153233）—— 页头那枚「排行榜」打开它。
+      {/* 排行榜（2026-10-15，PLAN-20261015153233；2026-10-16 `PLAN-20261016000441` 起自己出图）
+          —— 页头那枚「排行榜」打开它。
           ⚠ 给它的是**全量**影片库与**同一份**修正过的票数（与卡片 / hero / 分享图同源）：
-            只给榜单当前那几部的话，弹层里会出现一份「榜单自己缩过水」的排名。 */}
+            只给榜单当前那几部的话，弹层里会出现一份「榜单自己缩过水」的排名。
+          ⚠ 出图那两张要用**同一组**原始输入（`board` / `filmSkins` / `syncedFaceByKey` / hero 数字）——
+            与下面 `RedBlackShareDialog` 收到的是同一批变量：各传一份的话，同一部片在排行榜的图上
+            与卡片上会给出两套票数（那正是 2026-10-05 那次「换自己的皮肤把别人的也换了」的同款错）。
+          ⚠ `Suspense` 写在条件**内部**：不开排行榜时连边界都不挂（与上面几个弹层同一手法）。 */}
       {rankOpen && (
-        <RedBlackRankDialog
-          films={films}
-          crowd={reconciledCrowd}
-          priorRate={priorRate}
-          onShare={openShareFromRank}
-          onDismiss={closeRank}
-        />
+        <Suspense fallback={null}>
+          <LazyRedBlackRankDialog
+            films={films}
+            crowd={reconciledCrowd}
+            priorRate={priorRate}
+            board={board}
+            skins={filmSkins}
+            syncedFaces={syncedFaceByKey}
+            site={{ total: totals.total, red: totals.red, black: totals.black }}
+            mine={{ placed: totals.placed }}
+            onDismiss={closeRank}
+          />
+        </Suspense>
       )}
 
       {shareOpen && (
@@ -1189,9 +1185,6 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
                `unseen` 随上滑改纯跳过也撤掉了 —— 现在只剩「已贴 N 枚」这一项
                (海报上那行小字见 `redblack-poster.ts`) */
             mine={{ placed: totals.placed }}
-            /* 只有从**排行榜弹层**交接过来那一次带档位(它分享的就是刚看的那份 TOP50);
-               页头那枚「生成分享图」不传 → 走分享图自己的默认档(10) */
-            initialTopN={shareTopN}
             onDismiss={() => setShareOpen(false)}
           />
         </Suspense>

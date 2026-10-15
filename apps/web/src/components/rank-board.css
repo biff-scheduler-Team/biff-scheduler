@@ -206,3 +206,91 @@
   color: var(--rbr-muted);
   font-size: 13px;
 }
+
+/* ---------------- 出图（每榜一张，各自带「下载 / 复制」） ----------------
+ * 2026-10-16（`PLAN-20261016000441`）：用户「排行榜自己出图 + 复制图片」「两个榜单需要两张图
+ * 单独复制按钮」。⚠ 色值仍然一个都不写在这里：预览是**分享图那一套固定深色**（它自己的
+ * `--rbr-*` 由画布自带），而这一段的标题 / 题注走**应用主题**的 token（它们不在那张深底的纸上）。 */
+
+/* 出图提示：一句话说清「还没出图 / 正在出 / 好了」——按钮的文案不解释状态。 */
+.rbr-shots-lede {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 两张图并排（≥720px）——与上面那两列**同一断点**：窄屏上下堆叠、桌面并排，
+ * 弹层高度不随「两张」翻倍。 */
+.rbr-shots {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 10px;
+}
+
+.rbr-shot {
+  min-width: 0;
+}
+
+.rbr-shot-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.rbr-shot-label {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.rbr-shot-size {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 预览框：一张 TOP50 的图逻辑高 ≈ 5400px，两张都不设上限的话弹层会被撑到上万像素。
+ * ⚠ 上限加在**框**上、不加在画布上：画布一被压高就按比例缩到几十像素宽（等于没法看），
+ *   而在框里内滚仍能一行行读下去。
+ * ⚠ 本块**不写 `display`**：画布用 `hidden` 属性收起（见下一条），给框另设 display 会把它盖掉。 */
+.rbr-shot-view {
+  max-height: 60vh;
+  overflow: auto;
+  border-radius: 12px;
+}
+
+/* 画布：满宽、缩到与分享图预览同一档（420px），边框 / 底色也照 `.rb-share-preview`。
+ * ⚠ **[hidden] 守卫必须写**：本仓库没引 Tailwind preflight（只 `@import "tailwindcss/utilities"`），
+ *   UA 的 `[hidden] { display: none }` 会被下面这句 `display: block` 盖掉 —— 那样「还没出图」
+ *   时画布会以 300×150 的空框顶在那里（`.poster-preview[hidden]` 是同一处坑的既有先例）。 */
+.rbr-shot-preview {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  margin: 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--raised);
+}
+
+.rbr-shot-preview[hidden] {
+  display: none;
+}
+
+/* 两个动作居中：它们属于**上面那张图**，不与弹层底部那组（生成 / 关闭）混在一起。 */
+.rbr-shot-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+@media (min-width: 720px) {
+  .rbr-shots {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+}
