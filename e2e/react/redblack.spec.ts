@@ -997,6 +997,30 @@ test("讨论区总览:目标被搜索框挡住时,自动清掉过滤再定位", 
   await ready(page, `/redblack?q=${encodeURIComponent("绝无此片")}`);
   await expect(page.locator(".rb-card")).toHaveCount(0);
 
+  // ⚠ **点之前**先记账（2026-10-15，`PLAN-20261015172642`）。
+  //   `rb-card-located` 是**瞬时**的：`flashCard` 加完 class、动画跑完（1000ms × 3）就摘掉，
+  //   之后不留任何痕迹。原来那种「点完之后每隔一会儿看一眼」的 `expect.poll` 是**采样** ——
+  //   采样点由 runner 的调度决定，CI 慢机器上与那 3s 的窗口错开就再也看不到（本地永远复现不了）。
+  //   `MutationObserver` 不采样、不会漏；断言强度不变：**真的没闪，这里一样红**。
+  await page.evaluate(() => {
+    const state = window as typeof window & { __rbFlashed?: boolean };
+    state.__rbFlashed = false;
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        if ((record.target as Element).classList?.contains("rb-card-located")) {
+          state.__rbFlashed = true;
+          observer.disconnect();
+          return;
+        }
+      }
+    });
+    observer.observe(document.body, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+  });
+
   await page.getByRole("button", { name: "打开讨论区总览" }).click();
   const dialog = page.getByRole("dialog");
   await dialog.locator(".rb-board-row").first().click();
@@ -1004,8 +1028,10 @@ test("讨论区总览:目标被搜索框挡住时,自动清掉过滤再定位", 
   // 过滤被清掉 → 卡片回来了,并且被定位到
   const target = page.locator(`.rb-card[data-film-key="${key}"]`);
   await expect(target).toHaveCount(1);
+  // ⚠ poll 的是那个**不会回退**的记账位（不是节点上的 class）：它一旦为真就不会再变假，
+  //   所以不存在「采样错开窗口」这回事 —— 这里超时就是「确实没闪过」。
   await expect
-    .poll(() => target.evaluate((node) => node.classList.contains("rb-card-located")))
+    .poll(() => page.evaluate(() => (window as typeof window & { __rbFlashed?: boolean }).__rbFlashed === true))
     .toBe(true);
 });
 
@@ -1754,12 +1780,11 @@ test("快速投票：左滑 / 右滑的跟手标记是实心底色，跳过药�
   await expect(page.locator(".qv-card")).toBeVisible();
   const stage = (await page.locator(".qv-stage").boundingBox())!;
 
-  // ① 跳过药丸未高亮时先确认是透明底（既有常态），同时量一次「红榜」图例的横向起点
+  // ① 跳过药丸未高亮时先确认是透明底（既有常态）
   const skipHint = page.locator(".qv-legend-skip");
   const rightLegend = page.locator(".qv-legend-right");
   const bgIdle = await skipHint.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(bgIdle).toBe("rgba(0, 0, 0, 0)");
-  const rightXIdle = (await rightLegend.boundingBox())!.x;
 
   // ② 左滑：拖够距离，`.qv-mark--left`（加入黑榜）应该是实心底色，不是透明描边
   await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2);
@@ -1773,6 +1798,16 @@ test("快速投票：左滑 / 右滑的跟手标记是实心底色，跳过药�
   // ③ 上滑：跳过药丸高亮时同样是实心底色，且右边「红榜」图例的横向起点**几乎不变**（没被顶动）
   await ready(page, "/redblack?sort=red&vote=1");
   await expect(page.locator(".qv-card")).toBeVisible();
+  // ⚠ 基线必须在**这一次加载**里取（2026-10-15，`PLAN-20261015172642`）。
+  //   上一版拿的是**前一次 `page.goto`** 量到的 x —— 两次加载之间本来就可能差几个像素
+  //   （字体 / 海报解码的时序），拿它去卡 1px 的判据，红的是「两次加载不同」而不是
+  //   「高亮顶动了图例」。本判据要的恰恰是「高亮前后，图例在**同一份布局里**没动」。
+  //   ⚠ 顺手等一次 `document.fonts.ready`：图例的 x 由文字宽度决定，字形晚一拍换掉
+  //     会让基线本身就不是最终值（无字体加载时它立即 resolve，等于空操作）。
+  //     ⚠ 必须把 `ready` 转成可序列化的值再返回：直接 `() => document.fonts.ready`
+  //     是把 FontFaceSet 交给 Playwright 去序列化（那不是一个能过桥的对象）。
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  const rightXIdle = (await rightLegend.boundingBox())!.x;
   const stage2 = (await page.locator(".qv-stage").boundingBox())!;
   await page.mouse.move(stage2.x + stage2.width / 2, stage2.y + stage2.height / 2);
   await page.mouse.down();
