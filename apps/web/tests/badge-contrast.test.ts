@@ -197,6 +197,7 @@ function casesOf(tokens: Tokens): { badge: string; foreground: string; backgroun
 }
 
 const EXPECTED_BADGES = [
+  "award",
   "code",
   "gv",
   "rating-12",

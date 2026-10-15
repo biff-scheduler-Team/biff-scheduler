@@ -10,7 +10,8 @@ import {
 } from "../components/spectrum";
 import { FilterBar } from "../components/FilterBar";
 import { QuerySearchField } from "../components/QuerySearchField";
-import { ScreeningCard, useFilmNavigation } from "../components/ScreeningCard";
+import { FilmBadge, ScreeningCard, useFilmNavigation } from "../components/ScreeningCard";
+import { awardBadgeTip, awardsForFilms } from "../awards";
 import { useCatalog } from "../app/store";
 import { useFilters, useQuery } from "../app/hooks";
 import { filmInUnit, libraryUnits, searchFilm, type FilmNode } from "../app/model";
@@ -67,6 +68,8 @@ function FilmCard({
   // 「另属」单元(2026 只有午夜联映块)—— 不显示的话,按午夜单元筛出来的片里
   // 会有 4 部卡片副标题写着别的单元,看着像筛错了(见 `model.ts::unitsOfFilm`)。
   const alsoUnits = film.cats[0]?.also_units ?? [];
+  // 获奖按目录影片 id 关联(一部片可能有多个目录条目,故传整组 id)
+  const prizes = awardsForFilms(film.cats.map((c) => c.id));
   return (
     <article
       className="film-card"
@@ -96,6 +99,9 @@ function FilmCard({
                 </span>
               )}
             </span>
+            {prizes.length > 0 && (
+              <FilmBadge kind="award" label="获奖" title={awardBadgeTip(prizes)} />
+            )}
             {score && (
               <span className="score">豆瓣 {score.rating.toFixed(1)}</span>
             )}

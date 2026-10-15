@@ -432,3 +432,49 @@ export interface FestivalExtras {
     url: string;
   };
 }
+
+/* ---------------- 获奖信息(`public/awards.json`,离线产物) ---------------- */
+
+/** 一条获奖记录 —— **一条 = 一个奖项**(同一部片拿多个奖就是多条)。
+ *  数据源是官网**颁奖报道**(不是排期页),由 `tools/build_awards.py` 生成;
+ *  与本站的关联是**片名**(唯一那座桥),产物里已落成 `filmIds` + `codes` 双键。 */
+export interface AwardItem {
+  /** 奖项英文原文(官网口径,也是与官网核对的主键) */
+  award: string;
+  /** 奖项中文名(人工表 `tools/build_awards.py::AWARD_ZH`);未登记为 null,界面回落英文。 */
+  awardZh: string | null;
+  /** 得主:影片奖 = 片名(官网原文);演员奖 = 人名 */
+  recipient: string;
+  /** 导演(演员奖为空串) */
+  director: string;
+  /** 获奖影片名(官网原文) */
+  film: string;
+  /** 演员奖的人名(**影片奖为空串**)—— 界面据此区分「这片得奖」与「这演员得奖」 */
+  person: string;
+  /** 匹配到的目录影片 id(对不上目录时为空数组) */
+  filmIds: string[];
+  /** 匹配到的目录中文片名(对不上为空串) */
+  filmZh: string;
+  /** 该片在本站排期里的场次 code(已按 schedule.json 过滤过) */
+  codes: string[];
+}
+
+/** 荣誉奖(人物)—— 不对应场次,只在影片 / 资料层面展示。 */
+export interface AwardPerson {
+  award: string;
+  awardZh: string | null;
+  name: string;
+  /** 官网印的国家 / 职业标签(原样) */
+  labels: string[];
+  filmIds: string[];
+  codes: string[];
+}
+
+export interface AwardsFile {
+  source: string;
+  generated_at: string;
+  /** 颁奖礼(官网新闻稿自己印的时间与地点) */
+  ceremony: { date: string; venue: string };
+  awards: AwardItem[];
+  people: AwardPerson[];
+}

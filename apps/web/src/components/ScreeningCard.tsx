@@ -38,6 +38,7 @@ import {
 } from "../state";
 import { RATING_DEFS, SUBS_DEFS, mapsUrl, subsKeys, venuePlace, venueShort, venueTip } from "../legend";
 import { BADGE_DEFS, screeningBadgeKeys, codeTip } from "../badges";
+import { awardBadgeTip, awardsForCode } from "../awards";
 import { SCHEDULE_LABEL, UNSCHEDULE_LABEL, scheduleAria } from "../actions-copy";
 import { useScreeningPicker } from "./screening-actions";
 import type { Screening } from "../types";
@@ -60,6 +61,9 @@ export function FilmBadge({ kind, label, title }: { kind: string; label: string;
 
 export function Badges({ screening: s }: { screening: Screening }) {
   const keys = screeningBadgeKeys(s);
+  // 获奖不在 `Screening` 里(排期只回答「谁在什么时候放」),来自离线产物 `awards.json`,
+  // 按场次 code 现查 —— 故不走 `screeningBadgeKeys()`(那是纯函数,读不到外部数据)。
+  const prizes = awardsForCode(s.code);
   return (
     <span className="badges">
       {s.rating && (
@@ -71,6 +75,9 @@ export function Badges({ screening: s }: { screening: Screening }) {
       {keys.map((k) => (
         <FilmBadge kind={k} key={k} label={BADGE_DEFS.find(d => d.key === k)?.label ?? k} title={BADGE_DEFS.find(d => d.key === k)?.title} />
       ))}
+      {prizes.length > 0 && (
+        <FilmBadge kind="award" label="获奖" title={awardBadgeTip(prizes)} />
+      )}
       {s.page && <FilmBadge kind="page" label={`P${s.page}`} title={`官方节目册第 ${s.page} 页`} />}
     </span>
   );

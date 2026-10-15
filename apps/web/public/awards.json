@@ -1,0 +1,568 @@
+{
+  "source": "https://www.biff.kr/eng/artyboard/mboard.asp?Action=view&strBoardID=9611_05&intSeq=103339 ∪ https://www.biff.kr/eng/addon/10000001/page.asp?page_num=11098 ∪ https://www.biff.kr/eng/addon/10000001/page.asp?page_num=11099 ∪ https://www.biff.kr/eng/addon/10000001/page.asp?page_num=11100",
+  "generated_at": "2026-10-15T15:29:24+09:00",
+  "ceremony": {
+    "date": "2026-10-14",
+    "venue": "SIGNIEL BUSAN Grand Ballroom"
+  },
+  "awards": [
+    {
+      "award": "BIFF Mecenat Award (Asia)",
+      "recipient": "AGAAR",
+      "director": "YANG Bo",
+      "film": "AGAAR",
+      "person": "",
+      "filmIds": [
+        "f131"
+      ],
+      "filmZh": "阿嘎日的天空",
+      "codes": [
+        "190",
+        "341",
+        "403"
+      ],
+      "awardZh": "BIFF Mecenat 奖（亚洲）"
+    },
+    {
+      "award": "BIFF Mecenat Award (Korea)",
+      "recipient": "Can I Talk to You?",
+      "director": "YI Seungjun",
+      "film": "Can I Talk to You?",
+      "person": "",
+      "filmIds": [
+        "f150"
+      ],
+      "filmZh": "破茧之声",
+      "codes": [
+        "228",
+        "401",
+        "490"
+      ],
+      "awardZh": "BIFF Mecenat 奖（韩国）"
+    },
+    {
+      "award": "BIFF Mecenat Award (Special Mention)",
+      "recipient": "A Woman Dancing on the Waves",
+      "director": "CHOI Se-dam",
+      "film": "A Woman Dancing on the Waves",
+      "person": "",
+      "filmIds": [
+        "f138"
+      ],
+      "filmZh": "在波浪上跳舞的女人",
+      "codes": [
+        "204",
+        "340",
+        "446"
+      ],
+      "awardZh": "BIFF Mecenat 奖（特别提及）"
+    },
+    {
+      "award": "Sonje Award (Asia)",
+      "recipient": "Fatima",
+      "director": "Soroush SHAHPOURI",
+      "film": "Fatima",
+      "person": "",
+      "filmIds": [
+        "f222"
+      ],
+      "filmZh": "Fatima",
+      "codes": [],
+      "awardZh": "善才奖（亚洲）"
+    },
+    {
+      "award": "Sonje Award (Korea)",
+      "recipient": "TOE′S",
+      "director": "YUN Taerang",
+      "film": "TOE′S",
+      "person": "",
+      "filmIds": [
+        "f242"
+      ],
+      "filmZh": "여*기의",
+      "codes": [],
+      "awardZh": "善才奖（韩国）"
+    },
+    {
+      "award": "Sonje Award (Special Mention)",
+      "recipient": "The Boy Who Fell to Earth",
+      "director": "JUNG Jaeseo",
+      "film": "The Boy Who Fell to Earth",
+      "person": "",
+      "filmIds": [
+        "f243"
+      ],
+      "filmZh": "지구에",
+      "codes": [],
+      "awardZh": "善才奖（特别提及）"
+    },
+    {
+      "award": "NETPAC Award",
+      "recipient": "Zogsool",
+      "director": "SAKHYA Byamba",
+      "film": "Zogsool",
+      "person": "",
+      "filmIds": [
+        "f204"
+      ],
+      "filmZh": "加油站的闯入者",
+      "codes": [
+        "373",
+        "511",
+        "624",
+        "673"
+      ],
+      "awardZh": "NETPAC 奖"
+    },
+    {
+      "award": "FIPRESCI Award",
+      "recipient": "Zogsool",
+      "director": "SAKHYA Byamba",
+      "film": "Zogsool",
+      "person": "",
+      "filmIds": [
+        "f204"
+      ],
+      "filmZh": "加油站的闯入者",
+      "codes": [
+        "373",
+        "511",
+        "624",
+        "673"
+      ],
+      "awardZh": "国际影评人联盟奖（FIPRESCI）"
+    },
+    {
+      "award": "Bishkek International Film Festival-Central Asia Cinema Award",
+      "recipient": "There Will Be Snow",
+      "director": "CHEN Jianying (Story)",
+      "film": "There Will Be Snow",
+      "person": "",
+      "filmIds": [
+        "f205"
+      ],
+      "filmZh": "有一场雪",
+      "codes": [
+        "374",
+        "496",
+        "601",
+        "696"
+      ],
+      "awardZh": "比什凯克国际电影节·中亚电影奖"
+    },
+    {
+      "award": "Face of the Future Award",
+      "recipient": "After the Song",
+      "director": "KUMAMOTO Ryohei",
+      "film": "After the Song",
+      "person": "",
+      "filmIds": [
+        "f124"
+      ],
+      "filmZh": "最初的告别",
+      "codes": [
+        "176",
+        "344",
+        "426",
+        "512"
+      ],
+      "awardZh": "未来面孔奖"
+    },
+    {
+      "award": "The Heart of Eurasia Award",
+      "recipient": "Ria",
+      "director": "Arvin BELARMINO",
+      "film": "Ria",
+      "person": "",
+      "filmIds": [
+        "f169"
+      ],
+      "filmZh": "里亚的呐喊",
+      "codes": [
+        "276",
+        "499",
+        "574",
+        "730"
+      ],
+      "awardZh": "欧亚之心奖"
+    },
+    {
+      "award": "Hylife Vision Award",
+      "recipient": "Zogsool",
+      "director": "SAKHYA Byamba",
+      "film": "Zogsool",
+      "person": "",
+      "filmIds": [
+        "f204"
+      ],
+      "filmZh": "加油站的闯入者",
+      "codes": [
+        "373",
+        "511",
+        "624",
+        "673"
+      ],
+      "awardZh": "Hylife 视野奖"
+    },
+    {
+      "award": "Hylife Vision Award",
+      "recipient": "Selvi",
+      "director": "Sailesh RATHNAKUMAR",
+      "film": "Selvi",
+      "person": "",
+      "filmIds": [
+        "f123"
+      ],
+      "filmZh": "Selvi",
+      "codes": [
+        "175",
+        "395",
+        "642",
+        "676"
+      ],
+      "awardZh": "Hylife 视野奖"
+    },
+    {
+      "award": "International Film Festival of India - Vision Asia Award",
+      "recipient": "The Cord",
+      "director": "Darkhan TULEGENOV",
+      "film": "The Cord",
+      "person": "",
+      "filmIds": [
+        "f125"
+      ],
+      "filmZh": "脐带",
+      "codes": [
+        "177",
+        "394",
+        "508",
+        "672"
+      ],
+      "awardZh": "印度国际电影节·Vision Asia 奖"
+    },
+    {
+      "award": "Songwon Vision Audience Award - Asia",
+      "recipient": "Birds in the Dark",
+      "director": "Shashank WALIA",
+      "film": "Birds in the Dark",
+      "person": "",
+      "filmIds": [
+        "f177"
+      ],
+      "filmZh": "黑暗中的鸟儿",
+      "codes": [
+        "297",
+        "447",
+        "477",
+        "665"
+      ],
+      "awardZh": "Songwon 视野观众奖（亚洲）"
+    },
+    {
+      "award": "Taipei Film Commission Award",
+      "recipient": "Selvi",
+      "director": "Sailesh RATHNAKUMAR",
+      "film": "Selvi",
+      "person": "",
+      "filmIds": [
+        "f123"
+      ],
+      "filmZh": "Selvi",
+      "codes": [
+        "175",
+        "395",
+        "642",
+        "676"
+      ],
+      "awardZh": "台北市电影委员会奖"
+    },
+    {
+      "award": "Vision of Jiseok Award",
+      "recipient": "Zogsool",
+      "director": "SAKHYA Byamba",
+      "film": "Zogsool",
+      "person": "",
+      "filmIds": [
+        "f204"
+      ],
+      "filmZh": "加油站的闯入者",
+      "codes": [
+        "373",
+        "511",
+        "624",
+        "673"
+      ],
+      "awardZh": "智奭视野奖"
+    },
+    {
+      "award": "Actor of the Year",
+      "recipient": "WON Hyangra",
+      "director": "",
+      "film": "Beyond Love′s Horizon",
+      "person": "WON Hyangra",
+      "filmIds": [
+        "f192"
+      ],
+      "filmZh": "爱在地平线之后",
+      "codes": [
+        "323",
+        "405",
+        "503",
+        "584",
+        "704"
+      ],
+      "awardZh": "年度演员"
+    },
+    {
+      "award": "Actor of the Year",
+      "recipient": "KANG Seung-ho",
+      "director": "",
+      "film": "Cosmic Trace",
+      "person": "KANG Seung-ho",
+      "filmIds": [
+        "f184"
+      ],
+      "filmZh": "宇宙痕迹",
+      "codes": [
+        "309",
+        "498",
+        "604",
+        "663"
+      ],
+      "awardZh": "年度演员"
+    },
+    {
+      "award": "DGK PLUS M Award",
+      "recipient": "The Flower",
+      "director": "KIM Si-jin",
+      "film": "The Flower",
+      "person": "",
+      "filmIds": [
+        "f149"
+      ],
+      "filmZh": "花烬",
+      "codes": [
+        "223",
+        "501",
+        "593",
+        "705"
+      ],
+      "awardZh": "韩国电影导演协会 PLUS M 奖"
+    },
+    {
+      "award": "CGV Award",
+      "recipient": "FULL MOON",
+      "director": "JEONG Jihye",
+      "film": "FULL MOON",
+      "person": "",
+      "filmIds": [
+        "f183"
+      ],
+      "filmZh": "满月",
+      "codes": [
+        "308",
+        "421",
+        "587",
+        "708"
+      ],
+      "awardZh": "CGV 奖"
+    },
+    {
+      "award": "KBS Independent Film Award",
+      "recipient": "Beyond Love′s Horizon",
+      "director": "PARK Songyeol",
+      "film": "Beyond Love′s Horizon",
+      "person": "",
+      "filmIds": [
+        "f192"
+      ],
+      "filmZh": "爱在地平线之后",
+      "codes": [
+        "323",
+        "405",
+        "503",
+        "584",
+        "704"
+      ],
+      "awardZh": "KBS 独立电影奖"
+    },
+    {
+      "award": "Critic b Award",
+      "recipient": "Beyond Love′s Horizon",
+      "director": "PARK Songyeol",
+      "film": "Beyond Love′s Horizon",
+      "person": "",
+      "filmIds": [
+        "f192"
+      ],
+      "filmZh": "爱在地平线之后",
+      "codes": [
+        "323",
+        "405",
+        "503",
+        "584",
+        "704"
+      ],
+      "awardZh": "Critic b 影评人奖"
+    },
+    {
+      "award": "K-MOVIE Award",
+      "recipient": "FULL MOON",
+      "director": "JEONG Jihye",
+      "film": "FULL MOON",
+      "person": "",
+      "filmIds": [
+        "f183"
+      ],
+      "filmZh": "满月",
+      "codes": [
+        "308",
+        "421",
+        "587",
+        "708"
+      ],
+      "awardZh": "K-MOVIE 奖"
+    },
+    {
+      "award": "Jeong-in Award",
+      "recipient": "BALER",
+      "director": "OH Sehyeon",
+      "film": "BALER",
+      "person": "",
+      "filmIds": [
+        "f140"
+      ],
+      "filmZh": "田野的打包声",
+      "codes": [
+        "208",
+        "321",
+        "400",
+        "495",
+        "617"
+      ],
+      "awardZh": "Jeong-in 奖"
+    },
+    {
+      "award": "Citizen Critics' Award",
+      "recipient": "BALER",
+      "director": "OH Sehyeon",
+      "film": "BALER",
+      "person": "",
+      "filmIds": [
+        "f140"
+      ],
+      "filmZh": "田野的打包声",
+      "codes": [
+        "208",
+        "321",
+        "400",
+        "495",
+        "617"
+      ],
+      "awardZh": "市民影评人奖"
+    },
+    {
+      "award": "Busan Cinephile Award",
+      "recipient": "Birds of War",
+      "director": "Janay BOULOS, Abd ALKADER HABAK",
+      "film": "Birds of War",
+      "person": "",
+      "filmIds": [
+        "f137"
+      ],
+      "filmZh": "战地飞鸟",
+      "codes": [
+        "201",
+        "351",
+        "520"
+      ],
+      "awardZh": "釜山影迷奖"
+    },
+    {
+      "award": "Songwon Vision Audience Award - Korea",
+      "recipient": "FULL MOON",
+      "director": "JEONG Jihye",
+      "film": "FULL MOON",
+      "person": "",
+      "filmIds": [
+        "f183"
+      ],
+      "filmZh": "满月",
+      "codes": [
+        "308",
+        "421",
+        "587",
+        "708"
+      ],
+      "awardZh": "Songwon 视野观众奖（韩国）"
+    },
+    {
+      "award": "Documentary Audience Award",
+      "recipient": "Recovery",
+      "director": "IM Yeonjeong",
+      "film": "Recovery",
+      "person": "",
+      "filmIds": [
+        "f180"
+      ],
+      "filmZh": "리커버리",
+      "codes": [
+        "301",
+        "443",
+        "542"
+      ],
+      "awardZh": "纪录片观众奖"
+    },
+    {
+      "award": "Flash Forward Audience Award",
+      "recipient": "La Bola Negra",
+      "director": "Javier CALVO, Javier AMBROSSI",
+      "film": "La Bola Negra",
+      "person": "",
+      "filmIds": [
+        "f185"
+      ],
+      "filmZh": "黑球",
+      "codes": [
+        "311",
+        "460"
+      ],
+      "awardZh": "Flash Forward 观众奖"
+    }
+  ],
+  "people": [
+    {
+      "award": "The Asian Filmmaker of the Year",
+      "name": "Michelle YEOH",
+      "labels": [
+        "Malaysia",
+        "Actor"
+      ],
+      "filmIds": [],
+      "codes": [],
+      "awardZh": "年度亚洲电影人"
+    },
+    {
+      "award": "Korean Cinema Award",
+      "name": "KIM Dong-ho",
+      "labels": [
+        "Korea",
+        "Former Chairperson of the Busan International Film Festival"
+      ],
+      "filmIds": [],
+      "codes": [],
+      "awardZh": "韩国电影奖"
+    },
+    {
+      "award": "Camellia Award",
+      "name": "Ann HUI",
+      "labels": [
+        "Hong Kong, China",
+        "Director, Screenwriter, Producer"
+      ],
+      "filmIds": [],
+      "codes": [],
+      "awardZh": "山茶花奖"
+    }
+  ]
+}

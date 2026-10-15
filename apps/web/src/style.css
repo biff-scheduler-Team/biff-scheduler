@@ -63,6 +63,10 @@
   --badge-subs-no: #575757;
   --badge-gv: #9c27b0;
   --badge-code: #ff3030;
+  /* 获奖徽章**不是**官方色卡里的一档(官方 Schedule Guide 没有这个标记,是本工具加的
+     信息层),取「奖杯金」语义:深金底 + 白字。压深底那一档 ink 与 rating/subs 同源,
+     故同样不需要暗色覆盖 —— 实测白字 4.85,由 `tests/badge-contrast.test.ts` 钉住。 */
+  --badge-award: #96690f;
   background: var(--page);
   color: var(--text);
   font-synthesis: none;
@@ -1052,6 +1056,20 @@ html:has(.update-banner) {
   font-size: 14px;
   line-height: 1.9;
 }
+/* 获奖列表(影片资料弹层):一条一个奖项 —— 奖项名 + 官网英文原文 + 得主 */
+.award-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.award-list .muted {
+  margin-left: 6px;
+}
 .detail-screening {
   margin-bottom: 12px;
 }
@@ -1555,6 +1573,8 @@ html:has(.update-banner) {
 .film-badge[data-badge="subs-KK"] { background: var(--badge-subs-kk); }
 .film-badge[data-badge="subs-NO"] { background: var(--badge-subs-no); }
 .film-badge[data-badge="gv"] { background: var(--badge-gv); }
+/* 获奖:深金实底 + 白字(与 rating-12 的亮金、GV 的紫都错开) */
+.film-badge[data-badge="award"] { background: var(--badge-award); }
 /* 这三个官方亮底必须走深字,否则白字只有 3.30 / 1.86 / 2.84(见 `:root` 的 ink 注释)。
    三条同用一档,故合并写;不并进上面那三条背景规则,是为了让「底色」与「前景」各自成组更好读。 */
 .film-badge[data-badge="rating-ALL"],

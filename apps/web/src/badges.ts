@@ -140,6 +140,18 @@ export const BADGE_DEFS: BadgeDef[] = [
       "不对外售票:入场 / 购票规则与普通场次不同,以官方说明为准\n" +
       "默认不显示,可在「设置 → 场次范围」关掉",
   },
+  // ---- 获奖(本工具的信息层:官网**颁奖报道**的口径,不属于官方排期标记)----
+  // 与上面几枚不同,它的数据不在 `Screening` 里(排期只回答「谁在什么时候放」),
+  // 而是来自离线产物 `public/awards.json` —— 故**不进** `screeningBadgeKeys()`,
+  // 由 `ScreeningCard.tsx::Badges` 按场次 code 现查后补渲染。
+  {
+    key: "award",
+    label: "获奖",
+    title:
+      "获奖 · 本场放映的影片在本届电影节获奖\n" +
+      "名单来自官网颁奖报道(离线产物 awards.json);hover 那一枚可看到具体奖项名\n" +
+      "影片资料弹层里有该片的完整获奖列表",
+  },
 ];
 
 const badgeKeysCache = new Map<string, string[]>();

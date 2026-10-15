@@ -5,6 +5,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
+import { loadAwards } from "../awards";
 import { loadCatalog } from "../data";
 import { loadExtras } from "../extras";
 import { loadIntros } from "../intros";
@@ -92,6 +93,7 @@ export function bootstrap(): Promise<Catalog> {
       await Promise.all([
         loadMappings(),
         loadExtras(),
+        loadAwards(),
         loadRelated(),
         loadIntros(),
         // 同场观影人数:整站一次拉取(场次卡要用),失败静默降级为空表

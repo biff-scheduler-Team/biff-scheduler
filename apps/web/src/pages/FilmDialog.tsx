@@ -14,6 +14,7 @@ import {
 import { useCatalog } from "../app/store";
 import { FILM_CODE_PARAM, useFilmNavigation } from "../app/film-navigation";
 import { catalogueLine, filmDetailAnchor, filmDetailNames } from "../app/film-details";
+import { awardLabel, awardWho, awardsForFilms } from "../awards";
 import { introOf } from "../intros";
 import { indexFestival, relatedOf } from "../related";
 import { KIND_LABEL, programOf, formatKrw } from "../extras";
@@ -90,6 +91,8 @@ export function FilmDialog() {
   const fest = indexFestival(store.mappings);
   const program = anchor ? programOf(anchor.code) : undefined;
   const catalogue = film?.cats[0]?.catalogue;
+  // 获奖按**目录影片 id** 关联(同一部片可能有多个目录条目,如中英双条目)
+  const prizes = awardsForFilms((film?.cats ?? []).map((c) => c.id));
   return (
     <DialogContainer onDismiss={close}>
       <Dialog key={location.key} size="L">
@@ -143,6 +146,21 @@ export function FilmDialog() {
                     </div>
                   </div>
                 </div>
+                {prizes.length > 0 && (
+                  <section>
+                    <h2>本届获奖</h2>
+                    <ul className="award-list">
+                      {prizes.map((a) => (
+                        <li key={`${a.award}|${a.film}|${a.person}`}>
+                          <strong>{awardLabel(a)}</strong>
+                          {/* 中文名是人工表;有中文名时附官网英文原文,方便与官网核对 */}
+                          {a.awardZh && <span className="muted">（{a.award}）</span>}
+                          {awardWho(a) && <span className="muted">{awardWho(a)}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
                 {intro && (
                   <section>
                     <h2>影片简介</h2>
