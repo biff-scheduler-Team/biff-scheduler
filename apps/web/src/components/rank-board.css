@@ -1,0 +1,165 @@
+/* 红黑榜「排行榜」弹层（2026-10-15，PLAN-20261015153233）。
+ *
+ * 版式参考分享图那一行（`redblack-poster.ts::drawRow`）：名次 → 行内海报 → 片名（中 / 英）→ 红黑数。
+ * ⚠ **颜色不照抄**：那张长图是 canvas 画的深底海报（`poster-brush.ts::COLORS`），
+ *   而这一层活在应用里、要跟着亮 / 暗主题走 —— 所以这里只沿用它的版式与字阶层级，
+ *   配色一律走 token（§5：配色只有一处来源）。红 / 黑那两个数字复用 `.rb-tally__*`
+ *   （`redblack-parity.css`，全站唯一那份红黑字色），本文件不再定义第二份。
+ */
+
+.rbr-lede {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 两列并排：左红右黑 —— 顺序与页面 / 分享图里的分节顺序一致，不另立一套。
+ * ⚠ **移动优先**：窄屏是单列（手机上一屏只能好好读一列，两列并排会把片名压成两个字），
+ *   720px 起才并排 —— 断点取 **720**，与仓库既有的那三档（768 / 1099 / 720）逐字一致。 */
+.rbr-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.rbr-col {
+  min-width: 0;
+}
+
+/* 列标题：与列表留一道 6px 的呼吸位，别让它跟第一行粘在一起 */
+.rbr-col-title {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* 这一列有几行 —— 小字、次级色：它是刻度，不是标题的一部分 */
+.rbr-col-count {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.rbr-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 720px) {
+  .rbr-cols {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+
+  /* 桌面：两列**各自**成一条滚动区。
+   * ⚠ 50 行 × 两列若不设上限，弹层本身会长到三四千像素 —— 那时「并排对照」就没了
+   *   （滚动到底部时另一列的头部早已滚出视野）。
+   * ⚠ 上限**只在宽屏**给：窄屏两列是上下堆叠的，那时再嵌一层滚动等于「滚动条里套滚动条」，
+   *   交给弹层自己那一根更自然。 */
+  .rbr-list {
+    max-height: min(62vh, 620px);
+    overflow: auto;
+  }
+}
+
+/* 一行 = 名次 / 海报 / 文字三格。⚠ 海报列固定 40px 宽，
+ * 名次列固定 28px —— 两列（红 / 黑）的行因此**逐行对齐**，扫着才像一份榜单。 */
+.rbr-row {
+  display: grid;
+  grid-template-columns: 28px 40px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: 10px;
+}
+
+/* hover 只给一层极轻的底 —— 行本身不可点（本版不做「点开影片详情」），
+ * 所以这层底色只是「读到哪一行」的辅助，不该读成一个按钮。 */
+.rbr-row:hover {
+  background: var(--raised);
+}
+
+.rbr-rank {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* 前三名给品牌色（与分享图里「名次 ≤ 3 用红色」是同一条口径，只是这里用 token 表达） */
+.rbr-row:nth-child(-n + 3) .rbr-rank {
+  color: var(--brand);
+}
+
+/* 行内海报：**2:3**（与卡片 / 分享图同一比例），圆角 6
+ * ⚠ 只给宽、高交给 `aspect-ratio`：字号变了要改尺寸时，也只需要动 `width` 这一个数。
+ * ⚠ 40px 是「两列并排时还撑得住 50 行」那个上限 —— 再宽一点，窄屏上片名只剩两三个字。 */
+.rbr-poster {
+  width: 40px;
+  aspect-ratio: 2 / 3;
+  border-radius: 6px;
+  background: var(--raised);
+  object-fit: cover;
+}
+
+/* 缺图占位块：中性底 + 片名首字（与卡片 / 分享图同一条「不留空洞、也不编路径」） */
+.rbr-poster--none {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.rbr-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+/* 片名一行截断。⚠ 用 `text-overflow` 而不是让文字折行：折行会让**行高不齐**，
+ * 而榜单的行高齐不齐直接决定「能不能一眼扫下来」。 */
+.rbr-title,
+.rbr-en {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rbr-title {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.rbr-en {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.rbr-counts {
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rbr-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}

@@ -1920,3 +1920,89 @@ test("扫码投票：控制栏那枚按钮打开弹层，里面是一枚画好�
   await expect(dialog).toHaveCount(0);
   await expect(entry).toBeFocused();
 });
+
+// ─────────────────────────── 「排行榜」弹层（2026-10-15，PLAN-20261015153233） ───────────────────────────
+// 用户原话：「红黑榜有直观的榜单吗 在快速投票旁边加一个榜单 简单展示红榜 黑榜 TOP50 …
+//   只需要显示影片的名称海报 以及红黑贴纸数 只需要样式参考分享图就行」。
+// 改动前榜单页只有卡片栅格：顺序排过、但**没有名次**，而每张卡一半面积是贴纸画布 ——
+// 「扫一眼看排行」这件事做不到。下面三条分别钉住：门槛与顺序 / 入口 / 两个弹层互斥。
+test("排行榜弹层:红榜按红票降序,且该榜 0 票的片不进该榜", async ({ page }) => {
+  const a = keyOf("008");
+  const b = keyOf("033");
+  // a 全红、b 全黑 —— 一条数据同时钉住两件事：顺序（红榜 a 在前）与
+  // **门槛**（「黑 0」的 a 不该出现在黑榜里，那是同一份榜单最常见的错法）
+  await stubVotes(page, { [a]: { red: 5, black: 0 }, [b]: { red: 0, black: 3 } });
+  await ready(page, "/redblack?sort=red&rank=1");
+
+  const red = page.locator('.rbr-col[data-rbr-board="red"]');
+  const black = page.locator('.rbr-col[data-rbr-board="black"]');
+  await expect(red).toBeVisible();
+  await expect(black).toBeVisible();
+
+  // 红榜：只有 a 一行，名次 01，数字逐字对得上（`红 5 · 黑 0` 里的分隔符也是契约的一部分）
+  await expect(red.locator(".rbr-row")).toHaveCount(1);
+  const top = red.locator(".rbr-row").first();
+  await expect(top).toHaveAttribute("data-rbr-key", a);
+  await expect(top).toHaveAttribute("data-rbr-rank", "1");
+  await expect(top.locator(".rbr-rank")).toHaveText("01");
+  await expect(top.locator(".rbr-counts")).toHaveText("红 5 · 黑 0");
+  // 一行只有那三样：片名在、海报列在（缺图时是占位块，节点同样在）
+  await expect(top.locator(".rbr-title")).not.toHaveText("");
+  await expect(top.locator(".rbr-poster")).toHaveCount(1);
+
+  // 黑榜：只有 b（全红的 a 不在里面）
+  await expect(black.locator(".rbr-row")).toHaveCount(1);
+  await expect(black.locator(".rbr-row").first()).toHaveAttribute("data-rbr-key", b);
+  await expect(black.locator(".rbr-row").first().locator(".rbr-counts")).toHaveText("红 0 · 黑 3");
+});
+
+test("从热门榜点「排行榜」:落到红榜并打开弹层", async ({ page }) => {
+  await stubVotes(page, { [keyOf("008")]: { red: 2, black: 1 } });
+  await ready(page, "/redblack?sort=hot");
+
+  await page.getByRole("button", { name: "排行榜", exact: true }).click();
+
+  // 弹层是 `RedBlackPage` 渲染的，而热门榜那一支根本不挂它 —— 所以「切到红榜」与
+  // 「开弹层」必须是同一个动作的两半（与「快速投票」逐字同一条理由）
+  await expect(page.getByRole("dialog", { name: "红黑榜排行" })).toBeVisible();
+  await expect(page.locator('.board-tab[data-board-tab="red"]')).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+});
+
+// 两个弹层的开关都住在 URL 上，而**落地那一步会把 `vote=1` 自动补上** —— 于是
+// 「分享出去的 `/redblack?rank=1` 被打开」这条真实路径会让两个开关同时出现。
+// ⚠ 用**点按钮**去构造这一步是做不到的：`快速投票` 是模态弹层，页头那枚按钮被它的遮罩挡着
+//   （第一版就是这么写的，实测 `locator.click` 超时 —— 遮罩 intercepts pointer events）。
+//   所以这里直接走 URL，钉住的是「万一两个都在，只开排行榜」。
+test("两个开关同时在 URL 上时只开排行榜,不叠两张弹层", async ({ page }) => {
+  await stubVotes(page, { [keyOf("008")]: { red: 2, black: 1 } });
+  await ready(page, "/redblack?sort=red&vote=1&rank=1");
+
+  await expect(page.getByRole("dialog", { name: "红黑榜排行" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "快速投票" })).toHaveCount(0);
+});
+
+// 分享出去的链接就是 `/redblack?rank=1`（没有 `sort`）—— 落地缺省档那一步必须认它，
+// 否则「补成红榜并弹投票卡片」或者「落在热门榜、弹层不见了」两个结果都是错的。
+test("分享出去的 /redblack?rank=1:落在红榜、只弹排行榜,关掉后不留后手", async ({ page }) => {
+  await stubVotes(page, { [keyOf("008")]: { red: 2, black: 1 } });
+  await ready(page, "/redblack?rank=1");
+
+  await expect(page.locator('.board-tab[data-board-tab="red"]')).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("dialog", { name: "红黑榜排行" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "快速投票" })).toHaveCount(0);
+
+  // 关掉它 = 回到没有弹层的状态。⚠ 只清 `rank` 是不够的：那种 URL 落地时 `vote=1` 曾被补上过，
+  //   清一半会让投票卡片当场冒出来（「关掉一个、又开一个」）。
+  await page
+    .getByRole("dialog", { name: "红黑榜排行" })
+    .getByRole("button", { name: "关闭" })
+    .click();
+  await expect(page.getByRole("dialog", { name: "红黑榜排行" })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "快速投票" })).toHaveCount(0);
+});

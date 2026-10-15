@@ -37,6 +37,7 @@ import {
 import { ToastQueue } from "../components/spectrum";
 import { QuerySearchField } from "../components/QuerySearchField";
 import { QuickVoteDeck } from "../components/QuickVoteDeck";
+import { RedBlackRankDialog } from "../components/RedBlackRankDialog";
 import { StickerCanvas } from "../components/StickerCanvas";
 import { StickerFace } from "../components/StickerFace";
 
@@ -342,8 +343,23 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
    *
    * ⚠ 焦点归还也一并交给 `BoardPage`（按钮在它那里，只有它知道该还给谁）——
    *   本页不复刻一份，否则「还焦点」会变成两处口径。 */
-  const deckOpen = params.get("vote") === "1";
+  const deckOpen = params.get("vote") === "1" && params.get("rank") !== "1";
   const closeDeck = useCallback(() => update({ vote: null }), [update]);
+
+  /* 「排行榜」弹层（2026-10-15，PLAN-20261015153233）。
+   *
+   * ⚠ 与「快速投票」**同一个手法**：开关住在 URL 上（`?rank=1`）、入口按钮在页头（`BoardPage`），
+   *   而本页在「热门榜」下压根不挂载 —— 用 state 的话从热门榜点进来会永远弹不出来
+   *   （「切 tab」与「开弹层」是同一个动作的两半，谁先挂载都不该影响结果）。
+   * ⚠ 两个开关能**同时**出现在 URL 上（分享出去的 `/redblack?rank=1` 落地时，`BoardPage` 会把
+   *   落地缺省档补成红榜并附带 `vote=1`）—— 那时**排行榜赢**：`deckOpen` 上面多问了一句
+   *   `rank !== "1"`。投票那张是**自动**弹的、榜单这张只可能来自一次明确的点选或分享，
+   *   所以两张都在时该让后者说话（两张叠在同一屏谁都用不了）。
+   * ⚠ 关掉它时**把 `vote` 也一并清掉**（`closeRank`）：只清 `rank` 的话，URL 里那个被自动补上的
+   *   `vote=1` 会立刻把投票卡片弹出来 —— 「关掉一个、冒出另一个」。
+   * ⚠ 焦点归还同样交给 `BoardPage`（按钮在它那里，只有它知道该还给谁）。 */
+  const rankOpen = params.get("rank") === "1";
+  const closeRank = useCallback(() => update({ rank: null, vote: null }), [update]);
 
   /** 总结页那枚「关掉卡片去搜索」（2026-10-15，`PLAN-20261015005652`）——
    *  **关掉卡片 + 把焦点送到页面上的搜索框**，两件事一起做。
@@ -1109,6 +1125,18 @@ export function RedBlackPage({ hideSortBar = false }: RedBlackPageProps) {
           onUnskip={unmarkSkipped}
           onSearchFilm={searchFilm}
           onDismiss={closeDeck}
+        />
+      )}
+
+      {/* 排行榜（2026-10-15，PLAN-20261015153233）—— 页头那枚「排行榜」打开它。
+          ⚠ 给它的是**全量**影片库与**同一份**修正过的票数（与卡片 / hero / 分享图同源）：
+            只给榜单当前那几部的话，弹层里会出现一份「榜单自己缩过水」的排名。 */}
+      {rankOpen && (
+        <RedBlackRankDialog
+          films={films}
+          crowd={reconciledCrowd}
+          priorRate={priorRate}
+          onDismiss={closeRank}
         />
       )}
 

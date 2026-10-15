@@ -27,10 +27,12 @@
   background: var(--raised);
 }
 
-/* 页头那一行：三个 tab + 「快速投票」（2026-10-14，PLAN-20261014190000 修订 2）。
- * ⚠ 那一枚**不在 `.board-tabs` 里面**，所以另起一层 flex —— 它是**动作**（打开投票卡片），
- *   不是第四个视图。塞进 `role=tablist` 会让读屏把它念成视图，`aria-selected` 也说不通。
- * ⚠ `flex-wrap`：窄屏上 tab 占满一行、按钮落到第二行，比把两者一起压扁好读。 */
+/* 页头那一行：三个 tab + 「快速投票」+「排行榜」（2026-10-14，PLAN-20261014190000 修订 2；
+ * 第三枚 2026-10-15，PLAN-20261015153233）。
+ * ⚠ 那两枚**不在 `.board-tabs` 里面**，所以另起一层 flex —— 它们是**动作**
+ *   （打开投票卡片 / 打开排名弹层），不是另外两个视图。塞进 `role=tablist` 会让读屏把它们
+ *   念成视图，`aria-selected` 也说不通。
+ * ⚠ `flex-wrap`：窄屏上 tab 占满一行、按钮落到第二行，比把三者一起压扁好读。 */
 .board-head {
   display: flex;
   align-items: center;
@@ -54,6 +56,26 @@
 
 .board-quick:hover {
   filter: brightness(1.08);
+}
+
+/* 「排行榜」—— 与「快速投票」并排的**弱按钮**（2026-10-15，PLAN-20261015153233）。
+ * ⚠ 它同样是**动作**（打开一份排名读数），不是第四个视图 —— 所以形状取自那一排
+ *   `aria-pressed` 胶囊（`.rb-filter` / `.rb-qr-btn` 一路），而不是 tab 的方角。
+ * ⚠ 不给品牌色实底：这一排里唯一的主操作仍是「快速投票」（唯一改数据的入口，
+ *   见上面 `.board-quick` 那条）—— 两枚实底按钮并排，谁更重要就说不清了。 */
+.board-rank {
+  padding: 8px 18px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.board-rank:hover {
+  border-color: var(--brand);
+  color: var(--brand);
 }
 
 .board-tab {

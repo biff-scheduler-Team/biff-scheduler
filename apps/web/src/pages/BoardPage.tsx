@@ -88,6 +88,19 @@ export function BoardPage() {
     wasVotingRef.current = voting;
   }, [voting]);
 
+  /* 「排行榜」弹层开着没有（`?rank=1`，2026-10-15，`PLAN-20261015153233`）。
+   * 开关、入口、焦点归还三件事与上面那枚「快速投票」**逐字同一套手法** ——
+   * 两个弹层都是「页头一枚按钮 → 子页渲染的弹层」，各写一套只会给出两种落点。
+   * ⚠ 两者**互斥**：开任一个都把另一个从 URL 上删掉（`voting` / `ranking` 两处按钮的 `onClick`），
+   *   否则先开投票、再点排行榜，两张弹层会叠在同一屏上。 */
+  const ranking = params.get("rank") === "1";
+  const rankBtnRef = useRef<HTMLButtonElement | null>(null);
+  const wasRankingRef = useRef(false);
+  useEffect(() => {
+    if (wasRankingRef.current && !ranking) rankBtnRef.current?.focus();
+    wasRankingRef.current = ranking;
+  }, [ranking]);
+
   // ★ 把「隐含推出来的档位」一次性写成**显式参数**（`replace`，不留历史记录）。
   //
   //   为什么非做这一步不可：缺省档是靠 `?q=` 的**有无**推出来的，而 `q` 会在页面内被清掉
@@ -120,11 +133,20 @@ export function BoardPage() {
     const hasQuery = params.has("q");
     // ⚠ 要弹卡片就必须落**红榜**：卡片是 `RedBlackPage` 渲染的，而热门榜那一支根本不挂它 ——
     //   落成热门榜会得到一个「开着投票但卡片不见了」的死状态（`?vote=1` 是被分享出去过的形态）。
-    const nextTab = hasQuery || hasAgenda || draft.get("vote") === "1" ? "red" : "hot";
+    // ⚠ `rank=1` 与 `vote=1` 一样，是「必须落在红黑榜」的信号 —— 弹层是 `RedBlackPage` 渲染的，
+    //   落成热门榜会得到一个「开着排行榜但弹层不见了」的死状态（2026-10-15，`PLAN-20261015153233`）。
+    const nextTab =
+      hasQuery || hasAgenda || draft.get("vote") === "1" || draft.get("rank") === "1"
+        ? "red"
+        : "hot";
     draft.set("sort", nextTab);
     // 落地落在红 / 黑榜 → 算「进了一次红黑榜」，自动弹（修订 4）——**但 `?q=` 那条路径除外**，
     // 见上面那段 ⚠⚠。
-    if (nextTab !== "hot" && !hasQuery) draft.set("vote", "1");
+    // ⚠ 2026-10-15（`PLAN-20261015153233`）：URL 上已经带着 `rank=1`（分享出去的排行榜链接）时
+    //   **不补** `vote=1` —— 两个弹层的开关同时存在是用户没要过的状态，而且落地就叠两张谁也读不了。
+    //   `RedBlackPage` 那边另有一条「排行榜赢」的兜底，两处一起才叫口径清楚：这里不制造那种 URL，
+    //   那里负责万一它还是出现了（老书签 / 手改地址）也不叠。
+    if (nextTab !== "hot" && !hasQuery && draft.get("rank") !== "1") draft.set("vote", "1");
     setParams(draft, { replace: true });
   }, [sort, params, setParams, hasAgenda]);
 
@@ -138,8 +160,12 @@ export function BoardPage() {
   const pick = (next: BoardTab) => {
     const draft = new URLSearchParams(params);
     draft.set("sort", next);
-    if (next === "hot") draft.delete("vote");
-    else if (tab === "hot") draft.set("vote", "1");
+    if (next === "hot") {
+      // 切到热门榜 = 两个弹层都没了（`RedBlackPage` 在那一档下压根不挂载）——
+      // 参数清掉，免得切回红 / 黑榜时它俩又凭空弹出来。
+      draft.delete("vote");
+      draft.delete("rank");
+    } else if (tab === "hot") draft.set("vote", "1");
     setParams(draft);
   };
 
@@ -189,11 +215,35 @@ export function BoardPage() {
           onClick={() => {
             const draft = new URLSearchParams(params);
             if (tab === "hot") draft.set("sort", "red");
+            draft.delete("rank");
             draft.set("vote", "1");
             setParams(draft);
           }}
         >
           快速投票
+        </button>
+        {/* 「排行榜」—— 用户 2026-10-15：「在快速投票旁边加一个榜单 简单展示红榜 黑榜 TOP50」。
+         *
+         *  ⚠ 它是**看结果**的入口，所以是**弱按钮**（描边 + 底色）：这一排里唯一的主操作
+         *    仍是「快速投票」（它是唯一改数据的入口，`hot-board.css` 里那句理由照旧）。
+         *  ⚠ 与它并排、同样**不是 tab**（在 `tablist` 之外）：它不切换「在看哪一份榜」，
+         *    而是打开一份「红榜 / 黑榜各 TOP50」的排名读数。
+         *  ⚠ 从热门榜点进去要**同时把 `sort` 落到红榜** —— 弹层是 `RedBlackPage` 渲染的，
+         *    而本页在热门榜下不挂它（与「快速投票」逐字同一条理由）。
+         *  ⚠ 开它时把 `vote` 删掉：两个弹层互斥，同时开着会叠在同一屏上。 */}
+        <button
+          ref={rankBtnRef}
+          type="button"
+          className="board-rank"
+          onClick={() => {
+            const draft = new URLSearchParams(params);
+            if (tab === "hot") draft.set("sort", "red");
+            draft.delete("vote");
+            draft.set("rank", "1");
+            setParams(draft);
+          }}
+        >
+          排行榜
         </button>
       </div>
 
