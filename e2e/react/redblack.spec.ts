@@ -1787,8 +1787,14 @@ test("快速投票：划完给一条「去搜索」的出口，关掉卡片后�
 /* 「还是把影片信息放到海报上吧 中英文名 导演名称 然后 code 就行」（用户 2026-10-15，
  * `PLAN-20261015005652` 修订 1）—— 对「只保留纯海报」的部分收回，只叠这四样。
  * 场次 008《宛如星辰的你》（title_en: "You, Like a Star"、director: "藤井道人"）来自
- * 真实目录数据（见 PLAN 修订 1 的数据核对），不是桩出来的，所以这里断言**具体文字**。 */
-test("快速投票：海报上叠着中英文名 / 导演 / CODE 四行", async ({ page }) => {
+ * 真实目录数据（见 PLAN 修订 1 的数据核对），不是桩出来的，所以这里断言**具体文字**。
+ *
+ * ⚠ 2026-10-15 修订 3（用户：「code 应该需要显示成 004/008 这样 而不是显示成 CODE 004 这样
+ *   而且丢了其他场次」）：这一行现在是**全部场次编号**、用 `/` 连，且**不带「CODE 」前缀**。
+ *   008 这部片排了四场（真实数据）：按 (date, start_time) 是 008 → 143 → 248 → 681，
+ *   所以整行读作 "008/143/248/681" —— 旧的 `toContainText("008")` 在「只印第一场」的实现下
+ *   也会通过，钉不住这个 bug，必须写成**整行相等**。 */
+test("快速投票：海报上叠着中英文名 / 导演 / 全部场次编号四行", async ({ page }) => {
   await stubVotes(page, { [keyOf("008")]: { red: 2, black: 1 } });
   await ready(page, "/redblack?sort=red&vote=1");
 
@@ -1797,7 +1803,8 @@ test("快速投票：海报上叠着中英文名 / 导演 / CODE 四行", async 
   await expect(info.locator(".qv-info-zh")).toHaveText("宛如星辰的你");
   await expect(info.locator(".qv-info-en")).toHaveText("You, Like a Star");
   await expect(info.locator(".qv-info-director")).toContainText("藤井道人");
-  await expect(info.locator(".qv-info-code")).toContainText("008");
+  // 整行相等：四场一个都不能丢，且没有「CODE 」前缀
+  await expect(info.locator(".qv-info-code")).toHaveText("008/143/248/681");
 });
 
 /* 「每次进入红黑榜就是直接默认弹出快速投票」（用户 2026-10-15，`PLAN-20261015005652` 修订 1）——

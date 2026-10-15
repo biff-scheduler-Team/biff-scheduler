@@ -200,6 +200,20 @@ export function voteStateLabel(vote: StickerType | undefined): string {
   return "还没决定";
 }
 
+/** 海报上「CODE」那一行要印的字：这部片**全部场次编号**，用 `/` 连起来
+ *  （2026-10-15，`PLAN-20261015005652` 修订 3）。
+ *
+ *  用户原话：「code 应该需要显示成 004/008 这样 而不是显示成 CODE 004 这样而且丢了其他场次」——
+ *  两件事：① 编号本身就自明，去掉「CODE 」这个前缀；② 原来只印 `shows[0]`，
+ *  一部片排了两场时第二场的编号当场消失（`白色战争` = 024 + 099）。
+ *
+ *  ⚠ 顺序**直接沿用 `film.shows`**：`app/model.ts::buildFilms` 建它时已按 (date, start_time)
+ *    排好序，这里不另写一套比较（AGENTS §5「同一口径只允许一处实现」）。
+ *  ⚠ 没有排期的目录片返回空串，调用方据此**不渲染**这一行（不是印一串空气）。 */
+export function showCodesOf(film: FilmNode): string {
+  return film.shows.map((show) => show.code).join("/");
+}
+
 /** 这一轮**按哪一份候选**划（2026-10-15，`PLAN-20261015005652`）。
  *
  *  ⚠ 来源只有三种，且**第三种是兜底**：

@@ -51,6 +51,7 @@ import {
   deckStateOf,
   pendingQueue,
   resolveSwipe,
+  showCodesOf,
   swipeProgress,
   voteStateLabel,
   type DeckSource,
@@ -399,19 +400,22 @@ export function QuickVoteDeck({
    *  对 `73bb53f`（「最好只保留纯海报」）的**部分收回**：用户这次明确要
    *  「中英文名 导演名称 然后 code」，不是把整层文字都要回来（单元 / 国家 / 年份 / 场次时间 /
    *  全站票数 / 简介**仍然不印**）。
-   *  ⚠ CODE 取 `shows[0]?.code`（场次编号，如 "008-1"），**不是** `map?.subject_id`
-   *    （那是豆瓣 subject id）；没有排期的目录片这一行不渲染。
+   *  ⚠ CODE 那一行**印全部场次编号**、用 `/` 连（"024/099"），且**不带「CODE 」前缀** ——
+   *    2026-10-15 修订 3，用户原话：「code 应该需要显示成 004/008 这样 而不是显示成 CODE 004
+   *    这样而且丢了其他场次」。口径的实现只有 `quick-vote.ts::showCodesOf` 一处。
+   *    它取的是**场次编号**（`Screening.code`），**不是** `map?.subject_id`（那是豆瓣 subject id）；
+   *    没有排期的目录片这一行不渲染。
    *  ⚠ 导演取 `cats[0]?.director`：`FilmNode.cats` 是这部片命中的全部目录条目，
    *    同一部片不会有两个不同导演，取第一条即可（与 `util.ts::catMetaLine` 同一来源）。 */
   const infoOf = (film: FilmNode) => {
     const director = film.cats[0]?.director;
-    const code = film.shows[0]?.code;
+    const codes = showCodesOf(film);
     return (
       <div className="qv-info" aria-hidden="true">
         <p className="qv-info-zh">{film.zh}</p>
         {film.en && film.en !== film.zh && <p className="qv-info-en">{film.en}</p>}
         {director && <p className="qv-info-director">导演 {director}</p>}
-        {code && <p className="qv-info-code">CODE {code}</p>}
+        {codes && <p className="qv-info-code">{codes}</p>}
       </div>
     );
   };
@@ -651,7 +655,7 @@ export function QuickVoteDeck({
                     {/* ⚠ 2026-10-14（用户：「海报上的信息太多了 …… 最好只保留纯海报」）→
                         2026-10-15 部分收回（用户：「中英文名 导演名称 然后 code 就行」）：
                         单元 / 国家 / 年份 / 场次时间 / 全站票数 / 简介**仍然不印**，只叠回
-                        中文名 / 英文名 / 导演 / CODE 这四行（见上面 `infoOf`），且整块 `aria-hidden`
+                        中文名 / 英文名 / 导演 / 全部场次编号 这四行（见上面 `infoOf`），且整块 `aria-hidden`
                         （纯视觉叠层，读屏仍走 `posterOf` 的 `alt`，不会把片名念两遍）。
                         ⚠ 票数（`data-qv-mine`）仍不在卡片上 —— 它本来只是个参照；
                           要核对某部落在哪一档，退出弹层看榜单更直接（那里的卡片信息是全的）。 */}

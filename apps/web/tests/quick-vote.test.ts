@@ -15,6 +15,7 @@ import {
   pendingQueue,
   quickVoteOrder,
   resolveSwipe,
+  showCodesOf,
   SWIPE_RATIO,
   voteStateLabel,
   voteUrl,
@@ -24,8 +25,9 @@ import {
 const UNIT = 300;
 const LIMIT = UNIT * SWIPE_RATIO; // 84px
 
-/** 只造这一层用得到的字段：`shows` 里只要有 date / start_time（`quickVoteOrder` 唯一读的两项）。 */
-function film(key: string, shows: Array<[string, string]> = []): FilmNode {
+/** 只造这一层用得到的字段：`shows` 里只要有 date / start_time / code
+ *  （前两项 `quickVoteOrder` 读，第三项 `showCodesOf` 读）。 */
+function film(key: string, shows: Array<[string, string, string?]> = []): FilmNode {
   return {
     key,
     title: key,
@@ -34,7 +36,7 @@ function film(key: string, shows: Array<[string, string]> = []): FilmNode {
     names: [],
     meta: "",
     cats: [],
-    shows: shows.map(([date, start_time]) => ({ date, start_time })) as never,
+    shows: shows.map(([date, start_time, code]) => ({ date, start_time, code: code ?? "" })) as never,
   };
 }
 
@@ -167,6 +169,30 @@ describe("deckSourceLabel:候选来源的说法", () => {
     expect(deckSourceLabel("voted")).toBe("全部有票的影片");
     expect(deckSourceLabel("agenda")).toBe("我的行程");
     expect(deckSourceLabel("hot")).toBe("热门榜 TOP 50");
+  });
+});
+
+describe("showCodesOf:海报上那一行场次编号", () => {
+  // 2026-10-15（PLAN-20261015005652 修订 3）。用户：「code 应该需要显示成 004/008 这样
+  // 而不是显示成 CODE 004 这样而且丢了其他场次」。
+  it("★ 一场 = 那个编号；多场**一个都不能丢**，按 shows 顺序用 / 连", () => {
+    expect(showCodesOf(film("cat:a", [["2026-10-07", "11:00", "024"]]))).toBe("024");
+    expect(
+      showCodesOf(
+        film("cat:b", [
+          ["2026-10-07", "11:00", "024"],
+          ["2026-10-08", "16:30", "099"],
+        ]),
+      ),
+    ).toBe("024/099");
+  });
+
+  it("★ 不含「CODE 」前缀（编号自明，前缀是噪音）", () => {
+    expect(showCodesOf(film("cat:a", [["2026-10-07", "11:00", "008"]]))).not.toContain("CODE");
+  });
+
+  it("没有排期的目录片 → 空串（调用方据此不渲染这一行）", () => {
+    expect(showCodesOf(film("cat:a"))).toBe("");
   });
 });
 
