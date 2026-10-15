@@ -4,7 +4,11 @@
   "account_id": "62cbe67b545f2d12c986729ac7ffcee8",
   "compatibility_date": "2026-09-12",
   "workers_dev": false,
-  "preview_urls": false,
+  // 版本预览 URL(2026-10-16,§6「预览环境」):预览分支的构建产物需要**一个能看的地址**,
+  // 否则「看一眼」只有两条路 —— 本地起 dev server,或推 main 排一次完整部署(实测 >8 min)。
+  // ⚠ 它只负责生成 URL;**非生产分支的构建本身**还要在 Cloudflare 控制台开着
+  //   「Builds for non-production branches」才会发生(仓库改不了,见 AGENTS.md §6)。
+  "preview_urls": true,
   "assets": {
     "directory": "./dist",
     "not_found_handling": "single-page-application"

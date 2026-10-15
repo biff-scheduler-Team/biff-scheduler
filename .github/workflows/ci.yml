@@ -39,8 +39,15 @@ jobs:
   gate:
     name: 门禁(仓库卫生 · 测试映射 · PR 才跑 typecheck/lint/单测)
     runs-on: ubuntu-latest
+    outputs:
+      # 供 e2e 判断「这次改动有没有可能影响 UI」。漏算的代价是多跑一次 E2E,算错的代价是**漏跑**,
+      # 所以下面拿不到可靠基线时一律退化成「当成改了」。
+      changed: ${{ steps.scope.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 需要 HEAD^ 才能 diff 出本次改动的路径
+          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           # 与本地一致(v24.x);tests/schema.test.ts 依赖 node:sqlite
@@ -53,11 +60,33 @@ jobs:
       - name: typecheck / lint / 单测(PR 专用)
         if: github.event_name == 'pull_request'
         run: npm run verify:code
+      - name: 算出本次改动路径(供 e2e 跳过纯文档 / 工具链提交)
+        id: scope
+        run: |
+          if git rev-parse --verify --quiet HEAD^ >/dev/null; then
+            echo "changed<<EOF" >> "$GITHUB_OUTPUT"
+            git diff --name-only HEAD^ HEAD >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+          else
+            # 首个提交 / 浅克隆拿不到基线 → 当成「全都改了」,宁多跑不漏跑
+            echo "changed<<EOF" >> "$GITHUB_OUTPUT"
+            echo "apps/ packages/" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+          fi
+          echo "--- 本次改动 ---"
+          git diff --name-only HEAD^ HEAD 2>/dev/null || echo "(拿不到基线)"
 
   e2e:
     name: E2E
     runs-on: ubuntu-latest
     needs: gate
+    # 只有碰到应用代码才值得跑(2026-10-16,§2):文档 / CI / 脚本改动的提交,
+    # 三浏览器全量 E2E 一条都不可能因此变红,却要占满整条 runner 队列(绿 5–9 min,红 27–29 min)。
+    # ⚠ 这是**唯一**允许的瘦身:降浏览器档(chromium-only)会把 mobile-webkit 的红藏起来,不做。
+    if: |
+      github.event_name != 'push' ||
+      contains(needs.gate.outputs.changed, 'apps/') ||
+      contains(needs.gate.outputs.changed, 'packages/')
     steps:
       - uses: actions/checkout@v4
         with:

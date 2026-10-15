@@ -5,7 +5,14 @@
 > API `biff-scheduler` + 静态资源 `biff-scheduler-web`)+ React / Router / Spectrum S2 + Vite + TS
 > + Tailwind v4(增量双轨)+ 静态 JSON + D1(**仅存账号片单**)。
 > **本文档 = 当前状态 + 决策 + 待办 + 架构(活文档)。历史轮次记录已归档至 `docs/history/`,不要再往回写流水账。**
-> 最后更新:2026-10-16：**削固定开销**（用户：「我总觉得太慢了」）—— 规范 **v12** 七条：① 免 PLAN 档
+> 最后更新:2026-10-16：**改去砍机器等待 —— 规范 v13**。实测发现 v12 砍的是人/AI 的书写量，而主项在别处：
+> **push → 线上 > 8 min**、全量 E2E **绿 5–9 min / 红 27–29 min**（差在 `retries: 1`）。本轮：① 新增**构建 SHA**
+> （`dist/version.json` + `verify:deploy --sha HEAD`，唯一能回答「这次提交上线了吗」的判据）；② 打开**预览 URL**
+> （`preview_urls`，另需控制台开「非生产分支构建」）；③ **E2E 只跳过不含 `apps/` / `packages/` 的提交**
+> （禁止降浏览器档，新增红线 16）；④ 立 **main 红的负责机制**（谁的提交谁修，当天二选一）。⚠ 另记一条
+> 只能控制台改的**重复部署**（构建尾部 `npx wrangler deploy` 与 `prepare-cloudflare.mjs` 重复）。
+> 见 `docs/DEVELOPMENT-STANDARDS.md` 变更记录 v13 与 §2.5 实测表。
+> 前次:2026-10-16：**削固定开销**（用户：「我总觉得太慢了」）—— 规范 **v12** 七条：① 免 PLAN 档
 > ② PR 判据收窄到四类 ③ code review 免审档 ④ CI 门禁去重（`main` 上不再重跑 typecheck / lint / 单测）
 > ⑤ 部署核对脚本化（`npm run verify:deploy`）⑥ 「本地验收 vs 红线 14」二选一（改完直接推 `main` 看真站）
 > ⑦ 规范单一来源（`.codebuddy` 的 `RULE.mdc` 降级为指针，不再手工同步）。见 `docs/DEVELOPMENT-STANDARDS.md` 变更记录 v12。

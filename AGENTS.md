@@ -50,6 +50,19 @@ typecheck / lint / 单测仍是**部署前**门禁。详见 §2。
 > ⚠ **2026-10-16 去重**:`main` 上 CI **不再重跑 typecheck / lint / 单测** —— 同一批命令 Workers Builds
 > 已在**部署前**跑过,再跑一遍零信息增量,只是让你多等一轮 job。CI 只留 CF 不跑的两样
 > (`check:repo` / `check:test-map`)。PR 分支没有「部署前门禁」兜底,所以 PR 上仍由 CI 自己跑那三样。
+>
+> ⚠ **2026-10-16 实测(别再拍脑袋估)**:① **push → 线上可见变化 > 8 分钟**(实测区间;
+> 见 `DEVELOPMENT-STANDARDS.md` §2.5 的原始观测);② **全量三浏览器 E2E 绿 5–9 min,红 27–29 min** ——
+> 差距来自 `retries: 1`(失败用例跑两遍)与失败时的 trace / 截图上传。所以「27 分钟」是**红的症状**,
+> 不是配置坏了。
+>
+> ⚠ **E2E 只跳过「一定不可能影响 UI」的提交**:`ci.yml` 在 `main` 上按 `git diff HEAD^ HEAD` 判断,
+> 改动不含 `apps/` 且不含 `packages/` 时整条 e2e job 不启动。**这是唯一允许的瘦身** ——
+> 把浏览器档从三降到一(chromium-only)会让 `mobile-webkit` 的红永久隐身,**不做**(见 §8 红线 1 新增的第二句)。
+>
+> ⚠ **main 红的负责机制(2026-10-16 新增)**:`main` 红了 = **谁的提交谁负责修**;发现者把 run 链接贴出来,
+> 作者在**当天**给出修复或明确「已知、暂缓 + 为什么」。不许既不修也不说 —— 2026-10-15 全天的红
+> (6 个 spec、跨三个浏览器)就是这样一路红到晚上的。
 
 | 时机 | 做什么 | 命令 |
 |---|---|---|
@@ -70,11 +83,12 @@ typecheck / lint / 单测仍是**部署前**门禁。详见 §2。
   ⚠ `npm run specs:affected` 无参数时按 `origin/main...HEAD`(已提交差异)算,未提交的改动要用 `--files <path>`。
 - **CI / Cloudflare 红了先修再叠改动**(§8 红线 1);报告结果要**贴证据**(CI 链接 / 测试计数),别说「应该没问题」。
 - 若选择本地跑,则「测试通过 → push 之间代码必须冻结」—— 跑完又改了任何文件,那次结果即失效。
-- **交付口径**:§6 部署核对(asset hash 相同 + 自增字符串 + 阴性对照)完成,**即视为上线成功**。
-  核对方式 = 一条命令:`npm run verify:deploy -- --new "<本轮新增的字符串>"`(可选 `--negative "<本轮删掉的字符串>"`);
-  它输出**一行**可直接贴进报告的结论(`✓ 上线已核实 —— 线上 asset main-xxx / 期望 main-xxx · 新字符串 1/1 命中 · 阴性对照 1/1 未命中`),
-  失败给 `exit 1` 并逐条列原因。本轮**没改应用产物**(纯文档 / 工具链)时没有新字符串可传 →
-  改用 `--hash <入口 hash>`(输出会显式标注「未给 --new」,不静默降级);两条判据都不给则 `exit 2`。
+- **交付口径**:§6 部署核对(构建 SHA 相同 + asset hash + 自增字符串 + 阴性对照)完成,**即视为上线成功**。
+  核对方式 = 一条命令:`npm run verify:deploy -- --sha HEAD --new "<本轮新增的字符串>"`;
+  它输出**一行**可直接贴进报告的结论(`✓ 上线已核实 —— … · 构建 SHA xxx / 期望 xxx · 新字符串 1/1 命中 · 阴性对照 1/1 未命中`),
+  失败给 `exit 1` 并逐条列原因。**`--sha HEAD` 是最强也最必要的一条** —— 它是唯一能回答
+  「**这次提交上线了吗**」的判据(asset hash 只在应用产物变化时才变,纯文档提交的 hash 与上一版逐字相同)。
+  纯文档 / 工具链改动没有新字符串可传,只给 `--sha HEAD` 即可;一条判据都不给则 `exit 2`。
   `main` 上的全量 E2E 是**非阻塞的事后体检** —— 交付时**不写「等 CI 跑完」**(那会让人误以为它是瓶颈),
   正确写法是「部署已核实(贴证据);`main` 全量 E2E 仍在跑,**非阻塞**」。它红了按 §8 红线 1 **优先修**,
   但**不回滚**已上线版本、也**不改变**本次交付结论(完整版见 `DEVELOPMENT-STANDARDS.md` §2.4)。
@@ -166,9 +180,21 @@ typecheck / lint / 单测仍是**部署前**门禁。详见 §2。
 - 生效域名是 `https://biff.lcandy.co`;`biff.iff.day` 已进 `APP_ORIGIN` 白名单与账号系统回调登记,
   但**自定义域名尚未挂到 Worker 上**(该子域无 DNS 解析),需人工在 CF 控制台挂载,详见 `docs/account-integration.md`。
 - 线上核对:**一条命令** ——
-  `npm run verify:deploy -- --new "<本轮新增的字符串>" [--negative "<本轮删掉的字符串>"]`,
-  即带 cache-buster 拉 `https://biff.lcandy.co/`,比对 asset hash + grep 新字符串 + 跑阴性对照,输出一行结论。
-  判据强度与实现见 `scripts/verify-deploy.mjs` 文件头;**最强的是 asset hash 相同**(不是内容 grep)。
+  `npm run verify:deploy -- --sha HEAD [--new "<本轮新增的字符串>" --negative "<本轮删掉的字符串>"]`,
+  即带 cache-buster 拉 `https://biff.lcandy.co/`,比对**构建 SHA**(最强) + asset hash + grep 新字符串
+  + 跑阴性对照,输出一行结论。判据强度与实现见 `scripts/verify-deploy.mjs` 文件头。
+  - **构建 SHA 从哪来**:`scripts/prepare-cloudflare.mjs` 在 build 后把
+    `{ sha, branch, builtAt }` 写进 `apps/web/dist/version.json`(dist 已在 gitignore,不污染工作树)。
+    在此之前「这次提交上线了吗」**没有可观测证据** —— 线上区分不了「构建成功但产物相同」与「构建失败没发布」。
+- **预览环境(2026-10-16)**:非 `main` 分支可以拿到**可看的预览 URL**,不必为了「看一眼」推生产。
+  前提两条:① `apps/web/wrangler.jsonc` 的 `preview_urls: true`(仓库侧已开;API Worker 没开,也不需要
+  —— 预览看的是前端产物);② **Cloudflare 控制台**里开着「Builds for non-production branches」(仓库改不了)。
+  `prepare-cloudflare.mjs` 对预览分支**不迁移、不部署生产**,只会打一行说明。
+- ⚠ **待控制台改的一条(2026-10-16)**:仓库 `package.json` 构建后,Workers Builds 还会再跑一遍
+  **根目录 `npx wrangler deploy`** —— 而 `prepare-cloudflare.mjs` 已经部署过同一个 API Worker(第 2 步)。
+  这是**同一个 Worker 的重复上传**。删掉它需要把控制台里的构建命令从
+  `… && npx wrangler deploy` 改成只留 `npm run build`(仓库里的 `.wrangler/deploy/config.json` 就是为那条命令生成的,
+  删掉命令后它可以一并清理)。**仓库侧改不了,别在代码里瞎猜。**
 - **用户约定:每次改动完成后必须重新部署,无需再问。**
 
 ## 7. 并行协作(多会话 / 多 agent 同工作区)
@@ -182,12 +208,15 @@ typecheck / lint / 单测仍是**部署前**门禁。详见 §2。
 
 ## 8. 红线(违反即返工)
 
-1. **云端红了(Cloudflare 构建 / CI)还继续叠改动** —— 先修再往下做。2. 无 PLAN 直接动手(除 §1 的**免 PLAN 档**)。3. 修 bug 不带回归测试。4. 为测试变绿改实现。
+1. **云端红了(Cloudflare 构建 / CI)还继续叠改动** —— 先修再往下做。**红了既不修也不说同样违规**
+   (§2 负责机制:谁的提交谁修,当天给出修复或明确「已知、暂缓 + 为什么」)。2. 无 PLAN 直接动手(除 §1 的**免 PLAN 档**)。3. 修 bug 不带回归测试。4. 为测试变绿改实现。
 5. 同一口径写第二份实现。6. 改 `biff.*` 结构不带迁移 / 不删旧 key。7. 未经登录就上传片单,或把片单写入共享 / 非本人云端位置。8. 对小时取模。
 9. 动态拼 Tailwind 类名 / `text-[Npx]`。10. 未量化就引新依赖。11. 提交临时文件 / `dist/` / 密钥。
 12. `wrangler pages deploy` 直传。13. `push --force` 到 `main`。
 14. 为「看效果」**反复重启** dev server(同一轮一次即可 —— 常规路径是推 `main` 在真站上看,§2)。
 15. 把流水账堆进 `PLAN.md`(应进 `docs/history/` 或本需求 PLAN)。
+16. 为提速把全量 E2E 的浏览器档**从三降到一**(chromium-only)—— 那会让 `mobile-webkit` 的红永久隐身
+    (§2 只允许一种瘦身:按 diff 跳过不含 `apps/` 与 `packages/` 的提交)。
 
 ## 9. 与 AI 协作的约定(需求怎么提 / AI 交什么)
 

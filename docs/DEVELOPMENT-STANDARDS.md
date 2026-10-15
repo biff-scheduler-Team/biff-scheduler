@@ -80,7 +80,7 @@ typecheck / lint / 单测仍是**部署前**门禁(Cloudflare 构建不过就不
 | 管线 | 触发 | 跑什么 | 性质 | 失败后果 |
 |---|---|---|---|---|
 | **Cloudflare Workers Builds** | push `main` 后 | `npm run build` = typecheck → lint → 单测 → 各 workspace 构建 | **部署前门禁** | **不上线**(部署卡住;已推送的提交不回滚) |
-| **GitHub CI**(`.github/workflows/ci.yml`) | PR / push `main` / 手动 | `main`:`check:ci` + **全量三浏览器 E2E**;PR:`check:ci` + **PR 专用** typecheck/lint/单测 + 受影响 spec(chromium) | **PR 门禁 + 事后体检** | **不回滚** —— 版本可能已经上线,只能靠下一条提交修 |
+| **GitHub CI**(`.github/workflows/ci.yml`) | PR / push `main` / 手动 | `main`:`check:ci` + **全量三浏览器 E2E**(改动不含 `apps/` / `packages/` 时 E2E 整条不启动);PR:`check:ci` + **PR 专用** typecheck/lint/单测 + 受影响 spec(chromium) | **PR 门禁 + 事后体检** | **不回滚** —— 版本可能已经上线,只能靠下一条提交修 |
 
 ### 2.0 两条管线不重复跑同一批命令(2026-10-16)
 
@@ -165,6 +165,32 @@ npm run verify:ui -- e2e/react/parity-library.spec.ts --project=desktop-chromium
 
 ⚠ 想让全量在部署**前**跑完,只能改 CI(把 E2E 变成部署前置)—— 这被**否决**:小改动的收益远小于
 「每次发布先等 5–9 分钟」的成本。需要「合并前保障」的改动,改走 PR 判据(§4.5)。
+
+### 2.5 实测:等待到底花在哪(2026-10-16)
+
+规范里凡是写「几分钟」的地方,之前基本都是估的。下面是**实际观测**,以后按这里改:
+
+| 环节 | 实测 | 说明 |
+|---|---|---|
+| **push → 线上可见变化** | **> 8 分钟**(观测区间) | `d8b11bf` 于 16:26:10Z 推送,16:30:03Z / 16:34:10Z 两次观测线上仍是旧 asset,到 ≈16:40Z 才变成新 asset |
+| 全量三浏览器 E2E(**绿**) | 5–9 min | 与旧规范的估值一致 |
+| 全量三浏览器 E2E(**红**) | **27–29 min** | 差距来自 `retries: 1`(失败用例再跑一遍)+ 失败时 trace / 截图上传。**「27 分钟」是红的症状,不是配置坏了** |
+| CI 门禁 job(`check:ci`) | **30 s**(去重前 51 s) | 去重省下的是这 20 秒 —— 它一直不是瓶颈,别再拿它当选型理由 |
+| 单条判据脚本 | 秒级 | `verify-deploy` |
+
+**结论:体感的「等太久」主要来自 push → 线上那 8 分钟以上,而不是人/AI 的书写量。**
+所以优化方向是**缩短这条链**或**绕开它**(预览环境,§6),不是继续砍规范条文。
+
+**「main 红了」的负责机制**(2026-10-16 新增):
+
+- 谁的提交把它弄红的,谁负责修;发现者负责**把 run 链接贴出来**。
+- 作者在**当天**给出二选一:① 修复;② 明确「已知、暂缓 + 为什么」(例如「这条 spec 描述了已废弃的交互,
+  待随该视图一起删」)。**不许既不修也不说。**
+- 背景:2026-10-15 从 06:39Z 起 main 一路红到晚上(6 个 spec、跨三个浏览器,失败形态是
+  `element(s) not found` —— 断言追不上实现),**全程无人处理**。「非阻塞事后体检」在没人看的时候,
+  等价于**不存在**。
+- ⚠ **唯一允许的 E2E 瘦身**:按 diff 跳过「不含 `apps/` 且不含 `packages/`」的提交(文档 / CI / 脚本改动
+  不可能让 UI 变红)。**不许**把浏览器档从三降到一 —— 那会让 `mobile-webkit` 的红永久隐身(§8 红线 16)。
 
 ---
 
@@ -484,13 +510,25 @@ diff **只含**下面几类时**整轮跳过** `code-review-skill`:
   `npm run deploy`)都已经按「迁移 → api → web」排。
 - 部署前确认工作区**没有别人的在途改动**搭车上线(见 §7)。
 - 线上核对(2026-10-16 起脚本化,一条命令):
-  - `npm run verify-deploy -- --new "<本轮新增的字符串>" [--negative "<本轮删掉的字符串>"]`;
-  - 它 = 带 cache-buster 拉首页 → 比对 **asset hash**(最强判据,**不是内容 grep**)→ 拉入口 bundle
-    grep 新字符串 → 跑阴性对照,最后输出**一行**可直接贴进报告的结论;
-  - 本轮**没改应用产物**(纯文档 / 工具链)时没有新字符串可传 → 用 `--hash <入口 hash>` 只跑 hash 判据
-    (输出会显式标注「未给 --new」,不静默降级);两条判据都不给则退出码 2;
-  - 判据强度、`--hash` / `--url` 的用法与退出码见 `scripts/verify-deploy.mjs` 文件头;
+  - `npm run verify-deploy -- --sha HEAD [--new "<本轮新增的字符串>" --negative "<本轮删掉的字符串>"]`;
+  - 它 = 带 cache-buster 拉首页 → 比对 **构建 SHA**(最强判据)→ 比对 **asset hash**(**不是内容 grep**)
+    → 拉入口 bundle grep 新字符串 → 跑阴性对照,最后输出**一行**可直接贴进报告的结论;
+  - **构建 SHA 是唯一能回答「这次提交上线了吗」的判据**:asset hash 只在应用产物变化时才变,
+    纯文档 / 工具链提交的 hash 与上一版**逐字相同**,而线上区分不了「构建成功但产物相同」与「构建失败没发布」。
+    它由 `scripts/prepare-cloudflare.mjs` 在 build 后写进 `apps/web/dist/version.json`(dist 已 gitignore);
+  - 显式要了 `--sha` 就必须有:拿不到 `version.json` 一律算失败,**不允许退回「跳过」**(那正是它要解决的盲区);
+  - 一条判据都不给 → 退出码 2(什么都没核对 ≠ 通过);
+  - 判据强度、`--sha` / `--hash` / `--url` 的用法与退出码见 `scripts/verify-deploy.mjs` 文件头;
   - 要手工核对别的资源(如 `<f>.json`)时,记得同样带 cache-buster:`curl -sL "https://biff.lcandy.co/<f>.json?cb=$(date +%s)"`。
+- **预览环境(2026-10-16)**:非 `main` 分支可以拿到**可看的预览 URL**,不必为了「看一眼」排生产队(§2.5:> 8 min)。
+  仓库侧已把 `apps/web/wrangler.jsonc` 的 `preview_urls` 打开(API Worker 不需要 —— 预览看的是前端产物);
+  **还差控制台一侧** ——
+  要开着「Builds for non-production branches」,否则预览分支压根不构建。`prepare-cloudflare.mjs`
+  对预览分支**不迁移、不部署生产**(原有保证不变)。
+- ⚠ **待控制台改的一条(2026-10-16)**:Workers Builds 在 `npm run build` 之后还会再跑一遍
+  **根目录 `npx wrangler deploy`**,而 `prepare-cloudflare.mjs` 第 3 步已经部署过**同一个** API Worker
+  —— 这是重复上传。删它需要把控制台里的构建命令改成只留 `npm run build`(仓库里的
+  `.wrangler/deploy/config.json` 就是为那条命令生成的,可一并清理)。**仓库侧改不了,不要靠猜。**
 - **用户约定**:每次代码改动完成后**必须重新部署**,不需要额外询问。
 
 ---
@@ -648,3 +686,4 @@ diff **只含**下面几类时**整轮跳过** `code-review-skill`:
 | v9 | 2026-09-16 | **测试职责全部移到云端**(`PLAN-20260916003228`):删掉 `pre-push` 本地门禁(§4.3 钩子表同步);§0 / §1 / §2 改写为「本地不跑门禁 —— Cloudflare 构建挡部署、GitHub CI 跑 E2E」,并写明**E2E 是事后的、不会回滚已上线版本**这一代价;§2 新增「为什么本地不必重跑」与「要跑的时候怎么跑」;§8 红线 1 由「没跑过测试就 push」改为「云端红了还继续叠改动」 |
 | v11 | 2026-10-05 | 收窄 PR 判据与交付口径(`PLAN-20261005195116`):**§4.5** 由「默认直接 push、三类走 PR」改为「**按 TEST-MAP 判** —— `affected-specs` 输出 ≥1 个业务 spec(含 `allOn`)走 PR,仅 `smoke`/无映射直接 push」,三类无条件走 PR 保留;顺带订正第 3 条与 §2 矛盾的「PR 不能替代本地门禁」为「PR 不承担部署前门禁、也不等于合并前跑过全量」。**新增 §2.4 交付口径** —— §6 部署核对完即算上线成功,`main` 全量 E2E 是**非阻塞事后体检**,交付时不写「等 CI 跑完」;并**否决**「把全量改成部署前置」。`AGENTS.md` §2/§4 同步精简版 |
 | v12 | 2026-10-16 | **削固定开销**（用户:「我总觉得太慢了」):① **§1.1 新增「免 PLAN 档」** —— 数据产物 / 纯文案 / 纯样式值 / 单文件 diff < 20 行走 commit body 三行,不写 PLAN(§8 红线 2、§9.3、§9.6 同步);② **§4.5 PR 判据收窄到四类**(大重构 / `apps/api` / D1 迁移 / 依赖升级),取消「命中 `allOn` 走 PR」与「有业务 spec 覆盖走 PR」—— 全量 E2E 本就是非阻塞事后体检,PR 买不到额外确定性;③ **§4.7.1 新增 ⑥ 免审档** —— diff 只含数据 / 文案 / 样式值 / 注释时不跑 `code-review-skill`;④ **§2.0 管线去重** —— `main` 上 CI 不再重跑 typecheck / lint / 单测(Workers Builds 已在部署前跑过),CI 只留 `check:ci`,PR 另补 `verify:code`;⑤ **§2 / §6 部署核对脚本化** —— 新增 `npm run verify:deploy`(`scripts/verify-deploy.mjs`:asset hash + 新字符串 + 阴性对照,一行结论;纯文档 / 工具链改动可用 `--hash` 只比 hash;带 `--self-test` 自检);⑥ **消除「本地验收 vs 红线 14」自相矛盾** —— 常规路径 = 推 `main` 在真站上看,UI 大改才起一次 dev server;⑦ **规范单一来源** —— `.codebuddy/rules/…/RULE.mdc` 降级为指针(不再复制条文、不再手工同步),本机专属约定移出规范正文 |
+| v13 | 2026-10-16 | **改去砍机器等待,并补上部署证据**(接 v12 —— v12 砍的是人/AI 的书写量,实测证明主项不在这里):① **新增 §2.5 实测表** —— push → 线上 **> 8 min**、全量 E2E **绿 5–9 min / 红 27–29 min**(差在 `retries: 1` + 失败产物)、CI 门禁去重**只省 20 s**;据此把方向从「继续砍规范条文」改为「缩短或绕开部署链」;② **构建 SHA** —— `prepare-cloudflare.mjs` 把 `{sha,branch,builtAt}` 写进 `apps/web/dist/version.json`,`verify-deploy` 新增 `--sha HEAD`:这是**唯一**能回答「这次提交上线了吗」的判据(此前只能靠 asset hash 推断,而纯文档提交的 hash 与上一版逐字相同,线上区分不了「构建成功产物相同」与「构建失败没发布」);③ **预览环境** —— `apps/*/wrangler.jsonc` 的 `preview_urls` 打开 + 控制台「非生产分支构建」开关,让「看一眼」不必排生产队;同时**记下一条只能控制台改的重复部署**(构建尾部那条 `npx wrangler deploy` 与 `prepare-cloudflare.mjs` 第 3 步部署同一个 Worker);④ **E2E 瘦身只允许一种** —— 按 diff 跳过不含 `apps/` / `packages/` 的提交;**禁止**降浏览器档(§8 新增红线 16);⑤ **main 红的负责机制** —— 谁的提交谁修、当天二选一(修复 / 明确「已知、暂缓 + 为什么」),起因是 2026-10-15 从 06:39Z 起 main 全天红(6 个 spec、跨三浏览器,失败形态 `element(s) not found` = 断言追不上实现)而**全程无人处理**(§8 红线 1 加第二句);⑥ **订正 v12 的一处副作用** —— 取消「命中 `allOn` 走 PR」之后,合并前不再有任何自动检查,与「`main` 红无人看」叠加就等于「没人看」;本条用**负责机制 + 可看的预览**来补,而**不**回退 PR 判据(回退只会把摩擦搬回来,治不了「没人看」) |
