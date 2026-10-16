@@ -635,32 +635,33 @@ describe("buildRankPosterModel:榜图与屏上那一列同版式", () => {
     expect(buildRankPosterModel({ films: many, crowd: counts }).boards[0].rows).toHaveLength(TOP_N);
   });
 
-  it("几何仍然是同一支 rbPosterHeight：多一行恰好多一个 ROW_H", () => {
-    const one = rank({ sections: new Set<RbPosterSection>(["red"]), films: [film("a")], crowd: crowd({ a: [1, 0] }) });
-    const two = rank({
-      sections: new Set<RbPosterSection>(["red"]),
-      films: [film("a"), film("b")],
-      crowd: crowd({ a: [1, 0], b: [2, 0] }),
-    });
-    expect(rbPosterHeight(two) - rbPosterHeight(one)).toBe(ROW_H);
+  it("★ 双栏排版:高度按**栏带数**涨,不按行数（2 行仍占 1 带,3 行才多一带）", () => {
+    // 2026-10-16 用户「空白的地方太多…重新排版充满图片」:单栏 50 行右半张全空,
+    // 改成每榜左右两栏竖排 —— 高度只随 ceil(行数/2) 涨。
+    const mk = (n: number) => {
+      const films = Array.from({ length: n }, (_, i) => film(`f${i}`));
+      const counts = crowd(
+        Object.fromEntries(films.map((f, i) => [f.key, [20 - i, 0] as [number, number]])),
+      );
+      return buildRankPosterModel({
+        films,
+        crowd: counts,
+        sections: new Set<RbPosterSection>(["red"]),
+      });
+    };
+    expect(rbPosterHeight(mk(2))).toBe(rbPosterHeight(mk(1)));
+    expect(rbPosterHeight(mk(3))).toBe(rbPosterHeight(mk(1)) + ROW_H);
+    // 双栏把宽度用满:同样 6 行,高度比「行数 × ROW_H」的单栏少一截
+    expect(rbPosterHeight(mk(6))).toBe(rbPosterHeight(mk(1)) + 2 * ROW_H);
   });
 
-  it("头尾不画 ⇒ 与同数据的分享图差**整整一截**，且这一截与行数无关（不是画了但留白）", () => {
+  it("头尾不画 ⇒ 比同数据的分享图矮（不画但留白是旧行为,必须守住）", () => {
     const oneFilm = [film("a")];
     const oneCrowd = crowd({ a: [1, 0] });
     const red = new Set<RbPosterSection>(["red"]);
-    const gapOne =
-      rbPosterHeight(buildRbPosterModel(input({ films: oneFilm, crowd: oneCrowd, priorRate: 0.5, sections: red }))) -
-      rbPosterHeight(rank({ films: oneFilm, crowd: oneCrowd, sections: red }));
-
-    const twoFilms = [film("a"), film("b")];
-    const twoCrowd = crowd({ a: [1, 0], b: [2, 0] });
-    const gapTwo =
-      rbPosterHeight(buildRbPosterModel(input({ films: twoFilms, crowd: twoCrowd, priorRate: 0.5, sections: red }))) -
-      rbPosterHeight(rank({ films: twoFilms, crowd: twoCrowd, sections: red }));
-
-    expect(gapOne).toBe(gapTwo);
-    expect(gapOne).toBeGreaterThan(0);
+    expect(
+      rbPosterHeight(buildRbPosterModel(input({ films: oneFilm, crowd: oneCrowd, priorRate: 0.5, sections: red }))),
+    ).toBeGreaterThan(rbPosterHeight(rank({ films: oneFilm, crowd: oneCrowd, sections: red })));
   });
 
   it("两榜都没票 → 一节都不出现（弹层那一拍据此把出图按钮禁用）", () => {

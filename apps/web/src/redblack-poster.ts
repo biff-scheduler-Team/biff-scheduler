@@ -123,6 +123,8 @@ export interface RbPosterBoard {
  *    榜节 / 「我贴过的」+ 每行**评分与贴纸区** + 页脚署名。
  *  · `"rank"`  = **榜图**：「排行榜」弹层里那份读数的图 —— 与屏上那一列**同序同内容**：
  *    名次 / 海报 / 片名(中英) / 红 N · 黑 N；**没有评分、没有贴纸区、没有头尾**。
+ *    2026-10-16 起每榜**双栏竖排**（左栏前一半名次、右栏后一半）—— 用户「空白的地方太多,
+ *    重新排版充满图片」；信息一行不增不减。
  *    用户 2026-10-16：「排行榜生成什么样的图就分享出来的也是什么样的图」。
  *
  *  ⚠ 它由**入口函数**决定（`buildRbPosterModel` → `"share"` / `buildRankPosterModel` → `"rank"`），
@@ -559,7 +561,13 @@ export function rbPosterHeight(model: RbPosterModel): number {
   // ⚠ 头 / 尾是**开关**（2026-10-14）：关掉就真的不占高度，图高同比少一截 ——
   //   不能「不画但留白」（那正是用户说的「不适合手机阅读」：留白把长宽比拉得更长）。
   let h = ACCENT_H + (model.showHeader ? HEADER_H : 0);
-  for (const b of model.boards) h += BLOCK_GAP + SECTION_H + b.rows.length * ROW_H;
+  for (const b of model.boards) {
+    // ⚠ 榜图是**双栏**（见 `RANK_COL_W`）：占的高度是**栏数取整后**的行带数,不是行数 ——
+    //   两处各算一份必然出现「算出来 3000 高、实际画了 3200」,而画布是按它设的 →
+    //   多出来的内容**被裁掉且不报错**(最难查的一类),所以高度与绘制必须同走这一支。
+    const bands = model.mode === "rank" ? Math.ceil(b.rows.length / 2) : b.rows.length;
+    h += BLOCK_GAP + SECTION_H + bands * ROW_H;
+  }
   if (model.myRows.length) h += BLOCK_GAP + SECTION_H + model.myRows.length * ROW_H;
   return h + (model.showFooter ? FOOTER_H : 0) + ACCENT_H;
 }
@@ -824,21 +832,32 @@ function drawRow(
 
 /** 名次列宽度（屏上那一列是 28px，两侧还要留白，故取 72） */
 const RANK_MARK_W = 72;
-/** 行内海报的横坐标 —— 分享图是「海报在最左」，榜图是「名次在最左」 */
-const RANK_THUMB_X = PAD + RANK_MARK_W;
-/** 文字列起点（名次列 + 海报 + 间距） */
+/** 行内海报在**栏内**的横坐标 —— 分享图是「海报在最左」，榜图是「名次在最左」 */
+const RANK_THUMB_X = RANK_MARK_W;
+/** 文字列在**栏内**的起点（名次列 + 海报 + 间距） */
 const RANK_TEXT_X = RANK_THUMB_X + THUMB_W + THUMB_GAP;
+
+/* ★ **双栏**排版（2026-10-16 第二次修订,用户「空白的地方太多…重新排版充满图片」）：
+ *  单栏 50 行的长图,行内容只占左边一小条,右半张全是空的。改成**每榜左右两栏、竖着排**
+ *  （左栏前一半名次、右栏后一半）—— 宽度用满,整图高度正好砍半。信息一行不增不减。 */
+const RANK_COL_GAP = 48;
+/** 每栏宽度:总宽 − 左右内距 − 栏间距,再对半分 */
+const RANK_COL_W = (POSTER_W - PAD * 2 - RANK_COL_GAP) / 2;
 
 /** 榜图的一行 —— **名次 / 海报 / 片名(中英)/ 红 N · 黑 N**，与屏上那一列逐条对得上。
  *
  *  ⚠ 它**不是**第二份「画一行」的实现：海报缩略图走同一个 `drawThumb`、截断走同一个 `fitText`、
  *    红黑数走同一个 `drawCounts`（只是不传评分）、字体 / 配色 / 名次补零与前三名着色
- *    与分享图逐字相同。不同的只有**这一行怎么排** —— 而版式本来就是这两样产物的唯一差别。 */
+ *    与分享图逐字相同。不同的只有**这一行怎么排** —— 而版式本来就是这两样产物的唯一差别。
+ *  ⚠ 2026-10-16 起一行画在**双栏**的某一栏里:`x0` 是本栏左缘、`colW` 是栏宽 ——
+ *    栏内各件(名次 / 海报 / 文字)的相对位置不变,片名截断宽度由栏宽决定。 */
 function drawRankRow(
   ctx: CanvasRenderingContext2D,
   row: RbPosterRow,
   rank: number,
   top: number,
+  x0: number,
+  colW: number,
   images: ReadonlyMap<string, HTMLImageElement>,
 ): void {
   const textBase = top + 38;
@@ -847,14 +866,13 @@ function drawRankRow(
   ctx.font = font(28, 700);
   ctx.fillStyle = rank <= 3 ? C.red2 : C.muted;
   ctx.textAlign = "center";
-  ctx.fillText(`${rank}`.padStart(2, "0"), PAD + RANK_MARK_W / 2, textBase);
+  ctx.fillText(`${rank}`.padStart(2, "0"), x0 + RANK_MARK_W / 2, textBase);
   ctx.textAlign = "left";
 
-  drawThumb(ctx, row, RANK_THUMB_X, top, images);
+  drawThumb(ctx, row, x0 + RANK_THUMB_X, top, images);
 
-  // 少了右侧 360px 的贴纸区，文字列比分享图宽得多（片名因此能多显示好几个字）
-  const titleX = RANK_TEXT_X;
-  const titleW = POSTER_W - PAD - titleX;
+  const titleX = x0 + RANK_TEXT_X;
+  const titleW = x0 + colW - titleX;
   ctx.font = font(29, 600);
   ctx.fillStyle = C.ink;
   ctx.fillText(fitText(ctx, row.title, titleW), titleX, textBase);
@@ -978,10 +996,17 @@ export function drawRbPoster(
       // 节标题右边那枚 = **行数**（屏上 `.rbr-col-count` 也是裸数字），不是口径说明句
       drawSection(ctx, b.label, `${b.rows.length}`, ry);
       ry += SECTION_H;
+      // ★ **双栏竖排**（2026-10-16,用户「空白的地方太多…重新排版充满图片」）：
+      //   左栏装前一半名次、右栏装后一半 —— 阅读顺序仍是「先左列下来、再右列」,
+      //   与单栏长图一致;奇数行时右栏少一行。栏宽见 `RANK_COL_W`。
+      const half = Math.ceil(b.rows.length / 2);
       b.rows.forEach((row, i) => {
-        drawRankRow(ctx, row, i + 1, ry, images);
-        ry += ROW_H;
+        const col = i < half ? 0 : 1;
+        const band = col === 0 ? i : i - half;
+        const x0 = PAD + col * (RANK_COL_W + RANK_COL_GAP);
+        drawRankRow(ctx, row, i + 1, ry + band * ROW_H, x0, RANK_COL_W, images);
       });
+      ry += half * ROW_H;
     }
     // ⚠ 空榜**不画空态**：弹层那一拍已经把「生成图片」禁用了（`isDisabled={boards.length === 0}`），
     //   而榜图没有头部 ⇒ 空模型的高度只有上下两条红条（20px），在这上面写字只会画到画布外面去
