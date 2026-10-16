@@ -15,25 +15,17 @@ test("activity search and normalized award sections retain legacy results", asyn
   const list = page.getByRole("listbox");
   await expect(list).toBeVisible();
   const award = page.getByRole("option", { name: /年度亚洲电影人奖/ });
-  // ⚠ 2026-10-16：原来用 `page.keyboard.type("Asian Filmmaker")`，在 CI 上偶发**只吃进第一个字母** ——
-  //   跑完那次的现场是 `[active]` 停在 `A Window on Asian Cinema`、目标选项压根没渲染出来
-  //   （这档是**打字前瞻**：靠 `aria-activedescendant` 跟着按键走，缓冲会随时间重置，
-  //   而 CI 的按键间隔比本机大）。改成「打一轮 → 看有没有 → 没有就再打一轮」，
-  //   **不放松判据**：仍然要求「打完这一串之后它出现」。`pressSequentially` 会先把焦点落到清单上。
-  await expect(async () => {
-    await list.pressSequentially("Asian Filmmaker");
-    const diag = await page.evaluate(() => {
-      const listbox = document.querySelector('[role="listbox"]');
-      return {
-        active: document.activeElement?.tagName ?? "",
-        filter: (listbox?.textContent ?? "").trim().slice(0, 60),
-        options: [...document.querySelectorAll('[role="listbox"] [role="option"]')]
-          .map((option) => option.textContent?.trim() ?? "")
-          .slice(0, 5),
-      };
-    });
-    await expect(award, `现场=${JSON.stringify(diag)}`).toHaveCount(1);
-  }).toPass({ timeout: 15_000 });
+  // ⚠ 2026-10-16：原来用 `page.keyboard.type("Asian Filmmaker")` 靠**打字前瞻**跳到目标项 ——
+  //   实测这条在**手机档**（`mobile-chromium`）上**本机也红**：清单是**虚拟列表**（只渲染活动项
+  //   附近那几项），小视口下目标项压根不在 DOM 里（`toHaveCount` 得 0），而打字前瞻的缓冲会随时间
+  //   重置，CI 的按键间隔比本机大 ⇒ 只吃进第一个字母、`[active]` 停在 `A Window on Asian Cinema`
+  //   （CI 现场原样如此）。改成**按键一路推到目标项进 DOM**（有界循环，最多 40 格）。
+  //   ⚠ 别用 `toPass` + 内层 `toHaveCount`：内层要等满 10s 超时，一轮只推进一格。
+  //   **判据不放松**：仍要求「这个单元能被选到」，顺带把键盘可达性也验了。
+  for (let step = 0; step < 40 && (await award.count()) === 0; step += 1) {
+    await list.press("ArrowDown");
+  }
+  await expect(award).toHaveCount(1);
   await award.click();
   await expect(library.locator("[data-film-key]")).toHaveCount(4);
 });
