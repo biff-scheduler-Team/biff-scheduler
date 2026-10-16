@@ -16,6 +16,9 @@
 //
 // ⚠ 缓存:全部请求带 cache-buster(`?cb=<时间戳>`),否则拿到的可能是 CDN 上的旧响应。
 // ⚠ 本脚本只读线上,不部署、不写文件。
+// ⚠ **本地 dist 的 hash 只在它属于你要核对的那笔提交时才算判据**:多会话共用工作区里
+//    `apps/web/dist` 常常是**别人**的构建(实测:自己的提交明明已上线,却因本地 dist 是对方那一版
+//    而判「未核实」)。归属靠 dist 里的 `version.json` 判定,不符就跳过 hash 比对并打一行说明。
 //
 // 用法(三条判据至少要给一条;给多条就都判):
 //   npm run verify:deploy -- --sha HEAD --new "<本轮新增的字符串>"   # 改了应用产物:推荐
@@ -80,15 +83,30 @@ async function fetchText(url) {
   return response.text();
 }
 
-/** 本地 dist 里的入口 hash(**构建产物**,可能不存在 —— 不存在就跳过对比,不当失败)。 */
-async function localHash() {
+/** 本地 dist 的构建身份(**构建产物**,可能不存在 → 返回 null,不算失败)。
+ *  ⚠ 同时返回 `sha`:dist 里的 `version.json` 说明这份产物**属于哪一笔提交** ——
+ *  在多会话共用工作区里,本地 dist 常常是**别人的**构建,拿它比 hash 会得出误导性结论
+ *  (实测踩到:自己的提交明明已上线,却因本地 dist 是对方那一版而判「未核实」)。 */
+async function localBuild() {
   try {
     const { readFile } = await import("node:fs/promises");
-    const html = await readFile(new URL("../apps/web/dist/index.html", import.meta.url), "utf8");
-    return mainAssetOf(html)?.hash ?? null;
+    const [html, version] = await Promise.all([
+      readFile(new URL("../apps/web/dist/index.html", import.meta.url), "utf8"),
+      readFile(new URL("../apps/web/dist/version.json", import.meta.url), "utf8").catch(() => ""),
+    ]);
+    return { hash: mainAssetOf(html)?.hash ?? null, sha: versionShaOf(version) };
   } catch {
     return null;
   }
+}
+
+/** 本地 dist 的 hash 能否当判据 —— 前提是它**属于**期望的这笔提交。
+ *  没有期望 sha(没传 --sha)→ 无从谈起,采用;dist 没带 sha(引入 version.json 之前构建的)
+ *  → 无从判断归属,采用;两者都有且不等 → 是**别人的**产物,不采用。 */
+export function localBelongsTo(local, wantSha) {
+  if (local === null) return false;
+  if (!wantSha || local.sha === null) return true;
+  return local.sha === wantSha;
 }
 
 /** 跑一次核对。返回退出码(0 通过 / 1 判据失败 / 2 参数或网络问题)。 */
@@ -118,13 +136,25 @@ async function main(argv) {
   }
 
   const failures = [];
+  const notes = [];
   let liveHash = "?";
-  let local = null;
   let liveSha = null;
   let newHits = 0;
   let negMisses = 0;
   // 随机阴性对照:证明「检索本身能区分有 / 无」,而不是永远回「有」。
   const controls = [...negatives, `__biff_absent_${Math.random().toString(36).slice(2)}__`];
+
+  // 本地 dist 是**构建产物**,可能不存在(localBuild 自己吞掉异常)。它同时带构建身份 ——
+  // ⚠ 多会话共用工作区里本地 dist 常常是**别人的**构建:拿它的 hash 当判据,会把
+  // 「自己的提交明明已上线」判成「未核实」(实测踩到)。只有它确实属于期望的这笔提交才采用。
+  // local.sha 为 null 说明那份 dist 是引入 version.json 之前构建的 —— 无从判断归属,仍采用。
+  const local = await localBuild();
+  const useLocal = localBelongsTo(local, wantSha);
+  if (local !== null && !useLocal) {
+    notes.push(`本地 dist 属于 ${local.sha}(≠ 期望 ${wantSha}),不参与 hash 比对(可能是并行会话的产物)`);
+  }
+  const expected = expectedHash ?? (useLocal ? local.hash : null);
+  const hashSource = expectedHash ? "--hash" : expected ? "本地 dist" : null;
 
   try {
     const asset = mainAssetOf(await fetchText(`${url}/`));
@@ -133,9 +163,7 @@ async function main(argv) {
       return 2;
     }
     liveHash = asset.hash;
-    local = await localHash();
 
-    const expected = expectedHash ?? local;
     if (expected && expected !== liveHash) {
       failures.push(`asset hash 不一致:线上 main-${liveHash} ≠ 期望 main-${expected}(线上跑的不是这份产物)`);
     }
@@ -148,6 +176,10 @@ async function main(argv) {
         failures.push(`拿不到线上 /version.json 的 sha(该版本可能是引入构建 SHA 之前部署的)`);
       } else if (liveSha !== wantSha) {
         failures.push(`构建 SHA 不一致:线上 ${liveSha} ≠ 期望 ${wantSha}(线上跑的不是这次提交)`);
+        // 实测踩过:多会话共用工作区时 `--sha HEAD` 会被**别人的提交**带走,于是「明明上线了」却一直判失败。
+        if (expectedSha === "HEAD") {
+          failures.push("⚠ --sha HEAD 用的是**当前**工作区的 HEAD —— 多会话共用时请钉死你 push 的那笔 sha(见 §2.5)");
+        }
       }
     }
 
@@ -166,11 +198,10 @@ async function main(argv) {
     return 2;
   }
 
-  // 显式给了 --hash 就用它;否则退回本地 dist(它不在版本库里,没有就跳过比对)。
-  const expected = expectedHash ?? local;
+  // 显式给了 --hash 就用它;否则退回本地 dist(它不在版本库里,没有 / 不归属本人就跳过比对)。
   const hashNote = expected
-    ? `线上 asset main-${liveHash} / 期望 main-${expected}（${expectedHash ? "--hash" : "本地 dist"}）`
-    : `线上 asset main-${liveHash}（未给 --hash 且没有本地 dist,跳过 hash 比对）`;
+    ? `线上 asset main-${liveHash} / 期望 main-${expected}（${hashSource}）`
+    : `线上 asset main-${liveHash}（未给 --hash 且没有可用的本地 dist,跳过 hash 比对）`;
   // 没有正向内容对照时**显式**标注,不静默降级 —— 静默降级正是本文件要防的东西。
   const shaNote = wantSha ? `构建 SHA ${liveSha ?? "未取到"} / 期望 ${wantSha}` : null;
   const newNote = wanted.length ? `新字符串 ${newHits}/${wanted.length} 命中` : "未给 --new(本轮无应用产物改动)";
@@ -179,6 +210,10 @@ async function main(argv) {
 
   if (failures.length) {
     for (const failure of failures) console.error(`  ✗ ${failure}`);
+  }
+  // 注释(非失败)一律打出来:它们解释「为什么某条判据缺席」,静默省略就等于没说。
+  for (const note of notes) console.error(`  · ${note}`);
+  if (failures.length) {
     console.error(`verify-deploy:✗ 上线未核实 —— ${summary}`);
     return 1;
   }
@@ -209,6 +244,12 @@ function selfTest() {
     { name: "从 version.json 取 sha", actual: versionShaOf('{"sha":"abc123"}'), expect: "abc123" },
     { name: "拿不到 version.json(回落成 index.html)时返回 null", actual: versionShaOf("<!doctype html>"), expect: null },
     { name: "version.json 没有 sha 字段时返回 null", actual: versionShaOf('{"branch":"main"}'), expect: null },
+    // 本地 dist 归属(回归:共用工作区里 dist 常是**别人**的构建,拿它比 hash 会误判「未核实」)。
+    { name: "没有本地 dist 时不采用", actual: localBelongsTo(null, "aaa"), expect: false },
+    { name: "没给 --sha 时采用本地 dist", actual: localBelongsTo({ hash: "h", sha: "aaa" }, null), expect: true },
+    { name: "dist 没带 sha(旧产物)时采用", actual: localBelongsTo({ hash: "h", sha: null }, "aaa"), expect: true },
+    { name: "dist 属于期望的这笔提交时采用", actual: localBelongsTo({ hash: "h", sha: "aaa" }, "aaa"), expect: true },
+    { name: "dist 属于别人的提交时不采用", actual: localBelongsTo({ hash: "h", sha: "bbb" }, "aaa"), expect: false },
   ];
   let failed = 0;
   for (const { name, actual, expect } of cases) {
