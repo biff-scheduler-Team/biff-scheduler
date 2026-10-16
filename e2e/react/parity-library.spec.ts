@@ -15,7 +15,19 @@ test("activity search and normalized award sections retain legacy results", asyn
   await expect(page.getByRole("listbox")).toBeVisible();
   await page.keyboard.type("Asian Filmmaker");
   const award = page.getByRole("option", { name: /年度亚洲电影人奖/ });
-  await expect(award).toHaveCount(1);
+  // ⚠ 2026-10-16：`mobile-chromium` 上偶发拿到 0（本机绿）。失败消息里带上当时**焦点 + 过滤框文字
+  //   + 前几个选项**：能一眼分清是「`keyboard.type` 的字没落到过滤框上」还是「结果集真不含它」。
+  const diag = await page.evaluate(() => {
+    const listbox = document.querySelector('[role="listbox"]');
+    return {
+      active: document.activeElement?.tagName ?? "",
+      filter: (listbox?.textContent ?? "").trim().slice(0, 60),
+      options: [...document.querySelectorAll('[role="listbox"] [role="option"]')]
+        .map((option) => option.textContent?.trim() ?? "")
+        .slice(0, 5),
+    };
+  });
+  await expect(award, `现场=${JSON.stringify(diag)}`).toHaveCount(1);
   await award.click();
   await expect(library.locator("[data-film-key]")).toHaveCount(4);
 });

@@ -516,7 +516,17 @@ test("刚贴的那一枚会闪描边,闪完与别人的完全一致", async ({ p
 
   const mine = card.locator(".rb-dot");
   // ⚠ 属性值是 "true"(React 对 data-* 上的布尔值走 setAttribute(String(v)))
-  await expect(mine).toHaveAttribute("data-rb-fresh", "true");
+  // ⚠ 2026-10-16：`mobile-webkit` 上偶发 `data-rb-fresh` **从未出现过**（本机绿，实得 `null`）。
+  //   这一闪只有 2.4s，失败消息里补上「点完之后这枚贴纸在不在、属性是什么」—— 才分得清是
+  //   「贴纸压根没贴上」还是「闪的窗口被 CI 的慢吞掉了」。
+  const diag = await card.evaluate((el) => {
+    const dot = el.querySelector(".rb-dot");
+    return {
+      dots: el.querySelectorAll(".rb-dot").length,
+      fresh: dot?.getAttribute("data-rb-fresh") ?? "(无该属性)",
+    };
+  });
+  await expect(mine, `现场=${JSON.stringify(diag)}`).toHaveAttribute("data-rb-fresh", "true");
   await expect(mine).toHaveCSS("outline-style", "solid");
   // 有界:2.4s 之后连描边一起去掉 —— 不是常驻标识
   await expect(mine).not.toHaveAttribute("data-rb-fresh");
@@ -1475,7 +1485,26 @@ test("热门影片：hover 是渐进揭示，移出复位、不动版面、不�
   // ⚠ 量版面之前先把它滚进视口：`hover()` 自己会滚动，滚动之后的坐标当然会变 ——
   //   不先滚，这条会变成「测滚动」而不是「测有没有挤压邻格」
   await card.scrollIntoViewIfNeeded();
-  const before = await card.boundingBox();
+  // ⚠ 2026-10-16：量**版面坐标**（矩形 + 当前滚动量）而不是光 `boundingBox()`。
+  //   后者 = 版面坐标 + 当时的滚动量，而 `hover()` 自己会把元素再滚一次（CI 上滚得比本机多），
+  //   于是「多滚了几像素」被记成了版面位移（CI 实测差别就落在 `"y": 575.328125` 这一项上）。
+  //   判据强度不变：真被挤走的话，连版面坐标一起变；**也不改用 `offsetTop`** —— 那是整数（会
+  //   悄悄放过亚像素位移），这里补回滚动量后仍是小数，与原判据同精度。
+  //   `scrollbar` 一并比 —— 那正是下条注释说的「没有把父级顶出滚动条」，直接断言比拿 x/y 当代理更贴意图。
+  //   滚动量只进失败消息（不进比较），红了能一眼分清是版面还是滚动。
+  const layoutOf = () =>
+    card.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      const round = (value: number) => Math.round(value * 1000) / 1000;
+      return {
+        left: round(rect.left + window.scrollX),
+        top: round(rect.top + window.scrollY),
+        width: round(rect.width),
+        height: round(rect.height),
+        scrollbar: window.innerWidth - document.documentElement.clientWidth,
+      };
+    });
+  const before = await layoutOf();
   await card.locator(".hb-card-btn").hover();
 
   // hover：遮罩渐显 + 提示淡入 + 海报轻微放大（1.03）
@@ -1484,7 +1513,13 @@ test("热门影片：hover 是渐进揭示，移出复位、不动版面、不�
   await expect.poll(async () => img.evaluate((el) => getComputedStyle(el).transform)).toContain("1.03");
 
   // 放大发生在**海报框内**：邻格没有被挤走（版面零位移），也没有把父级顶出滚动条
-  expect(await card.boundingBox()).toEqual(before);
+  const after = await layoutOf();
+  expect(
+    after,
+    `before=${JSON.stringify(before)} after=${JSON.stringify(after)} scroll=${JSON.stringify(
+      await page.evaluate(() => [window.scrollX, window.scrollY]),
+    )}`,
+  ).toEqual(before);
 
   // 遮罩与提示都不吃点击（点得下去 = 详情打得开）
   await expect(veil).toHaveCSS("pointer-events", "none");
@@ -1770,7 +1805,19 @@ test("快速投票：手机上整块内容完整可见 —— 不用滚，且每
         if (!inView || !hit || !(el === hit || el.contains(hit))) hidden.push(label);
       }
       const buttons = [...document.querySelectorAll(".qv-actions button")].map((b) => Math.round(b.getBoundingClientRect().height));
-      return { overflow, hidden, buttons };
+      // ⚠ 2026-10-16：`overflow` 是**像素数**（`scrollHeight - clientHeight`），CI 上实测 3–4px、
+      //   本机 0–1px —— 差的是几像素而不是几个控件。失败消息里补上「是哪个祖先在滚」与各块的
+      //   实际高度，才看得出这 4px 从哪来（字体度量 / 行高 / 卡片高）。
+      const blocks = [".qv-stage", ".qv-card", ".qv-legend", ".qv-actions", ".qv-undo-row"]
+        .map((selector) => {
+          const height = document.querySelector(selector)?.getBoundingClientRect().height ?? -1;
+          return `${selector}=${Math.round(height)}`;
+        })
+        .join(" ");
+      const scroller = node && node !== document.body
+        ? `${node.className || node.tagName}[${node.clientHeight}/${node.scrollHeight}]`
+        : "(body)";
+      return { overflow, hidden, buttons, scroller, blocks };
     });
     const tag = `${size.width}x${size.height} ${JSON.stringify(report)}`;
     expect(report.hidden, tag).toEqual([]);
@@ -1852,6 +1899,29 @@ test("快速投票：左滑 / 右滑的跟手标记是实心底色，跳过药�
   //     ⚠ 必须把 `ready` 转成可序列化的值再返回：直接 `() => document.fonts.ready`
   //     是把 FontFaceSet 交给 Playwright 去序列化（那不是一个能过桥的对象）。
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  // ⚠ 2026-10-16：CI 上这条稳定红（`Received: 3.671875`），本机恒为 0；而「删掉 `transform: scale(1.04)`
+  //   之后数值一字未变」已经证伪了 `PLAN-20261015172642` 修订 1 的归因。于是失败消息里带上**两态现场**
+  //   （图例 / 药丸 / 整行的盒子，字体状态，滚动条宽度）—— 红了自带证据、绿了不产生噪声，比留一段
+  //   探针 `console.log` 干净。要区分的就是两类：药丸自己的盒子变了（版面问题）还是环境时序变了
+  //   （字体后到 / 经典滚动条占宽 ⇒ 整行重排）。
+  const snapshot = () =>
+    page.evaluate(() => {
+      const pair = (selector: string) => {
+        const rect = document.querySelector(selector)!.getBoundingClientRect();
+        const round = (value: number) => Math.round(value * 1000) / 1000;
+        return [round(rect.x), round(rect.width)];
+      };
+      return {
+        right: pair(".qv-legend-right"),
+        skip: pair(".qv-legend-skip"),
+        row: pair(".qv-legend"),
+        fonts: document.fonts.status,
+        family: getComputedStyle(document.querySelector(".qv-legend")!).fontFamily,
+        scrollbar: window.innerWidth - document.documentElement.clientWidth,
+        viewport: [window.innerWidth, window.innerHeight],
+      };
+    });
+  const before = await snapshot();
   const rightXIdle = (await rightLegend.boundingBox())!.x;
   const stage2 = (await page.locator(".qv-stage").boundingBox())!;
   await page.mouse.move(stage2.x + stage2.width / 2, stage2.y + stage2.height / 2);
@@ -1860,7 +1930,10 @@ test("快速投票：左滑 / 右滑的跟手标记是实心底色，跳过药�
   const bgLive = await skipHint.evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(bgLive).not.toBe("rgba(0, 0, 0, 0)");
   const rightXLive = (await rightLegend.boundingBox())!.x;
-  expect(Math.abs(rightXLive - rightXIdle)).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(rightXLive - rightXIdle),
+    `idle=${rightXIdle} live=${rightXLive} before=${JSON.stringify(before)} after=${JSON.stringify(await snapshot())}`,
+  ).toBeLessThanOrEqual(1);
   await page.mouse.up();
 });
 
