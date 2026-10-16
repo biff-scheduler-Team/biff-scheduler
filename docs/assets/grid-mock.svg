@@ -1,0 +1,90 @@
+<svg width="960" height="300" viewBox="0 0 960 300" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="gridTitle gridDesc">
+  <title id="gridTitle">排片甘特网格示意</title>
+  <desc id="gridDesc">横轴是时间、纵轴是影厅；绿色为已加入行程，红色为时间重叠，黄色为转场偏紧。</desc>
+  <rect width="960" height="300" fill="#f6f8fa" rx="12" />
+
+  <!-- 时间轴 -->
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#6b7280">
+    <text x="196" y="30">10:00</text>
+    <text x="316" y="30">12:00</text>
+    <text x="436" y="30">14:00</text>
+    <text x="556" y="30">16:00</text>
+    <text x="676" y="30">18:00</text>
+    <text x="796" y="30">20:00</text>
+    <text x="896" y="30">22:00</text>
+  </g>
+  <g stroke="#e5e7eb" stroke-width="1">
+    <line x1="196" y1="38" x2="196" y2="286" />
+    <line x1="316" y1="38" x2="316" y2="286" />
+    <line x1="436" y1="38" x2="436" y2="286" />
+    <line x1="556" y1="38" x2="556" y2="286" />
+    <line x1="676" y1="38" x2="676" y2="286" />
+    <line x1="796" y1="38" x2="796" y2="286" />
+  </g>
+
+  <!-- 影厅列 -->
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="12">
+    <rect x="24" y="46" width="56" height="52" rx="8" fill="#e5e7eb" />
+    <text x="52" y="78" fill="#111827" text-anchor="middle" font-weight="700">B1</text>
+    <rect x="24" y="104" width="56" height="52" rx="8" fill="#e5e7eb" />
+    <text x="52" y="136" fill="#111827" text-anchor="middle" font-weight="700">BT</text>
+    <rect x="24" y="162" width="56" height="52" rx="8" fill="#e5e7eb" />
+    <text x="52" y="194" fill="#111827" text-anchor="middle" font-weight="700">L10</text>
+    <rect x="24" y="220" width="56" height="52" rx="8" fill="#e5e7eb" />
+    <text x="52" y="252" fill="#111827" text-anchor="middle" font-weight="700">C3</text>
+  </g>
+
+  <!-- 卡片：绿=已选 -->
+  <g>
+    <rect x="100" y="46" width="150" height="52" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5" />
+    <text x="112" y="68" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#14532d">雾中风景</text>
+    <text x="112" y="86" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#4b5563">10:30 – 12:20 · ALL</text>
+  </g>
+  <g>
+    <rect x="258" y="46" width="120" height="52" rx="8" fill="#ffffff" stroke="#d1d5db" stroke-width="1" />
+    <text x="270" y="68" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#111827">母亲</text>
+    <text x="270" y="86" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#4b5563">12:50 – 14:40</text>
+  </g>
+
+  <!-- 红=时间重叠（跨行红线） -->
+  <g>
+    <rect x="410" y="46" width="140" height="52" rx="8" fill="#fee2e2" stroke="#e8455c" stroke-width="2" />
+    <text x="422" y="68" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#7f1d1d">密阳 GV</text>
+    <text x="422" y="86" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#7f1d1d">16:10 – 19:00</text>
+    <rect x="430" y="104" width="150" height="52" rx="8" fill="#fee2e2" stroke="#e8455c" stroke-width="2" />
+    <text x="442" y="126" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#7f1d1d">燃烧</text>
+    <text x="442" y="144" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#7f1d1d">16:40 – 18:50</text>
+    <line x1="470" y1="98" x2="470" y2="156" stroke="#e8455c" stroke-width="2" stroke-dasharray="5 4" />
+  </g>
+
+  <!-- 黄=转场偏紧 -->
+  <g>
+    <rect x="600" y="104" width="120" height="52" rx="8" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.5" />
+    <text x="612" y="126" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#713f12">绿洲</text>
+    <text x="612" y="144" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#713f12">19:10 – 21:40</text>
+  </g>
+  <g>
+    <rect x="730" y="104" width="110" height="52" rx="8" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.5" />
+    <text x="742" y="126" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#713f12">诗</text>
+    <text x="742" y="144" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#713f12">21:00 – 23:10</text>
+  </g>
+
+  <!-- 跨午夜 24+ 时制 -->
+  <g>
+    <rect x="846" y="162" width="90" height="52" rx="8" fill="#ffffff" stroke="#d1d5db" stroke-width="1" />
+    <text x="858" y="184" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#111827">午夜场</text>
+    <text x="858" y="202" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#4b5563">28:30 – 30:20</text>
+  </g>
+
+  <!-- 图例 -->
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#4b5563">
+    <rect x="100" y="228" width="12" height="12" rx="3" fill="#dcfce7" stroke="#16a34a" />
+    <text x="120" y="238">已加入行程</text>
+    <rect x="220" y="228" width="12" height="12" rx="3" fill="#fee2e2" stroke="#e8455c" />
+    <text x="240" y="238">时间重叠</text>
+    <rect x="340" y="228" width="12" height="12" rx="3" fill="#fef9c3" stroke="#ca8a04" />
+    <text x="360" y="238">转场偏紧</text>
+    <rect x="460" y="228" width="12" height="12" rx="3" fill="#ffffff" stroke="#d1d5db" />
+    <text x="480" y="238">未选</text>
+  </g>
+</svg>
