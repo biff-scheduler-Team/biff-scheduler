@@ -46,8 +46,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # 需要 HEAD^ 才能 diff 出本次改动的路径
-          fetch-depth: 2
+          # 要 diff 出**整批 push** 的改动面(不只最后一笔),得拿得到 `github.event.before` 那个对象。
+          # ⚠ 代价:gate 也要拉全历史(2026-10-16 实测 ~88MB / 428 提交) —— 与 e2e job 同样的取舍:
+          #   算错的代价是**漏跑**(E2E 整条不启动),比多花几秒拉历史贵得多。
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           # 与本地一致(v24.x);tests/schema.test.ts 依赖 node:sqlite
@@ -62,19 +64,20 @@ jobs:
         run: npm run verify:code
       - name: 算出本次改动路径(供 e2e 跳过纯文档 / 工具链提交)
         id: scope
+        env:
+          # ⚠ 只看最后一笔(`HEAD^ HEAD`)会漏:多笔一起推时,前面提交的改动全看不见 ——
+          #   2026-10-16 实测那批 6 笔里有 5 个 e2e spec 文件,而 main 上 E2E 整条没启动。
+          #   现在按**整批 push** 算(边界 = 上次推送的 HEAD),逻辑在脚本里、有单测兜着。
+          BEFORE: ${{ github.event.before }}
         run: |
-          if git rev-parse --verify --quiet HEAD^ >/dev/null; then
-            echo "changed<<EOF" >> "$GITHUB_OUTPUT"
-            git diff --name-only HEAD^ HEAD >> "$GITHUB_OUTPUT"
-            echo "EOF" >> "$GITHUB_OUTPUT"
-          else
-            # 首个提交 / 浅克隆拿不到基线 → 当成「全都改了」,宁多跑不漏跑
-            echo "changed<<EOF" >> "$GITHUB_OUTPUT"
-            echo "apps/ packages/" >> "$GITHUB_OUTPUT"
-            echo "EOF" >> "$GITHUB_OUTPUT"
-          fi
+          CHANGED=$(node scripts/changed-paths.mjs "$BEFORE")
+          {
+            echo "changed<<EOF"
+            echo "$CHANGED"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
           echo "--- 本次改动 ---"
-          git diff --name-only HEAD^ HEAD 2>/dev/null || echo "(拿不到基线)"
+          echo "$CHANGED"
 
   e2e:
     name: E2E
