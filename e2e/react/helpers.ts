@@ -141,13 +141,9 @@ export async function ready(page: Page, path = "/schedule") {
   await expect(
     page.getByRole("navigation", { name: "主要导航" }),
   ).toBeVisible();
-  // 剩下的(已注册的)face 也一并落定 —— 别让「已加载但还没应用」的窗口跨过测量点。
-  await page.evaluate(async () => {
-    await Promise.all(
-      [...document.fonts].map((face) => face.load().catch(() => undefined)),
-    );
-    await document.fonts.ready;
-  });
+  // ⚠ 这里**不要**再加 `await document.fonts.ready`(2026-10-16 试过,已回退):
+  //   字体被拦掉之后它**可能永不 resolve** —— 本地只跑 4 条 spec 看不出来,CI 上整支跑就
+  //   卡到 30 分钟以上(那次 run 被人工取消)。拦掉第三方字体本身就已经让排版确定,够了。
 }
 
 /** 影展首日(2026-10-06)的凌晨 —— 「钉死时钟」的统一起点。
