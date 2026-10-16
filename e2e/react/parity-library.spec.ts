@@ -12,22 +12,28 @@ test("activity search and normalized award sections retain legacy results", asyn
   await library.getByRole("searchbox", { name: "搜索影片" }).fill("");
   await expect(library.locator("[data-film-key]")).toHaveCount(40);
   await library.getByRole("button", { name: /单元/ }).click();
-  await expect(page.getByRole("listbox")).toBeVisible();
-  await page.keyboard.type("Asian Filmmaker");
+  const list = page.getByRole("listbox");
+  await expect(list).toBeVisible();
   const award = page.getByRole("option", { name: /年度亚洲电影人奖/ });
-  // ⚠ 2026-10-16：`mobile-chromium` 上偶发拿到 0（本机绿）。失败消息里带上当时**焦点 + 过滤框文字
-  //   + 前几个选项**：能一眼分清是「`keyboard.type` 的字没落到过滤框上」还是「结果集真不含它」。
-  const diag = await page.evaluate(() => {
-    const listbox = document.querySelector('[role="listbox"]');
-    return {
-      active: document.activeElement?.tagName ?? "",
-      filter: (listbox?.textContent ?? "").trim().slice(0, 60),
-      options: [...document.querySelectorAll('[role="listbox"] [role="option"]')]
-        .map((option) => option.textContent?.trim() ?? "")
-        .slice(0, 5),
-    };
-  });
-  await expect(award, `现场=${JSON.stringify(diag)}`).toHaveCount(1);
+  // ⚠ 2026-10-16：原来用 `page.keyboard.type("Asian Filmmaker")`，在 CI 上偶发**只吃进第一个字母** ——
+  //   跑完那次的现场是 `[active]` 停在 `A Window on Asian Cinema`、目标选项压根没渲染出来
+  //   （这档是**打字前瞻**：靠 `aria-activedescendant` 跟着按键走，缓冲会随时间重置，
+  //   而 CI 的按键间隔比本机大）。改成「打一轮 → 看有没有 → 没有就再打一轮」，
+  //   **不放松判据**：仍然要求「打完这一串之后它出现」。`pressSequentially` 会先把焦点落到清单上。
+  await expect(async () => {
+    await list.pressSequentially("Asian Filmmaker");
+    const diag = await page.evaluate(() => {
+      const listbox = document.querySelector('[role="listbox"]');
+      return {
+        active: document.activeElement?.tagName ?? "",
+        filter: (listbox?.textContent ?? "").trim().slice(0, 60),
+        options: [...document.querySelectorAll('[role="listbox"] [role="option"]')]
+          .map((option) => option.textContent?.trim() ?? "")
+          .slice(0, 5),
+      };
+    });
+    await expect(award, `现场=${JSON.stringify(diag)}`).toHaveCount(1);
+  }).toPass({ timeout: 15_000 });
   await award.click();
   await expect(library.locator("[data-film-key]")).toHaveCount(4);
 });

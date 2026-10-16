@@ -114,11 +114,40 @@ export async function storage(page: Page): Promise<Record<string, string>> {
     ),
   );
 }
+/** E2E 里一律拦掉的**第三方字体**源(Adobe Fonts / typekit)—— 见 `ready()` 的注释。 */
+const FONT_HOST = "**://use.typekit.net/**";
+const fontBlocked = new WeakSet<Page>();
+
 export async function ready(page: Page, path = "/schedule") {
+  // ⚠ 2026-10-16:拦掉第三方字形,让「本机 / CI」量的是同一份排版。
+  //   分支全量 E2E 的现场(CI-only 那一批红的**统一根因**):`.qv-legend` 三个 span 的宽度在一次
+  //   滑动前后**一起长大 ~9%**(`76.172→83.172` / `78.359→85.688` / `76.172→83.171`),而
+  //   computed `font-family`、`document.fonts.status`(两次都是 `loaded`)、滚动条宽度、视口
+  //   **逐项相同**;间距没变(12px×2 前后都是 24)⇒ 变的是**字形自身的步进宽度**,不是布局。
+  //   来源:`@react-spectrum/s2` 的样式表带 `@font-face`,字体文件在 `use.typekit.net`;
+  //   CJK 那几族由 Adobe 的 WebFont Loader **异步注入**(`<html>` 上会出现 `wf-loading` /
+  //   `wf-*-n9-loading`),所以 `document.fonts.ready` 与 `load()` 都够不着它们
+  //   (实测本机 `[...document.fonts]` 里压根没有 han 那几族)。于是「换字形」落点随机:
+  //   本机早早换完 ⇒ 全绿;CI 落在两次测量中间 ⇒ `redblack` 的 Δx 3.671875、hover 后卡片
+  //   下移 2px、手机上弹层溢出 3px,全出自这一点(见 `PLAN-20261016155400`)。
+  //   ⚠ 取舍:拦掉之后量的是**回退字形**那一版排版。CI 现场也顺手量出「真用 webfont 时
+  //   iPhone SE 档的弹层要多滚 3px」—— 那是**产品侧**的一条,已记进 PLAN,不靠测试口径掩盖。
+  //   ⚠ 同一 test 里 `ready()` 可能被调多次,只挂一次路由。
+  if (!fontBlocked.has(page)) {
+    fontBlocked.add(page);
+    await page.route(FONT_HOST, (route) => route.abort());
+  }
   await page.goto(path);
   await expect(
     page.getByRole("navigation", { name: "主要导航" }),
   ).toBeVisible();
+  // 剩下的(已注册的)face 也一并落定 —— 别让「已加载但还没应用」的窗口跨过测量点。
+  await page.evaluate(async () => {
+    await Promise.all(
+      [...document.fonts].map((face) => face.load().catch(() => undefined)),
+    );
+    await document.fonts.ready;
+  });
 }
 
 /** 影展首日(2026-10-06)的凌晨 —— 「钉死时钟」的统一起点。
