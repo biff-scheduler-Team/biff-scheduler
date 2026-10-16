@@ -61,6 +61,13 @@ npx playwright test -c playwright.react.config.ts \
 - `--check` 会断言本文件的表格与 JSON 同步,已串进 `npm run verify:quick` —— **手改表格会被门禁挡下**。
   这条是为了避免「同一口径两份实现」(§5.1):表格是 JSON 的**渲染**,不是它的副本。
 - 新增 spec 文件后,记得把它挂进某条规则(或确认它本来就只属于 `always` / 全量)。
+- **改测试也算改动**(2026-10-16 补):上面的规则全是 `apps/` 源码路径,一条都命中不了「只改 e2e」的提交 ——
+  实测 PR #37 改的正是 `parity-library.spec.ts`,而 CI 只跑了 `smoke`,等于**改了没验**。现在:
+  - `selfSpecPrefixes`(在 JSON 里)下的 `<名>.spec.ts` 改自己 → 至少跑 `<名>` 自己;同名 spec 不存在时**报警**不静默。
+  - 同目录里的**共享件**(`helpers.ts` / `fixtures/` / 任何非 `.spec.ts` 文件)影响的不止一个 spec,退全量。
+    刻意**不写死名单**:新增一个 fixture 时没人会记得回来补,而漏跑的代价正是「绿灯是空的」。
+    推论:**别把 spec 的公共逻辑塞进某个 `.spec.ts` 里** —— 那样它只会跑自己。
+  - `main` 侧没有「受影响 spec」这条路径,所以 `ci.yml` 的 e2e 启动条件也认 `e2e/`(只改 spec 的提交照样跑全量)。
 
 ## 单测那边怎么对应
 

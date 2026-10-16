@@ -1,7 +1,10 @@
 {
-  "note": "改动路径 → 必跑 E2E spec 的**机读唯一来源**。人读版 docs/TEST-MAP.md 由 `node scripts/affected-specs.mjs --write-doc` 生成,`--check` 会断言两者同步 —— 不要手改 md 里的表格。paths 以 / 结尾表示目录前缀,否则是精确文件。",
+  "note": "改动路径 → 必跑 E2E spec 的**机读唯一来源**。人读版 docs/TEST-MAP.md 由 `node scripts/affected-specs.mjs --write-doc` 生成,`--check` 会断言两者同步 —— 不要手改 md 里的表格。paths 以 / 结尾表示目录前缀,否则是精确文件。selfSpecPrefixes 声明的目录里:<名>.spec.ts 改自己就跑自己,其余(共享件 / 子目录)退全量。",
   "always": [
     "smoke"
+  ],
+  "selfSpecPrefixes": [
+    "e2e/react/"
   ],
   "allOn": [
     "apps/web/src/style.css",

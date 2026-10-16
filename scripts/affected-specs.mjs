@@ -13,6 +13,9 @@
 //   node scripts/affected-specs.mjs --check                  # 断言 md 与 json 同步(不同步则退出 1)
 //
 // ⚠ 输出是**最少必跑集**,不是「跑了这些就一定够」。命中 allOn 或无法归类时返回全量。
+// ⚠ `test-map.json` 的 rules 全是 `apps/` 源码路径 —— 于是「只改测试」的提交以前谁也命中不了,
+// 只落到 always(smoke),等于**改了的 spec 根本没跑**。selfSpecPrefixes 补上这一半(2026-10-16):
+// 该目录里 `<名>.spec.ts` 改自己 → 至少跑 `<名>`;其余(共享件 / 子目录)影响面未知 → 退全量。
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -44,6 +47,38 @@ export function affectedSpecs(changed, specs = allSpecs()) {
   let why = [];
   if (changed.some((path) => map.allOn.some((pattern) => hit(path, pattern)))) {
     return { specs, all: true, reasons: ["命中 allOn(全局样式 / 配置),按全量跑"] };
+  }
+  // 「改测试也得验测试」:在 spec 目录(selfSpecPrefixes)里 ——
+  //   · 改 `<名>.spec.ts` → 至少把那个 spec 跑一遍;
+  //   · 改共享件(helpers / fixtures / 子目录)→ 影响面不止一个 spec,退全量。
+  // 之前没有这一条,于是**只改 e2e 的提交在 PR 上只跑 always(smoke)** —— 绿灯是空的:
+  // 2026-10-16 实测 run 38884776014 只跑了 smoke,而它本该验证的是 parity-library 的改法。
+  const selfPrefixes = map.selfSpecPrefixes ?? [];
+  /**
+   * spec 目录里的路径 → 对应的 spec 短名。
+   * `null` = 不是 spec(共享件 / 子目录);`undefined` = 压根不在 spec 目录里,这一条不管它。
+   */
+  const asSpecName = (path) => {
+    const prefix = selfPrefixes.find((item) => path.startsWith(item));
+    if (!prefix) return undefined;
+    const matched = /^([^/]+)\.spec\.ts$/.exec(path.slice(prefix.length));
+    return matched ? matched[1] : null;
+  };
+  // 只解析一次:`name === null` 与 `name === undefined` 是两种不同的处置(全量 / 不管),
+  // 分开重算容易在后续改动里让两条分支读到不同的判定。
+  const inSpecDir = changed.map((path) => ({ path, name: asSpecName(path) })).filter((item) => item.name !== undefined);
+  // ⚠ 共享件刻意**不写死名单**:新增一个 fixture / helper 时没人会记得回来补 allOn,
+  // 而漏跑的代价是「绿灯是空的」(见上),多跑一次全量只是几分钟 —— 一边倒的取舍。
+  if (inSpecDir.some((item) => item.name === null)) {
+    return { specs, all: true, reasons: ["命中 e2e 的共享件(helpers / fixtures / 子目录),按全量跑"] };
+  }
+  for (const { path, name } of inSpecDir) {
+    if (!known.has(name)) {
+      why.push(`⚠ ${path}:没有同名的 ${name}.spec.ts`);
+      continue;
+    }
+    picked.add(name);
+    why.push(`spec 自身:${name}`);
   }
   for (const rule of map.rules) {
     if (!changed.some((path) => rule.paths.some((pattern) => hit(path, pattern)))) continue;
