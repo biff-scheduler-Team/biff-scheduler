@@ -120,6 +120,20 @@ export async function ready(page: Page, path = "/schedule") {
     page.getByRole("navigation", { name: "主要导航" }),
   ).toBeVisible();
 }
+
+/** 影展首日(2026-10-06)的凌晨 —— 「钉死时钟」的统一起点。
+ *
+ *  ⚠ 行程页的默认落点依赖**真实「今天」**(`AgendaPage.tsx:60-70`):今天有我的场次 → 今天;
+ *    否则第一个晚于今天的;整段都在过去 → **最后一天**。而 `?date=` 在行程页**不生效**
+ *    (它只喂 `navSearch`,不参与选日)。所以「期望画面上有 10-06 那天的场次」这类用例,
+ *    会在真实日期走过首日之后**必然变红** —— 2026-10-16 实测如此(`compatibility.spec.ts:16`
+ *    与 `ticket-info.spec.ts:188` 双双红在本机与 CI,且 `001` 一直在 10-06、数据没漂)。
+ *    钉到首日 00:30 ⇒ 落点 = 「我的行程里最早的那一天」,与用例写作时的意图一致。
+ *  先例:`agenda-gantt.spec.ts:87` / `eats.spec.ts:204` / `review-schedule.spec.ts:48`。 */
+const FESTIVAL_DAY_ONE = new Date("2026-10-06T00:30:00+09:00");
+export async function pinFestivalClock(page: Page) {
+  await page.clock.install({ time: FESTIVAL_DAY_ONE });
+}
 /** 排片表页标题含年月（「排片表 2026 年 10 月」）。 */
 export function scheduleHeading(page: Page) {
   return page.getByRole("heading", { name: /^排片表/ });

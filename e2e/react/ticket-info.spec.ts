@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { keyOf, openExport, ready, seed, storage } from "./helpers";
+import { keyOf, openExport, pinFestivalClock, ready, seed, storage } from "./helpers";
 
 // 票据明细:日程表上的座位表 = 票数(2026-09-24,`PLAN-20260924141442`)。
 //
@@ -187,12 +187,16 @@ test("不划位:只记张数、不填座位号;落库与划位档同形,重开�
 
 test("初始档位:露天场(bt)默认不划位,但露天场里的开闭幕不默认", async ({ page }) => {
   // 001 = 露天场的开幕场(10-06,典礼场 → 固定座席);003 = 露天场 20:00 的 Open Cinema(10-07)
+  // ⚠ 钉死时钟(2026-10-16):默认落点跟**真实「今天」**走(`AgendaPage.tsx:60-70`)——
+  //   今天是 10-16、已晚于全部场次 ⇒ 落**最后一天** 10-07,而这两场里的开幕场在 10-06,
+  //   于是下面那句「等按钮超时」必现。钉到首日 ⇒ 落点 = 我的行程里最早的一天 = 10-06。
+  await pinFestivalClock(page);
   await seed(page, { "biff.picks.v2": picks("003", "001") });
   await ready(page, "/agenda");
 
   // ⚠ 日程表**一次只画一天**(上面那排日期 tab),而这两场不在同一天 ——
   //   不切日期的话格子根本不在 DOM 里,报出来是「等按钮超时」,看着像入口坏了。
-  // 默认选中 10-06,先看那天的开幕场。
+  // 钉完时钟后默认落在 10-06,先看那天的开幕场(别再写死「默认选中 10-06」—— 默认是算出来的)。
   const gala = await openEditor(page, "001");
   await expect(unreservedBox(gala)).not.toBeChecked();
   await expect(gala.locator(".ticket-seats-title")).toContainText("座位表");

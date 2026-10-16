@@ -7,6 +7,7 @@ import {
   legacyRead,
   openExport,
   openViewingPanel,
+  pinFestivalClock,
   ready,
   scheduleHeading,
   seed,
@@ -17,6 +18,11 @@ test("all legacy storage keys survive initial load, navigation, and reload byte 
   page,
   isMobile,
 }) => {
+  // ⚠ 钉死时钟（2026-10-16）：本用例要断言「行程画布上有 `001`」，而 `001` 在 10-06；
+  //   行程页的默认落点却跟**真实「今天」**走（`AgendaPage.tsx:60-70`：今天没有我的场次 ⇒
+  //   取最后一天），真实日期一过首日就落到 10-07，`001` 那天根本不画 ⇒ 必红。
+  //   ⚠ URL 上的 `date=2026-10-07` 对行程页**不生效**（它只喂 `navSearch`），别指望它选日。
+  await pinFestivalClock(page);
   await seed(page, legacyData);
   // quick=1：浮层打开时才渲染 #viewing-panel（整页 /agenda 无面板）
   await ready(page, "/agenda?date=2026-10-07&quick=1");
