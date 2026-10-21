@@ -93,7 +93,8 @@ export interface RbPosterRow {
   black: number;
   /** 这一部的**评分**（加权红占比 ×10，一位小数）—— 与页面卡片角标**同一处实现**
    *  (`redblack.ts::scoreOf`)。
-   *  ⚠ 榜单**按它排**，行里也印它：只印红黑数的话，读图的人看不出「为什么这部排在前面」。 */
+   *  ⚠ 榜单**按它排**（排序键，不能删）；2026-10-21 起**图上不印它**（用户「去掉评分」），
+   *    页面卡片角标照旧 —— 这张图要让人认出片名，不是复算排名。 */
   score: number | null;
   /** 我贴的那一色;没贴过 = null */
   mine: "red" | "black" | null;
@@ -119,8 +120,9 @@ export interface RbPosterBoard {
 
 /** 这一张图画的是**哪一档版式**（2026-10-16，`PLAN-20261016000441` 修订 1）。
  *
- *  · `"share"`（缺省）= **分享图**：头部（届次 / 大字标题 / 日期 / 全站三格 / 我的已贴 N 枚）+
- *    榜节 / 「我贴过的」+ 每行**评分与贴纸区** + 页脚署名。
+ *  · `"share"`（缺省）= **分享图**：头部（届次 / 大字标题 / 全站三格 / 我的已贴 N 枚）+
+ *    榜节 / 「我贴过的」+ 每行**片名、英文名与贴纸区** + 页脚署名。
+ *    ⚠ 2026-10-21 起头部不再有日期与片数、行内不再有评分与红黑数（用户三条要求）。
  *  · `"rank"`  = **榜图**：「排行榜」弹层里那份读数的图 —— 与屏上那一列**同序同内容**：
  *    名次 / 海报 / 片名(中英) / 红 N · 黑 N；**没有评分、没有贴纸区、没有头尾**。
  *    2026-10-16 起每榜**双栏竖排**（左栏前一半名次、右栏后一半）—— 用户「空白的地方太多,
@@ -578,32 +580,22 @@ export function rbPosterHeight(model: RbPosterModel): number {
 
 /* ---------------- 绘制 ---------------- */
 
-/** 一行里的第三行:**评分 +「红 N · 黑 N」**,分段上色(整串一个颜色就丢了红黑的可读性)。
- *  ⚠ 评分排在最前 —— 榜单**按它排**,只印红黑数的话读图的人看不出「为什么这部在前面」。
- *    还没有人贴过时是 `null`(榜单里不会有这种行,但「我贴过的」那一节可能有),那一档只印红黑数。
- *  ⚠ `withScore = false` 给**榜图**用（2026-10-16，`PLAN-20261016000441` 修订 1）：
- *    屏上那一列不印评分，分享出来的就该与它一致 —— 于是这一支不再关心「评分是什么」，
- *    两档的差别只剩这一个布尔（**不是**第二份「怎么印红黑数」的实现）。
- *  ⚠ `withCounts = false` 给**分享图**用（2026-10-21，用户「去掉贴纸数 放大影片名字」）：
- *    那一行只留评分。⚠ 默认 `true` —— 榜图那条调用一个字都不用改，红黑数的印法仍只有这一份。 */
+/** 一行里的第三行:「红 N · 黑 N」,分段上色(整串一个颜色就丢了红黑的可读性)。
+ *  ⚠ 2026-10-21 起这里**只剩榜图**一个调用方（用户「去掉贴纸数 放大影片名字」→「去掉评分」）：
+ *    分享图的行内数字全撤了，所以评分那一段连同 `withScore` / `withCounts` 两个开关一起删掉 ——
+ *    留一个只有一种取值的布尔只是噪音。红黑数的印法仍然只有这一份。 */
 function drawCounts(
   ctx: CanvasRenderingContext2D,
   row: RbPosterRow,
   x: number,
   baseline: number,
-  withScore: boolean,
-  withCounts = true,
 ): void {
-  const segs: Array<[string, string]> = [];
-  if (withScore && row.score !== null) {
-    segs.push([`${row.score.toFixed(1)} 分`, C.ink]);
-  }
-  if (withCounts) {
-    // 分隔符跟着**有没有前一段**走：分享图那一档只印评分，尾部不能挂一个孤零零的「 · 」
-    if (segs.length) segs.push([" · ", C.muted]);
-    segs.push(["红 ", C.muted], [`${row.red}`, C.red2], [" · 黑 ", C.muted], [`${row.black}`, C.ink2]);
-  }
-  if (!segs.length) return;
+  const segs: Array<[string, string]> = [
+    ["红 ", C.muted],
+    [`${row.red}`, C.red2],
+    [" · 黑 ", C.muted],
+    [`${row.black}`, C.ink2],
+  ];
   ctx.font = font(24, 600);
   let cx = x;
   for (const [text, color] of segs) {
@@ -822,19 +814,20 @@ function drawRow(
 
   const titleX = TITLE_X;
   const titleW = textRight - titleX;
-  // ⚠ 2026-10-21（用户「去掉贴纸数 放大影片名字」）：第三行不再印「红 N · 黑 N」，
-  //   空出来的视觉重量给片名本身 —— 29 → 35 的中文名一行读得清，英文名跟着 20 → 21。
-  //   ⚠ 评分**保留**（它是排序依据，用户只点名了贴纸数）；行高 `ROW_H` 不动，避免连带改高度与 E2E 尺寸。
-  ctx.font = font(35, 600);
+  // ⚠ 2026-10-21（用户「去掉贴纸数 放大影片名字」→ 随后「去掉评分」）：行内**不再有第三行**，
+  //   只剩片名 + 英文名两行。空出来的视觉重量全给片名：29 → 38，英文名 20 → 22；
+  //   两行随之**垂直居中**（原来靠第三行压阵，现在上下留白对称），行高 `ROW_H` 不动，
+  //   避免连带改 `rbPosterHeight` 与一批 E2E 尺寸断言。
+  //   ⚠ 评分仍是**排序依据**（`redblack.ts::sortByVotes`），只是不再印在图上 —— 这张图要让读的人
+  //     认片名，不是复算排名。
+  ctx.font = font(38, 600);
   ctx.fillStyle = C.ink;
-  ctx.fillText(fitText(ctx, row.title, titleW), titleX, textBase);
+  ctx.fillText(fitText(ctx, row.title, titleW), titleX, textBase + 10);
   if (row.en) {
-    ctx.font = font(21, 400);
+    ctx.font = font(22, 400);
     ctx.fillStyle = C.muted;
-    ctx.fillText(fitText(ctx, row.en, titleW), titleX, textBase + 28);
+    ctx.fillText(fitText(ctx, row.en, titleW), titleX, textBase + 42);
   }
-  // 只印评分那一档（`withCounts = false`）；红黑数的印法仍是 `drawCounts` 这一份
-  drawCounts(ctx, row, titleX, textBase + 56, true, false);
 
   drawThumb(ctx, row, PAD, top, images);
   drawField(ctx, row, POSTER_W - PAD - FIELD_W, top + FIELD_TOP);
@@ -896,8 +889,8 @@ function drawRankRow(
     ctx.fillStyle = C.muted;
     ctx.fillText(fitText(ctx, row.en, titleW), titleX, textBase + 26);
   }
-  // ⚠ `withScore = false`：屏上不印评分，图里就不印（用户「图与榜单一致」那条）
-  drawCounts(ctx, row, titleX, textBase + 54, false);
+  // ⚠ 榜图这一档本来就**不印评分**（屏上那一列也没有，用户「图与榜单一致」那条）
+  drawCounts(ctx, row, titleX, textBase + 54);
 }
 
 /** 分节头:左侧一小段品牌红竖条 + 标题 + 口径说明。 */
