@@ -41,6 +41,25 @@ function mockFilmVotes(
   const [pathname] = (request.url ?? "").split("?");
   if (pathname !== "/api/stats/film-votes") return next();
 
+  // ⚠ **线上快照优先**（2026-10-21）：`mock/film-votes-live.json` 是从线上
+  //   `GET /api/stats/film-votes?edition=biff-2026` 原样抓下来的响应（含 `votes` 与 `skins`），
+  //   存在就整份原样返回 —— 这样本地看到的排名 / 红黑数 / 群点与线上那一刻逐条相同，
+  //   出图的版式校对才有意义。删掉这个文件即回退下面的确定性假数据。
+  // ⚠ 与下面同样**每次请求重读**：换一份快照只需覆盖文件 + 刷新，不必重启 dev server。
+  try {
+    const snapshot = readFileSync(
+      fileURLToPath(new URL("./mock/film-votes-live.json", import.meta.url)),
+      "utf8",
+    );
+    response.statusCode = 200;
+    response.setHeader("Content-Type", "application/json");
+    response.setHeader("Content-Length", Buffer.byteLength(snapshot));
+    response.end(snapshot);
+    return;
+  } catch {
+    // 没有快照 → 落到下面的确定性假数据
+  }
+
   // 每次请求都重新读文件 —— 改完配置刷新页面即可，不需要重启 dev server
   const configPath = fileURLToPath(new URL("./mock/redblack-config.json", import.meta.url));
   const filmsPath = fileURLToPath(new URL("./public/films.json", import.meta.url));
