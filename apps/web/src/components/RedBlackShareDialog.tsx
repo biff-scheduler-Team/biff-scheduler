@@ -15,7 +15,7 @@
  *   · 勾选 —— 「有的人不想所有的榜单都分享」,所以每一节都能单独勾掉,换勾选只重组这张图。
  *
  * ★ **出图要用户点一下**(2026-10-16,`PLAN-20261016000441`,用户「都要点击确认后再生成图片」):
- *   弹层打开**不出图** —— 选好范围(单元 / 每榜条数 / 头尾 / 长图内容)之后点「生成图片」才画。
+ *   弹层打开**不出图** —— 选好范围(单元 / 红榜·黑榜条数 / 头尾 / 长图内容)之后点「生成图片」才画。
  *   ⚠ 改了任一选项,**已经出的那张当场作废**(预览与「下载 / 复制」一起收起来,按钮变「重新生成图片」):
  *     还要不要重画是用户说了算 —— 自动重画等于「确认过一次之后就不必再确认」,与这条诉求相反。
  *   ⚠ 「这张长图：W × H px」那行**照旧是活的**(它只读模型、不读画布):换选项当场知道图多大,
@@ -72,6 +72,11 @@ const TOP_N_CHOICES: ReadonlyArray<{ id: string; label: string }> = [
   { id: "0", label: "全部" },
 ];
 
+/** 把条数档位说成人话（`0` 那一档叫「全部」）—— 两榜各说一次，文案口径只有这一处。 */
+function briefRange(topN: number): string {
+  return topN > 0 ? `前 ${topN}` : "全部";
+}
+
 interface RedBlackShareDialogProps {
   films: readonly FilmNode[];
   crowd: CrowdCounts;
@@ -125,22 +130,32 @@ export function RedBlackShareDialog({
     site,
     priorRate,
     mine,
-    today: new Date(),
   }));
   const [sections, setSections] = useState<Set<RbPosterSection>>(allSections);
-  // 三个「范围」开关（2026-10-14，`PLAN-20261014150805`）：单元 / 每榜条数 / 头尾。
+  // 三个「范围」开关（2026-10-14，`PLAN-20261014150805`）：单元 / 红榜·黑榜条数 / 头尾。
   // ⚠ 它们是**活**的（与 `sections` 同性质）：改了当场重算模型（尺寸那行立刻跟着变），
   //   而**已出的图**随之作废 —— 要不要重画由「生成图片」那一枚按钮回答（2026-10-16，见文件头）。
   const [unit, setUnit] = useState("");
   // ⚠ 惰性初值就够（这就是个初值，不是派生量）：弹层**只在打开时挂载**（见文件头），
   //   所以下一次打开时档位回到缺省档。
-  const [topN, setTopN] = useState(TOP_N);
+  // ⚠ 2026-10-21（用户「红黑榜单独设置需要的名次」）：条数从**一个**拆成**红 / 黑各一个** ——
+  //   红榜想只放前 5、黑榜想放前 20 是常态（黑榜有票的片本来就少）。两档互不牵连。
+  const [topNRed, setTopNRed] = useState(TOP_N);
+  const [topNBlack, setTopNBlack] = useState(TOP_N);
   const [showHeader, setShowHeader] = useState(true);
   const [showFooter, setShowFooter] = useState(true);
   const unitOptions = useMemo(() => posterUnitOptions(snapshot.films), [snapshot]);
   const model = useMemo(
-    () => buildRbPosterModel({ ...snapshot, sections, unit, topN, showHeader, showFooter }),
-    [snapshot, sections, unit, topN, showHeader, showFooter],
+    () =>
+      buildRbPosterModel({
+        ...snapshot,
+        sections,
+        unit,
+        topNByBoard: { red: topNRed, black: topNBlack },
+        showHeader,
+        showFooter,
+      }),
+    [snapshot, sections, unit, topNRed, topNBlack, showHeader, showFooter],
   );
   // 「我贴过的」那一项的条数:0 部时勾它没有意义,直接置灰(而不是让用户勾出一节空白)。
   // ⚠ 直接用模型里的 `myCount` 而不是自己再数一遍 —— 它是**按当前单元切过**的那份
@@ -216,13 +231,13 @@ export function RedBlackShareDialog({
         <Heading slot="title">红黑榜分享图</Heading>
         <Content>
           <p className="rb-share-lede">
-            红榜 / 黑榜各取{topN > 0 ? `前 ${topN}` : "全部"}；我贴过的全部列出，不限条数。
+            红榜取{briefRange(topNRed)}、黑榜取{briefRange(topNBlack)}；我贴过的全部列出，不限条数。
             {unit
               ? " 只讲这一个单元 —— 连「我贴过的」也只列这个单元里的。"
               : ""}
           </p>
           {/* 三个「范围」开关（2026-10-14，用户「分享的时候可以选择需要哪个单元的就行」）：
-              单元 / 每榜条数 / 要不要头尾。改任一项都**当场重算模型**（尺寸那行跟着变），
+              单元 / 红榜·黑榜条数 / 要不要头尾。改任一项都**当场重算模型**（尺寸那行跟着变），
               并把已出的那张图作废，与下面那组勾选同性质。 */}
           <div className="rb-share-scope">
             <Picker
@@ -241,9 +256,20 @@ export function RedBlackShareDialog({
               ))}
             </Picker>
             <Picker
-              label="每榜条数"
-              value={String(topN)}
-              onChange={(value) => setTopN(Number(value))}
+              label="红榜条数"
+              value={String(topNRed)}
+              onChange={(value) => setTopNRed(Number(value))}
+            >
+              {TOP_N_CHOICES.map((choice) => (
+                <PickerItem id={choice.id} key={choice.id}>
+                  {choice.label}
+                </PickerItem>
+              ))}
+            </Picker>
+            <Picker
+              label="黑榜条数"
+              value={String(topNBlack)}
+              onChange={(value) => setTopNBlack(Number(value))}
             >
               {TOP_N_CHOICES.map((choice) => (
                 <PickerItem id={choice.id} key={choice.id}>

@@ -36,7 +36,7 @@ import { glyphPath, glyphPlacement, type StickerGlyph } from "./sticker-glyph";
 import { paintMaterial } from "./sticker-material";
 import { shapePath, type StickerShape } from "./sticker-shape";
 import { FALLBACK_SKIN, resolveSkin, skinSpec, type StickerSkin } from "./sticker-skin";
-import { dateInfo, filmUnitKeys, unitLabel } from "./util";
+import { filmUnitKeys, unitLabel } from "./util";
 import {
   boardFilms,
   boardHasVotes,
@@ -185,8 +185,6 @@ export interface RbPosterInput {
    *  ⚠ **页面把它算好传进来**（`RedBlackPage` 的 `priorRate`），好让分享图行的评分与页面卡片角标
    *    逐字一致；不传时退回按 `crowd` 现算，单测与最小调用方不必自己造这个数。 */
   priorRate?: number;
-  /** 出图日期 —— **注入**而不是读时钟:否则单测断不了文案 */
-  today: Date;
   /** 要分享哪几节(用户勾选)。**不传 = 全选** —— 分享图默认给全,是「少给」才需要动作 */
   sections?: ReadonlySet<RbPosterSection>;
   /** **只讲一个单元**(原串,取自目录条目 `FilmItem.unit`)。**不传 = 全部单元**。
@@ -197,8 +195,14 @@ export interface RbPosterInput {
    *  ⚠ 选了单元**连「我贴过的」也一起切** —— 保持「这张图只讲这个单元」的语义。 */
   unit?: string;
   /** 每个榜取前几名。**不传 = `TOP_N`(10)**;`<= 0` = 不截断(弹层那一档叫「全部」)。
-   *  ⚠ 榜里不足这么多行时**全列**,不补零 —— 小单元本来就只有几部片有票。 */
+   *  ⚠ 榜里不足这么多行时**全列**,不补零 —— 小单元本来就只有几部片有票。
+   *  ⚠ 要**红 / 黑各给一档**时用 `topNByBoard`（它优先于本字段）。 */
   topN?: number;
+  /** **单榜条数覆盖**（2026-10-21，用户「红黑榜单独设置需要的名次」）。
+   *  例：`{ red: 5, black: 20 }` —— 红榜取前 5、黑榜取前 20，同一张图里两个数。
+   *  ⚠ 语义与 `topN` 逐字相同：`<= 0` = 不截断；未给的那一榜回落到 `topN`。
+   *  ⚠ 它是**追加**的可选字段：两个都不传时产物与加它之前逐像素一致（既有 6 条 topN 单测不受影响）。 */
+  topNByBoard?: Partial<Record<SortMode, number>>;
   /** 画不画**头部**(届次 / 大标题 / 副标题 / 全站三格 / 我的一行)。**不传 = 画**。
    *  「只要榜单本体」时才需要关掉,图高会同比少一截(几何见 `rbPosterHeight`)。 */
   showHeader?: boolean;
@@ -229,12 +233,6 @@ export const POSTER_SECTIONS: ReadonlyArray<{ id: RbPosterSection; label: string
 /** 默认全选(弹层刚打开时的样子)。返回**新** Set:调用方各持一份,别共享一个可变对象。 */
 export function allSections(): Set<RbPosterSection> {
   return new Set(POSTER_SECTIONS.map((s) => s.id));
-}
-
-function isoDate(d: Date): string {
-  const m = `${d.getMonth() + 1}`.padStart(2, "0");
-  const day = `${d.getDate()}`.padStart(2, "0");
-  return `${d.getFullYear()}-${m}-${day}`;
 }
 
 function toSticker(s: Sticker): RbPosterSticker {
@@ -302,13 +300,17 @@ const NO_SYNCED_FACES: ReadonlyMap<string, SyncedStickerFace> = new Map();
  *     ⚠ 按**每榜各自的颜色**筛(`redblack.ts::boardHasVotes`),不是笼统的「有没有票」,
  *       也**不是**「评分 > 0」:只看「总数大于 0」的话,一部 3 红 0 黑 的片会照样出现在黑榜里。
  *  ② 两榜都取**前 `input.topN`**(缺省 `TOP_N` = 10);「我贴过的」那一节**不截断**。
+ *     ⚠ 2026-10-21 起可**分榜给**（`input.topNByBoard = { red, black }`，未给的那一榜回落 `topN`）：
+ *     红榜想只放前 5、黑榜想放前 20 是常态，一个数字同时管两榜做不到。
  *
  * ★ 三个**范围**开关(2026-10-14,`PLAN-20261014150805`):`unit` 只讲一个单元、
- *   `topN` 调每榜条数、`showHeader` / `showFooter` 决定要不要头与署名。
- *   ⚠ 它们全部是**可选**的:一个都不传时产物与加这三个参数之前**逐像素一致**。
+ *   `topN` / `topNByBoard` 调条数、`showHeader` / `showFooter` 决定要不要头与署名。
+ *   ⚠ 它们全部是**可选**的:一个都不传时产物与加这三个参数之前逐像素一致 ——
+ *     **但 2026-10-21 起整张图的副标题不再含日期与片数**（见 `subtitle` 那一行的说明），
+ *     那是一次**有意的版式变更**，与这些开关无关。
  */
 export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
-  const { films, crowd, board, skins = {}, syncedFaces = NO_SYNCED_FACES, site, mine, today } = input;
+  const { films, crowd, board, skins = {}, syncedFaces = NO_SYNCED_FACES, site, mine } = input;
   const picked = input.sections ?? allSections();
   // 单元切分（2026-10-14，用户「分享的时候可以选择需要哪个单元的就行」）：
   // ⚠ 归属口径走 `util.ts::filmUnitKeys`（主单元 ∪ 联映块单元，与影片库的 `filmInUnit`
@@ -337,7 +339,9 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
       );
       // ⚠ `topN <= 0` = 不截断（弹层那一档叫「全部」）；榜里不足这么多行时自然**全列**，不补零 ——
       //   小单元（实测红黑票只填得满 4 个单元）正是靠这一条才不出现一排 0。
-      const shown = topN > 0 ? ranked.slice(0, topN) : ranked;
+      // ⚠ 红 / 黑各给一档时按**自己那一档**取（2026-10-21）：`topNByBoard` 缺哪榜就回落 `topN`。
+      const limit = input.topNByBoard?.[entry.mode] ?? topN;
+      const shown = limit > 0 ? ranked.slice(0, limit) : ranked;
       return {
         ...entry,
         rows: shown.map((film) => toRow(film, crowd, board, skins, syncedFaces, priorRate)),
@@ -359,11 +363,11 @@ export function buildRbPosterModel(input: RbPosterInput): RbPosterModel {
     mode: "share",
     eyebrow: `${EDITION.replace("-", " ").toUpperCase()} · 观影红黑榜`,
     title: "红黑榜",
-    // 日期走全站唯一口径（`OCT 8`），此前直接印 `isoDate` 的 `2026-10-08` —— 同一张海报两种写法
-    // ⚠ 选了单元时把单元名插进来:只印 5 行红榜却不说哪一单元,读图的人判断不了自己在看什么。
-    subtitle: unit
-      ? `${dateInfo(isoDate(today)).label} · ${unitName} · ${candidates.length} 部有排期的影片`
-      : `${dateInfo(isoDate(today)).label} · ${candidates.length} 部有排期的影片`,
+    // ⚠ 2026-10-21（用户「去掉 OCT 21 · 315 部有排期的影片这个」）：副标题**不再拼日期与片数**。
+    //   只留「这张图讲哪个单元」这一条真正会影响读数的事实 —— 不选单元时为空串，
+    //   `drawHeader` 对空串**不画那一行**，标题与分隔线之间因此不会留一段无内容的白。
+    //   ⚠ `site.films` 仍然照算（它是模型的一份事实，只是不再印在副标题里）。
+    subtitle: unit ? unitName : "",
     site: { ...site, films: candidates.length },
     mine,
     boards,
@@ -409,7 +413,7 @@ function toRankRow(film: FilmNode, crowd: CrowdCounts, priorRate: number): RbPos
 
 /** 「榜图」的入参 —— **只有**这份读数需要的几样（2026-10-16，`PLAN-20261016000441` 修订 1）。
  *
- *  ⚠ 这里**没有** `board` / `skins` / `syncedFaces` / `site` / `mine` / `today`：
+ *  ⚠ 这里**没有** `board` / `skins` / `syncedFaces` / `site` / `mine`：
  *    榜图不画贴纸、不画「我的」、不画日期 —— **传不进来就不可能画错**。
  *    这正是「排行榜与分享图是两条口径」这条事实在类型上的落点。 */
 export interface RbRankPosterInput {
@@ -579,19 +583,27 @@ export function rbPosterHeight(model: RbPosterModel): number {
  *    还没有人贴过时是 `null`(榜单里不会有这种行,但「我贴过的」那一节可能有),那一档只印红黑数。
  *  ⚠ `withScore = false` 给**榜图**用（2026-10-16，`PLAN-20261016000441` 修订 1）：
  *    屏上那一列不印评分，分享出来的就该与它一致 —— 于是这一支不再关心「评分是什么」，
- *    两档的差别只剩这一个布尔（**不是**第二份「怎么印红黑数」的实现）。 */
+ *    两档的差别只剩这一个布尔（**不是**第二份「怎么印红黑数」的实现）。
+ *  ⚠ `withCounts = false` 给**分享图**用（2026-10-21，用户「去掉贴纸数 放大影片名字」）：
+ *    那一行只留评分。⚠ 默认 `true` —— 榜图那条调用一个字都不用改，红黑数的印法仍只有这一份。 */
 function drawCounts(
   ctx: CanvasRenderingContext2D,
   row: RbPosterRow,
   x: number,
   baseline: number,
   withScore: boolean,
+  withCounts = true,
 ): void {
   const segs: Array<[string, string]> = [];
   if (withScore && row.score !== null) {
-    segs.push([`${row.score.toFixed(1)} 分`, C.ink], [" · ", C.muted]);
+    segs.push([`${row.score.toFixed(1)} 分`, C.ink]);
   }
-  segs.push(["红 ", C.muted], [`${row.red}`, C.red2], [" · 黑 ", C.muted], [`${row.black}`, C.ink2]);
+  if (withCounts) {
+    // 分隔符跟着**有没有前一段**走：分享图那一档只印评分，尾部不能挂一个孤零零的「 · 」
+    if (segs.length) segs.push([" · ", C.muted]);
+    segs.push(["红 ", C.muted], [`${row.red}`, C.red2], [" · 黑 ", C.muted], [`${row.black}`, C.ink2]);
+  }
+  if (!segs.length) return;
   ctx.font = font(24, 600);
   let cx = x;
   for (const [text, color] of segs) {
@@ -810,16 +822,19 @@ function drawRow(
 
   const titleX = TITLE_X;
   const titleW = textRight - titleX;
-  ctx.font = font(29, 600);
+  // ⚠ 2026-10-21（用户「去掉贴纸数 放大影片名字」）：第三行不再印「红 N · 黑 N」，
+  //   空出来的视觉重量给片名本身 —— 29 → 35 的中文名一行读得清，英文名跟着 20 → 21。
+  //   ⚠ 评分**保留**（它是排序依据，用户只点名了贴纸数）；行高 `ROW_H` 不动，避免连带改高度与 E2E 尺寸。
+  ctx.font = font(35, 600);
   ctx.fillStyle = C.ink;
   ctx.fillText(fitText(ctx, row.title, titleW), titleX, textBase);
   if (row.en) {
-    ctx.font = font(20, 400);
+    ctx.font = font(21, 400);
     ctx.fillStyle = C.muted;
-    ctx.fillText(fitText(ctx, row.en, titleW), titleX, textBase + 26);
+    ctx.fillText(fitText(ctx, row.en, titleW), titleX, textBase + 28);
   }
-  // 红黑数落在第三行:右列让出了 360px,再挤在片名右边就会把片名压短
-  drawCounts(ctx, row, titleX, textBase + 54, true);
+  // 只印评分那一档（`withCounts = false`）；红黑数的印法仍是 `drawCounts` 这一份
+  drawCounts(ctx, row, titleX, textBase + 56, true, false);
 
   drawThumb(ctx, row, PAD, top, images);
   drawField(ctx, row, POSTER_W - PAD - FIELD_W, top + FIELD_TOP);
@@ -927,9 +942,14 @@ function drawHeader(ctx: CanvasRenderingContext2D, model: RbPosterModel): void {
   ctx.fillStyle = C.ink;
   ctx.fillText(fitText(ctx, model.title, maxTextW), PAD, y + 130);
 
-  ctx.font = font(24, 500);
-  ctx.fillStyle = C.ink2;
-  ctx.fillText(fitText(ctx, model.subtitle, maxTextW), PAD, y + 180);
+  // ⚠ 2026-10-21（用户「去掉 OCT 21 · 315 部有排期的影片这个」）：副标题为空时**整行不画**。
+  //   行的位置与分隔线仍留在原处（`y + 180` / `y + 214`）—— 三格数字与下面的行版式在跨图之间保持同一节奏，
+  //   为省这 34px 去改 `HEADER_H` 会把所有 E2E 的尺寸断言连带改一遍，收益不抵风险。
+  if (model.subtitle) {
+    ctx.font = font(24, 500);
+    ctx.fillStyle = C.ink2;
+    ctx.fillText(fitText(ctx, model.subtitle, maxTextW), PAD, y + 180);
+  }
 
   drawRule(ctx, y + 214, maxTextW);
 

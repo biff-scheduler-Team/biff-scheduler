@@ -48,7 +48,6 @@ function input(over: Partial<RbPosterInput> = {}): RbPosterInput {
     board: new Map(),
     site: { total: 0, red: 0, black: 0 },
     mine: { placed: 0 },
-    today: new Date(2026, 8, 22), // 2026-09-22
     ...over,
   };
 }
@@ -192,10 +191,10 @@ describe("buildRbPosterModel:头部与署名", () => {
     const model = buildRbPosterModel(input({ films: [film("a"), film("b")] }));
     expect(model.eyebrow).toBe("BIFF 2026 · 观影红黑榜");
     expect(model.title).toBe("红黑榜");
-    // ⚠ 2026-09-23 口径变更（`PLAN-20260923113659` T6）：海报副标题此前直接印 `isoDate` 的
-    //   `2026-09-22`，与全站唯一日期口径（`util.ts::dateInfo().label` = 官方册子的 `SEP 22` 写法）相左。
-    //   本条断言随之改为新口径 —— 这是**有意改行为**，不是为让测试变绿而改实现。
-    expect(model.subtitle).toBe("SEP 22 · 2 部有排期的影片");
+    // ⚠ 2026-10-21 口径变更（`PLAN-20261021194253`，用户「去掉 OCT 21 · 315 部有排期的影片这个」）：
+    //   副标题不再拼日期与片数 —— 不选单元时就是空串（绘制层对这一档整行不画）。
+    //   这是**有意改行为**，不是为让测试变绿而改实现。
+    expect(model.subtitle).toBe("");
     expect(model.site.films).toBe(2);
   });
 
@@ -413,11 +412,9 @@ describe("buildRbPosterModel:按单元切分", () => {
 
   it("单元名进副标题（只印 5 行红榜却不说哪一单元，读图的人判断不了自己在看什么）", () => {
     const model = buildRbPosterModel(input({ films, crowd: c, unit: "甲单元" }));
-    expect(model.subtitle).toContain("甲单元");
-    // 不选单元时不额外插一个「全站」进去 —— 默认那版文案与加这个参数之前逐字一致
-    expect(buildRbPosterModel(input({ films, crowd: c })).subtitle).toBe(
-      "SEP 22 · 3 部有排期的影片",
-    );
+    expect(model.subtitle).toBe("甲单元");
+    // 不选单元时副标题是空串（2026-10-21 去掉日期与片数，见 `PLAN-20261021194253`）
+    expect(buildRbPosterModel(input({ films, crowd: c })).subtitle).toBe("");
   });
 
   it("「我贴过的」也一起切（这张图只讲这个单元），`myCount` 是切后的数", () => {
@@ -468,6 +465,30 @@ describe("buildRbPosterModel:每榜条数 topN", () => {
   it("不传 topN 仍是 10（默认值没被这次的参数化改掉）", () => {
     const model = buildRbPosterModel(input({ films, crowd: c }));
     expect(model.boards[0].rows).toHaveLength(TOP_N);
+  });
+
+  it("topNByBoard：红榜 5 行、黑榜 12 行 —— 两榜各按自己那一档取", () => {
+    // 2026-10-21（用户「红黑榜单独设置需要的名次」）：黑榜有票的片本来就少，
+    // 红榜想只放前 5、黑榜想放全部是常态，两档互不牵连。
+    const all = Array.from({ length: 14 }, (_, i) => film(`f${i}`));
+    const both = crowd(
+      Object.fromEntries(all.map((f, i) => [f.key, [14 - i, 14 - i] as [number, number]])),
+    );
+    const model = buildRbPosterModel(input({ films: all, crowd: both, topNByBoard: { red: 5, black: 12 } }));
+    const red = model.boards.find((b) => b.mode === "red");
+    const black = model.boards.find((b) => b.mode === "black");
+    expect(red?.rows).toHaveLength(5);
+    expect(black?.rows).toHaveLength(12);
+  });
+
+  it("topNByBoard 只给一榜时，另一榜回落到 topN（不是被悄悄截成 0）", () => {
+    // ⚠ 两榜都要有票：`boardHasVotes` 会把「票数为 0」的那一榜整节去掉，缺数据时这条断言测不到回落
+    const both = crowd(
+      Object.fromEntries(films.map((f, i) => [f.key, [14 - i, 14 - i] as [number, number]])),
+    );
+    const model = buildRbPosterModel(input({ films, crowd: both, topN: 3, topNByBoard: { black: 7 } }));
+    expect(model.boards.find((b) => b.mode === "red")?.rows).toHaveLength(3);
+    expect(model.boards.find((b) => b.mode === "black")?.rows).toHaveLength(7);
   });
 });
 

@@ -1199,7 +1199,7 @@ async function shareSize(dialog: Locator): Promise<{ width: number; height: numb
  *  返回它的展示名 —— 断言要用它。 */
 async function pickFirstUnit(page: Page, dialog: Locator): Promise<string> {
   await dialog.getByRole("button", { name: /单元/ }).click();
-  // ⚠ **必须限定在「单元」那个 listbox 里**：同一张弹层里还有别的下拉（「取前几名」/「每榜条数」），
+  // ⚠ **必须限定在「单元」那个 listbox 里**：同一张弹层里还有别的下拉（「红榜条数」/「黑榜条数」），
   //   选完一次之后它的 listbox **仍然留在 DOM 上** —— 不限定就会 strict mode 撞两个
   //   （2026-10-14 实测：先选了 TOP3、再挑单元，`getByRole("listbox")` 解到 2 个，直接红）。
   const listbox = page.getByRole("listbox", { name: "单元" });
@@ -1336,10 +1336,16 @@ test("红黑榜分享图：可以只讲一个单元，也可以关头尾", async
     await expect(dialog.getByRole("button", { name: "复制图片" })).toBeVisible();
   };
 
-  // ① 每榜条数改成 5 → 图**矮一截**（两榜各少 5 行）
+  // ① 条数改成 5 → 图**矮一截**（两榜各少 5 行）
+  //   ⚠ 2026-10-21（用户「红黑榜单独设置需要的名次」）：一个「每榜条数」拆成「红榜条数 / 黑榜条数」，
+  //     两个都要改到 5，才是原来那句「两榜各少 5 行」的同一件事。
   const full = await shareSize(dialog);
-  await dialog.getByRole("button", { name: /每榜条数/ }).click();
-  await page.getByRole("option", { name: "前 5", exact: true }).click();
+  //   ⚠ 两个下拉里**都有**「前 5」，且选完第一个它的 listbox 仍留在 DOM 上 —— 必须限定到自己的 listbox，
+  //     否则 strict mode 会一次解到两个 option（同 `pickFirstUnit` 那条注释踩过的坑）。
+  await dialog.getByRole("button", { name: /红榜条数/ }).click();
+  await page.getByRole("listbox", { name: "红榜条数" }).getByRole("option", { name: "前 5", exact: true }).click();
+  await dialog.getByRole("button", { name: /黑榜条数/ }).click();
+  await page.getByRole("listbox", { name: "黑榜条数" }).getByRole("option", { name: "前 5", exact: true }).click();
   const five = await shareSize(dialog);
   expect(five.height).toBeLessThan(full.height);
 
