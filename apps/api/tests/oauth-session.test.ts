@@ -392,7 +392,7 @@ describe("provider:service binding 调用边界", () => {
   });
 });
 
-/** 符合 `accountProfileSchema` 的上游资料响应。 */
+/** 符合 `accountProfileSchema` 的上游资料(/api/v1/me 的 profile)。 */
 const PROFILE = {
   userId: SUBJECT,
   displayName: "观众",
@@ -445,7 +445,7 @@ describe("resolveIdentity:上游一次 401 不得变成永久登出", () => {
     // 第一次拿 at-2 被上游拒(边界过期 / 瞬时故障),换 at-3 之后成功。
     bindingFetch
       .mockResolvedValueOnce(new Response("{}", { status: 401 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify(PROFILE), { status: 200 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ profile: PROFILE }), { status: 200 }));
 
     const { session } = await sessionFor(environment(sqlite), COOKIE);
     const outcome = await resolveIdentity(environment(sqlite), COOKIE, undefined, session!);

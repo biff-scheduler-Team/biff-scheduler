@@ -419,7 +419,7 @@ export function openAccountPanel() {
       }),
     );
   const center = el("a", "text-14 underline", "前往 IFFDAY 账号中心") as HTMLAnchorElement;
-  center.href = "https://account.iff.day/account";
+  center.href = "https://iff.day/i/settings";
   center.target = "_blank";
   center.rel = "noopener noreferrer";
   body.append(center);
