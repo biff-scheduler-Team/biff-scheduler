@@ -357,12 +357,25 @@ app.get("/api/account/me", (c) => {
     renewable: Boolean(tokens.refreshToken),
   });
 });
+/** 账号服务的答复原样回给前端;出错时它答 { error: { code } },前端认的是 { error: code }。 */
+async function accountAnswer(response: Response) {
+  const headers = { "Content-Type": "application/json", "Cache-Control": "no-store" };
+  if (response.ok) return new Response(response.body, { status: response.status, headers });
+  const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
+  const code =
+    typeof body?.error === "string"
+      ? body.error
+      : typeof (body?.error as { code?: unknown } | undefined)?.code === "string"
+        ? (body!.error as { code: string }).code
+        : "REQUEST_FAILED";
+  return new Response(JSON.stringify({ error: code }), { status: response.status, headers });
+}
 app.patch("/api/account/profile", async (c) => {
   const body = profileSchema.safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: "INVALID_PROFILE" }, 422);
   const config = configuration(c.env);
   const response = await c.env.IFFDAY_API.fetch(
-    new Request(`${config.IFFDAY_ORIGIN}/api/v1/profile`, {
+    new Request(`${config.IFFDAY_ORIGIN}/api/v1/me/profile`, {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${c.get("session").tokens.accessToken}`,
@@ -371,17 +384,14 @@ app.patch("/api/account/profile", async (c) => {
       body: JSON.stringify(body.data),
     }),
   );
-  return new Response(response.body, {
-    status: response.status,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-  });
+  return accountAnswer(response);
 });
 app.on(["PUT", "DELETE"], "/api/account/avatar", async (c) => {
   if (c.req.method === "PUT" && c.req.header("content-type") !== "image/jpeg")
     return c.json({ error: "JPEG_REQUIRED" }, 415);
   const config = configuration(c.env);
   const response = await c.env.IFFDAY_API.fetch(
-    new Request(`${config.IFFDAY_ORIGIN}/api/v1/profile/avatar`, {
+    new Request(`${config.IFFDAY_ORIGIN}/api/v1/me/avatar`, {
       method: c.req.method,
       headers: {
         Authorization: `Bearer ${c.get("session").tokens.accessToken}`,
@@ -390,10 +400,7 @@ app.on(["PUT", "DELETE"], "/api/account/avatar", async (c) => {
       body: c.req.method === "PUT" ? await c.req.arrayBuffer() : undefined,
     }),
   );
-  return new Response(response.body, {
-    status: response.status,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-  });
+  return accountAnswer(response);
 });
 app.post("/api/account/logout", async (c) => {
   const p = provider(c.env, c.req.header("cf-connecting-ip"), new URL(c.req.url).origin);

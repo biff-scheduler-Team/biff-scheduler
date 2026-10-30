@@ -1,6 +1,6 @@
 # IFFDAY 账号接入
 
-BIFF Scheduler 使用 IFFDAY OIDC 登录。**当前生效的站点域名是 `https://biff.lcandy.co`**；`https://biff.iff.day` 是迁移目标，已写进 `APP_ORIGIN` 白名单（逗号分隔）与账号系统的回调登记，但**自定义域名尚未挂到 `biff-scheduler` Worker 上** —— 该子域当前没有 DNS 记录，`curl` 直接失败。挂载后代码无需改动即可生效。原有访客排片和离线使用方式保留。账号中心为 `https://account.iff.day`。
+BIFF Scheduler 使用 IFFDAY OIDC 登录。**当前生效的站点域名是 `https://biff.lcandy.co`**；`https://biff.iff.day` 是迁移目标，已写进 `APP_ORIGIN` 白名单（逗号分隔）与账号系统的回调登记，但**自定义域名尚未挂到 `biff-scheduler` Worker 上** —— 该子域当前没有 DNS 记录，`curl` 直接失败。挂载后代码无需改动即可生效。原有访客排片和离线使用方式保留。签发方与资料接口在 `https://iff.day`（2026-10-30 起；`account.iff.day` 退役），资料读写走 `/api/v1/me`（`profile`、`profile:write`）。账号中心为 `https://iff.day/i/settings`。
 
 ## 登录与个人资料
 
@@ -23,7 +23,7 @@ BIFF cookie 为 `__Host-biff.session`，设置 Secure、HttpOnly、SameSite=Lax 
 `SESSION_REFRESH_REJECTED`（账号系统拒绝续期）、`IDENTITY_REJECTED`（账号系统拒绝身份校验）。
 前端会把中文原因拼进「登录已过期」那句提示里。
 
-账号系统对 `/api/v1/profile` 回 401 时**不再直接删会话**（`resolveIdentity`）：先用 refresh token
+账号系统对 `/api/v1/me` 回 401 时**不再直接删会话**（`resolveIdentity`）：先用 refresh token
 强制换一份再验一次，只有新 token 依然被拒才判会话真失效。本地 `token_expires_at` 是按
 「收到响应那一刻 + `expires_in`」算的，比上游签发时刻晚一个网络往返，边界上本就会拿着刚过期的
 token 过去 —— 一次抖动不该等于永久登出（cookie 还在、行没了）。该调用带 3 秒上限并转发
@@ -143,4 +143,4 @@ npm run deploy -w @biff/api
 
 ## Legacy 同域同会话（薄桥）
 
-新版与 `/legacy/` 共享 `__Host-biff.session`（`Path=/`）与 `biff.*` localStorage。Legacy 顶栏提供「登录 IFFDAY」与同步状态文案，内部调用与新版同一套 `account-sync` 核心（**不**引入 React / Spectrum）。在 legacy 改片单会派发 `iffday:workspace-change`，已登录时 debounce 上传到本人 `festival_document`。资料编辑仍在新版或 [IFFDAY 账号中心](https://account.iff.day/account)。
+新版与 `/legacy/` 共享 `__Host-biff.session`（`Path=/`）与 `biff.*` localStorage。Legacy 顶栏提供「登录 IFFDAY」与同步状态文案，内部调用与新版同一套 `account-sync` 核心（**不**引入 React / Spectrum）。在 legacy 改片单会派发 `iffday:workspace-change`，已登录时 debounce 上传到本人 `festival_document`。资料编辑仍在新版或 [IFFDAY 账号中心](https://iff.day/i/settings)。

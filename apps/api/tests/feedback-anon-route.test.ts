@@ -77,14 +77,18 @@ async function seedSession(sqlite: DatabaseSync): Promise<void> {
 }
 
 function profileResponse(userId: string): Response {
+  // /api/v1/me 答 { user, profile }。
   return Response.json({
-    userId,
-    displayName: "Ra",
-    bio: "",
-    website: "",
-    avatarUrl: null,
-    updatedAt: "2026-10-05T00:00:00.000Z",
-    version: 1,
+    user: { id: userId, email: "ra@example.com", emailVerified: true },
+    profile: {
+      userId,
+      displayName: "Ra",
+      bio: "",
+      website: "",
+      avatarUrl: null,
+      updatedAt: "2026-10-05T00:00:00.000Z",
+      version: 1,
+    },
   });
 }
 

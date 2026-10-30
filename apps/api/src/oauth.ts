@@ -145,7 +145,8 @@ export function provider(
     client,
     options,
     auth: oauth.ClientSecretBasic(config.OIDC_CLIENT_SECRET),
-    resource: `${config.IFFDAY_ORIGIN}/api/v1/profile`,
+    // 资料读写都在 /api/v1/me(profile、profile:write),其余账号操作不归本应用。
+    resource: `${config.IFFDAY_ORIGIN}/api/v1/me`,
     // 回调必须回到用户出发时的那个主机，否则浏览器会被送到另一个源、
     // 登录途中那枚 pending cookie 就丢了。
     redirectUri: `${origin ?? config.origins[0]}/api/auth/callback`,
@@ -302,7 +303,7 @@ async function requestProfile(env: Env, accessToken: string, clientIp?: string) 
   const headers = new Headers({ Authorization: `Bearer ${accessToken}` });
   if (clientIp) headers.set("cf-connecting-ip", clientIp);
   return env.IFFDAY_API.fetch(
-    new Request(`${config.IFFDAY_ORIGIN}/api/v1/profile`, {
+    new Request(`${config.IFFDAY_ORIGIN}/api/v1/me`, {
       headers,
       signal: AbortSignal.timeout(IDENTITY_TIMEOUT_MS),
     }),
@@ -357,7 +358,9 @@ export async function resolveIdentity(
   // ⚠ 用 `safeParse` 而不是 `parse`（2026-09-23，PLAN-20260923111748，B2）：
   //   上游返回 200 但字段不合契约（或压根不是 JSON）时，`parse` / `json()` 抛出的异常会冒泡成
   //   500 `INTERNAL_ERROR` —— 前端会当成「服务端 bug」而不是可重试的「身份服务暂时不可用」。
-  const parsed = accountProfileSchema.safeParse(await response.json().catch(() => null));
+  // /api/v1/me 答 { user, profile }:资料在 profile 里。
+  const body = (await response.json().catch(() => null)) as { profile?: unknown } | null;
+  const parsed = accountProfileSchema.safeParse(body?.profile);
   if (!parsed.success) {
     console.warn("identity_profile_malformed");
     return { failure: "IDENTITY_UNAVAILABLE" };

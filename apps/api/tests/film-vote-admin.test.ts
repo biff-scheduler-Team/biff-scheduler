@@ -213,14 +213,18 @@ function mockIdentityService(sqlite: DatabaseSync): void {
     const row = sqlite.prepare("SELECT subject FROM app_session").get() as
       | { subject: string }
       | undefined;
+    const userId = row?.subject ?? NON_ADMIN_SUBJECT;
     return Response.json({
-      userId: row?.subject ?? NON_ADMIN_SUBJECT,
-      displayName: "Ra",
-      bio: "",
-      website: "",
-      avatarUrl: null,
-      updatedAt: "2026-09-23T00:00:00.000Z",
-      version: 1,
+      user: { id: userId, email: "ra@example.com", emailVerified: true },
+      profile: {
+        userId,
+        displayName: "Ra",
+        bio: "",
+        website: "",
+        avatarUrl: null,
+        updatedAt: "2026-09-23T00:00:00.000Z",
+        version: 1,
+      },
     });
   });
 }
