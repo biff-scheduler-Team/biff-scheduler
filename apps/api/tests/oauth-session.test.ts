@@ -362,6 +362,24 @@ describe("provider:service binding 调用边界", () => {
     );
   });
 
+  it("api.iff.day 上的端点同样经服务绑定，以 iff.day 的地址交给账号服务", async () => {
+    const { sqlite } = setup();
+    bindingFetch.mockResolvedValue(new Response("{}", { status: 200 }));
+    const client = provider(
+      { ...environment(sqlite), IFFDAY_API_ORIGIN: "https://api.iff.day" },
+      "1.2.3.4",
+    );
+    const customFetch = client.options[oauth.customFetch] as (
+      input: string,
+      init: RequestInit,
+    ) => Promise<Response>;
+
+    await customFetch("https://api.iff.day/api/v1/auth/oauth2/token?x=1", {});
+    const forwarded = bindingFetch.mock.calls.at(-1)?.[0] as Request;
+
+    expect(forwarded.url).toBe("https://account.iff.day/api/v1/auth/oauth2/token?x=1");
+  });
+
   it("上游 service binding 抛错时必须把错误抛出去(不吞掉)", async () => {
     const { sqlite } = setup();
     bindingFetch.mockRejectedValue(new Error("binding down"));
