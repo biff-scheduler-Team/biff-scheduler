@@ -126,7 +126,7 @@ export function provider(
     [oauth.allowInsecureRequests]: config.APP_ENV === "local",
     [oauth.customFetch]: async (input: string, init: RequestInit) => {
       const url = new URL(input);
-      if (url.origin !== config.IFFDAY_ORIGIN || !url.pathname.startsWith("/api/v1/auth/"))
+      if (!config.identityOrigins.includes(url.origin) || !url.pathname.startsWith("/api/v1/auth/"))
         throw new Error("Unexpected identity endpoint");
       const headers = new Headers(init.headers);
       if (clientIp) headers.set("cf-connecting-ip", clientIp);
@@ -136,7 +136,9 @@ export function provider(
         (value): value is AbortSignal => value instanceof AbortSignal,
       );
       const signal = extra.length ? AbortSignal.any([timeout, ...extra]) : timeout;
-      return env.IFFDAY_API.fetch(new Request(url, { ...init, headers, signal }));
+      // 哪个公开域名都一样走服务绑定;账号服务看到的仍是 iff.day 的地址。
+      const target = new URL(url.pathname + url.search, config.IFFDAY_ORIGIN);
+      return env.IFFDAY_API.fetch(new Request(target, { ...init, headers, signal }));
     },
   };
   return {
